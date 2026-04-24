@@ -127,13 +127,14 @@ describe('STRAT-01 active strategy registry', () => {
       expect.objectContaining({
         strategy_id: 'breakdown_retest_short',
         extraction_ticket: 'STRAT-05',
-        implementation_status: 'pending_extraction',
+        implementation_status: 'active',
       }),
     ]);
     expect(listExecutableStrategyIds()).toEqual([
       'trend_pullback_long',
       'trend_pullback_short',
       'breakout_retest_long',
+      'breakdown_retest_short',
     ]);
   });
 

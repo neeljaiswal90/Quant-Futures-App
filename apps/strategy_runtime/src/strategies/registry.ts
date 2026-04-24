@@ -1,6 +1,7 @@
 import { ACTIVE_STRATEGY_IDS, parseStrategyId, type StrategyId } from '../contracts/strategy-ids.js';
 import type { Direction } from '../contracts/market.js';
 import { generateBreakoutRetestLong } from './breakout_retest_long.js';
+import { generateBreakdownRetestShort } from './breakdown_retest_short.js';
 import { generateTrendPullbackLong } from './trend_pullback_long.js';
 import { generateTrendPullbackShort } from './trend_pullback_short.js';
 import type {
@@ -45,7 +46,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     display_name: 'Breakdown Retest Short',
     direction: 'short',
     setup_family: 'breakout_retest',
-    implementation_status: 'pending_extraction',
+    implementation_status: 'active',
     extraction_ticket: 'STRAT-05',
     synthetic_fixture_id: 'fixture_breakdown_retest_short',
     enabled_in_v1: true,
@@ -59,6 +60,7 @@ const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGener
   trend_pullback_long: generateTrendPullbackLong,
   trend_pullback_short: generateTrendPullbackShort,
   breakout_retest_long: generateBreakoutRetestLong,
+  breakdown_retest_short: generateBreakdownRetestShort,
 };
 
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {
