@@ -14,8 +14,9 @@ import {
   JOURNAL_EVENT_SCHEMA_VERSION,
   journalEventFromJsonLine,
   type JournalEventEnvelope,
+  type RuntimeEventType,
 } from '../contracts/events/index.js';
-import { stableJsonStringify, type JsonValue } from '../contracts/index.js';
+import { ns, stableJsonStringify, type JsonValue, type UnixNs } from '../contracts/index.js';
 import type { PublicRuntimeConfig } from '../config/types.js';
 
 export const JOURNAL_TRANSPORT_CHECKPOINT_SCHEMA_VERSION = 1 as const;
@@ -26,6 +27,16 @@ export interface JournalTransportConfig {
   readonly checkpoint_path: string;
   readonly quarantine_dir: string;
   readonly journal_extension?: string;
+  readonly causation_buffer_capacity?: number;
+}
+
+export type JournalEventTimestampCategory = 'source_market_data' | 'derived' | 'system_control';
+
+export interface RecentCausationEntry {
+  readonly event_id: string;
+  readonly ts_ns: UnixNs;
+  readonly type: RuntimeEventType;
+  readonly causation_id?: string;
 }
 
 export interface JournalTransportCheckpointFileState {
@@ -37,6 +48,7 @@ export interface JournalTransportCheckpointFileState {
 export interface JournalTransportCheckpoint {
   readonly schema_version: typeof JOURNAL_TRANSPORT_CHECKPOINT_SCHEMA_VERSION;
   readonly files: Readonly<Record<string, JournalTransportCheckpointFileState>>;
+  readonly causation_buffer: readonly RecentCausationEntry[];
 }
 
 export interface IngestedJournalEvent {
@@ -55,6 +67,9 @@ export interface QuarantinedJournalLine {
   readonly line_number: number;
   readonly error_message: string;
   readonly error: string;
+  readonly event_id?: string;
+  readonly causation_id?: string;
+  readonly event_type?: string;
   readonly raw_line: string;
 }
 
@@ -83,10 +98,50 @@ interface MutableCheckpointFileState {
 interface MutableCheckpoint {
   schema_version: typeof JOURNAL_TRANSPORT_CHECKPOINT_SCHEMA_VERSION;
   files: Record<string, MutableCheckpointFileState>;
+  causation_buffer: RecentCausationEntry[];
 }
 
 const DEFAULT_JOURNAL_EXTENSION = '.jsonl';
+const DEFAULT_CAUSATION_BUFFER_CAPACITY = 4_096;
 const TEMP_FILE_SUFFIXES = ['.tmp', '.partial', '.writing'];
+
+export const SOURCE_MARKET_DATA_EVENT_TYPES = [
+  'QUOTE',
+  'TRADE',
+  'BAR_CLOSE',
+  'MICROSTRUCTURE',
+  'BOOK_REBUILD',
+] as const satisfies readonly RuntimeEventType[];
+
+export const SYSTEM_CONTROL_EVENT_TYPES = [
+  'CONN',
+  'FEED',
+  'GAP',
+  'SESSION_PHASE',
+  'ROLL_ADVISORY',
+  'HALT',
+  'CONFIG',
+] as const satisfies readonly RuntimeEventType[];
+
+export const DERIVED_EVENT_TYPES = [
+  'FEATURES',
+  'STRUCTURE',
+  'STRAT_EVAL',
+  'CANDIDATE',
+  'ML_UPLIFT',
+  'RANK',
+  'RISK_GATE',
+  'SIZING',
+  'ORDER_INTENT',
+  'SIM_FILL',
+  'POSITION',
+  'MGMT_TICK',
+  'MGMT_ACTION',
+] as const satisfies readonly RuntimeEventType[];
+
+const SOURCE_MARKET_DATA_EVENT_TYPE_SET = new Set<RuntimeEventType>(SOURCE_MARKET_DATA_EVENT_TYPES);
+const SYSTEM_CONTROL_EVENT_TYPE_SET = new Set<RuntimeEventType>(SYSTEM_CONTROL_EVENT_TYPES);
+const DERIVED_EVENT_TYPE_SET = new Set<RuntimeEventType>(DERIVED_EVENT_TYPES);
 
 export function createJournalTransportConfigFromAppConfig(
   publicConfig: PublicRuntimeConfig,
@@ -101,6 +156,7 @@ export function createJournalTransportConfig(journalDir: string): JournalTranspo
     checkpoint_path: join(resolvedJournalDir, '.checkpoints', 'runtime-ingest-checkpoint.json'),
     quarantine_dir: join(resolvedJournalDir, 'quarantine'),
     journal_extension: DEFAULT_JOURNAL_EXTENSION,
+    causation_buffer_capacity: DEFAULT_CAUSATION_BUFFER_CAPACITY,
   };
 }
 
@@ -118,7 +174,15 @@ export class JsonlJournalTransportIngestor {
       checkpoint_path: resolve(config.checkpoint_path),
       quarantine_dir: resolve(config.quarantine_dir),
       journal_extension: config.journal_extension ?? DEFAULT_JOURNAL_EXTENSION,
+      causation_buffer_capacity:
+        config.causation_buffer_capacity ?? DEFAULT_CAUSATION_BUFFER_CAPACITY,
     };
+    if (
+      !Number.isSafeInteger(this.config.causation_buffer_capacity) ||
+      this.config.causation_buffer_capacity < 1
+    ) {
+      throw new Error('journal transport causation_buffer_capacity must be a positive safe integer');
+    }
     this.sink = sink;
   }
 
@@ -237,7 +301,9 @@ export class JsonlJournalTransportIngestor {
 
       if (rawLine.trim() !== '') {
         try {
-          const event = parseTransportJournalEvent(rawLine);
+          const event = parseTransportJournalEvent(rawLine, {
+            causationBuffer: checkpoint.causation_buffer,
+          });
           await this.sink.onEvent({
             event,
             source_file: fileName,
@@ -246,9 +312,15 @@ export class JsonlJournalTransportIngestor {
             line_number: state.line_number,
           });
           state.last_event_id = event.event_id;
+          recordCausationEntry(
+            checkpoint.causation_buffer,
+            event,
+            this.config.causation_buffer_capacity,
+          );
           eventsIngested += 1;
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
+          const metadata = extractQuarantineMetadata(rawLine);
           const quarantinedLine: QuarantinedJournalLine = {
             schema_version: JOURNAL_TRANSPORT_QUARANTINE_SCHEMA_VERSION,
             source_file: fileName,
@@ -257,6 +329,7 @@ export class JsonlJournalTransportIngestor {
             line_number: state.line_number,
             error_message: errorMessage,
             error: errorMessage,
+            ...metadata,
             raw_line: rawLine,
           };
           await this.quarantineMalformedLine(quarantinedLine);
@@ -290,7 +363,11 @@ export class JsonlJournalTransportIngestor {
       return normalizeCheckpoint(parsed);
     } catch (error) {
       if (isNodeErrorWithCode(error, 'ENOENT')) {
-        return { schema_version: JOURNAL_TRANSPORT_CHECKPOINT_SCHEMA_VERSION, files: {} };
+        return {
+          schema_version: JOURNAL_TRANSPORT_CHECKPOINT_SCHEMA_VERSION,
+          files: {},
+          causation_buffer: [],
+        };
       }
       throw error;
     }
@@ -303,13 +380,23 @@ export class JsonlJournalTransportIngestor {
   }
 }
 
-export function parseTransportJournalEvent(line: string): JournalEventEnvelope {
+export interface TransportJournalEventValidationContext {
+  readonly causationBuffer?: readonly RecentCausationEntry[];
+}
+
+export function parseTransportJournalEvent(
+  line: string,
+  context: TransportJournalEventValidationContext = {},
+): JournalEventEnvelope {
   const event = journalEventFromJsonLine(line);
-  assertTransportJournalEvent(event);
+  assertTransportJournalEvent(event, context);
   return event;
 }
 
-export function assertTransportJournalEvent(event: JournalEventEnvelope): void {
+export function assertTransportJournalEvent(
+  event: JournalEventEnvelope,
+  context: TransportJournalEventValidationContext = {},
+): void {
   if (event.schema_version !== JOURNAL_EVENT_SCHEMA_VERSION) {
     throw new Error(`journal event schema_version must be ${JOURNAL_EVENT_SCHEMA_VERSION}`);
   }
@@ -332,17 +419,52 @@ export function assertTransportJournalEvent(event: JournalEventEnvelope): void {
     throw new Error('journal event causation_id must be non-empty when provided');
   }
 
-  assertCanonicalMarketDataTimestamp(event);
+  const category = categorizeRuntimeEventType(event.type);
+  if (category === 'source_market_data') {
+    assertCanonicalMarketDataTimestamp(event, true);
+    return;
+  }
+
+  if (category === 'derived') {
+    assertDerivedEventCausationTimestamp(event, context.causationBuffer ?? []);
+    return;
+  }
+
+  if (event.payload !== null && typeof event.payload === 'object' && !Array.isArray(event.payload)) {
+    assertCanonicalMarketDataTimestamp(event, false);
+  }
 }
 
-function assertCanonicalMarketDataTimestamp(event: JournalEventEnvelope): void {
+export function categorizeRuntimeEventType(type: RuntimeEventType): JournalEventTimestampCategory {
+  if (SOURCE_MARKET_DATA_EVENT_TYPE_SET.has(type)) {
+    return 'source_market_data';
+  }
+  if (SYSTEM_CONTROL_EVENT_TYPE_SET.has(type)) {
+    return 'system_control';
+  }
+  if (DERIVED_EVENT_TYPE_SET.has(type)) {
+    return 'derived';
+  }
+  throw new Error(`runtime event type has no timestamp category: ${type}`);
+}
+
+function assertCanonicalMarketDataTimestamp(
+  event: JournalEventEnvelope,
+  requireExchangeTimestamp: boolean,
+): void {
   if (event.payload === null || typeof event.payload !== 'object' || Array.isArray(event.payload)) {
+    if (requireExchangeTimestamp) {
+      throw new Error('source market-data event payload must be an object with exchange_event_ts_ns');
+    }
     return;
   }
 
   const payload = event.payload as Record<string, unknown>;
   const exchangeEventTsNs = payload.exchange_event_ts_ns;
   if (exchangeEventTsNs === undefined) {
+    if (requireExchangeTimestamp) {
+      throw new Error('source market-data event payload.exchange_event_ts_ns is required');
+    }
     return;
   }
   if (typeof exchangeEventTsNs !== 'bigint') {
@@ -350,6 +472,73 @@ function assertCanonicalMarketDataTimestamp(event: JournalEventEnvelope): void {
   }
   if (BigInt(event.ts_ns) !== exchangeEventTsNs) {
     throw new Error('market-data event ts_ns must equal payload.exchange_event_ts_ns');
+  }
+}
+
+function assertDerivedEventCausationTimestamp(
+  event: JournalEventEnvelope,
+  causationBuffer: readonly RecentCausationEntry[],
+): void {
+  if (event.causation_id === undefined) {
+    throw new Error(`derived event ${event.type} requires causation_id`);
+  }
+
+  const cause = causationBuffer.find((entry) => entry.event_id === event.causation_id);
+  if (cause === undefined) {
+    throw new Error(`derived event ${event.type} causation_id ${event.causation_id} is not in recent causation buffer`);
+  }
+
+  if (BigInt(event.ts_ns) !== BigInt(cause.ts_ns)) {
+    throw new Error(
+      `derived event ${event.type} ts_ns must equal causation event ${cause.event_id} ts_ns`,
+    );
+  }
+}
+
+function recordCausationEntry(
+  buffer: RecentCausationEntry[],
+  event: JournalEventEnvelope,
+  capacity: number,
+): void {
+  const existingIndex = buffer.findIndex((entry) => entry.event_id === event.event_id);
+  if (existingIndex >= 0) {
+    buffer.splice(existingIndex, 1);
+  }
+
+  buffer.push({
+    event_id: event.event_id,
+    ts_ns: event.ts_ns,
+    type: event.type,
+    ...(event.causation_id === undefined ? {} : { causation_id: event.causation_id }),
+  });
+
+  while (buffer.length > capacity) {
+    buffer.shift();
+  }
+}
+
+function extractQuarantineMetadata(
+  rawLine: string,
+): Pick<QuarantinedJournalLine, 'event_id' | 'causation_id' | 'event_type'> {
+  try {
+    const parsed = JSON.parse(rawLine) as unknown;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    const record = parsed as Record<string, unknown>;
+    return {
+      ...(typeof record.event_id === 'string' && record.event_id.trim() !== ''
+        ? { event_id: record.event_id }
+        : {}),
+      ...(typeof record.causation_id === 'string' && record.causation_id.trim() !== ''
+        ? { causation_id: record.causation_id }
+        : {}),
+      ...(typeof record.type === 'string' && record.type.trim() !== ''
+        ? { event_type: record.type }
+        : {}),
+    };
+  } catch {
+    return {};
   }
 }
 
@@ -398,7 +587,13 @@ function normalizeCheckpoint(value: unknown): MutableCheckpoint {
     };
   }
 
-  return { schema_version: JOURNAL_TRANSPORT_CHECKPOINT_SCHEMA_VERSION, files };
+  const causationBuffer = normalizeCausationBuffer(record.causation_buffer);
+
+  return {
+    schema_version: JOURNAL_TRANSPORT_CHECKPOINT_SCHEMA_VERSION,
+    files,
+    causation_buffer: causationBuffer,
+  };
 }
 
 function freezeCheckpoint(checkpoint: MutableCheckpoint): JournalTransportCheckpoint {
@@ -414,7 +609,51 @@ function freezeCheckpoint(checkpoint: MutableCheckpoint): JournalTransportCheckp
   return {
     schema_version: JOURNAL_TRANSPORT_CHECKPOINT_SCHEMA_VERSION,
     files,
+    causation_buffer: checkpoint.causation_buffer.map((entry) => ({
+      event_id: entry.event_id,
+      ts_ns: entry.ts_ns,
+      type: entry.type,
+      ...(entry.causation_id === undefined ? {} : { causation_id: entry.causation_id }),
+    })),
   };
+}
+
+function normalizeCausationBuffer(value: unknown): RecentCausationEntry[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error('journal transport checkpoint causation_buffer must be an array');
+  }
+
+  return value.map((entry, index) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`journal transport checkpoint causation_buffer[${index}] must be an object`);
+    }
+
+    const record = entry as Record<string, unknown>;
+    if (typeof record.event_id !== 'string' || record.event_id.trim() === '') {
+      throw new Error(`journal transport checkpoint causation_buffer[${index}].event_id must be non-empty`);
+    }
+    if (typeof record.type !== 'string' || !isRuntimeEventType(record.type)) {
+      throw new Error(`journal transport checkpoint causation_buffer[${index}].type is unsupported`);
+    }
+    if (
+      record.causation_id !== undefined &&
+      (typeof record.causation_id !== 'string' || record.causation_id.trim() === '')
+    ) {
+      throw new Error(
+        `journal transport checkpoint causation_buffer[${index}].causation_id must be non-empty when provided`,
+      );
+    }
+
+    return {
+      event_id: record.event_id,
+      ts_ns: ns(record.ts_ns as Parameters<typeof ns>[0]),
+      type: record.type,
+      ...(record.causation_id === undefined ? {} : { causation_id: record.causation_id }),
+    };
+  });
 }
 
 function isSafeNonNegativeInteger(value: unknown): value is number {

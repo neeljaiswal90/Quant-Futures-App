@@ -26,6 +26,7 @@ import {
   type JournalTransportConfig,
   type QuarantinedJournalLine,
 } from '../../src/transport/index.js';
+import type { RuntimeEventType } from '../../src/contracts/index.js';
 
 const START_TS_NS = 1_700_000_000_000_000_000n;
 const tempDirectories: string[] = [];
@@ -72,6 +73,42 @@ function eventLine(
         bid_px: 18500.25,
         ask_px: 18500.5,
         ...extraPayload,
+      } satisfies JsonValue,
+    }),
+  );
+}
+
+function derivedEventLine(
+  eventId: string,
+  type: RuntimeEventType,
+  ts: bigint,
+  causationId: string | undefined,
+): string {
+  return journalEventToJsonLine(
+    createJournalEventEnvelope({
+      event_id: makeEventId(eventId),
+      type,
+      ts_ns: ns(ts),
+      run_id: makeRunId('run-evt-00'),
+      session_id: makeSessionId('2026-04-23-rth'),
+      payload: {
+        note: `derived ${type}`,
+      } satisfies JsonValue,
+      ...(causationId === undefined ? {} : { causation_id: makeCausationId(causationId) }),
+    }),
+  );
+}
+
+function systemEventLine(eventId: string, type: RuntimeEventType, ts: bigint): string {
+  return journalEventToJsonLine(
+    createJournalEventEnvelope({
+      event_id: makeEventId(eventId),
+      type,
+      ts_ns: ns(ts),
+      run_id: makeRunId('run-evt-00'),
+      session_id: makeSessionId('2026-04-23-rth'),
+      payload: {
+        state: 'connected',
       } satisfies JsonValue,
     }),
   );
@@ -276,6 +313,303 @@ describe('EVT-00 JSONL journal transport', () => {
     expect(quarantined[0]?.error_message).toBe(
       'market-data event ts_ns must equal payload.exchange_event_ts_ns',
     );
+  });
+
+  it('quarantines source market-data events missing payload.exchange_event_ts_ns', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const quarantined: QuarantinedJournalLine[] = [];
+    const exchangeTs = START_TS_NS;
+    const missingExchangeLine = journalEventToJsonLine(
+      createJournalEventEnvelope({
+        event_id: makeEventId('evt-missing-exchange'),
+        type: 'QUOTE',
+        ts_ns: ns(exchangeTs),
+        run_id: makeRunId('run-evt-00'),
+        session_id: makeSessionId('2026-04-23-rth'),
+        payload: {
+          sidecar_recv_ts_ns: ns(exchangeTs + 2_000_000n),
+        } satisfies JsonValue,
+      }),
+    );
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: () => {
+        throw new Error('source market-data event without exchange timestamp should not ingest');
+      },
+      onMalformedLine: (line) => {
+        quarantined.push(line);
+      },
+    });
+
+    ensureJournalDir(config);
+    writeFileSync(join(config.journal_dir, 'sidecar-session.jsonl'), missingExchangeLine, 'utf8');
+    const result = await ingestor.pollOnce();
+
+    expect(result.events_ingested).toBe(0);
+    expect(result.malformed_lines).toBe(1);
+    expect(quarantined[0]).toMatchObject({
+      event_id: 'evt-missing-exchange',
+      event_type: 'QUOTE',
+      error_message: 'source market-data event payload.exchange_event_ts_ns is required',
+    });
+  });
+
+  it('accepts a CANDIDATE derived event with causation_id and matching STRAT_EVAL cause ts_ns', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const ingested: IngestedJournalEvent[] = [];
+    const sourceTs = START_TS_NS + 1_000_000n;
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: (event) => {
+        ingested.push(event);
+      },
+    });
+
+    ensureJournalDir(config);
+    writeFileSync(
+      join(config.journal_dir, 'sidecar-session.jsonl'),
+      `${eventLine('evt-source', 1)}${derivedEventLine('strat-1', 'STRAT_EVAL', sourceTs, 'evt-source')}${derivedEventLine('cand-1', 'CANDIDATE', sourceTs, 'strat-1')}`,
+      'utf8',
+    );
+    const result = await ingestor.pollOnce();
+
+    expect(result.events_ingested).toBe(3);
+    expect(result.malformed_lines).toBe(0);
+    expect(ingested.map((event) => event.event.event_id)).toEqual([
+      'evt-source',
+      'strat-1',
+      'cand-1',
+    ]);
+    expect(ingested[1]?.event.ts_ns).toBe(ingested[0]?.event.ts_ns);
+    expect(ingested[2]?.event.ts_ns).toBe(ingested[1]?.event.ts_ns);
+  });
+
+  it('accepts a SIM_FILL derived event with matching ORDER_INTENT causation ts_ns', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const ingested: IngestedJournalEvent[] = [];
+    const sourceTs = START_TS_NS + 1_000_000n;
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: (event) => {
+        ingested.push(event);
+      },
+    });
+
+    ensureJournalDir(config);
+    writeFileSync(
+      join(config.journal_dir, 'sidecar-session.jsonl'),
+      `${eventLine('evt-source', 1)}${derivedEventLine('cand-1', 'CANDIDATE', sourceTs, 'evt-source')}${derivedEventLine('order-1', 'ORDER_INTENT', sourceTs, 'cand-1')}${derivedEventLine('fill-1', 'SIM_FILL', sourceTs, 'order-1')}`,
+      'utf8',
+    );
+    const result = await ingestor.pollOnce();
+
+    expect(result.events_ingested).toBe(4);
+    expect(result.malformed_lines).toBe(0);
+    expect(ingested.map((event) => event.event.event_id)).toEqual([
+      'evt-source',
+      'cand-1',
+      'order-1',
+      'fill-1',
+    ]);
+    expect(ingested[3]?.event.ts_ns).toBe(ingested[2]?.event.ts_ns);
+  });
+
+  it('validates derived causation across deterministic journal file boundaries', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const ingested: IngestedJournalEvent[] = [];
+    const sourceTs = START_TS_NS + 1_000_000n;
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: (event) => {
+        ingested.push(event);
+      },
+    });
+
+    ensureJournalDir(config);
+    writeFileSync(join(config.journal_dir, '001-source.jsonl'), eventLine('evt-source', 1), 'utf8');
+    writeFileSync(
+      join(config.journal_dir, '002-derived.jsonl'),
+      derivedEventLine('features-1', 'FEATURES', sourceTs, 'evt-source'),
+      'utf8',
+    );
+    const result = await ingestor.pollOnce();
+
+    expect(result.files_scanned).toEqual(['001-source.jsonl', '002-derived.jsonl']);
+    expect(result.events_ingested).toBe(2);
+    expect(result.malformed_lines).toBe(0);
+    expect(ingested.map((event) => event.event.event_id)).toEqual(['evt-source', 'features-1']);
+    expect(ingested[1]?.event.ts_ns).toBe(ingested[0]?.event.ts_ns);
+  });
+
+  it('quarantines a derived event with mismatched causation ts_ns', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const quarantined: QuarantinedJournalLine[] = [];
+    const sourceTs = START_TS_NS + 1_000_000n;
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: () => undefined,
+      onMalformedLine: (line) => {
+        quarantined.push(line);
+      },
+    });
+
+    ensureJournalDir(config);
+    writeFileSync(
+      join(config.journal_dir, 'sidecar-session.jsonl'),
+      `${eventLine('evt-source', 1)}${derivedEventLine('cand-bad-ts', 'CANDIDATE', sourceTs + 1n, 'evt-source')}`,
+      'utf8',
+    );
+    const result = await ingestor.pollOnce();
+
+    expect(result.events_ingested).toBe(1);
+    expect(result.malformed_lines).toBe(1);
+    expect(quarantined[0]).toMatchObject({
+      event_id: 'cand-bad-ts',
+      causation_id: 'evt-source',
+      event_type: 'CANDIDATE',
+      error_message:
+        'derived event CANDIDATE ts_ns must equal causation event evt-source ts_ns',
+    });
+  });
+
+  it('quarantines derived events missing causation_id', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const quarantined: QuarantinedJournalLine[] = [];
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: () => undefined,
+      onMalformedLine: (line) => {
+        quarantined.push(line);
+      },
+    });
+
+    ensureJournalDir(config);
+    writeFileSync(
+      join(config.journal_dir, 'sidecar-session.jsonl'),
+      derivedEventLine('risk-no-cause', 'RISK_GATE', START_TS_NS, undefined),
+      'utf8',
+    );
+    const result = await ingestor.pollOnce();
+
+    expect(result.events_ingested).toBe(0);
+    expect(result.malformed_lines).toBe(1);
+    expect(quarantined[0]).toMatchObject({
+      event_id: 'risk-no-cause',
+      event_type: 'RISK_GATE',
+      error_message: 'derived event RISK_GATE requires causation_id',
+    });
+  });
+
+  it('quarantines derived events whose cause is absent from the recent buffer', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const quarantined: QuarantinedJournalLine[] = [];
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: () => undefined,
+      onMalformedLine: (line) => {
+        quarantined.push(line);
+      },
+    });
+
+    ensureJournalDir(config);
+    writeFileSync(
+      join(config.journal_dir, 'sidecar-session.jsonl'),
+      derivedEventLine('fill-missing-cause', 'SIM_FILL', START_TS_NS, 'order-not-seen'),
+      'utf8',
+    );
+    const result = await ingestor.pollOnce();
+
+    expect(result.events_ingested).toBe(0);
+    expect(result.malformed_lines).toBe(1);
+    expect(quarantined[0]).toMatchObject({
+      event_id: 'fill-missing-cause',
+      causation_id: 'order-not-seen',
+      event_type: 'SIM_FILL',
+      error_message:
+        'derived event SIM_FILL causation_id order-not-seen is not in recent causation buffer',
+    });
+  });
+
+  it('accepts system/control exempt events without causation_id', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const ingested: IngestedJournalEvent[] = [];
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: (event) => {
+        ingested.push(event);
+      },
+    });
+
+    ensureJournalDir(config);
+    writeFileSync(
+      join(config.journal_dir, 'sidecar-session.jsonl'),
+      systemEventLine('conn-1', 'CONN', START_TS_NS),
+      'utf8',
+    );
+    const result = await ingestor.pollOnce();
+
+    expect(result.events_ingested).toBe(1);
+    expect(result.malformed_lines).toBe(0);
+    expect(ingested[0]?.event.type).toBe('CONN');
+    expect(ingested[0]?.event.causation_id).toBeUndefined();
+  });
+
+  it('persists and evicts recent causation entries deterministically across restarts', async () => {
+    const directory = makeTempDir();
+    const config = {
+      ...makeTransportConfig(directory),
+      causation_buffer_capacity: 2,
+    };
+    const journalPath = join(config.journal_dir, 'sidecar-session.jsonl');
+    const firstRunEvents: IngestedJournalEvent[] = [];
+    const secondRunEvents: IngestedJournalEvent[] = [];
+    const secondRunQuarantine: QuarantinedJournalLine[] = [];
+
+    const firstIngestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: (event) => {
+        firstRunEvents.push(event);
+      },
+    });
+    ensureJournalDir(config);
+    writeFileSync(
+      journalPath,
+      `${eventLine('evt-1', 1)}${eventLine('evt-2', 2)}${eventLine('evt-3', 3)}`,
+      'utf8',
+    );
+    const firstResult = await firstIngestor.pollOnce();
+    const firstCheckpoint = JSON.parse(readFileSync(config.checkpoint_path, 'utf8')) as {
+      causation_buffer: readonly { event_id: string }[];
+    };
+
+    const secondIngestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: (event) => {
+        secondRunEvents.push(event);
+      },
+      onMalformedLine: (line) => {
+        secondRunQuarantine.push(line);
+      },
+    });
+    appendFileSync(
+      journalPath,
+      `${derivedEventLine('cand-cause-2', 'CANDIDATE', START_TS_NS + 2_000_000n, 'evt-2')}${derivedEventLine('cand-cause-1', 'CANDIDATE', START_TS_NS + 1_000_000n, 'evt-1')}`,
+      'utf8',
+    );
+    const secondResult = await secondIngestor.pollOnce();
+
+    expect(firstResult.events_ingested).toBe(3);
+    expect(firstCheckpoint.causation_buffer.map((entry) => entry.event_id)).toEqual([
+      'evt-2',
+      'evt-3',
+    ]);
+    expect(secondResult.events_ingested).toBe(1);
+    expect(secondResult.malformed_lines).toBe(1);
+    expect(secondRunEvents.map((event) => event.event.event_id)).toEqual(['cand-cause-2']);
+    expect(secondRunQuarantine[0]).toMatchObject({
+      event_id: 'cand-cause-1',
+      causation_id: 'evt-1',
+      error_message:
+        'derived event CANDIDATE causation_id evt-1 is not in recent causation buffer',
+    });
   });
 
   it('does not quarantine an incomplete malformed final line until it is newline-terminated', async () => {

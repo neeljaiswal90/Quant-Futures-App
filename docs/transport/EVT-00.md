@@ -20,7 +20,7 @@ It does not use sockets, does not implement the runner, and does not recompute m
 event.ts_ns === payload.exchange_event_ts_ns
 ```
 
-It does not yet enforce derived-event causation-chain timestamp inheritance. That is tracked as `EVT-01` and must land before `ORCH-02`, so derived events such as `FEATURES`, `STRAT_EVAL`, `CANDIDATE`, `RISK_GATE`, `SIZING`, `ORDER_INTENT`, `SIM_FILL`, `POSITION`, `MGMT_TICK`, and `MGMT_ACTION` cannot leak wall-clock time through `ts_ns`.
+Derived-event causation-chain timestamp inheritance is implemented by `EVT-01`. `ORCH-02` must not emit runner-derived events until that invariant is active, so derived events such as `FEATURES`, `STRAT_EVAL`, `CANDIDATE`, `RISK_GATE`, `SIZING`, `ORDER_INTENT`, `SIM_FILL`, `POSITION`, `MGMT_TICK`, and `MGMT_ACTION` cannot leak wall-clock time through `ts_ns`.
 
 ## Producer Contract
 
