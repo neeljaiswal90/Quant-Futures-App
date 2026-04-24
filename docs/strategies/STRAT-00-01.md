@@ -30,7 +30,7 @@ The fixtures intentionally use fixed nanosecond timestamps, static MNQ instrumen
 
 ## Registry Rule
 
-`apps/strategy_runtime/src/strategies/registry.ts` is metadata-only until the individual strategy extraction tickets land. Every entry is marked `pending_extraction` and points at its owning extraction ticket:
+`apps/strategy_runtime/src/strategies/registry.ts` starts metadata-only and each extraction ticket promotes only its own strategy. Entries point at their owning extraction ticket:
 
 - `STRAT-02`: `trend_pullback_long`
 - `STRAT-03`: `trend_pullback_short`
