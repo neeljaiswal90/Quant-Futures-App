@@ -199,6 +199,8 @@ export interface SimFillEventPayload {
   readonly price: number;
   readonly liquidity: 'maker' | 'taker';
   readonly slippage_points?: number;
+  readonly exchange_fee_usd?: number;
+  readonly commission_usd?: number;
 }
 
 export interface PositionEventPayload {
