@@ -22,9 +22,21 @@ The public runtime config is JSON and is safe to hash into replay lineage. It in
 - public data provider choices, `rithmic` for live market data and `databento` for historical/replay;
 - replay seed and config-hash enforcement;
 - journal/data paths;
-- a future strategy-config surface pointing at `config/strategies` YAML files.
+- a strategy-config surface pointing at `config/strategies` YAML files.
 
-Strategy tuning YAML is intentionally not implemented in APP-03. `strategy_configs.required` should stay `false` until STRAT-07 lands the typed strategy config files.
+`STRAT-07` adds typed strategy tuning YAML. `strategy_configs.required` should be `true` for normal V1 runtime startup so missing or invalid strategy thresholds fail before orchestration starts.
+
+## Strategy Configs
+
+The runtime expects these public, non-secret YAML files:
+
+- `config/strategies/shared.yaml`
+- `config/strategies/trend_pullback_long.yaml`
+- `config/strategies/trend_pullback_short.yaml`
+- `config/strategies/breakout_retest_long.yaml`
+- `config/strategies/breakdown_retest_short.yaml`
+
+The strategy config loader validates schema version, strategy IDs, required numeric thresholds, ranking weights, and deterministic strategy tie-break priority. It also returns `strategy_config_hash`, `strategy_config_version`, and canonical JSON so replay lineage can identify the exact threshold surface used for candidate generation and ranking.
 
 ## Secrets
 

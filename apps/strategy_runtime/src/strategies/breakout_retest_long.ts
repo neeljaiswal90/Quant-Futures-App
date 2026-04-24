@@ -1,4 +1,8 @@
 import {
+  DEFAULT_BREAKOUT_RETEST_LONG_CONFIG,
+  getStrategyParameters,
+} from '../config/index.js';
+import {
   makeCandidateId,
   makeStrategyEvaluationId,
   type Candidate,
@@ -12,18 +16,7 @@ import type {
   StrategyScalarMap,
 } from './types.js';
 
-export const BREAKOUT_RETEST_LONG_DEFAULTS = {
-  max_retest_distance_sigma: 0.85,
-  flow_confirmation_min: 0.2,
-  stop_ema21_sigma_buffer: 0.5,
-  entry_low_sigma_buffer: 0.1,
-  entry_high_sigma_buffer: 0.15,
-  minimum_target_1_rr: 1,
-  minimum_target_2_rr: 0,
-  default_target_1_rr: 2,
-  default_target_2_rr: 4,
-  confidence_score: 8.1,
-} as const;
+export const BREAKOUT_RETEST_LONG_DEFAULTS = DEFAULT_BREAKOUT_RETEST_LONG_CONFIG;
 
 export function generateBreakoutRetestLong(
   input: StrategyEvaluationInput,
@@ -33,8 +26,9 @@ export function generateBreakoutRetestLong(
   }
 
   const { snapshot } = input;
+  const parameters = getStrategyParameters(input.strategy_config, 'breakout_retest_long');
   const reasons: string[] = [];
-  const rejection = firstBreakoutRetestLongRejection(snapshot, reasons);
+  const rejection = firstBreakoutRetestLongRejection(snapshot, parameters, reasons);
   if (rejection !== undefined) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [rejection, ...reasons]),
@@ -45,11 +39,11 @@ export function generateBreakoutRetestLong(
   const ema9 = getRequiredNumber(snapshot.indicators, 'ema_9');
   const ema21 = getRequiredNumber(snapshot.indicators, 'ema_21');
   const price = snapshot.quote.mid_px;
-  const entryLow = Math.min(ema9, price - sigmaPts * BREAKOUT_RETEST_LONG_DEFAULTS.entry_low_sigma_buffer);
-  const entryHigh = price + sigmaPts * BREAKOUT_RETEST_LONG_DEFAULTS.entry_high_sigma_buffer;
+  const entryLow = Math.min(ema9, price - sigmaPts * parameters.entry_low_sigma_buffer);
+  const entryHigh = price + sigmaPts * parameters.entry_high_sigma_buffer;
   const entryMid = (entryLow + entryHigh) / 2;
   const stopPrice = roundToTick(
-    ema21 - sigmaPts * BREAKOUT_RETEST_LONG_DEFAULTS.stop_ema21_sigma_buffer,
+    ema21 - sigmaPts * parameters.stop_ema21_sigma_buffer,
     snapshot.instrument.tick_size,
   );
   const riskPts = entryMid - stopPrice;
@@ -74,7 +68,7 @@ export function generateBreakoutRetestLong(
       ]),
     };
   }
-  if (computeLongRr(target1Source, entryMid, riskPts) < BREAKOUT_RETEST_LONG_DEFAULTS.minimum_target_1_rr) {
+  if (computeLongRr(target1Source, entryMid, riskPts) < parameters.minimum_target_1_rr) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [
         'breakout_retest_long:insufficient_upside_room',
@@ -84,7 +78,7 @@ export function generateBreakoutRetestLong(
   }
   if (
     target2Source !== undefined
-    && computeLongRr(target2Source, entryMid, riskPts) <= BREAKOUT_RETEST_LONG_DEFAULTS.minimum_target_2_rr
+    && computeLongRr(target2Source, entryMid, riskPts) <= parameters.minimum_target_2_rr
   ) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [
@@ -99,13 +93,14 @@ export function generateBreakoutRetestLong(
     riskPts,
     target1Source,
     target2Source,
+    parameters,
     snapshot.instrument.tick_size,
   );
   if (
     targets[0] === undefined
     || targets[1] === undefined
-    || computeLongRr(targets[0].price, entryMid, riskPts) < BREAKOUT_RETEST_LONG_DEFAULTS.minimum_target_1_rr
-    || computeLongRr(targets[1].price, entryMid, riskPts) <= BREAKOUT_RETEST_LONG_DEFAULTS.minimum_target_2_rr
+    || computeLongRr(targets[0].price, entryMid, riskPts) < parameters.minimum_target_1_rr
+    || computeLongRr(targets[1].price, entryMid, riskPts) <= parameters.minimum_target_2_rr
   ) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [
@@ -115,7 +110,7 @@ export function generateBreakoutRetestLong(
     };
   }
 
-  const confidence = round4(BREAKOUT_RETEST_LONG_DEFAULTS.confidence_score / 10);
+  const confidence = round4(parameters.confidence_score / 10);
   const candidate: Candidate = {
     candidate_id: makeCandidateId(`candidate-${snapshot.feature_snapshot_id}-breakout_retest_long`),
     strategy_id: 'breakout_retest_long',
@@ -157,6 +152,7 @@ export function generateBreakoutRetestLong(
 
 function firstBreakoutRetestLongRejection(
   snapshot: StrategyFeatureSnapshot,
+  parameters: typeof BREAKOUT_RETEST_LONG_DEFAULTS,
   reasons: string[],
 ): string | undefined {
   if (!snapshot.session.is_rth) {
@@ -205,18 +201,18 @@ function firstBreakoutRetestLongRejection(
   }
 
   const distanceFromBreakout = price - breakoutLevel;
-  if (distanceFromBreakout > sigmaPts * BREAKOUT_RETEST_LONG_DEFAULTS.max_retest_distance_sigma) {
+  if (distanceFromBreakout > sigmaPts * parameters.max_retest_distance_sigma) {
     return 'breakout_retest_long:retest_distance_out_of_band';
   }
   const ema9Distance = price - ema9;
-  if (ema9Distance < 0 || ema9Distance > sigmaPts * BREAKOUT_RETEST_LONG_DEFAULTS.max_retest_distance_sigma) {
+  if (ema9Distance < 0 || ema9Distance > sigmaPts * parameters.max_retest_distance_sigma) {
     return 'breakout_retest_long:not_near_ema9';
   }
   reasons.push('retest_hold');
 
   const upsideFlow = getOptionalNumber(snapshot.indicators, 'z_ofi_blend')
     ?? getOptionalNumber(snapshot.microstructure.values, 'ofi_z');
-  if (upsideFlow !== undefined && upsideFlow < BREAKOUT_RETEST_LONG_DEFAULTS.flow_confirmation_min) {
+  if (upsideFlow !== undefined && upsideFlow < parameters.flow_confirmation_min) {
     return 'breakout_retest_long:flow_confirmation_below_threshold';
   }
   reasons.push('flow_positive');
@@ -250,20 +246,21 @@ function buildLongTargets(
   riskPts: number,
   target1Source: number,
   target2Source: number | undefined,
+  parameters: typeof BREAKOUT_RETEST_LONG_DEFAULTS,
   tickSize: number,
 ): readonly PriceTarget[] {
   const pt1 = clampLongTarget(
     target1Source,
     entryPrice,
     riskPts,
-    BREAKOUT_RETEST_LONG_DEFAULTS.default_target_1_rr,
+    parameters.default_target_1_rr,
     tickSize,
   );
   const pt2 = clampLongTarget(
     target2Source,
     entryPrice,
     riskPts,
-    BREAKOUT_RETEST_LONG_DEFAULTS.default_target_2_rr,
+    parameters.default_target_2_rr,
     tickSize,
   );
 

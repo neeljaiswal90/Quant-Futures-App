@@ -1,4 +1,8 @@
 import {
+  DEFAULT_BREAKDOWN_RETEST_SHORT_CONFIG,
+  getStrategyParameters,
+} from '../config/index.js';
+import {
   makeCandidateId,
   makeStrategyEvaluationId,
   type Candidate,
@@ -12,18 +16,7 @@ import type {
   StrategyScalarMap,
 } from './types.js';
 
-export const BREAKDOWN_RETEST_SHORT_DEFAULTS = {
-  max_retest_distance_sigma: 1.15,
-  flow_confirmation_min: 0.2,
-  stop_ema21_sigma_buffer: 0.5,
-  entry_low_sigma_buffer: 0.15,
-  entry_high_sigma_buffer: 0.1,
-  minimum_target_1_rr: 1,
-  minimum_target_2_rr: 0,
-  default_target_1_rr: 2,
-  default_target_2_rr: 4,
-  confidence_score: 8.05,
-} as const;
+export const BREAKDOWN_RETEST_SHORT_DEFAULTS = DEFAULT_BREAKDOWN_RETEST_SHORT_CONFIG;
 
 export function generateBreakdownRetestShort(
   input: StrategyEvaluationInput,
@@ -33,8 +26,9 @@ export function generateBreakdownRetestShort(
   }
 
   const { snapshot } = input;
+  const parameters = getStrategyParameters(input.strategy_config, 'breakdown_retest_short');
   const reasons: string[] = [];
-  const rejection = firstBreakdownRetestShortRejection(snapshot, reasons);
+  const rejection = firstBreakdownRetestShortRejection(snapshot, parameters, reasons);
   if (rejection !== undefined) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [rejection, ...reasons]),
@@ -45,11 +39,11 @@ export function generateBreakdownRetestShort(
   const ema9 = getRequiredNumber(snapshot.indicators, 'ema_9');
   const ema21 = getRequiredNumber(snapshot.indicators, 'ema_21');
   const price = snapshot.quote.mid_px;
-  const entryLow = price - sigmaPts * BREAKDOWN_RETEST_SHORT_DEFAULTS.entry_low_sigma_buffer;
-  const entryHigh = Math.max(ema9, price + sigmaPts * BREAKDOWN_RETEST_SHORT_DEFAULTS.entry_high_sigma_buffer);
+  const entryLow = price - sigmaPts * parameters.entry_low_sigma_buffer;
+  const entryHigh = Math.max(ema9, price + sigmaPts * parameters.entry_high_sigma_buffer);
   const entryMid = (entryLow + entryHigh) / 2;
   const stopPrice = roundToTick(
-    ema21 + sigmaPts * BREAKDOWN_RETEST_SHORT_DEFAULTS.stop_ema21_sigma_buffer,
+    ema21 + sigmaPts * parameters.stop_ema21_sigma_buffer,
     snapshot.instrument.tick_size,
   );
   const riskPts = stopPrice - entryMid;
@@ -75,7 +69,7 @@ export function generateBreakdownRetestShort(
       ]),
     };
   }
-  if (computeShortRr(target1Source, entryMid, riskPts) < BREAKDOWN_RETEST_SHORT_DEFAULTS.minimum_target_1_rr) {
+  if (computeShortRr(target1Source, entryMid, riskPts) < parameters.minimum_target_1_rr) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [
         'breakdown_retest_short:insufficient_downside_room',
@@ -85,7 +79,7 @@ export function generateBreakdownRetestShort(
   }
   if (
     target2Source !== undefined
-    && computeShortRr(target2Source, entryMid, riskPts) <= BREAKDOWN_RETEST_SHORT_DEFAULTS.minimum_target_2_rr
+    && computeShortRr(target2Source, entryMid, riskPts) <= parameters.minimum_target_2_rr
   ) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [
@@ -100,13 +94,14 @@ export function generateBreakdownRetestShort(
     riskPts,
     target1Source,
     target2Source,
+    parameters,
     snapshot.instrument.tick_size,
   );
   if (
     targets[0] === undefined
     || targets[1] === undefined
-    || computeShortRr(targets[0].price, entryMid, riskPts) < BREAKDOWN_RETEST_SHORT_DEFAULTS.minimum_target_1_rr
-    || computeShortRr(targets[1].price, entryMid, riskPts) <= BREAKDOWN_RETEST_SHORT_DEFAULTS.minimum_target_2_rr
+    || computeShortRr(targets[0].price, entryMid, riskPts) < parameters.minimum_target_1_rr
+    || computeShortRr(targets[1].price, entryMid, riskPts) <= parameters.minimum_target_2_rr
   ) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [
@@ -116,7 +111,7 @@ export function generateBreakdownRetestShort(
     };
   }
 
-  const confidence = round4(BREAKDOWN_RETEST_SHORT_DEFAULTS.confidence_score / 10);
+  const confidence = round4(parameters.confidence_score / 10);
   const candidate: Candidate = {
     candidate_id: makeCandidateId(`candidate-${snapshot.feature_snapshot_id}-breakdown_retest_short`),
     strategy_id: 'breakdown_retest_short',
@@ -158,6 +153,7 @@ export function generateBreakdownRetestShort(
 
 function firstBreakdownRetestShortRejection(
   snapshot: StrategyFeatureSnapshot,
+  parameters: typeof BREAKDOWN_RETEST_SHORT_DEFAULTS,
   reasons: string[],
 ): string | undefined {
   if (!snapshot.session.is_rth) {
@@ -206,11 +202,11 @@ function firstBreakdownRetestShortRejection(
   }
 
   const distanceFromBrokenSupport = brokenSupport - price;
-  if (distanceFromBrokenSupport > sigmaPts * BREAKDOWN_RETEST_SHORT_DEFAULTS.max_retest_distance_sigma) {
+  if (distanceFromBrokenSupport > sigmaPts * parameters.max_retest_distance_sigma) {
     return 'breakdown_retest_short:retest_distance_out_of_band';
   }
   const ema9Distance = ema9 - price;
-  if (ema9Distance < 0 || ema9Distance > sigmaPts * BREAKDOWN_RETEST_SHORT_DEFAULTS.max_retest_distance_sigma) {
+  if (ema9Distance < 0 || ema9Distance > sigmaPts * parameters.max_retest_distance_sigma) {
     return 'breakdown_retest_short:not_near_ema9';
   }
   reasons.push('retest_reject');
@@ -218,7 +214,7 @@ function firstBreakdownRetestShortRejection(
   const downsideFlow = getDownsideFlowConfirmation(snapshot);
   if (
     downsideFlow !== undefined
-    && downsideFlow < BREAKDOWN_RETEST_SHORT_DEFAULTS.flow_confirmation_min
+    && downsideFlow < parameters.flow_confirmation_min
   ) {
     return 'breakdown_retest_short:flow_confirmation_below_threshold';
   }
@@ -253,20 +249,21 @@ function buildShortTargets(
   riskPts: number,
   target1Source: number,
   target2Source: number | undefined,
+  parameters: typeof BREAKDOWN_RETEST_SHORT_DEFAULTS,
   tickSize: number,
 ): readonly PriceTarget[] {
   const pt1 = clampShortTarget(
     target1Source,
     entryPrice,
     riskPts,
-    BREAKDOWN_RETEST_SHORT_DEFAULTS.default_target_1_rr,
+    parameters.default_target_1_rr,
     tickSize,
   );
   const pt2 = clampShortTarget(
     target2Source,
     entryPrice,
     riskPts,
-    BREAKDOWN_RETEST_SHORT_DEFAULTS.default_target_2_rr,
+    parameters.default_target_2_rr,
     tickSize,
   );
 

@@ -71,6 +71,7 @@ export interface ConfigSource {
 export interface LoadedAppConfig {
   publicConfig: PublicRuntimeConfig;
   secrets: SecretRuntimeConfig;
+  strategyConfig?: import('./strategy-config.js').StrategyRuntimeConfig;
   lineage: ConfigLineage;
   source: ConfigSource;
 }

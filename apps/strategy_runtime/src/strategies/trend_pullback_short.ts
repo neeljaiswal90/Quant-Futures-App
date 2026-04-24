@@ -1,4 +1,8 @@
 import {
+  DEFAULT_TREND_PULLBACK_SHORT_CONFIG,
+  getStrategyParameters,
+} from '../config/index.js';
+import {
   makeCandidateId,
   makeStrategyEvaluationId,
   type Candidate,
@@ -12,19 +16,7 @@ import type {
   StrategyScalarMap,
 } from './types.js';
 
-export const TREND_PULLBACK_SHORT_DEFAULTS = {
-  z_ema9_min: 0.15,
-  z_ema9_max: 1.25,
-  pullback_ratio_min: 0.25,
-  pullback_ratio_max: 0.62,
-  flow_confirmation_min: 0.2,
-  entry_half_band_sigma: 0.1,
-  stop_sigma_multiple: 1.05,
-  minimum_target_rr: 1,
-  default_target_1_rr: 2,
-  default_target_2_rr: 4,
-  base_confidence_score: 8.05,
-} as const;
+export const TREND_PULLBACK_SHORT_DEFAULTS = DEFAULT_TREND_PULLBACK_SHORT_CONFIG;
 
 export function generateTrendPullbackShort(
   input: StrategyEvaluationInput,
@@ -34,8 +26,9 @@ export function generateTrendPullbackShort(
   }
 
   const { snapshot } = input;
+  const parameters = getStrategyParameters(input.strategy_config, 'trend_pullback_short');
   const reasons: string[] = [];
-  const rejection = firstTrendPullbackShortRejection(snapshot, reasons);
+  const rejection = firstTrendPullbackShortRejection(snapshot, parameters, reasons);
   if (rejection !== undefined) {
     return {
       evaluation: makeEvaluation(snapshot, 'blocked', undefined, [rejection, ...reasons]),
@@ -45,7 +38,7 @@ export function generateTrendPullbackShort(
   const sigmaPts = getRequiredNumber(snapshot.indicators, 'sigma_pts');
   const entryMid = snapshot.quote.mid_px;
   const stopPrice = roundToTick(
-    entryMid + sigmaPts * TREND_PULLBACK_SHORT_DEFAULTS.stop_sigma_multiple,
+    entryMid + sigmaPts * parameters.stop_sigma_multiple,
     snapshot.instrument.tick_size,
   );
   const riskPts = stopPrice - entryMid;
@@ -62,7 +55,7 @@ export function generateTrendPullbackShort(
     ?? getOptionalNumber(snapshot.structure.values, 'nearest_support');
   const target2Source = getOptionalNumber(snapshot.structure.values, 'nearest_support');
   if (
-    (target1Source !== undefined && computeShortRr(target1Source, entryMid, riskPts) < TREND_PULLBACK_SHORT_DEFAULTS.minimum_target_rr)
+    (target1Source !== undefined && computeShortRr(target1Source, entryMid, riskPts) < parameters.minimum_target_rr)
     || (target2Source !== undefined && computeShortRr(target2Source, entryMid, riskPts) <= 0)
   ) {
     return {
@@ -77,12 +70,13 @@ export function generateTrendPullbackShort(
     riskPts,
     target1Source,
     target2Source,
+    parameters,
     snapshot.instrument.tick_size,
   );
   if (
     targets[0] === undefined
     || targets[1] === undefined
-    || computeShortRr(targets[0].price, entryMid, riskPts) < TREND_PULLBACK_SHORT_DEFAULTS.minimum_target_rr
+    || computeShortRr(targets[0].price, entryMid, riskPts) < parameters.minimum_target_rr
     || computeShortRr(targets[1].price, entryMid, riskPts) <= 0
   ) {
     return {
@@ -93,7 +87,7 @@ export function generateTrendPullbackShort(
     };
   }
 
-  const confidence = computeConfidence(snapshot);
+  const confidence = computeConfidence(snapshot, parameters);
   const candidate: Candidate = {
     candidate_id: makeCandidateId(`candidate-${snapshot.feature_snapshot_id}-trend_pullback_short`),
     strategy_id: 'trend_pullback_short',
@@ -134,6 +128,7 @@ export function generateTrendPullbackShort(
 
 function firstTrendPullbackShortRejection(
   snapshot: StrategyFeatureSnapshot,
+  parameters: typeof TREND_PULLBACK_SHORT_DEFAULTS,
   reasons: string[],
 ): string | undefined {
   if (!snapshot.session.is_rth) {
@@ -168,14 +163,14 @@ function firstTrendPullbackShortRejection(
   }
 
   const zEma9 = getRequiredNumber(snapshot.indicators, 'z_ema9');
-  if (zEma9 < TREND_PULLBACK_SHORT_DEFAULTS.z_ema9_min || zEma9 > TREND_PULLBACK_SHORT_DEFAULTS.z_ema9_max) {
+  if (zEma9 < parameters.z_ema9_min || zEma9 > parameters.z_ema9_max) {
     return 'trend_pullback_short:z_ema9_out_of_band';
   }
 
   const pullbackRatio = getRequiredNumber(snapshot.indicators, 'pullback_ratio');
   if (
-    pullbackRatio < TREND_PULLBACK_SHORT_DEFAULTS.pullback_ratio_min
-    || pullbackRatio > TREND_PULLBACK_SHORT_DEFAULTS.pullback_ratio_max
+    pullbackRatio < parameters.pullback_ratio_min
+    || pullbackRatio > parameters.pullback_ratio_max
   ) {
     return 'trend_pullback_short:pullback_ratio_out_of_band';
   }
@@ -184,7 +179,7 @@ function firstTrendPullbackShortRejection(
   const downsideFlow = getDownsideFlowConfirmation(snapshot);
   if (
     downsideFlow !== undefined
-    && downsideFlow < TREND_PULLBACK_SHORT_DEFAULTS.flow_confirmation_min
+    && downsideFlow < parameters.flow_confirmation_min
   ) {
     return 'trend_pullback_short:flow_confirmation_below_threshold';
   }
@@ -192,8 +187,8 @@ function firstTrendPullbackShortRejection(
 
   const nearestSupport = getOptionalNumber(snapshot.structure.values, 'nearest_support');
   if (nearestSupport !== undefined) {
-    const riskPts = sigmaPts * TREND_PULLBACK_SHORT_DEFAULTS.stop_sigma_multiple;
-    if (computeShortRr(nearestSupport, snapshot.quote.mid_px, riskPts) < TREND_PULLBACK_SHORT_DEFAULTS.minimum_target_rr) {
+    const riskPts = sigmaPts * parameters.stop_sigma_multiple;
+    if (computeShortRr(nearestSupport, snapshot.quote.mid_px, riskPts) < parameters.minimum_target_rr) {
       return 'trend_pullback_short:insufficient_downside_room';
     }
     reasons.push('downside_room_confirmed');
@@ -228,20 +223,21 @@ function buildShortTargets(
   riskPts: number,
   target1Source: number | undefined,
   target2Source: number | undefined,
+  parameters: typeof TREND_PULLBACK_SHORT_DEFAULTS,
   tickSize: number,
 ): readonly PriceTarget[] {
   const pt1 = clampShortTarget(
     target1Source,
     entryPrice,
     riskPts,
-    TREND_PULLBACK_SHORT_DEFAULTS.default_target_1_rr,
+    parameters.default_target_1_rr,
     tickSize,
   );
   const pt2 = clampShortTarget(
     target2Source,
     entryPrice,
     riskPts,
-    TREND_PULLBACK_SHORT_DEFAULTS.default_target_2_rr,
+    parameters.default_target_2_rr,
     tickSize,
   );
 
@@ -273,11 +269,14 @@ function clampShortTarget(
   return roundToTick(Math.min(rawTarget, fallback), tickSize);
 }
 
-function computeConfidence(snapshot: StrategyFeatureSnapshot): number {
+function computeConfidence(
+  snapshot: StrategyFeatureSnapshot,
+  parameters: typeof TREND_PULLBACK_SHORT_DEFAULTS,
+): number {
   const downsideFlow = getDownsideFlowConfirmation(snapshot) ?? 0;
   const pullbackRatio = getOptionalNumber(snapshot.indicators, 'pullback_ratio') ?? 0.45;
   const legacyScore =
-    TREND_PULLBACK_SHORT_DEFAULTS.base_confidence_score
+    parameters.base_confidence_score
     + downsideFlow * 0.15
     + (0.45 - Math.abs(pullbackRatio - 0.45)) * 0.5;
   return clamp(round4(legacyScore / 10), 0, 1);

@@ -1,0 +1,13 @@
+version: 1
+strategy_id: breakout_retest_long
+parameters:
+  max_retest_distance_sigma: 0.85
+  flow_confirmation_min: 0.2
+  stop_ema21_sigma_buffer: 0.5
+  entry_low_sigma_buffer: 0.1
+  entry_high_sigma_buffer: 0.15
+  minimum_target_1_rr: 1
+  minimum_target_2_rr: 0
+  default_target_1_rr: 2
+  default_target_2_rr: 4
+  confidence_score: 8.1
