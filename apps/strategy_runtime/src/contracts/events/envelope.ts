@@ -34,6 +34,8 @@ export interface JournalEventEnvelope<
 export type TypedJournalEventEnvelope<TType extends RuntimeEventType = RuntimeEventType> =
   TType extends RuntimeEventType ? JournalEventEnvelope<TType, JournalEventPayloadFor<TType>> : never;
 
+export type AnyJournalEventEnvelope = TypedJournalEventEnvelope<RuntimeEventType>;
+
 export interface CreateJournalEventEnvelopeInput<
   TType extends RuntimeEventType,
   TPayload,

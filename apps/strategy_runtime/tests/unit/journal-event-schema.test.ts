@@ -154,6 +154,24 @@ describe('OBS-01 journal event schema validation', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts CONFIG events with numeric config_version', () => {
+    const event = createJournalEventEnvelope({
+      event_id: makeEventId('config-1'),
+      type: 'CONFIG',
+      ts_ns: ns(TS_NS),
+      run_id: makeRunId('run-obs-01'),
+      session_id: makeSessionId('2026-04-23-rth'),
+      payload: {
+        config_hash: 'a'.repeat(64),
+        config_version: 1,
+      },
+    });
+
+    const result = validateJournalEventEnvelope(event);
+
+    expect(result.ok).toBe(true);
+  });
+
   it('rejects payload field type mismatches', () => {
     const result = validateJournalEventEnvelope(quoteEvent({ bid_px: '18500.25' }));
 

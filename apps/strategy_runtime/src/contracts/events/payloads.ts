@@ -108,7 +108,7 @@ export interface HaltEventPayload {
 
 export interface ConfigEventPayload {
   readonly config_hash: string;
-  readonly config_version: string;
+  readonly config_version: number;
 }
 
 export interface FeaturesEventPayload {

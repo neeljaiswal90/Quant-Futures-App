@@ -12,6 +12,7 @@ export {
   journalEventFromJsonLine,
   journalEventToJsonLine,
   type CreateJournalEventEnvelopeInput,
+  type AnyJournalEventEnvelope,
   type JournalEventEnvelope,
   type TypedJournalEventEnvelope,
 } from './envelope.js';
