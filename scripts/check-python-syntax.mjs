@@ -4,7 +4,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const DEFAULT_ROOTS = ['services', 'research'];
+const DEFAULT_ROOTS = ['services', 'research', 'scripts'];
 const PYTHON = process.env.PYTHON ?? 'python';
 
 function usage() {

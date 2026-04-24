@@ -5,12 +5,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check:python": "node scripts/check-python-syntax.mjs",
+    "infra:01:evaluate": "tsx scripts/infra/evaluate-infra-01-probe.ts",
     "lint": "npm run lint:forbidden-imports",
     "lint:forbidden-imports": "node scripts/check-forbidden-imports.mjs",
     "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   }

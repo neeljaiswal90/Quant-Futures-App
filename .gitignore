@@ -6,6 +6,9 @@ build/
 coverage/
 .next/
 .turbo/
+.cache/
+.local/
+data/probes/
 
 .env
 .env.*
