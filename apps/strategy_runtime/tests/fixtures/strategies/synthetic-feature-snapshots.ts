@@ -1,0 +1,302 @@
+import {
+  makeConfigHash,
+  makeEventId,
+  makeFeatureSnapshotId,
+  makeSessionId,
+  ns,
+  type ConfigLineageRef,
+  type Direction,
+  type InstrumentIdentity,
+  type StrategyId,
+} from '../../../src/contracts/index.js';
+import type {
+  StrategyFeatureSnapshot,
+  StrategyFixtureId,
+  StrategyScalarMap,
+} from '../../../src/strategies/index.js';
+
+export const STRATEGY_SYNTHETIC_FIXTURE_VERSION = 1 as const;
+
+const INSTRUMENT: InstrumentIdentity = {
+  root: 'MNQ',
+  symbol: 'MNQM6',
+  exchange: 'CME',
+  currency: 'USD',
+  contract_month: '2026-06',
+  tick_size: 0.25,
+  point_value: 2,
+  price_decimals: 2,
+};
+
+const CONFIG: ConfigLineageRef = {
+  config_hash: makeConfigHash('c'.repeat(64)),
+  config_version: 1,
+};
+
+const SESSION = {
+  session_id: makeSessionId('2026-04-23-rth'),
+  trading_date: '2026-04-23',
+  phase: 'rth',
+  is_rth: true,
+  is_halt: false,
+  is_roll_block: false,
+} as const;
+
+const BASE_TS_NS = 1_776_957_600_000_000_000n;
+
+export interface SyntheticStrategyFixture {
+  readonly fixture_id: StrategyFixtureId;
+  readonly strategy_id: StrategyId;
+  readonly description: string;
+  readonly expected_direction: Direction;
+  readonly expected_gate_state: 'armed';
+  readonly expected_reason_fragments: readonly string[];
+  readonly snapshot: StrategyFeatureSnapshot;
+}
+
+function timestamp(offsetNs: bigint) {
+  return ns(BASE_TS_NS + offsetNs);
+}
+
+function makeBars(
+  direction: Direction,
+  startClose: number,
+  count = 6,
+) {
+  return Array.from({ length: count }, (_, index) => {
+    const drift = direction === 'long' ? index * 1.25 : -index * 1.25;
+    const close = startClose + drift;
+    return {
+      instrument: INSTRUMENT,
+      timeframe: '1m' as const,
+      start_ts_ns: timestamp(BigInt(index) * 60_000_000_000n),
+      end_ts_ns: timestamp(BigInt(index + 1) * 60_000_000_000n),
+      open: close - (direction === 'long' ? 0.75 : -0.75),
+      high: close + 2,
+      low: close - 2,
+      close,
+      volume: 120 + index * 5,
+      trade_count: 80 + index,
+    };
+  });
+}
+
+function makeSnapshot(input: {
+  readonly fixtureId: StrategyFixtureId;
+  readonly sourceEventId: string;
+  readonly createdOffsetNs: bigint;
+  readonly direction: Direction;
+  readonly bidPx: number;
+  readonly askPx: number;
+  readonly lastTradePrice: number;
+  readonly barsStartClose: number;
+  readonly indicators: StrategyScalarMap;
+  readonly trend: 'up' | 'down';
+  readonly structure: StrategyScalarMap;
+  readonly microstructure: StrategyScalarMap;
+}): StrategyFeatureSnapshot {
+  return {
+    feature_snapshot_id: makeFeatureSnapshotId(input.fixtureId),
+    source_event_id: makeEventId(input.sourceEventId),
+    created_ts_ns: timestamp(input.createdOffsetNs),
+    instrument: INSTRUMENT,
+    session: SESSION,
+    quote: {
+      bid_px: input.bidPx,
+      ask_px: input.askPx,
+      mid_px: (input.bidPx + input.askPx) / 2,
+    },
+    last_trade_price: input.lastTradePrice,
+    bars: makeBars(input.direction, input.barsStartClose),
+    indicators: input.indicators,
+    structure: {
+      trend: input.trend,
+      values: input.structure,
+    },
+    microstructure: {
+      l3_authority: 'authoritative',
+      values: input.microstructure,
+    },
+    config: CONFIG,
+  };
+}
+
+export const STRATEGY_SYNTHETIC_FIXTURES = {
+  trend_pullback_long: {
+    fixture_id: 'fixture_trend_pullback_long',
+    strategy_id: 'trend_pullback_long',
+    description: 'Fresh bullish trend pullback into the EMA9/EMA21 cluster with positive flow.',
+    expected_direction: 'long',
+    expected_gate_state: 'armed',
+    expected_reason_fragments: ['ema_stack_bullish', 'pullback', 'flow_positive'],
+    snapshot: makeSnapshot({
+      fixtureId: 'fixture_trend_pullback_long',
+      sourceEventId: 'source-bar-trend-pullback-long',
+      createdOffsetNs: 6n * 60_000_000_000n,
+      direction: 'long',
+      bidPx: 18598.75,
+      askPx: 18599,
+      lastTradePrice: 18599,
+      barsStartClose: 18585,
+      trend: 'up',
+      indicators: {
+        supertrend_direction: 'up',
+        ema_9: 18597.25,
+        ema_21: 18591.5,
+        ema_50: 18576.75,
+        vwap: 18583,
+        atr_14: 7.5,
+        sigma_pts: 6.75,
+        z_ema9: 0.38,
+        pullback_ratio: 0.44,
+        z_ofi_blend: 0.72,
+      },
+      structure: {
+        bos_direction: 'up',
+        choch_sell: 18613.5,
+        nearest_resistance: 18618,
+        pullback_depth_pts: 7.25,
+      },
+      microstructure: {
+        spread_pts: 0.25,
+        ofi_z: 0.81,
+        depth_imbalance: 0.34,
+        queue_imbalance: 0.27,
+      },
+    }),
+  },
+  trend_pullback_short: {
+    fixture_id: 'fixture_trend_pullback_short',
+    strategy_id: 'trend_pullback_short',
+    description: 'Fresh bearish trend pullback into the EMA cluster with sell-side flow intact.',
+    expected_direction: 'short',
+    expected_gate_state: 'armed',
+    expected_reason_fragments: ['ema_stack_bearish', 'pullback', 'flow_negative'],
+    snapshot: makeSnapshot({
+      fixtureId: 'fixture_trend_pullback_short',
+      sourceEventId: 'source-bar-trend-pullback-short',
+      createdOffsetNs: 7n * 60_000_000_000n,
+      direction: 'short',
+      bidPx: 18542.5,
+      askPx: 18542.75,
+      lastTradePrice: 18542.5,
+      barsStartClose: 18558,
+      trend: 'down',
+      indicators: {
+        supertrend_direction: 'down',
+        ema_9: 18544.25,
+        ema_21: 18550.5,
+        ema_50: 18565,
+        vwap: 18561.75,
+        atr_14: 7.75,
+        sigma_pts: 6.95,
+        z_ema9: 0.41,
+        pullback_ratio: 0.46,
+        z_ofi_blend: 0.68,
+      },
+      structure: {
+        bos_direction: 'down',
+        choch_buy: 18526.25,
+        nearest_support: 18521.5,
+        pullback_depth_pts: 7.75,
+      },
+      microstructure: {
+        spread_pts: 0.25,
+        ofi_z: -0.74,
+        depth_imbalance: -0.31,
+        queue_imbalance: -0.22,
+      },
+    }),
+  },
+  breakout_retest_long: {
+    fixture_id: 'fixture_breakout_retest_long',
+    strategy_id: 'breakout_retest_long',
+    description: 'Bullish breakout holds above the EMA stack and retests prior resistance as support.',
+    expected_direction: 'long',
+    expected_gate_state: 'armed',
+    expected_reason_fragments: ['breakout_retest', 'ema_stack_bullish', 'retest_hold'],
+    snapshot: makeSnapshot({
+      fixtureId: 'fixture_breakout_retest_long',
+      sourceEventId: 'source-bar-breakout-retest-long',
+      createdOffsetNs: 8n * 60_000_000_000n,
+      direction: 'long',
+      bidPx: 18622,
+      askPx: 18622.25,
+      lastTradePrice: 18622.25,
+      barsStartClose: 18605,
+      trend: 'up',
+      indicators: {
+        supertrend_direction: 'up',
+        ema_9: 18618,
+        ema_21: 18608.5,
+        ema_50: 18591.25,
+        vwap: 18597,
+        atr_14: 8.25,
+        sigma_pts: 7.2,
+        z_ema9: 0.55,
+      },
+      structure: {
+        breakout_level: 18617.5,
+        retest_hold: true,
+        nearest_resistance: 18642,
+        pivot_resistance_1: 18648,
+      },
+      microstructure: {
+        spread_pts: 0.25,
+        ofi_z: 0.58,
+        depth_imbalance: 0.29,
+        queue_imbalance: 0.18,
+      },
+    }),
+  },
+  breakdown_retest_short: {
+    fixture_id: 'fixture_breakdown_retest_short',
+    strategy_id: 'breakdown_retest_short',
+    description: 'Bearish breakdown retests broken support as resistance with downside room.',
+    expected_direction: 'short',
+    expected_gate_state: 'armed',
+    expected_reason_fragments: ['breakdown_retest', 'broken_support', 'downside_room'],
+    snapshot: makeSnapshot({
+      fixtureId: 'fixture_breakdown_retest_short',
+      sourceEventId: 'source-bar-breakdown-retest-short',
+      createdOffsetNs: 9n * 60_000_000_000n,
+      direction: 'short',
+      bidPx: 18488.25,
+      askPx: 18488.5,
+      lastTradePrice: 18488.25,
+      barsStartClose: 18505,
+      trend: 'down',
+      indicators: {
+        supertrend_direction: 'down',
+        ema_9: 18494.5,
+        ema_21: 18504,
+        ema_50: 18522.25,
+        vwap: 18518,
+        atr_14: 8.5,
+        sigma_pts: 7.45,
+        z_ema9: 0.62,
+      },
+      structure: {
+        broken_support: 18496,
+        retest_reject: true,
+        choch_buy: 18463.5,
+        pivot_support_1: 18458,
+      },
+      microstructure: {
+        spread_pts: 0.25,
+        ofi_z: -0.62,
+        depth_imbalance: -0.36,
+        queue_imbalance: -0.21,
+      },
+    }),
+  },
+} as const satisfies Record<StrategyId, SyntheticStrategyFixture>;
+
+export function listSyntheticStrategyFixtures(): readonly SyntheticStrategyFixture[] {
+  return [
+    STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long,
+    STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_short,
+    STRATEGY_SYNTHETIC_FIXTURES.breakout_retest_long,
+    STRATEGY_SYNTHETIC_FIXTURES.breakdown_retest_short,
+  ];
+}
