@@ -1,0 +1,45 @@
+{
+  "fixture_id": "obs00-mini-journal-v1",
+  "fixture_version": 1,
+  "journal_file": "mini-journal.jsonl",
+  "schema_version": 1,
+  "event_count": 24,
+  "journal_sha256_lf": "619b5cedbef84bbfc53eefda4fd7e92533069fb524c286749537e6d71c102fe4",
+  "source_file": "April 23 2026 Rithmic soak run summary; raw vendor capture not committed",
+  "extraction_range": {
+    "mode": "synthetic_downsampled_projection",
+    "source_window": "representative warmup, active candidate, fill, management, gap, and rebuild states",
+    "raw_rows_committed": false
+  },
+  "redaction_statement": "No credentials, account identifiers, Rithmic vendor packets, Databento records, or proprietary raw captures are included. Runtime-derived events are synthetic OBS-01 records shaped from the soak-state requirements.",
+  "event_types": [
+    "CONFIG",
+    "CONN",
+    "FEED",
+    "SESSION_PHASE",
+    "ROLL_ADVISORY",
+    "HALT",
+    "QUOTE",
+    "TRADE",
+    "BAR_CLOSE",
+    "FEATURES",
+    "STRUCTURE",
+    "MICROSTRUCTURE",
+    "STRAT_EVAL",
+    "CANDIDATE",
+    "RISK_GATE",
+    "SIZING",
+    "ORDER_INTENT",
+    "SIM_FILL",
+    "POSITION",
+    "MGMT_TICK",
+    "MGMT_ACTION",
+    "GAP",
+    "BOOK_REBUILD"
+  ],
+  "coverage_notes": [
+    "Includes warmup FEED and post-gap BOOK_REBUILD states.",
+    "Includes active strategy candidate, risk, sizing, simulated fill, position, and management lifecycle facts.",
+    "Includes ORDER_INTENT as the causal parent for SIM_FILL even though OBS-00 acceptance focuses on rendered fill output."
+  ]
+}
