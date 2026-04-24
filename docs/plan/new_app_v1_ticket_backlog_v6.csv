@@ -16,6 +16,7 @@ DATA-07,P0,0.5,DATA-01,Investigate soak-run gap cluster (11 gaps >1s around t+16
 DATA-08,P0,1.0,DATA-05|DATA-07,"Data gap detection, classification, and session integrity alarms",NEW / depends on DATA-07 gap taxonomy
 DATA-09,P0,0.75,DATA-05,"Disk retention, journal rotation, compression, and artifact storage policy",NEW / promoted P1->P0 for 10-session gate storage safety
 EVT-00,P0,0.5,APP-02|APP-03|OBS-01,Sidecar-to-runtime append-only JSONL journal transport using shared folder file-watcher ingest deterministic checkpointing and malformed-line quarantine,NEW / blocks ORCH-02
+EVT-01,P0,0.5,EVT-00|OBS-01,Causation-chain ts_ns invariant for derived events,NEW / enforce derived-event timestamp inheritance before ORCH-02
 MNQ-01,P0,1.0,APP-03,"MNQ roll calendar source, historical front-month fixture, and roll-window flatten/block policy",NEW / expanded roll policy acceptance
 FEAT-01,P0,2.0,APP-02,Port pure indicator engine,unchanged
 FEAT-02,P0,2.0,APP-02,Port structure and session-level engines,unchanged
@@ -38,7 +39,7 @@ MGMT-02,P0,1.5,MGMT-01,Port target-position model,unchanged
 MGMT-03,P0,5.0,RISK-01|MGMT-01,Port and decompose position manager,estimate +1d
 MGMT-04,P1,3.0,MGMT-02|MGMT-03,Port management decision engine,unchanged
 ORCH-01,P0,1.5,APP-02,Build new event bus and engine container,unchanged
-ORCH-02,P0,4.0,ORCH-01|STRAT-06|RISK-02|EVT-00,Build new runner loop after sidecar-to-runtime journal transport exists,dependency changed
+ORCH-02,P0,4.0,ORCH-01|STRAT-06|RISK-02|EVT-00|EVT-01,Build new runner loop after sidecar-to-runtime journal transport and causation-chain timestamp invariants exist,dependency changed / EVT-01 added
 SIM-01,P0,2.0,APP-02|RISK-01,Implement simulated execution adapter,dep added
 SIM-02,P0,2.0,SIM-01|DATA-01,Implement fill and slippage model,priority P1->P0
 SIM-03,P0,1.5,SIM-02|RSRCH-01,Calibrate fill/slippage model to MNQ Databento tick data with KS/percentile/queue-position residual tolerances,NEW / explicit residual tolerances added in v5
