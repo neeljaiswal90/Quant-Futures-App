@@ -566,6 +566,15 @@ function validateManagementActionPayload(
   requireNonEmptyString(record.management_action_id, `${path}.management_action_id`, issues);
   requireNonEmptyString(record.position_id, `${path}.position_id`, issues);
   requireEnum(record.action_type, `${path}.action_type`, issues, [
+    'HOLD',
+    'MOVE_STOP',
+    'TAKE_PARTIAL',
+    'TAKE_PROFIT',
+    'EXIT_FULL',
+    'MARK_BREAKEVEN',
+    'ACTIVATE_TRAIL',
+    'FAIL_SAFE_EXIT',
+    'TIME_STOP_EXIT',
     'move_stop',
     'take_partial',
     'close_position',

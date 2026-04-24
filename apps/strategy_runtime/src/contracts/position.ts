@@ -10,6 +10,15 @@ import type { UnixNs } from './time.js';
 
 export type PositionStatus = 'open' | 'closing' | 'closed';
 export type ManagementActionType =
+  | 'HOLD'
+  | 'MOVE_STOP'
+  | 'TAKE_PARTIAL'
+  | 'TAKE_PROFIT'
+  | 'EXIT_FULL'
+  | 'MARK_BREAKEVEN'
+  | 'ACTIVATE_TRAIL'
+  | 'FAIL_SAFE_EXIT'
+  | 'TIME_STOP_EXIT'
   | 'move_stop'
   | 'take_partial'
   | 'close_position'
