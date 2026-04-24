@@ -87,15 +87,16 @@ describe('STRAT-03 trend_pullback_short extraction', () => {
     );
   });
 
-  it('activates only the two extracted trend pullback strategies', () => {
-    expect(listExecutableStrategyIds()).toEqual(['trend_pullback_long', 'trend_pullback_short']);
+  it('keeps trend_pullback_short available through the active registry', () => {
+    expect(listExecutableStrategyIds()).toEqual([
+      'trend_pullback_long',
+      'trend_pullback_short',
+      'breakout_retest_long',
+    ]);
     expect(getActiveStrategyGenerator('trend_pullback_short')({
       strategy_id: 'trend_pullback_short',
       snapshot: FIXTURE.snapshot,
     }).candidate?.strategy_id).toBe('trend_pullback_short');
-    expect(() => getActiveStrategyGenerator('breakout_retest_long')).toThrow(
-      'strategy breakout_retest_long is pending extraction',
-    );
     expect(() => getActiveStrategyGenerator('breakdown_retest_short')).toThrow(
       'strategy breakdown_retest_short is pending extraction',
     );
