@@ -10,9 +10,11 @@ import {
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import {
+  categorizeRuntimeEventType,
+  formatJournalEventSchemaValidationErrors,
   isRuntimeEventType,
-  JOURNAL_EVENT_SCHEMA_VERSION,
   journalEventFromJsonLine,
+  validateJournalEventEnvelope,
   type JournalEventEnvelope,
   type RuntimeEventType,
 } from '../contracts/events/index.js';
@@ -29,8 +31,6 @@ export interface JournalTransportConfig {
   readonly journal_extension?: string;
   readonly causation_buffer_capacity?: number;
 }
-
-export type JournalEventTimestampCategory = 'source_market_data' | 'derived' | 'system_control';
 
 export interface RecentCausationEntry {
   readonly event_id: string;
@@ -104,44 +104,6 @@ interface MutableCheckpoint {
 const DEFAULT_JOURNAL_EXTENSION = '.jsonl';
 const DEFAULT_CAUSATION_BUFFER_CAPACITY = 4_096;
 const TEMP_FILE_SUFFIXES = ['.tmp', '.partial', '.writing'];
-
-export const SOURCE_MARKET_DATA_EVENT_TYPES = [
-  'QUOTE',
-  'TRADE',
-  'BAR_CLOSE',
-  'MICROSTRUCTURE',
-  'BOOK_REBUILD',
-] as const satisfies readonly RuntimeEventType[];
-
-export const SYSTEM_CONTROL_EVENT_TYPES = [
-  'CONN',
-  'FEED',
-  'GAP',
-  'SESSION_PHASE',
-  'ROLL_ADVISORY',
-  'HALT',
-  'CONFIG',
-] as const satisfies readonly RuntimeEventType[];
-
-export const DERIVED_EVENT_TYPES = [
-  'FEATURES',
-  'STRUCTURE',
-  'STRAT_EVAL',
-  'CANDIDATE',
-  'ML_UPLIFT',
-  'RANK',
-  'RISK_GATE',
-  'SIZING',
-  'ORDER_INTENT',
-  'SIM_FILL',
-  'POSITION',
-  'MGMT_TICK',
-  'MGMT_ACTION',
-] as const satisfies readonly RuntimeEventType[];
-
-const SOURCE_MARKET_DATA_EVENT_TYPE_SET = new Set<RuntimeEventType>(SOURCE_MARKET_DATA_EVENT_TYPES);
-const SYSTEM_CONTROL_EVENT_TYPE_SET = new Set<RuntimeEventType>(SYSTEM_CONTROL_EVENT_TYPES);
-const DERIVED_EVENT_TYPE_SET = new Set<RuntimeEventType>(DERIVED_EVENT_TYPES);
 
 export function createJournalTransportConfigFromAppConfig(
   publicConfig: PublicRuntimeConfig,
@@ -397,26 +359,9 @@ export function assertTransportJournalEvent(
   event: JournalEventEnvelope,
   context: TransportJournalEventValidationContext = {},
 ): void {
-  if (event.schema_version !== JOURNAL_EVENT_SCHEMA_VERSION) {
-    throw new Error(`journal event schema_version must be ${JOURNAL_EVENT_SCHEMA_VERSION}`);
-  }
-  if (typeof event.event_id !== 'string' || event.event_id.trim() === '') {
-    throw new Error('journal event event_id must be a non-empty string');
-  }
-  if (typeof event.type !== 'string' || !isRuntimeEventType(event.type)) {
-    throw new Error(`journal event type is unsupported: ${String(event.type)}`);
-  }
-  if (typeof event.run_id !== 'string' || event.run_id.trim() === '') {
-    throw new Error('journal event run_id must be a non-empty string');
-  }
-  if (typeof event.session_id !== 'string' || event.session_id.trim() === '') {
-    throw new Error('journal event session_id must be a non-empty string');
-  }
-  if (typeof event.ts_ns !== 'bigint') {
-    throw new Error('journal event ts_ns must revive to bigint');
-  }
-  if (event.causation_id !== undefined && String(event.causation_id).trim() === '') {
-    throw new Error('journal event causation_id must be non-empty when provided');
+  const schemaValidation = validateJournalEventEnvelope(event);
+  if (!schemaValidation.ok) {
+    throw new Error(formatJournalEventSchemaValidationErrors(schemaValidation.issues));
   }
 
   const category = categorizeRuntimeEventType(event.type);
@@ -435,19 +380,6 @@ export function assertTransportJournalEvent(
   }
 }
 
-export function categorizeRuntimeEventType(type: RuntimeEventType): JournalEventTimestampCategory {
-  if (SOURCE_MARKET_DATA_EVENT_TYPE_SET.has(type)) {
-    return 'source_market_data';
-  }
-  if (SYSTEM_CONTROL_EVENT_TYPE_SET.has(type)) {
-    return 'system_control';
-  }
-  if (DERIVED_EVENT_TYPE_SET.has(type)) {
-    return 'derived';
-  }
-  throw new Error(`runtime event type has no timestamp category: ${type}`);
-}
-
 function assertCanonicalMarketDataTimestamp(
   event: JournalEventEnvelope,
   requireExchangeTimestamp: boolean,
@@ -459,7 +391,7 @@ function assertCanonicalMarketDataTimestamp(
     return;
   }
 
-  const payload = event.payload as Record<string, unknown>;
+  const payload = event.payload as unknown as Record<string, unknown>;
   const exchangeEventTsNs = payload.exchange_event_ts_ns;
   if (exchangeEventTsNs === undefined) {
     if (requireExchangeTimestamp) {
