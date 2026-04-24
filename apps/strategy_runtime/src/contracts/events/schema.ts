@@ -496,6 +496,8 @@ function validateSimFillPayload(
   requireNumber(record.price, `${path}.price`, issues);
   requireEnum(record.liquidity, `${path}.liquidity`, issues, ['maker', 'taker']);
   optionalNumber(record.slippage_points, `${path}.slippage_points`, issues);
+  optionalNumber(record.exchange_fee_usd, `${path}.exchange_fee_usd`, issues);
+  optionalNumber(record.commission_usd, `${path}.commission_usd`, issues);
 }
 
 function validatePositionPayload(
