@@ -19,5 +19,13 @@
     "apps/strategy_runtime/src/**/*.ts",
     "apps/strategy_runtime/tests/**/*.ts",
     "vitest.config.ts"
+  ],
+  "exclude": [
+    "legacy_seed/**",
+    "legacy_reference/**",
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "coverage/**"
   ]
 }

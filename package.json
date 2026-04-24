@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "check:python": "python -m compileall -q services research",
+    "check:python": "node scripts/check-python-syntax.mjs",
     "lint": "npm run lint:forbidden-imports",
     "lint:forbidden-imports": "node scripts/check-forbidden-imports.mjs",
     "test": "vitest run"

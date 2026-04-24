@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(process.cwd());
 const guardScript = resolve(repoRoot, 'scripts/check-forbidden-imports.mjs');
+const pythonCheckScript = resolve(repoRoot, 'scripts/check-python-syntax.mjs');
 const tempDirs: string[] = [];
 const legacySeedPath = ['legacy', 'seed'].join('_');
 const legacyReferencePath = ['legacy', 'reference'].join('_');
@@ -23,6 +24,13 @@ function makeTempRoot() {
 function runGuard(root: string) {
   return spawnSync(process.execPath, [guardScript, '--root', root], {
     cwd: repoRoot,
+    encoding: 'utf8',
+  });
+}
+
+function runPythonCheck(args: string[], cwd = repoRoot) {
+  return spawnSync(process.execPath, [pythonCheckScript, ...args], {
+    cwd,
     encoding: 'utf8',
   });
 }
@@ -90,6 +98,37 @@ describe('forbidden import guard', () => {
     expect(result.status).toBe(1);
     expect(output).toContain(`${oldRuntimePath.replaceAll('/', '.')}.strategy`);
     expect(output).toContain(`${legacySeedPath}.ts.risk`);
+  });
+
+  it('makes missing default Python roots an explicit skip instead of a silent no-op', () => {
+    const root = makeTempRoot();
+
+    const result = runPythonCheck([], root);
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    expect(result.status).toBe(0);
+    expect(output).toContain('No active Python syntax roots present');
+  });
+
+  it('keeps explicit Python syntax roots strict', () => {
+    const root = makeTempRoot();
+
+    const result = runPythonCheck(['--root', join(root, 'missing')]);
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    expect(result.status).toBe(2);
+    expect(output).toContain('Python syntax root does not exist');
+  });
+
+  it('runs compileall when an explicit Python root exists', () => {
+    const root = makeTempRoot();
+    writeFileSync(join(root, 'clean.py'), 'def ok() -> int:\n    return 1\n');
+
+    const result = runPythonCheck(['--root', root]);
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    expect(result.status).toBe(0);
+    expect(output).toContain('Python syntax check passed');
   });
 });
 
