@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": [
+    "apps/strategy_runtime/src/**/*.ts",
+    "apps/strategy_runtime/tests/**/*.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "legacy_seed/**",
+    "legacy_reference/**",
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "coverage/**"
+  ]
+}

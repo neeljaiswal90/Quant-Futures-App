@@ -1,0 +1,17 @@
+{
+  "name": "quant-futures-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check:python": "node scripts/check-python-syntax.mjs",
+    "lint": "npm run lint:forbidden-imports",
+    "lint:forbidden-imports": "node scripts/check-forbidden-imports.mjs",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
