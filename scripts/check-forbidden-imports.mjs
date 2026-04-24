@@ -38,11 +38,12 @@ function usage() {
 
 function parseArgs(argv) {
   const roots = [];
+  let explicitRoots = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') {
-      return { help: true, roots };
+      return { help: true, roots, explicitRoots };
     }
     if (arg === '--root') {
       const next = argv[index + 1];
@@ -50,13 +51,14 @@ function parseArgs(argv) {
         throw new Error('--root requires a path');
       }
       roots.push(next);
+      explicitRoots = true;
       index += 1;
       continue;
     }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  return { help: false, roots };
+  return { help: false, roots, explicitRoots };
 }
 
 function toDisplayPath(filePath) {
@@ -204,7 +206,20 @@ function main() {
     return 0;
   }
 
-  const roots = parsed.roots.length > 0 ? parsed.roots : DEFAULT_ROOTS;
+  const requestedRoots = parsed.roots.length > 0 ? parsed.roots : DEFAULT_ROOTS;
+  const roots = [];
+  for (const root of requestedRoots) {
+    if (existsSync(resolve(root))) {
+      roots.push(root);
+    } else if (parsed.explicitRoots) {
+      throw new Error(`Scan root does not exist: ${root}`);
+    } else {
+      console.warn(`Skipping default scan root (not present): ${root}`);
+    }
+  }
+  if (roots.length === 0) {
+    throw new Error('No scan roots resolved; provide --root or create one of: ' + DEFAULT_ROOTS.join(', '));
+  }
   const files = roots.flatMap((root) => collectCodeFiles(root));
   const findings = files.flatMap((file) => scanFile(file));
 

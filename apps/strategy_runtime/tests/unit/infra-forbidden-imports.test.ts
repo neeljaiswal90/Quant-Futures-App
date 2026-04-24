@@ -92,3 +92,24 @@ describe('forbidden import guard', () => {
     expect(output).toContain(`${legacySeedPath}.ts.risk`);
   });
 });
+
+describe('forbidden-import script bootstrap', () => {
+  const bootstrapScript = resolve(process.cwd(), 'scripts/check-forbidden-imports.mjs');
+
+  it('exits 0 when a default scan root is missing (warn, not fail)', () => {
+    const result = spawnSync(process.execPath, [bootstrapScript], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+  });
+
+  it('exits 2 when an explicitly requested --root is missing', () => {
+    const result = spawnSync(
+      process.execPath,
+      [bootstrapScript, '--root', 'definitely-not-a-real-dir-xyz'],
+      { encoding: 'utf8' },
+    );
+    expect(result.status).toBe(2);
+  });
+});
