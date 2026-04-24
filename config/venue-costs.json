@@ -1,0 +1,23 @@
+{
+  "_comment": "RISK-01 V1 simulation cost assumptions. Keep broker/vendor credentials out of this file.",
+  "commission_schedule_effective_date": "2026-01-01",
+  "cost_assumption_source": "v1-sim-defaults; verify against broker/CME schedules before live routing scope",
+  "contracts": {
+    "MNQ": {
+      "commission_per_side_per_contract_usd": 0.4,
+      "exchange_fees_per_side_per_contract_usd": 0.35
+    },
+    "NQ": {
+      "commission_per_side_per_contract_usd": 0.85,
+      "exchange_fees_per_side_per_contract_usd": 1.38
+    },
+    "MES": {
+      "commission_per_side_per_contract_usd": 0.4,
+      "exchange_fees_per_side_per_contract_usd": 0.35
+    },
+    "ES": {
+      "commission_per_side_per_contract_usd": 0.85,
+      "exchange_fees_per_side_per_contract_usd": 1.38
+    }
+  }
+}
