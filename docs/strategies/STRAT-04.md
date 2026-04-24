@@ -17,6 +17,10 @@ The strategy looks for a bullish breakout that remains above the EMA stack, then
 - `pivot_resistance_1` for PT2 when available
 - upside flow from `z_ofi_blend` or microstructure `ofi_z`
 
+## Producer Contract Note
+
+Future feature producers must emit `structure.values.breakout_level`, `structure.values.retest_hold`, `structure.values.nearest_resistance`, and optionally `structure.values.pivot_resistance_1` for this generator to arm.
+
 ## Gates And Rejection Reasons
 
 - `breakout_retest_long:session_not_rth`

@@ -92,14 +92,12 @@ describe('STRAT-03 trend_pullback_short extraction', () => {
       'trend_pullback_long',
       'trend_pullback_short',
       'breakout_retest_long',
+      'breakdown_retest_short',
     ]);
     expect(getActiveStrategyGenerator('trend_pullback_short')({
       strategy_id: 'trend_pullback_short',
       snapshot: FIXTURE.snapshot,
     }).candidate?.strategy_id).toBe('trend_pullback_short');
-    expect(() => getActiveStrategyGenerator('breakdown_retest_short')).toThrow(
-      'strategy breakdown_retest_short is pending extraction',
-    );
   });
 
   it('rejects bullish or neutral trend state before short-side geometry', () => {
