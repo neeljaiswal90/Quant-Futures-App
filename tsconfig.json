@@ -18,6 +18,7 @@
   "include": [
     "apps/strategy_runtime/src/**/*.ts",
     "apps/strategy_runtime/tests/**/*.ts",
+    "scripts/**/*.ts",
     "vitest.config.ts"
   ],
   "exclude": [

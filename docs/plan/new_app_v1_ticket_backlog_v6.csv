@@ -1,0 +1,65 @@
+Ticket,Priority,EstimateDays,DependsOn,Summary,ChangeVsV1
+APP-01,P0,1.0,,Create greenfield monorepo skeleton,unchanged
+APP-02,P0,1.5,APP-01,Define canonical runtime contracts,unchanged
+APP-03,P0,1.0,APP-01,Add config system and environment resolution,unchanged
+INFRA-01,P0,0.5,INFRA-01B,Revised timestamp verification gate emits reports/infra/infra01_revised_timestamp_gate.json and allows DATA-01 only when data01_eligible=true and route_to=DATA-01,changed / shrunk after canonical exchange-time ADR
+INFRA-01B,P0,1.5,APP-02|INFRA-03,Canonical exchange-time ADR and Linux/chrony re-probe path with all-stream coverage non-decreasing exchange time receive-telemetry gate and Databento parity,changed / promoted from contingency to primary path
+INFRA-02,P0,0.5,APP-03,Secrets and credentials management (Rithmic / Databento / artifact store),NEW
+INFRA-03,P0,1.0,APP-01,"CI pipeline for Python/TypeScript plus lint guard forbidding active imports from legacy_seed, legacy_reference, old src/autotrade, Bookmap, and TradingView paths",NEW / promoted P1->P0 / legacy import guard added in v5
+DATA-01,P0,4.0,APP-01|APP-03|INFRA-01,Implement direct Rithmic live provider (R protocol confirmed working per soak),dep changed
+DATA-02,P0,2.0,DATA-01,Implement MBP10 book state,unchanged
+DATA-03,P0,1.5,DATA-01|DATA-02,Implement authority FSM,unchanged
+DATA-04,P0,3.0,DATA-01|DATA-02,Implement microstructure feature engine,unchanged
+DATA-05,P0,2.0,DATA-01,Implement snapshot publisher and journals,unchanged
+DATA-06,P0,5.0,DATA-01|DATA-03|MNQ-01,"Implement session clock, roll, halt, and rebuild flow with warmup candidate suppression",estimate +1d / dep added / expanded warmup acceptance
+DATA-07,P0,0.5,DATA-01,Investigate soak-run gap cluster (11 gaps >1s around t+1610s) and coalescing behavior,NEW / promoted P1->P0 due launch gate gap criterion
+DATA-08,P0,1.0,DATA-05|DATA-07,"Data gap detection, classification, and session integrity alarms",NEW / depends on DATA-07 gap taxonomy
+DATA-09,P0,0.75,DATA-05,"Disk retention, journal rotation, compression, and artifact storage policy",NEW / promoted P1->P0 for 10-session gate storage safety
+EVT-00,P0,0.5,APP-02|APP-03|OBS-01,Sidecar-to-runtime append-only JSONL journal transport using shared folder file-watcher ingest deterministic checkpointing and malformed-line quarantine,NEW / blocks ORCH-02
+MNQ-01,P0,1.0,APP-03,"MNQ roll calendar source, historical front-month fixture, and roll-window flatten/block policy",NEW / expanded roll policy acceptance
+FEAT-01,P0,2.0,APP-02,Port pure indicator engine,unchanged
+FEAT-02,P0,2.0,APP-02,Port structure and session-level engines,unchanged
+FEAT-03,P0,3.0,FEAT-01|FEAT-02|DATA-04,Build canonical EntryStateVector,unchanged
+FEAT-04,P0,4.0,FEAT-03,"Port canonical normalization, dynamic reward, and expectancy extension modules with one shared volatility/sigma model",promoted P1->P0; estimate 3d->4d in v5 due scope split
+FEAT-05,P1,2.0,FEAT-01|DATA-04,Add local CVD and HTF zone context,unchanged
+STRAT-00,P0,1.0,FEAT-01|FEAT-02,Synthetic feature snapshot fixture to unblock strategy extraction from DATA-04,NEW
+STRAT-01,P0,1.0,APP-02,Create clean strategy registry with four baseline strategies only,unchanged
+STRAT-02,P0,2.0,STRAT-00|STRAT-01,Extract and refactor trend_pullback_long,dep changed (mock-first)
+STRAT-03,P0,2.0,STRAT-00|STRAT-01,Extract and refactor trend_pullback_short,dep changed (mock-first)
+STRAT-04,P0,1.5,FEAT-01|FEAT-02|STRAT-01,Extract and refactor breakout_retest_long,unchanged
+STRAT-05,P0,1.5,FEAT-01|FEAT-02|STRAT-01,Extract and refactor breakdown_retest_short,unchanged
+STRAT-06,P0,2.0,STRAT-02|STRAT-03|STRAT-04|STRAT-05|FEAT-04,Implement candidate ranking and tie-breaking,priority P1->P0 (inversion fix)
+STRAT-07,P0,1.0,APP-02|APP-03|STRAT-01,Strategy-level config surface for thresholds (freshness / min-R / room filters),NEW / deps corrected to include contracts and config loader
+RISK-01,P0,1.0,,Port contract specs cost model venue config,unchanged
+RISK-02,P0,2.0,RISK-01,Port compositional sizing and risk manager,unchanged
+RISK-03,P0,0.5,RISK-02,"Daily realized-loss limit, daily max open-trade count, and account-level circuit breaker",NEW / expanded open-trade count
+MGMT-01,P0,1.0,,Port management profiles,unchanged
+MGMT-02,P0,1.5,MGMT-01,Port target-position model,unchanged
+MGMT-03,P0,5.0,RISK-01|MGMT-01,Port and decompose position manager,estimate +1d
+MGMT-04,P1,3.0,MGMT-02|MGMT-03,Port management decision engine,unchanged
+ORCH-01,P0,1.5,APP-02,Build new event bus and engine container,unchanged
+ORCH-02,P0,4.0,ORCH-01|STRAT-06|RISK-02|EVT-00,Build new runner loop after sidecar-to-runtime journal transport exists,dependency changed
+SIM-01,P0,2.0,APP-02|RISK-01,Implement simulated execution adapter,dep added
+SIM-02,P0,2.0,SIM-01|DATA-01,Implement fill and slippage model,priority P1->P0
+SIM-03,P0,1.5,SIM-02|RSRCH-01,Calibrate fill/slippage model to MNQ Databento tick data with KS/percentile/queue-position residual tolerances,NEW / explicit residual tolerances added in v5
+ORCH-03,P0,2.0,ORCH-02|SIM-01|MGMT-03,Wire fills to position manager and management engine,unchanged
+RSRCH-00,P0,0.5,APP-02|APP-03,Historical continuity policy for 2017+ data: MNQ post-launch plus NQ surrogate domain rules,NEW / closes 2017 pre-MNQ ambiguity
+RSRCH-01,P0,4.5,APP-02|APP-03|INFRA-02|RSRCH-00,Implement Databento historical loader since 2017 using MNQ/NQ-surrogate continuity policy and reproducible manifests,dep added; estimate 3d->4.5d in v5 for 2017+ continuity scope
+RSRCH-02,P0,3.0,APP-02|RSRCH-01|ORCH-01,Implement replay harness using runtime contracts,unchanged
+RSRCH-03,P0,2.0,RSRCH-02|STRAT-06|ORCH-03|SIM-03,Baseline strategy backtest on Databento without ML; defines candidate-count floor file for REL-01 and performance baseline,NEW / calibrated fill dep / candidate-count floor acceptance made explicit in v5
+ML-01,P1,1.5,FEAT-03|DATA-04,Create canonical entry feature registry,P0->P1; ML chain non-blocking
+ML-02,P1,6.0,RSRCH-02|ML-01|INFRA-01,Build candidate and path labeling pipeline,estimate +2d / P0->P1 / timestamp contract dep added
+ML-03,P1,4.0,ML-02,Train opportunity-decay uplift model,P0->P1 (non-blocking)
+ML-04,P1,3.0,ML-03,Calibrate evaluate and export artifact with accept/reject gate,P0->P1 / accept gate added
+ML-05,P1,2.0,ML-04|STRAT-06,Wire inference into runtime as entry gate and uplift (contingent on ML-04 accept),unchanged
+OBS-01,P0,1.5,APP-02,Journaling and metrics schema,unchanged
+OBS-00,P0,0.5,OBS-01,"Normalize soak run into a committed mini-journal fixture for formatter, TUI, and replay smoke tests",NEW in v5 / bootstrap fixture for operator surface and replay testing
+OBS-02,P0,1.0,DATA-01|ORCH-01,Health endpoint and startup gating,unchanged
+OBS-03,P0,2.0,RSRCH-02|OBS-01|ORCH-03|INFRA-01|TUI-02,"Replay parity, byte-identical determinism, and formatter-output parity report",promoted P1->P0; expanded deps; formatter parity added in v4
+OBS-04,P1,1.0,OBS-02,Live latency and feed health dashboard,"NEW / remains P1 dashboard, not launch blocker"
+TUI-01,P0,1.0,OBS-01,Event-bus contract for operator surfaces,NEW in v4 operator surface
+TUI-02,P0,1.5,OBS-01|APP-02|OBS-00,Structured log formatter for live/replay journals with fixture-journal parity smoke,NEW in v4 operator surface / fixture smoke dep added in v5
+TUI-03,P0,3.0,TUI-01|TUI-02|OBS-00,Read-only operator TUI dashboard backed by event bus and validated first against fixture journal,NEW in v4 / decoupled from ORCH-02 by OBS-00 fixture in v5
+TUI-04,P1,1.0,TUI-02,Journal query CLI for candidate/position provenance,NEW in v4 operator surface / P1 non-blocking
+REL-00,P0,1.0,DATA-06|DATA-07|DATA-08|DATA-09|FEAT-04|STRAT-06|RISK-03|MGMT-03|ORCH-03|SIM-03|RSRCH-02|OBS-02|OBS-03|TUI-03|OBS-00,"Mini-gate: 3 replay days plus 1 live RTH session, fixture-backed TUI/formatter smoke before live",NEW / earlier integration gate; fixture-backed operator-surface smoke added in v5
+REL-01,P0,2.0,APP-01|APP-02|APP-03|INFRA-01|INFRA-02|INFRA-03|DATA-01|DATA-02|DATA-03|DATA-04|DATA-05|DATA-06|DATA-07|DATA-08|DATA-09|MNQ-01|FEAT-01|FEAT-02|FEAT-03|FEAT-04|STRAT-00|STRAT-01|STRAT-02|STRAT-03|STRAT-04|STRAT-05|STRAT-06|STRAT-07|RISK-01|RISK-02|RISK-03|MGMT-01|MGMT-02|MGMT-03|ORCH-01|ORCH-02|SIM-01|SIM-02|SIM-03|ORCH-03|RSRCH-00|RSRCH-01|RSRCH-02|RSRCH-03|OBS-01|OBS-02|OBS-03|REL-00|TUI-01|TUI-02|TUI-03|OBS-00,"Ten-session sim launch packet with explicit SIM-03 residual tolerances, RSRCH-03 candidate floors, operator TUI, formatter parity, deterministic replay, and gap investigation required; no ML required",ML-* removed; OBS-03/DATA-07/FEAT-04/DATA-09/INFRA-03/RSRCH-00/REL-00/TUI-01/TUI-02/TUI-03/OBS-00 added; SIM/RSRCH tolerances clarified in v5
