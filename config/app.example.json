@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "app": {
+    "environment": "development",
+    "log_level": "info"
+  },
+  "runtime": {
+    "mode": "simulation",
+    "instrument": "MNQ",
+    "exchange": "CME",
+    "timezone": "America/Chicago"
+  },
+  "data": {
+    "live_provider": "rithmic",
+    "historical_provider": "databento"
+  },
+  "execution": {
+    "adapter": "simulated"
+  },
+  "replay": {
+    "seed": "mnq-v1-default-seed",
+    "require_config_hash_match": true
+  },
+  "paths": {
+    "journal_dir": "journals",
+    "data_dir": "data"
+  },
+  "strategy_configs": {
+    "directory": "config/strategies",
+    "format": "yaml",
+    "required": false
+  }
+}

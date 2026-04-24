@@ -10,6 +10,10 @@ coverage/
 .env
 .env.*
 !.env.example
+config/local*.json
+config/*.local.json
+config/secrets*.json
+config/*.secret.json
 
 __pycache__/
 *.py[cod]
