@@ -18,7 +18,7 @@ This v6 plan incorporates the v5 acceptance-criteria/risk-control tightening rev
 6. `INFRA-03` now enforces the legacy carryover policy in CI by failing active-code imports from `legacy_seed`, `legacy_reference`, old `src/autotrade`, Bookmap, and TradingView paths.
 7. `OBS-00` adds a committed mini-journal fixture from the soak run so formatter, TUI, and replay smoke tests can run before the full runner loop is complete.
 
-Baseline metrics now include `INFRA-01B` as a required P0 path and add `EVT-00` for sidecar-to-runtime journal transport.
+Baseline metrics now include `INFRA-01B` as a required P0 path and add `EVT-00` for sidecar-to-runtime journal transport plus `EVT-01` for derived-event causation-chain timestamp invariants.
 
 | Metric | v6 baseline value |
 |---|---:|
@@ -33,10 +33,10 @@ Baseline metrics now include `INFRA-01B` as a required P0 path and add `EVT-00` 
 | Longest dependency path to `REL-01`, revised baseline | ~32.0 working days, unbuffered |
 | Realistic solo-dev wall clock with buffer | ~8–9 calendar weeks, plus the calendar reality of 10 RTH sessions |
 
-The revised timestamp architecture adds approximately +1 working day from the current active baseline because `INFRA-01B` becomes primary and `EVT-00` is added:
+The revised timestamp architecture adds approximately +1 working day from the current active baseline because `INFRA-01B` becomes primary and `EVT-00` is added. `EVT-01` is a focused follow-up that blocks runner orchestration until derived-event timestamp inheritance is enforced:
 
 ```text
-APP-01 → APP-02 / APP-03 / INFRA-03 → INFRA-01B → INFRA-01 → DATA-01 → DATA-02 → DATA-04 → FEAT-03 → FEAT-04 → STRAT-06 → EVT-00 → ORCH-02 → ORCH-03 → OBS-03 → REL-00 → REL-01
+APP-01 → APP-02 / APP-03 / INFRA-03 → INFRA-01B → INFRA-01 → DATA-01 → DATA-02 → DATA-04 → FEAT-03 → FEAT-04 → STRAT-06 → EVT-00 → EVT-01 → ORCH-02 → ORCH-03 → OBS-03 → REL-00 → REL-01
 ```
 
 `TUI-03` is no longer coupled to `ORCH-02` for initial development. It is built first against `OBS-00` and the event-bus contract, then validated against the live runner during `REL-00`.
@@ -375,6 +375,20 @@ Acceptance criteria:
 3. Restart resumes from last processed byte offset or event id without duplicate ingestion.
 4. Malformed lines are quarantined, not fatal.
 5. Transport preserves `run_id`, `session_id`, `event_id`, `causation_id`, `exchange_event_ts_ns`, `sidecar_recv_ts_ns`, and `payload`.
+
+### 5.4 `EVT-01` derived-event causation-chain timestamp invariant
+
+`EVT-01` is a required follow-up before `ORCH-02`. It prevents derived runtime events from leaking wall-clock time through `ts_ns`.
+
+Acceptance criteria:
+
+1. Define source market-data events, derived events, and explicitly exempt system/control events.
+2. Source market-data events require `event.ts_ns === payload.exchange_event_ts_ns`.
+3. Derived events require `causation_id` unless explicitly exempted by schema.
+4. If the causation event is available in a deterministic recent-causation buffer, require `derived_event.ts_ns === cause_event.ts_ns`.
+5. If the causation event is unavailable, accept only events whose schema marks them externally sourced or replay-bootstrap-safe; otherwise reject/quarantine.
+6. Reject/quarantine obvious wall-clock leakage such as a derived event with `causation_id` and mismatched `ts_ns`.
+7. Tests cover valid inherited timestamps, wall-clock mismatch rejection, missing causation rejection, source market-data equality, and deterministic causation-buffer behavior.
 
 ---
 
@@ -838,6 +852,7 @@ The authoritative backlog is `new_app_v1_ticket_backlog_v6.csv`.
 |---|---:|---:|---|---|
 | `INFRA-01B` | P0 | 1.5d | `APP-02`, `INFRA-03` | Canonical exchange-time ADR and Linux/chrony re-probe path |
 | `EVT-00` | P0 | 0.5d | `APP-02`, `APP-03`, `OBS-01` | Sidecar-to-runtime append-only JSONL journal transport with deterministic file-watcher ingest |
+| `EVT-01` | P0 | 0.5d | `EVT-00`, `OBS-01` | Causation-chain `ts_ns` invariant for derived events before runner orchestration |
 | `OBS-00` | P0 | 0.5d | `OBS-01` | Normalize soak run into committed mini-journal fixture for formatter, TUI, and replay smoke tests |
 
 ### 16.2 v6 estimate and acceptance updates
@@ -849,6 +864,7 @@ The authoritative backlog is `new_app_v1_ticket_backlog_v6.csv`.
 | `INFRA-01B` | promoted to primary P0 exchange-time architecture path; estimate 1.5d |
 | `INFRA-01` | shrunk to 0.5d revised timestamp verification gate depending on `INFRA-01B` |
 | `EVT-00` | added as P0 sidecar-to-runtime append-only JSONL transport; blocks `ORCH-02` |
+| `EVT-01` | added as P0 causation-chain timestamp-inheritance invariant; blocks `ORCH-02` |
 | `FEAT-04` | estimate raised 3.0d → 4.0d |
 | `RSRCH-01` | estimate raised 3.0d → 4.5d for 2017+ continuity-policy implementation |
 | `INFRA-03` | CI must enforce no active imports from legacy/reference/old runtime paths |
@@ -903,7 +919,7 @@ MGMT-03, SIM-01, RSRCH-01
 Primary:
 
 ```text
-FEAT-04 → STRAT-06 → EVT-00 → ORCH-02 → ORCH-03
+FEAT-04 → STRAT-06 → EVT-00 → EVT-01 → ORCH-02 → ORCH-03
 ```
 
 Parallel:
