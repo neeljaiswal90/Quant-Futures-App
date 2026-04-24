@@ -14,6 +14,8 @@ export const RUNTIME_EVENT_TYPES = [
   'MICROSTRUCTURE',
   'STRAT_EVAL',
   'CANDIDATE',
+  'ML_UPLIFT',
+  'RANK',
   'RISK_GATE',
   'SIZING',
   'ORDER_INTENT',
