@@ -7,6 +7,7 @@
     "check:python": "node scripts/check-python-syntax.mjs",
     "format:journal": "tsx apps/strategy_runtime/src/operator/formatter.ts",
     "infra:01:evaluate": "tsx scripts/infra/evaluate-infra-01-probe.ts",
+    "journal:query": "tsx scripts/journal/journal-query.ts",
     "lint": "npm run lint:forbidden-imports",
     "lint:forbidden-imports": "node scripts/check-forbidden-imports.mjs",
     "test": "vitest run",
