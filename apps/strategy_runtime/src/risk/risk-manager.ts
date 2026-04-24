@@ -3,11 +3,20 @@ import type {
   RiskGateDecision,
   SizingDecision,
 } from '../contracts/candidate.js';
+import type { RiskGateEventPayload } from '../contracts/events/index.js';
 import {
   makeRiskGateDecisionId,
   makeSizingDecisionId,
 } from '../contracts/ids.js';
 import type { UnixNs } from '../contracts/time.js';
+import {
+  canOpenNewTrade,
+  DEFAULT_SESSION_RISK_POLICY,
+  resolveSessionRiskPolicy,
+  summarizeSessionRiskState,
+  type SessionRiskPolicy,
+  type SessionRiskState,
+} from './account-risk-arbiter.js';
 import {
   computeComposedSizing,
   makeQLiqHysteresisState,
@@ -37,6 +46,7 @@ export interface RiskPolicyConfig {
   readonly sizing_mode: SizerExecutionMode;
   readonly default_regime: string;
   readonly default_n_eff: number;
+  readonly session: SessionRiskPolicy;
   readonly sizing: Phase1SizingConfig;
 }
 
@@ -50,6 +60,7 @@ export const DEFAULT_RISK_POLICY: RiskPolicyConfig = {
   sizing_mode: 'signal_only',
   default_regime: 'mixed',
   default_n_eff: 200,
+  session: DEFAULT_SESSION_RISK_POLICY,
   sizing: PHASE1_SIZING_DEFAULTS,
 };
 
@@ -61,6 +72,7 @@ export interface RiskRuntimeState {
   readonly n_eff?: number;
   readonly liquidity?: LiquidityInputs | null;
   readonly q_liq_hysteresis?: QLiqHysteresisState;
+  readonly session_risk?: SessionRiskState;
   readonly now_ms: number;
 }
 
@@ -86,28 +98,47 @@ export interface RiskAssessment {
 }
 
 export type PartialRiskPolicyConfig =
-  Partial<Omit<RiskPolicyConfig, 'sizing'>> & {
+  Partial<Omit<RiskPolicyConfig, 'sizing' | 'session'>> & {
+    readonly session?: Partial<SessionRiskPolicy>;
     readonly sizing?: Partial<Phase1SizingConfig>;
   };
 
 export function resolveRiskPolicy(
   overrides: PartialRiskPolicyConfig = {},
 ): RiskPolicyConfig {
+  const {
+    session: sessionOverrides,
+    sizing: sizingOverrides,
+    ...scalarOverrides
+  } = overrides;
   const sizing = {
     ...PHASE1_SIZING_DEFAULTS,
-    ...overrides.sizing,
+    ...sizingOverrides,
     regime_scores: {
       ...PHASE1_SIZING_DEFAULTS.regime_scores,
-      ...overrides.sizing?.regime_scores,
+      ...sizingOverrides?.regime_scores,
     },
   } as Phase1SizingConfig;
-  const hardCap = overrides.hard_cap_contracts ?? sizing.C_abs;
-  return {
+  const scalarPolicy = {
     ...DEFAULT_RISK_POLICY,
-    ...overrides,
+    ...scalarOverrides,
+  };
+  const hardCap = scalarOverrides.hard_cap_contracts ?? sizing.C_abs;
+  const maxDailyRealizedLossUsd =
+    sessionOverrides?.max_daily_realized_loss_usd ??
+    scalarPolicy.account_equity_usd * (scalarPolicy.max_daily_loss_pct / 100);
+  const session = resolveSessionRiskPolicy({
+    ...DEFAULT_SESSION_RISK_POLICY,
+    max_daily_realized_loss_usd: maxDailyRealizedLossUsd,
+    ...sessionOverrides,
+  });
+
+  return {
+    ...scalarPolicy,
     hard_cap_contracts: hardCap,
     max_net_position_per_symbol:
-      overrides.max_net_position_per_symbol ?? DEFAULT_RISK_POLICY.max_net_position_per_symbol,
+      scalarOverrides.max_net_position_per_symbol ?? DEFAULT_RISK_POLICY.max_net_position_per_symbol,
+    session,
     sizing,
   };
 }
@@ -181,10 +212,17 @@ export function evaluateRiskGate(input: RiskGateInput): RiskGateDecision {
     reasons.push('risk_gate:max_net_position_exceeded');
   }
 
-  const dailyLossLimitUsd = policy.account_equity_usd * (policy.max_daily_loss_pct / 100);
-  const realizedLossUsd = Math.max(0, -input.state.daily_realized_pnl_usd);
-  if (realizedLossUsd >= dailyLossLimitUsd) {
-    reasons.push('risk_gate:daily_loss_limit_reached');
+  if (input.state.session_risk !== undefined) {
+    const sessionEvaluation = canOpenNewTrade(input.state.session_risk, policy.session);
+    if (!sessionEvaluation.allowed) {
+      reasons.push(...sessionEvaluation.reasons);
+    }
+  } else {
+    const dailyLossLimitUsd = policy.account_equity_usd * (policy.max_daily_loss_pct / 100);
+    const realizedLossUsd = Math.max(0, -input.state.daily_realized_pnl_usd);
+    if (realizedLossUsd >= dailyLossLimitUsd) {
+      reasons.push('risk_gate:daily_loss_limit_reached');
+    }
   }
 
   return {
@@ -210,6 +248,20 @@ export function assessCandidateRisk(input: RiskSizingInput): RiskAssessment {
   return { sizing, gate };
 }
 
+export function toRiskGateEventPayload(
+  decision: RiskGateDecision,
+  sessionRisk?: SessionRiskState,
+): RiskGateEventPayload {
+  return {
+    risk_gate_decision_id: decision.risk_gate_decision_id,
+    candidate_id: decision.candidate_id,
+    status: decision.status,
+    reasons: decision.reasons,
+    risk_manager_version: RISK_MANAGER_VERSION,
+    session_risk: sessionRisk === undefined ? undefined : summarizeSessionRiskState(sessionRisk),
+  };
+}
+
 function minimumRewardRisk(candidate: Candidate): number {
   const values = candidate.reward_risk.map((target) => target.reward_risk);
   if (values.length === 0) {
@@ -226,6 +278,7 @@ function validateRiskPolicy(policy: RiskPolicyConfig): void {
   validatePositive(policy.max_net_position_per_symbol, 'max_net_position_per_symbol');
   validatePositive(policy.hard_cap_contracts, 'hard_cap_contracts');
   validatePositive(policy.default_n_eff, 'default_n_eff');
+  resolveSessionRiskPolicy(policy.session);
 }
 
 function validatePositive(value: number, label: string): void {

@@ -2,14 +2,25 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  createJournalEventEnvelope,
+  makeCausationId,
   makeCandidateId,
+  makeEventId,
+  makeRunId,
+  makeSessionId,
   ns,
+  validateJournalEventEnvelope,
   type Candidate,
 } from '../../src/contracts/index.js';
 import {
+  activateSessionCircuitBreaker,
+  applyRealizedPnl,
   assessCandidateRisk,
+  canManageExistingPosition,
+  canOpenNewTrade,
   computeComposedSizing,
   computeTradeCosts,
+  createSessionRiskState,
   getContractSpec,
   loadVenueCostTable,
   makeQLiqHysteresisState,
@@ -17,7 +28,12 @@ import {
   parseVenueCostTable,
   riskPerContractUsd,
   roundStopAwayFromEntry,
+  resetSessionRiskState,
+  toRiskGateEventPayload,
+  updateSessionRiskState,
   type LiquidityInputs,
+  type SessionRiskPolicy,
+  type SessionRiskState,
 } from '../../src/risk/index.js';
 import {
   getActiveStrategyGenerator,
@@ -25,6 +41,9 @@ import {
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const DECIDED_TS_NS = ns('1776957600000000000');
+const NEXT_TS_NS = ns('1776957601000000000');
+const SESSION_ID = makeSessionId('2026-04-23-rth');
+const NEXT_SESSION_ID = makeSessionId('2026-04-24-rth');
 
 const FRESH_LIQUIDITY: LiquidityInputs = {
   d_2ticks: 100,
@@ -50,6 +69,23 @@ function cloneCandidate(candidate: Candidate, overrides: Partial<Candidate>): Ca
     ...overrides,
   };
 }
+
+function initialSessionRiskState(): SessionRiskState {
+  return createSessionRiskState({
+    session_id: SESSION_ID,
+    account_ref: 'sim-account-1',
+    symbol: 'MNQM6',
+    event_ts_ns: DECIDED_TS_NS,
+  });
+}
+
+const STRICT_SESSION_POLICY = {
+  max_daily_realized_loss_usd: 500,
+  max_open_trade_count: 2,
+  max_trades_per_session: 4,
+  circuit_breaker_enabled: true,
+  reset_circuit_breaker_on_new_session: true,
+} satisfies SessionRiskPolicy;
 
 describe('RISK-01 contract specs and cost model', () => {
   it('resolves MNQ contract specs and normalizes tick-based risk math', () => {
@@ -283,5 +319,215 @@ describe('RISK-02 composed sizing and risk manager', () => {
         expect(source, `${file} must not contain ${pattern}`).not.toContain(pattern);
       }
     }
+  });
+});
+
+describe('RISK-03 session risk circuit breaker and trade-count controls', () => {
+  it('allows new candidates when session risk is below all limits', () => {
+    const candidate = fixtureCandidate();
+    const state = initialSessionRiskState();
+    const assessment = assessCandidateRisk({
+      candidate,
+      decided_ts_ns: DECIDED_TS_NS,
+      policy: {
+        session: STRICT_SESSION_POLICY,
+      },
+      state: {
+        current_open_quantity: 0,
+        daily_realized_pnl_usd: 0,
+        session_risk: state,
+        regime: 'strong_trend',
+        n_eff: 1_000,
+        liquidity: FRESH_LIQUIDITY,
+        now_ms: 0,
+      },
+    });
+
+    expect(canOpenNewTrade(state, STRICT_SESSION_POLICY)).toMatchObject({
+      allowed: true,
+      reasons: [],
+    });
+    expect(assessment.gate.status).toBe('pass');
+    expect(assessment.gate.reasons).toEqual(['risk_gate:passed']);
+  });
+
+  it('activates the circuit breaker when realized daily loss breaches the limit', () => {
+    const state = applyRealizedPnl({
+      state: initialSessionRiskState(),
+      realized_pnl_delta_usd: -500,
+      event_ts_ns: NEXT_TS_NS,
+      policy: STRICT_SESSION_POLICY,
+    });
+    const evaluation = canOpenNewTrade(state, STRICT_SESSION_POLICY);
+
+    expect(state).toMatchObject({
+      realized_pnl_usd: -500,
+      circuit_breaker_state: 'active',
+      circuit_breaker_reason: 'session_risk:daily_realized_loss_limit_reached',
+      last_transition_ts_ns: NEXT_TS_NS,
+    });
+    expect(evaluation.allowed).toBe(false);
+    expect(evaluation.reasons).toEqual([
+      'session_risk:circuit_breaker_active',
+      'session_risk:daily_realized_loss_limit_reached',
+    ]);
+  });
+
+  it('blocks new entries at the max open-trade count with stable rejection reasons', () => {
+    const withOneOpen = updateSessionRiskState(
+      initialSessionRiskState(),
+      { kind: 'trade_opened', event_ts_ns: DECIDED_TS_NS },
+      STRICT_SESSION_POLICY,
+    );
+    const withTwoOpen = updateSessionRiskState(
+      withOneOpen,
+      { kind: 'trade_opened', event_ts_ns: NEXT_TS_NS },
+      STRICT_SESSION_POLICY,
+    );
+
+    expect(canOpenNewTrade(withTwoOpen, STRICT_SESSION_POLICY)).toEqual({
+      allowed: false,
+      reasons: ['session_risk:max_open_trade_count_reached'],
+      state: withTwoOpen,
+      policy: STRICT_SESSION_POLICY,
+    });
+  });
+
+  it('blocks new entries while active but still allows existing-position management', () => {
+    const active = activateSessionCircuitBreaker({
+      state: initialSessionRiskState(),
+      reason: 'session_risk:circuit_breaker_manually_activated',
+      event_ts_ns: NEXT_TS_NS,
+    }).state;
+
+    expect(canOpenNewTrade(active, STRICT_SESSION_POLICY)).toMatchObject({
+      allowed: false,
+      reasons: ['session_risk:circuit_breaker_active'],
+    });
+    expect(canManageExistingPosition(active)).toEqual({
+      allowed: true,
+      reasons: ['session_risk:existing_position_management_allowed'],
+      state: active,
+    });
+  });
+
+  it('resets circuit breaker and counters at the next session when policy allows reset', () => {
+    const active = activateSessionCircuitBreaker({
+      state: {
+        ...initialSessionRiskState(),
+        realized_pnl_usd: -250,
+        open_trade_count: 1,
+        closed_trade_count: 2,
+        rejected_trade_count: 1,
+      },
+      reason: 'session_risk:circuit_breaker_manually_activated',
+      event_ts_ns: NEXT_TS_NS,
+    }).state;
+
+    expect(resetSessionRiskState({
+      previous: active,
+      session_id: NEXT_SESSION_ID,
+      event_ts_ns: NEXT_TS_NS,
+      policy: STRICT_SESSION_POLICY,
+    })).toEqual({
+      session_id: NEXT_SESSION_ID,
+      account_ref: 'sim-account-1',
+      symbol: 'MNQM6',
+      realized_pnl_usd: 0,
+      open_trade_count: 0,
+      closed_trade_count: 0,
+      rejected_trade_count: 0,
+      circuit_breaker_state: 'inactive',
+      circuit_breaker_reason: undefined,
+      last_transition_ts_ns: NEXT_TS_NS,
+    });
+  });
+
+  it('integrates session risk reasons into the pre-trade risk gate', () => {
+    const candidate = fixtureCandidate();
+    const blockedSession = {
+      ...initialSessionRiskState(),
+      open_trade_count: 2,
+    };
+    const first = assessCandidateRisk({
+      candidate,
+      decided_ts_ns: DECIDED_TS_NS,
+      policy: {
+        session: STRICT_SESSION_POLICY,
+      },
+      state: {
+        current_open_quantity: 0,
+        daily_realized_pnl_usd: 0,
+        session_risk: blockedSession,
+        regime: 'strong_trend',
+        n_eff: 1_000,
+        liquidity: FRESH_LIQUIDITY,
+        now_ms: 0,
+      },
+    });
+    const second = assessCandidateRisk({
+      candidate,
+      decided_ts_ns: DECIDED_TS_NS,
+      policy: {
+        session: STRICT_SESSION_POLICY,
+      },
+      state: {
+        current_open_quantity: 0,
+        daily_realized_pnl_usd: 0,
+        session_risk: blockedSession,
+        regime: 'strong_trend',
+        n_eff: 1_000,
+        liquidity: FRESH_LIQUIDITY,
+        now_ms: 0,
+      },
+    });
+
+    expect(first).toEqual(second);
+    expect(first.gate.status).toBe('reject');
+    expect(first.gate.reasons).toContain('session_risk:max_open_trade_count_reached');
+  });
+
+  it('projects session risk state into OBS-01 RISK_GATE payloads', () => {
+    const candidate = fixtureCandidate();
+    const state = activateSessionCircuitBreaker({
+      state: initialSessionRiskState(),
+      reason: 'session_risk:circuit_breaker_manually_activated',
+      event_ts_ns: NEXT_TS_NS,
+    }).state;
+    const assessment = assessCandidateRisk({
+      candidate,
+      decided_ts_ns: DECIDED_TS_NS,
+      policy: {
+        session: STRICT_SESSION_POLICY,
+      },
+      state: {
+        current_open_quantity: 0,
+        daily_realized_pnl_usd: 0,
+        session_risk: state,
+        regime: 'strong_trend',
+        n_eff: 1_000,
+        liquidity: FRESH_LIQUIDITY,
+        now_ms: 0,
+      },
+    });
+    const event = createJournalEventEnvelope({
+      event_id: makeEventId('risk-gate-session-risk-test'),
+      type: 'RISK_GATE',
+      ts_ns: DECIDED_TS_NS,
+      run_id: makeRunId('run-risk-test'),
+      session_id: SESSION_ID,
+      causation_id: makeCausationId(candidate.candidate_id),
+      payload: toRiskGateEventPayload(assessment.gate, state),
+    });
+
+    expect(validateJournalEventEnvelope(event)).toMatchObject({ ok: true, issues: [] });
+    expect(event.payload).toMatchObject({
+      risk_manager_version: 'risk_manager_v1',
+      session_risk: {
+        circuit_breaker_state: 'active',
+        circuit_breaker_reason: 'session_risk:circuit_breaker_manually_activated',
+        last_transition_ts_ns: NEXT_TS_NS,
+      },
+    });
   });
 });
