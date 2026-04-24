@@ -386,7 +386,13 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
         `config_hash=${stringField(payload, 'config_hash')}`,
         `config_version=${numberField(payload, 'config_version')}`,
       ]);
+    default:
+      return assertNeverRuntimeEventType(event.type);
   }
+}
+
+function assertNeverRuntimeEventType(type: never): never {
+  throw new Error(`Unhandled runtime event type: ${String(type)}`);
 }
 
 function strategyIdForEvent(event: JournalEventEnvelope): string | undefined {

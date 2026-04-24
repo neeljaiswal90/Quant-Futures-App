@@ -18,6 +18,13 @@ format:journal = tsx apps/strategy_runtime/src/operator/formatter.ts
 
 It reads JSONL from stdin and writes human-readable text to stdout. Diagnostics for invalid JSONL or schema failures go to stderr and produce exit code `1`.
 
+Exit-code behavior is strict in V1:
+
+- `0`: every non-empty input line parsed and validated;
+- `1`: at least one non-empty line failed JSON parsing or OBS-01 schema validation.
+
+This makes the formatter suitable for CI and replay parity checks. Ad-hoc tailing workflows should expect stderr diagnostics if a producer writes incomplete or malformed lines.
+
 ## Determinism Rules
 
 - Output uses `event.ts_ns` as a decimal nanosecond string.
@@ -38,6 +45,12 @@ Supported filters:
 
 `--since` accepts only decimal nanosecond timestamps. ISO strings are display-only and are not part of canonical replay formatting.
 
+`--grep` searches the canonical payload JSON after timestamp revival, so timestamp values are searched as decimal nanosecond strings.
+
+Feature-like payloads (`FEATURES`, `STRUCTURE`, `MICROSTRUCTURE`) render their value keys, not the full value map, to keep operator lines compact. Use the raw JSONL with `jq` or a future journal-query command when exact feature values are needed.
+
+Numeric fields render as producer-emitted JavaScript numbers. Producers are responsible for canonical numeric precision if a field participates in byte-identical replay comparisons.
+
 ## Relationship To TUI-01
 
 The formatter uses TUI-01 channel grouping. For example, `QUOTE` renders on `MARKET` by default; `QUOTE_RAW` remains an explicit diagnostic/replay channel and is not the default formatter line label.
@@ -47,6 +60,8 @@ The formatter uses TUI-01 channel grouping. For example, `QUOTE` renders on `MAR
 The formatter parses JSONL with APP-02 timestamp revival and validates events with the OBS-01 schema before rendering.
 
 Invalid events are not rendered. They are reported with stable line-number diagnostics.
+
+JSONL means one complete event object per line. Pretty-printed multi-line JSON is invalid input for the formatter.
 
 ## OBS-00 Fixture Note
 
