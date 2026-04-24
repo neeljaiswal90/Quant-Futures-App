@@ -1,10 +1,21 @@
 export {
   EVENT_CHANNEL_CONTRACTS,
   EVENT_CHANNELS,
+  OPERATOR_SURFACE_SUBSCRIBERS,
+  OPERATOR_SURFACE_SUBSCRIPTION_CONTRACTS,
+  channelContractFor,
   channelsForEventType,
+  channelsForSubscriber,
+  defaultTuiChannels,
+  eventTypesForChannel,
+  validateEventChannelContracts,
   type EmissionCadence,
   type EventChannel,
   type EventChannelContract,
+  type EventChannelContractIssue,
+  type OperatorSurfaceSubscriber,
+  type OperatorSurfaceSubscriptionContract,
+  type ThrottlePolicy,
 } from './channels.js';
 export {
   JOURNAL_EVENT_SCHEMA_VERSION,
