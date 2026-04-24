@@ -13,11 +13,17 @@ import type { UnixNs } from './time.js';
 export type StrategyGateState = 'armed' | 'waiting' | 'blocked';
 export type CandidateStatus = 'proposed' | 'risk_rejected' | 'sized' | 'expired';
 export type RiskGateStatus = 'pass' | 'reject';
+export type CandidateSetupFamily = 'trend_pullback' | 'breakout_retest';
 
 export interface PriceTarget {
   readonly label: 'pt1' | 'pt2' | 'runner';
   readonly price: number;
   readonly quantity_fraction: number;
+}
+
+export interface RewardRiskTarget {
+  readonly label: PriceTarget['label'];
+  readonly reward_risk: number;
 }
 
 export interface StrategyEvaluation {
@@ -35,6 +41,8 @@ export interface StrategyEvaluation {
 export interface Candidate {
   readonly candidate_id: CandidateId;
   readonly strategy_id: StrategyId;
+  readonly setup_type: StrategyId;
+  readonly setup_family: CandidateSetupFamily;
   readonly instrument: InstrumentIdentity;
   readonly feature_snapshot_id: FeatureSnapshotId;
   readonly direction: Direction;
@@ -42,7 +50,9 @@ export interface Candidate {
   readonly proposed_ts_ns: UnixNs;
   readonly entry_price: number;
   readonly stop_price: number;
+  readonly risk_points: number;
   readonly targets: readonly PriceTarget[];
+  readonly reward_risk: readonly RewardRiskTarget[];
   readonly confidence: number;
   readonly config: ConfigLineageRef;
   readonly reasons: readonly string[];

@@ -1,6 +1,7 @@
 import { ACTIVE_STRATEGY_IDS, parseStrategyId, type StrategyId } from '../contracts/strategy-ids.js';
 import type { Direction } from '../contracts/market.js';
 import { generateTrendPullbackLong } from './trend_pullback_long.js';
+import { generateTrendPullbackShort } from './trend_pullback_short.js';
 import type {
   ActiveStrategyGenerator,
   StrategyRegistryEntry,
@@ -23,7 +24,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     display_name: 'Trend Pullback Short',
     direction: 'short',
     setup_family: 'trend_pullback',
-    implementation_status: 'pending_extraction',
+    implementation_status: 'active',
     extraction_ticket: 'STRAT-03',
     synthetic_fixture_id: 'fixture_trend_pullback_short',
     enabled_in_v1: true,
@@ -55,6 +56,7 @@ export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntr
 
 const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
   trend_pullback_long: generateTrendPullbackLong,
+  trend_pullback_short: generateTrendPullbackShort,
 };
 
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {

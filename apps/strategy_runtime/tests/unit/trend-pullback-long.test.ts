@@ -76,16 +76,13 @@ describe('STRAT-02 trend_pullback_long extraction', () => {
     );
   });
 
-  it('is available through the active strategy registry and leaves other strategies pending', () => {
+  it('is available through the active strategy registry', () => {
     const generator = getActiveStrategyGenerator('trend_pullback_long');
 
     expect(generator({
       strategy_id: 'trend_pullback_long',
       snapshot: FIXTURE.snapshot,
     }).candidate?.strategy_id).toBe('trend_pullback_long');
-    expect(() => getActiveStrategyGenerator('trend_pullback_short')).toThrow(
-      'strategy trend_pullback_short is pending extraction',
-    );
   });
 
   it('blocks when the bullish trend and EMA stack gates are not satisfied', () => {
