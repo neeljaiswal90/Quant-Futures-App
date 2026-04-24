@@ -71,7 +71,9 @@ function eventLine(
         exchange_event_ts_ns: ns(exchangeTs),
         sidecar_recv_ts_ns: ns(sidecarRecvTs),
         bid_px: 18500.25,
+        bid_qty: 12,
         ask_px: 18500.5,
+        ask_qty: 9,
         ...extraPayload,
       } satisfies JsonValue,
     }),
@@ -91,12 +93,78 @@ function derivedEventLine(
       ts_ns: ns(ts),
       run_id: makeRunId('run-evt-00'),
       session_id: makeSessionId('2026-04-23-rth'),
-      payload: {
-        note: `derived ${type}`,
-      } satisfies JsonValue,
+      payload: derivedPayload(type),
       ...(causationId === undefined ? {} : { causation_id: makeCausationId(causationId) }),
     }),
   );
+}
+
+function derivedPayload(type: RuntimeEventType): JsonValue {
+  switch (type) {
+    case 'FEATURES':
+      return {
+        feature_snapshot_id: 'feat-1',
+        values: { sigma_pts: 4.5 },
+      };
+    case 'STRAT_EVAL':
+      return {
+        strategy_evaluation_id: 'eval-1',
+        strategy_id: 'trend_pullback_long',
+        feature_snapshot_id: 'feat-1',
+        gate_state: 'armed',
+        score: 0.72,
+        reasons: ['fixture'],
+      };
+    case 'CANDIDATE':
+      return {
+        candidate_id: eventScopedId('candidate', type),
+        strategy_id: 'trend_pullback_long',
+        feature_snapshot_id: 'feat-1',
+        direction: 'long',
+        status: 'proposed',
+        entry_price: 18501,
+        stop_price: 18495,
+        targets: [{ label: 'pt1', price: 18508, quantity_fraction: 0.5 }],
+        confidence: 0.68,
+        reasons: ['fixture'],
+      };
+    case 'RISK_GATE':
+      return {
+        risk_gate_decision_id: 'risk-1',
+        candidate_id: 'candidate-CANDIDATE',
+        status: 'pass',
+        reasons: ['fixture'],
+      };
+    case 'ORDER_INTENT':
+      return {
+        order_intent_id: 'order-1',
+        candidate_id: 'candidate-CANDIDATE',
+        sizing_decision_id: 'sizing-1',
+        side: 'buy',
+        order_type: 'market',
+        quantity: 1,
+        time_in_force: 'ioc',
+      };
+    case 'SIM_FILL':
+      return {
+        fill_id: 'fill-1',
+        order_intent_id: 'order-1',
+        side: 'buy',
+        quantity: 1,
+        price: 18501.25,
+        liquidity: 'taker',
+        slippage_points: 0.25,
+      };
+    default:
+      return {
+        feature_snapshot_id: 'feat-1',
+        values: { fixture: true },
+      };
+  }
+}
+
+function eventScopedId(prefix: string, type: RuntimeEventType): string {
+  return `${prefix}-${type}`;
 }
 
 function systemEventLine(eventId: string, type: RuntimeEventType, ts: bigint): string {
@@ -154,10 +222,10 @@ describe('EVT-00 JSONL journal transport', () => {
       expect(ingested[0]?.event.run_id).toBe('run-evt-00');
       expect(ingested[0]?.event.session_id).toBe('2026-04-23-rth');
       expect(ingested[0]?.event.causation_id).toBe('cause-root');
-      expect((ingested[0]?.event.payload as Record<string, unknown>).exchange_event_ts_ns).toBe(
+      expect((ingested[0]?.event.payload as unknown as Record<string, unknown>).exchange_event_ts_ns).toBe(
         ingested[0]?.event.ts_ns,
       );
-      expect(typeof (ingested[0]?.event.payload as Record<string, unknown>).sidecar_recv_ts_ns).toBe(
+      expect(typeof (ingested[0]?.event.payload as unknown as Record<string, unknown>).sidecar_recv_ts_ns).toBe(
         'bigint',
       );
     } finally {
@@ -289,6 +357,10 @@ describe('EVT-00 JSONL journal transport', () => {
         payload: {
           exchange_event_ts_ns: ns(exchangeTs),
           sidecar_recv_ts_ns: ns(exchangeTs + 2_000_000n),
+          bid_px: 18500.25,
+          bid_qty: 12,
+          ask_px: 18500.5,
+          ask_qty: 9,
         } satisfies JsonValue,
       }),
     );
@@ -329,6 +401,10 @@ describe('EVT-00 JSONL journal transport', () => {
         session_id: makeSessionId('2026-04-23-rth'),
         payload: {
           sidecar_recv_ts_ns: ns(exchangeTs + 2_000_000n),
+          bid_px: 18500.25,
+          bid_qty: 12,
+          ask_px: 18500.5,
+          ask_qty: 9,
         } satisfies JsonValue,
       }),
     );
@@ -347,11 +423,39 @@ describe('EVT-00 JSONL journal transport', () => {
 
     expect(result.events_ingested).toBe(0);
     expect(result.malformed_lines).toBe(1);
-    expect(quarantined[0]).toMatchObject({
-      event_id: 'evt-missing-exchange',
-      event_type: 'QUOTE',
-      error_message: 'source market-data event payload.exchange_event_ts_ns is required',
+    expect(quarantined[0]?.event_id).toBe('evt-missing-exchange');
+    expect(quarantined[0]?.event_type).toBe('QUOTE');
+    expect(quarantined[0]?.error_message).toContain('$.payload.exchange_event_ts_ns is required');
+  });
+
+  it('quarantines schema-invalid payload type mismatches before timestamp invariants', async () => {
+    const directory = makeTempDir();
+    const config = makeTransportConfig(directory);
+    const quarantined: QuarantinedJournalLine[] = [];
+    const ingestor = new JsonlJournalTransportIngestor(config, {
+      onEvent: () => {
+        throw new Error('schema-invalid event should not ingest');
+      },
+      onMalformedLine: (line) => {
+        quarantined.push(line);
+      },
     });
+
+    ensureJournalDir(config);
+    writeFileSync(
+      join(config.journal_dir, 'sidecar-session.jsonl'),
+      eventLine('evt-bad-payload', 1, 'cause-root', { bid_px: '18500.25' }),
+      'utf8',
+    );
+    const result = await ingestor.pollOnce();
+
+    expect(result.events_ingested).toBe(0);
+    expect(result.malformed_lines).toBe(1);
+    expect(quarantined[0]).toMatchObject({
+      event_id: 'evt-bad-payload',
+      event_type: 'QUOTE',
+    });
+    expect(quarantined[0]?.error_message).toContain('$.payload.bid_px must be a finite number');
   });
 
   it('accepts a CANDIDATE derived event with causation_id and matching STRAT_EVAL cause ts_ns', async () => {
@@ -496,8 +600,10 @@ describe('EVT-00 JSONL journal transport', () => {
     expect(quarantined[0]).toMatchObject({
       event_id: 'risk-no-cause',
       event_type: 'RISK_GATE',
-      error_message: 'derived event RISK_GATE requires causation_id',
     });
+    expect(quarantined[0]?.error_message).toContain(
+      '$.causation_id derived event RISK_GATE requires causation_id',
+    );
   });
 
   it('quarantines derived events whose cause is absent from the recent buffer', async () => {

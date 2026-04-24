@@ -11,12 +11,13 @@ import { toJsonLine } from '../serialization.js';
 import type { UnixNs, UnixNsInput } from '../time.js';
 import { ns, reviveTimestampNsFields } from '../time.js';
 import type { RuntimeEventType } from './event-types.js';
+import type { JournalEventPayloadFor } from './payloads.js';
 
 export const JOURNAL_EVENT_SCHEMA_VERSION = 1 as const;
 
 export interface JournalEventEnvelope<
   TType extends RuntimeEventType = RuntimeEventType,
-  TPayload extends JsonValue = JsonValue,
+  TPayload = unknown,
 > {
   readonly schema_version: typeof JOURNAL_EVENT_SCHEMA_VERSION;
   readonly event_id: EventId;
@@ -30,9 +31,14 @@ export interface JournalEventEnvelope<
   readonly config?: ConfigLineageRef;
 }
 
+export type TypedJournalEventEnvelope<TType extends RuntimeEventType = RuntimeEventType> =
+  TType extends RuntimeEventType ? JournalEventEnvelope<TType, JournalEventPayloadFor<TType>> : never;
+
+export type AnyJournalEventEnvelope = TypedJournalEventEnvelope<RuntimeEventType>;
+
 export interface CreateJournalEventEnvelopeInput<
   TType extends RuntimeEventType,
-  TPayload extends JsonValue,
+  TPayload,
 > {
   readonly event_id: EventId;
   readonly type: TType;
@@ -47,7 +53,7 @@ export interface CreateJournalEventEnvelopeInput<
 
 export function createJournalEventEnvelope<
   TType extends RuntimeEventType,
-  TPayload extends JsonValue,
+  TPayload,
 >(input: CreateJournalEventEnvelopeInput<TType, TPayload>): JournalEventEnvelope<TType, TPayload> {
   const event = {
     schema_version: JOURNAL_EVENT_SCHEMA_VERSION,
@@ -65,7 +71,7 @@ export function createJournalEventEnvelope<
   return event;
 }
 
-export function journalEventToJsonLine(event: JournalEventEnvelope): string {
+export function journalEventToJsonLine(event: JournalEventEnvelope<RuntimeEventType, unknown>): string {
   return toJsonLine(event as unknown as JsonValue);
 }
 
