@@ -37,4 +37,4 @@ The fixtures intentionally use fixed nanosecond timestamps, static MNQ instrumen
 - `STRAT-04`: `breakout_retest_long`
 - `STRAT-05`: `breakdown_retest_short`
 
-`ORCH-02` must not treat a registry entry as executable until the entry is promoted by its extraction ticket. As of `STRAT-03`, both trend-pullback strategies are active, while the breakout/retest strategies remain pending.
+`ORCH-02` must not treat a registry entry as executable until the entry is promoted by its extraction ticket. As of `STRAT-04`, both trend-pullback strategies and `breakout_retest_long` are active, while `breakdown_retest_short` remains pending.
