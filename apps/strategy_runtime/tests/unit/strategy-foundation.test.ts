@@ -9,6 +9,7 @@ import {
 } from '../../src/contracts/index.js';
 import {
   getStrategyRegistryEntry,
+  listExecutableStrategyIds,
   listStrategyIdsByDirection,
   listStrategyIdsBySetupFamily,
   listStrategyRegistryEntries,
@@ -106,12 +107,12 @@ describe('STRAT-01 active strategy registry', () => {
     ]);
   });
 
-  it('keeps strategy implementations pending until STRAT-02 through STRAT-05 land', () => {
+  it('keeps only extracted strategies executable', () => {
     expect(listStrategyRegistryEntries()).toEqual([
       expect.objectContaining({
         strategy_id: 'trend_pullback_long',
         extraction_ticket: 'STRAT-02',
-        implementation_status: 'pending_extraction',
+        implementation_status: 'active',
       }),
       expect.objectContaining({
         strategy_id: 'trend_pullback_short',
@@ -129,6 +130,7 @@ describe('STRAT-01 active strategy registry', () => {
         implementation_status: 'pending_extraction',
       }),
     ]);
+    expect(listExecutableStrategyIds()).toEqual(['trend_pullback_long']);
   });
 
   it('keeps the strategy foundation free of legacy imports and nondeterministic helpers', () => {

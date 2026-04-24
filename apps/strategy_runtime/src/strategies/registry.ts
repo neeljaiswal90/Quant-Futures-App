@@ -1,6 +1,11 @@
 import { ACTIVE_STRATEGY_IDS, parseStrategyId, type StrategyId } from '../contracts/strategy-ids.js';
 import type { Direction } from '../contracts/market.js';
-import type { StrategyRegistryEntry, StrategySetupFamily } from './types.js';
+import { generateTrendPullbackLong } from './trend_pullback_long.js';
+import type {
+  ActiveStrategyGenerator,
+  StrategyRegistryEntry,
+  StrategySetupFamily,
+} from './types.js';
 
 const STRATEGY_REGISTRY_ENTRIES = {
   trend_pullback_long: {
@@ -8,7 +13,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     display_name: 'Trend Pullback Long',
     direction: 'long',
     setup_family: 'trend_pullback',
-    implementation_status: 'pending_extraction',
+    implementation_status: 'active',
     extraction_ticket: 'STRAT-02',
     synthetic_fixture_id: 'fixture_trend_pullback_long',
     enabled_in_v1: true,
@@ -48,6 +53,10 @@ const STRATEGY_REGISTRY_ENTRIES = {
 export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntry>> =
   STRATEGY_REGISTRY_ENTRIES;
 
+const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
+  trend_pullback_long: generateTrendPullbackLong,
+};
+
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {
   return ACTIVE_STRATEGY_IDS.map((strategyId) => STRATEGY_REGISTRY[strategyId]);
 }
@@ -70,6 +79,19 @@ export function listStrategyIdsBySetupFamily(
     .map((entry) => entry.strategy_id);
 }
 
+export function listExecutableStrategyIds(): readonly StrategyId[] {
+  return ACTIVE_STRATEGY_IDS.filter((strategyId) => strategyId in ACTIVE_STRATEGY_GENERATORS);
+}
+
+export function getActiveStrategyGenerator(strategyId: StrategyId | string): ActiveStrategyGenerator {
+  const parsed = parseStrategyId(strategyId);
+  const generator = ACTIVE_STRATEGY_GENERATORS[parsed];
+  if (generator === undefined) {
+    throw new Error(`strategy ${parsed} is pending extraction and is not executable`);
+  }
+  return generator;
+}
+
 export function validateStrategyRegistry(): readonly string[] {
   const issues: string[] = [];
   const registeredIds = Object.keys(STRATEGY_REGISTRY).sort();
@@ -86,8 +108,12 @@ export function validateStrategyRegistry(): readonly string[] {
     if (entry.strategy_id !== strategyId) {
       issues.push(`${strategyId} registry entry has mismatched strategy_id ${entry.strategy_id}`);
     }
-    if (entry.implementation_status !== 'pending_extraction') {
-      issues.push(`${strategyId} should remain pending_extraction until its STRAT extraction lands`);
+    const hasGenerator = strategyId in ACTIVE_STRATEGY_GENERATORS;
+    if (entry.implementation_status === 'active' && !hasGenerator) {
+      issues.push(`${strategyId} is active but has no generator`);
+    }
+    if (entry.implementation_status === 'pending_extraction' && hasGenerator) {
+      issues.push(`${strategyId} has a generator but is still pending_extraction`);
     }
   }
 

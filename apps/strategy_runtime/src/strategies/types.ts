@@ -1,5 +1,9 @@
 import type { ConfigLineageRef } from '../contracts/lineage.js';
 import type {
+  Candidate,
+  StrategyEvaluation,
+} from '../contracts/candidate.js';
+import type {
   Bar,
   Direction,
   InstrumentIdentity,
@@ -64,3 +68,12 @@ export interface StrategyEvaluationInput {
   readonly strategy_id: StrategyId;
   readonly snapshot: StrategyFeatureSnapshot;
 }
+
+export interface StrategyGenerationResult {
+  readonly evaluation: StrategyEvaluation;
+  readonly candidate?: Candidate;
+}
+
+export type ActiveStrategyGenerator = (
+  input: StrategyEvaluationInput,
+) => StrategyGenerationResult;
