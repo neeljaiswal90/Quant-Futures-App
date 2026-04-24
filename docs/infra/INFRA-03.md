@@ -1,0 +1,20 @@
+# INFRA-03 Import Guard
+
+INFRA-03 prevents active V1 code from drifting back into the legacy application shell.
+
+The guard scans active TypeScript, JavaScript, and Python files under:
+
+- `apps`
+- `services`
+- `research`
+
+It fails on imports from:
+
+- `legacy_seed`
+- `legacy_reference`
+- old `src/autotrade`
+- `dashboard`
+- `bookmap-addon` or Bookmap modules
+- old `src/core/tradingview` or TradingView modules
+
+`legacy_seed` and `legacy_reference` remain available as read-only source material, but active runtime, sidecar, research, and tests must not import from them. The CI workflow runs `npm run lint`, `npm run build`, `npm test`, and `npm run check:python`.

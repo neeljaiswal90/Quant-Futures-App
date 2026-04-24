@@ -1,0 +1,24 @@
+{
+  "_comment": "MEAS-01 venue-cost config. Per-contract broker commission + CME exchange fees. All amounts USD per side per contract.",
+  "_authority": "trading_app_implementation_plan_v3_1_engineering_handoff.md#51-net-trade-return",
+  "commission_schedule_effective_date": "2026-01-01",
+  "cost_assumption_source": "tradovate-micro-tier-2026-q1 + cme-globex-fee-schedule-2026-01-01",
+  "contracts": {
+    "MNQ": {
+      "commission_per_side_per_contract_usd": 0.4,
+      "exchange_fees_per_side_per_contract_usd": 0.35
+    },
+    "MES": {
+      "commission_per_side_per_contract_usd": 0.4,
+      "exchange_fees_per_side_per_contract_usd": 0.35
+    },
+    "NQ": {
+      "commission_per_side_per_contract_usd": 0.85,
+      "exchange_fees_per_side_per_contract_usd": 1.38
+    },
+    "ES": {
+      "commission_per_side_per_contract_usd": 0.85,
+      "exchange_fees_per_side_per_contract_usd": 1.38
+    }
+  }
+}
