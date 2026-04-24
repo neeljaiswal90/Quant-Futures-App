@@ -7,6 +7,7 @@ import type {
   OrderIntentId,
   PositionId,
   RiskGateDecisionId,
+  SessionId,
   SizingDecisionId,
   StrategyEvaluationId,
 } from '../ids.js';
@@ -168,6 +169,20 @@ export interface RiskGateEventPayload {
   readonly candidate_id: CandidateId;
   readonly status: 'pass' | 'reject';
   readonly reasons: readonly string[];
+  readonly risk_manager_version?: string;
+  readonly risk_policy_hash?: string;
+  readonly session_risk?: {
+    readonly session_id: SessionId;
+    readonly account_ref: string;
+    readonly symbol: string;
+    readonly realized_pnl_usd: number;
+    readonly open_trade_count: number;
+    readonly closed_trade_count: number;
+    readonly rejected_trade_count: number;
+    readonly circuit_breaker_state: 'inactive' | 'active';
+    readonly circuit_breaker_reason?: string;
+    readonly last_transition_ts_ns: UnixNs;
+  };
 }
 
 export interface SizingEventPayload {

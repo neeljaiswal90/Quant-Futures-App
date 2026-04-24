@@ -1,3 +1,4 @@
+export * from './account-risk-arbiter.js';
 export * from './composed-sizer.js';
 export * from './contracts.js';
 export * from './costs.js';

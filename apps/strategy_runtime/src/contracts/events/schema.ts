@@ -447,6 +447,34 @@ function validateRiskGatePayload(
   requireNonEmptyString(record.candidate_id, `${path}.candidate_id`, issues);
   requireEnum(record.status, `${path}.status`, issues, ['pass', 'reject']);
   requireStringArray(record.reasons, `${path}.reasons`, issues);
+  optionalNonEmptyString(record.risk_manager_version, `${path}.risk_manager_version`, issues);
+  optionalNonEmptyString(record.risk_policy_hash, `${path}.risk_policy_hash`, issues);
+  optionalSessionRiskState(record.session_risk, `${path}.session_risk`, issues);
+}
+
+function optionalSessionRiskState(
+  value: unknown,
+  path: string,
+  issues: JournalEventSchemaIssue[],
+): void {
+  if (value === undefined) {
+    return;
+  }
+  const record = requireRecord(value, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.session_id, `${path}.session_id`, issues);
+  requireNonEmptyString(record.account_ref, `${path}.account_ref`, issues);
+  requireNonEmptyString(record.symbol, `${path}.symbol`, issues);
+  requireNumber(record.realized_pnl_usd, `${path}.realized_pnl_usd`, issues);
+  requireNumber(record.open_trade_count, `${path}.open_trade_count`, issues);
+  requireNumber(record.closed_trade_count, `${path}.closed_trade_count`, issues);
+  requireNumber(record.rejected_trade_count, `${path}.rejected_trade_count`, issues);
+  requireEnum(record.circuit_breaker_state, `${path}.circuit_breaker_state`, issues, [
+    'inactive',
+    'active',
+  ]);
+  optionalNonEmptyString(record.circuit_breaker_reason, `${path}.circuit_breaker_reason`, issues);
+  requireTimestamp(record.last_transition_ts_ns, `${path}.last_transition_ts_ns`, issues);
 }
 
 function validateSizingPayload(
