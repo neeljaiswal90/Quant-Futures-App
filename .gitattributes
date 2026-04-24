@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+*.jsonl text eol=lf
+apps/strategy_runtime/tests/fixtures/** text eol=lf
