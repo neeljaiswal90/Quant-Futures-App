@@ -584,6 +584,12 @@ function validateManagementActionPayload(
     'no_op',
   ]);
   requireNonEmptyString(record.reason, `${path}.reason`, issues);
+  optionalNumber(record.new_stop_price, `${path}.new_stop_price`, issues);
+  optionalNumber(record.exit_quantity, `${path}.exit_quantity`, issues);
+  optionalEnum(record.target_label, `${path}.target_label`, issues, ['pt1', 'pt2', 'runner']);
+  optionalNumber(record.exit_price, `${path}.exit_price`, issues);
+  optionalNumber(record.realized_pnl_usd, `${path}.realized_pnl_usd`, issues);
+  optionalNumber(record.realized_r, `${path}.realized_r`, issues);
 }
 
 function validateConfigLineageRef(

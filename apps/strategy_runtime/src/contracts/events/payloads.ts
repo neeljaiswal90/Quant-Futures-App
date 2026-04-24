@@ -239,6 +239,12 @@ export interface ManagementActionEventPayload {
   readonly position_id: PositionId;
   readonly action_type: ManagementActionType;
   readonly reason: string;
+  readonly new_stop_price?: number;
+  readonly exit_quantity?: number;
+  readonly target_label?: 'pt1' | 'pt2' | 'runner';
+  readonly exit_price?: number;
+  readonly realized_pnl_usd?: number;
+  readonly realized_r?: number;
 }
 
 export interface JournalEventPayloadByType {
