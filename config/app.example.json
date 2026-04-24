@@ -28,6 +28,6 @@
   "strategy_configs": {
     "directory": "config/strategies",
     "format": "yaml",
-    "required": false
+    "required": true
   }
 }

@@ -7,6 +7,7 @@ import {
   resolveSecretConfig,
 } from './env.js';
 import { buildConfigLineage } from './hash.js';
+import { loadStrategyRuntimeConfig } from './strategy-config.js';
 import type { EnvRecord, LoadedAppConfig } from './types.js';
 import { parsePublicRuntimeConfig } from './validation.js';
 
@@ -47,10 +48,18 @@ export function loadAppConfig(options: LoadAppConfigOptions = {}): LoadedAppConf
   const { config: envConfig, appliedEnvKeys } = applyPublicEnvOverrides(fileConfig, env);
   const publicConfig = parsePublicRuntimeConfig(envConfig);
   const { secrets, secretEnvKeys } = resolveSecretConfig(env);
+  const strategyConfig = publicConfig.strategy_configs.required
+    ? loadStrategyRuntimeConfig({
+      cwd,
+      directory: publicConfig.strategy_configs.directory,
+      required: true,
+    })
+    : undefined;
 
   return {
     publicConfig,
     secrets,
+    ...(strategyConfig === undefined ? {} : { strategyConfig }),
     lineage: buildConfigLineage(publicConfig),
     source: {
       config_path: configPath,

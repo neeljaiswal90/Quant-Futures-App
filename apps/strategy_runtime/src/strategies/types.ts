@@ -1,4 +1,5 @@
 import type { ConfigLineageRef } from '../contracts/lineage.js';
+import type { StrategyRuntimeConfig } from '../config/index.js';
 import type {
   Candidate,
   StrategyEvaluation,
@@ -67,6 +68,7 @@ export interface StrategyFeatureSnapshot {
 export interface StrategyEvaluationInput {
   readonly strategy_id: StrategyId;
   readonly snapshot: StrategyFeatureSnapshot;
+  readonly strategy_config?: StrategyRuntimeConfig;
 }
 
 export interface StrategyGenerationResult {

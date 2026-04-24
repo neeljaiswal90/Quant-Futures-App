@@ -2,27 +2,23 @@ import type { Candidate, RewardRiskTarget } from '../contracts/candidate.js';
 import type { CandidateId } from '../contracts/ids.js';
 import type { RankEventPayload } from '../contracts/events/payloads.js';
 import type { StrategyId } from '../contracts/strategy-ids.js';
+import {
+  CANDIDATE_RANKING_METHOD,
+  DEFAULT_CANDIDATE_RANKING_CONFIG,
+  getCandidateRankingParameters,
+  type CandidateRankingParameters,
+  type StrategyRuntimeConfig,
+} from '../config/index.js';
 
-export const CANDIDATE_RANKING_METHOD = 'deterministic_v1_confidence_rr_risk_tiebreak_v1' as const;
-
-export const CANDIDATE_RANKING_DEFAULTS = {
-  confidence_weight: 100,
-  pt1_reward_risk_weight: 10,
-  pt2_reward_risk_weight: 2,
-  max_reward_risk_weight: 1,
-  risk_points_penalty_weight: 0.01,
-} as const;
-
-export const STRATEGY_TIE_BREAK_PRIORITY: Readonly<Record<StrategyId, number>> = {
-  trend_pullback_long: 10,
-  trend_pullback_short: 20,
-  breakout_retest_long: 30,
-  breakdown_retest_short: 40,
-} as const;
+export { CANDIDATE_RANKING_METHOD };
+export const CANDIDATE_RANKING_DEFAULTS = DEFAULT_CANDIDATE_RANKING_CONFIG;
+export const STRATEGY_TIE_BREAK_PRIORITY = DEFAULT_CANDIDATE_RANKING_CONFIG.strategy_priority;
 
 export interface CandidateRankingInput {
   readonly candidates: readonly Candidate[];
   readonly limit?: number;
+  readonly strategy_config?: StrategyRuntimeConfig;
+  readonly ranking_config?: CandidateRankingParameters;
 }
 
 export interface CandidateRankingFeatureVector {
@@ -59,6 +55,7 @@ interface CandidateWithRankFeatures {
 }
 
 export function rankCandidates(input: CandidateRankingInput): CandidateRankingResult {
+  const rankingConfig = input.ranking_config ?? getCandidateRankingParameters(input.strategy_config);
   const proposedCandidates = input.candidates.filter((candidate) => candidate.status === 'proposed');
   const ignoredCandidateIds = input.candidates
     .filter((candidate) => candidate.status !== 'proposed')
@@ -66,8 +63,8 @@ export function rankCandidates(input: CandidateRankingInput): CandidateRankingRe
     .sort(compareCandidateIds);
 
   const ranked = proposedCandidates
-    .map(toCandidateWithRankFeatures)
-    .sort(compareCandidatesForRanking)
+    .map((candidate) => toCandidateWithRankFeatures(candidate, rankingConfig))
+    .sort((left, right) => compareCandidatesForRanking(left, right, rankingConfig))
     .slice(0, normalizeLimit(input.limit))
     .map((rankedCandidate, index): RankedCandidate => ({
       rank: index + 1,
@@ -103,16 +100,22 @@ export function toRankEventPayload(result: CandidateRankingResult): RankEventPay
   };
 }
 
-function toCandidateWithRankFeatures(candidate: Candidate): CandidateWithRankFeatures {
-  const features = extractRankingFeatures(candidate);
+function toCandidateWithRankFeatures(
+  candidate: Candidate,
+  rankingConfig: CandidateRankingParameters,
+): CandidateWithRankFeatures {
+  const features = extractRankingFeatures(candidate, rankingConfig);
   return {
     candidate,
     features,
-    score: computeCandidateRankingScore(features),
+    score: computeCandidateRankingScore(features, rankingConfig),
   };
 }
 
-function extractRankingFeatures(candidate: Candidate): CandidateRankingFeatureVector {
+function extractRankingFeatures(
+  candidate: Candidate,
+  rankingConfig: CandidateRankingParameters,
+): CandidateRankingFeatureVector {
   const pt1RewardRisk = getRewardRisk(candidate.reward_risk, 'pt1');
   const pt2RewardRisk = getRewardRisk(candidate.reward_risk, 'pt2');
   const maxRewardRisk = candidate.reward_risk.reduce(
@@ -126,25 +129,30 @@ function extractRankingFeatures(candidate: Candidate): CandidateRankingFeatureVe
     pt2_reward_risk: pt2RewardRisk,
     max_reward_risk: maxRewardRisk,
     risk_points: normalizeFiniteNumber(candidate.risk_points),
-    strategy_priority: STRATEGY_TIE_BREAK_PRIORITY[candidate.strategy_id],
+    strategy_priority: rankingConfig.strategy_priority[candidate.strategy_id],
     candidate_id: candidate.candidate_id,
   };
 }
 
-function computeCandidateRankingScore(features: CandidateRankingFeatureVector): number {
+function computeCandidateRankingScore(
+  features: CandidateRankingFeatureVector,
+  rankingConfig: CandidateRankingParameters,
+): number {
   return round6(
-    features.confidence * CANDIDATE_RANKING_DEFAULTS.confidence_weight
-    + features.pt1_reward_risk * CANDIDATE_RANKING_DEFAULTS.pt1_reward_risk_weight
-    + features.pt2_reward_risk * CANDIDATE_RANKING_DEFAULTS.pt2_reward_risk_weight
-    + features.max_reward_risk * CANDIDATE_RANKING_DEFAULTS.max_reward_risk_weight
-    - features.risk_points * CANDIDATE_RANKING_DEFAULTS.risk_points_penalty_weight,
+    features.confidence * rankingConfig.confidence_weight
+    + features.pt1_reward_risk * rankingConfig.pt1_reward_risk_weight
+    + features.pt2_reward_risk * rankingConfig.pt2_reward_risk_weight
+    + features.max_reward_risk * rankingConfig.max_reward_risk_weight
+    - features.risk_points * rankingConfig.risk_points_penalty_weight,
   );
 }
 
 function compareCandidatesForRanking(
   left: CandidateWithRankFeatures,
   right: CandidateWithRankFeatures,
+  rankingConfig: CandidateRankingParameters,
 ): number {
+  void rankingConfig;
   return (
     compareDescending(left.score, right.score)
     || compareDescending(left.features.confidence, right.features.confidence)

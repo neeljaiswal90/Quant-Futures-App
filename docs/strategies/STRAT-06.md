@@ -56,6 +56,6 @@ The helper preserves candidate IDs exactly as journaled and does not infer missi
 
 Only `status = proposed` candidates are ranked. Non-proposed candidates are returned in `ignored_candidate_ids` using deterministic candidate ID order.
 
-## STRAT-07 Migration Note
+## STRAT-07 Config Surface
 
-The score weights and fixed strategy priority are constants for this extraction pass. `STRAT-07` should move them into typed strategy config while preserving these defaults as the initial baseline.
+The score weights and fixed strategy priority are now represented in `config/strategies/shared.yaml`. Pure-function callers can still omit a strategy config bundle and receive the committed baseline defaults.

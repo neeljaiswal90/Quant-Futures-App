@@ -1,0 +1,238 @@
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  ConfigValidationError,
+  DEFAULT_STRATEGY_RUNTIME_CONFIG,
+  loadAppConfig,
+  loadStrategyRuntimeConfig,
+  type PublicRuntimeConfig,
+  type StrategyRuntimeConfig,
+} from '../../src/config/index.js';
+import { makeCandidateId } from '../../src/contracts/index.js';
+import {
+  generateBreakoutRetestLong,
+  rankCandidates,
+} from '../../src/strategies/index.js';
+import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
+
+const EXPECTED_STRATEGY_CONFIG_HASH =
+  'b7fb1ef8a13c2fa094470c91d0a2a92e6df4327e279ce6640ea882144b347536';
+
+const STRATEGY_CONFIG_FILES = [
+  'shared.yaml',
+  'trend_pullback_long.yaml',
+  'trend_pullback_short.yaml',
+  'breakout_retest_long.yaml',
+  'breakdown_retest_short.yaml',
+] as const;
+
+const tempDirs: string[] = [];
+
+function makeTempRoot() {
+  const directory = mkdtempSync(join(tmpdir(), 'quant-strategy-config-'));
+  tempDirs.push(directory);
+  return directory;
+}
+
+function copyStrategyConfigs(destination: string) {
+  for (const file of STRATEGY_CONFIG_FILES) {
+    copyFileSync(join(process.cwd(), 'config/strategies', file), join(destination, file));
+  }
+}
+
+function validAppConfig(strategyConfigDirectory: string): PublicRuntimeConfig {
+  return {
+    version: 1,
+    app: {
+      environment: 'test',
+      log_level: 'info',
+    },
+    runtime: {
+      mode: 'simulation',
+      instrument: 'MNQ',
+      exchange: 'CME',
+      timezone: 'America/Chicago',
+    },
+    data: {
+      live_provider: 'rithmic',
+      historical_provider: 'databento',
+    },
+    execution: {
+      adapter: 'simulated',
+    },
+    replay: {
+      seed: 'strategy-config-test-seed',
+      require_config_hash_match: true,
+    },
+    paths: {
+      journal_dir: 'journals',
+      data_dir: 'data',
+    },
+    strategy_configs: {
+      directory: strategyConfigDirectory,
+      format: 'yaml',
+      required: true,
+    },
+  };
+}
+
+function withStrategyConfig(
+  overrides: Partial<StrategyRuntimeConfig>,
+): StrategyRuntimeConfig {
+  return {
+    ...DEFAULT_STRATEGY_RUNTIME_CONFIG,
+    ...overrides,
+  };
+}
+
+describe('STRAT-07 strategy config surface', () => {
+  afterEach(() => {
+    for (const directory of tempDirs.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('loads the committed strategy YAML files with stable lineage hash output', () => {
+    const config = loadStrategyRuntimeConfig({
+      cwd: process.cwd(),
+      directory: 'config/strategies',
+      required: true,
+    });
+
+    expect(config.version).toBe(1);
+    expect(config.strategies.breakout_retest_long.max_retest_distance_sigma).toBe(0.85);
+    expect(config.strategies.breakdown_retest_short.max_retest_distance_sigma).toBe(1.15);
+    expect(config.ranking.strategy_priority).toEqual({
+      trend_pullback_long: 10,
+      trend_pullback_short: 20,
+      breakout_retest_long: 30,
+      breakdown_retest_short: 40,
+    });
+    expect(config.lineage.strategy_config_hash).toBe(EXPECTED_STRATEGY_CONFIG_HASH);
+    expect(config.lineage.canonical_strategy_config_json).toContain(
+      '"method":"deterministic_v1_confidence_rr_risk_tiebreak_v1"',
+    );
+  });
+
+  it('loads strategy configs during app startup when required=true', () => {
+    const root = makeTempRoot();
+    const configPath = join(root, 'app.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify(validAppConfig('config/strategies'), null, 2),
+    );
+
+    const loaded = loadAppConfig({
+      cwd: process.cwd(),
+      configPath,
+      env: {},
+    });
+
+    expect(loaded.strategyConfig?.lineage.strategy_config_hash).toBe(EXPECTED_STRATEGY_CONFIG_HASH);
+    expect(loaded.lineage.config_hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('rejects unknown fields and missing required numeric thresholds with clear paths', () => {
+    const root = makeTempRoot();
+    copyStrategyConfigs(root);
+    writeFileSync(join(root, 'trend_pullback_long.yaml'), [
+      'version: 1',
+      'strategy_id: trend_pullback_long',
+      'parameters:',
+      '  z_ema9_min: 0.15',
+      '  z_ema9_max: 1.25',
+      '  pullback_ratio_min: 0.25',
+      '  pullback_ratio_max: 0.62',
+      '  flow_confirmation_min: 0.2',
+      '  entry_half_band_sigma: 0.1',
+      '  stop_sigma_multiple: 1.05',
+      '  minimum_target_rr: 1',
+      '  default_target_1_rr: 2',
+      '  unexpected_knob: 99',
+      '  base_confidence_score: 8.1',
+      '',
+    ].join('\n'));
+
+    expect(() => loadStrategyRuntimeConfig({
+      directory: root,
+      required: true,
+    })).toThrow(ConfigValidationError);
+
+    try {
+      loadStrategyRuntimeConfig({ directory: root, required: true });
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigValidationError);
+      expect((error as ConfigValidationError).issues).toEqual(
+        expect.arrayContaining([
+          { path: '$.parameters.default_target_2_rr', message: 'required finite number is missing or invalid' },
+          { path: '$.parameters.unexpected_knob', message: 'unknown field' },
+        ]),
+      );
+    }
+  });
+
+  it('lets strategy generators consume loaded threshold overrides explicitly', () => {
+    const strictConfig = withStrategyConfig({
+      strategies: {
+        ...DEFAULT_STRATEGY_RUNTIME_CONFIG.strategies,
+        breakout_retest_long: {
+          ...DEFAULT_STRATEGY_RUNTIME_CONFIG.strategies.breakout_retest_long,
+          flow_confirmation_min: 0.99,
+        },
+      },
+    });
+
+    const result = generateBreakoutRetestLong({
+      strategy_id: 'breakout_retest_long',
+      snapshot: STRATEGY_SYNTHETIC_FIXTURES.breakout_retest_long.snapshot,
+      strategy_config: strictConfig,
+    });
+
+    expect(result.candidate).toBeUndefined();
+    expect(result.evaluation.reasons[0]).toBe(
+      'breakout_retest_long:flow_confirmation_below_threshold',
+    );
+  });
+
+  it('lets ranking consume configured tie-break priority explicitly', () => {
+    const baseCandidate = generateBreakoutRetestLong({
+      strategy_id: 'breakout_retest_long',
+      snapshot: STRATEGY_SYNTHETIC_FIXTURES.breakout_retest_long.snapshot,
+    }).candidate;
+    if (baseCandidate === undefined) {
+      throw new Error('expected breakout fixture candidate');
+    }
+    const longCandidate = {
+      ...baseCandidate,
+      candidate_id: makeCandidateId('candidate-long'),
+      strategy_id: 'trend_pullback_long' as const,
+      setup_type: 'trend_pullback_long' as const,
+    };
+    const shortCandidate = {
+      ...baseCandidate,
+      candidate_id: makeCandidateId('candidate-short'),
+      strategy_id: 'breakdown_retest_short' as const,
+      setup_type: 'breakdown_retest_short' as const,
+    };
+
+    const defaultRank = rankCandidates({
+      candidates: [shortCandidate, longCandidate],
+    });
+    const configuredRank = rankCandidates({
+      candidates: [shortCandidate, longCandidate],
+      ranking_config: {
+        ...DEFAULT_STRATEGY_RUNTIME_CONFIG.ranking,
+        strategy_priority: {
+          ...DEFAULT_STRATEGY_RUNTIME_CONFIG.ranking.strategy_priority,
+          trend_pullback_long: 40,
+          breakdown_retest_short: 1,
+        },
+      },
+    });
+
+    expect(defaultRank.ranked_candidate_ids).toEqual(['candidate-long', 'candidate-short']);
+    expect(configuredRank.ranked_candidate_ids).toEqual(['candidate-short', 'candidate-long']);
+  });
+});

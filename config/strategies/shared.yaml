@@ -1,0 +1,13 @@
+version: 1
+ranking:
+  method: deterministic_v1_confidence_rr_risk_tiebreak_v1
+  confidence_weight: 100
+  pt1_reward_risk_weight: 10
+  pt2_reward_risk_weight: 2
+  max_reward_risk_weight: 1
+  risk_points_penalty_weight: 0.01
+  strategy_priority:
+    trend_pullback_long: 10
+    trend_pullback_short: 20
+    breakout_retest_long: 30
+    breakdown_retest_short: 40
