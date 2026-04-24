@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   journalEventFromJsonLine,
@@ -16,14 +17,8 @@ import {
   type QuarantinedJournalLine,
 } from '../../src/transport/index.js';
 
-const FIXTURE_DIR = join(
-  process.cwd(),
-  'apps',
-  'strategy_runtime',
-  'tests',
-  'fixtures',
-  'obs00',
-);
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_DIR = join(TEST_DIR, '..', 'fixtures', 'obs00');
 const JOURNAL_PATH = join(FIXTURE_DIR, 'mini-journal.jsonl');
 const MANIFEST_PATH = join(FIXTURE_DIR, 'manifest.json');
 const REQUIRED_EVENT_TYPES: readonly RuntimeEventType[] = [
@@ -59,6 +54,8 @@ interface Obs00Manifest {
   readonly journal_file: string;
   readonly schema_version: number;
   readonly event_count: number;
+  readonly first_event_ts_ns: string;
+  readonly last_event_ts_ns: string;
   readonly journal_sha256_lf: string;
   readonly redaction_statement: string;
   readonly event_types: readonly string[];
@@ -85,6 +82,8 @@ describe('OBS-00 mini-journal fixture', () => {
     expect(manifest.fixture_id).toBe('obs00-mini-journal-v1');
     expect(manifest.journal_file).toBe('mini-journal.jsonl');
     expect(manifest.schema_version).toBe(1);
+    expect(manifest.first_event_ts_ns).toBe('1700000000000000000');
+    expect(manifest.last_event_ts_ns).toBe('1700000001361000000');
     expect(fixtureLines()).toHaveLength(manifest.event_count);
     expect(checksum).toBe(manifest.journal_sha256_lf);
     expect(manifest.redaction_statement).toContain('No credentials');
@@ -122,6 +121,22 @@ describe('OBS-00 mini-journal fixture', () => {
     expect(first.stdout).toContain(' BOOK_REBUILD ');
   });
 
+  it('supports fixture-backed formatter filters for candidate, fill, and position slices', () => {
+    const result = formatJournalJsonl(readFixtureJournal(), {
+      color: false,
+      only_types: ['CANDIDATE', 'POSITION', 'SIM_FILL'],
+    });
+    const lines = result.stdout.trimEnd().split('\n');
+
+    expect(result.exit_code).toBe(0);
+    expect(lines).toHaveLength(3);
+    expect(lines.map((line) => line.split(' event=')[1]?.split(' ')[0])).toEqual([
+      'candidate-1',
+      'fill-1',
+      'position-1',
+    ]);
+  });
+
   it('ingests through the JSONL transport without recomputing or quarantining events', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'qfa-obs00-fixture-'));
     tempDirectories.push(directory);
@@ -144,6 +159,9 @@ describe('OBS-00 mini-journal fixture', () => {
     expect(result.events_ingested).toBe(readManifest().event_count);
     expect(result.malformed_lines).toBe(0);
     expect(quarantined).toEqual([]);
+    expect(ingested.map((event) => event.event.event_id)).toEqual(
+      fixtureLines().map((line) => journalEventFromJsonLine(line).event_id),
+    );
     expect(ingested.map((event) => event.event.event_id)).toContain('candidate-1');
     expect(ingested.map((event) => event.event.event_id)).toContain('fill-1');
     expect(ingested.map((event) => event.event.event_id)).toContain('book-rebuild-1');

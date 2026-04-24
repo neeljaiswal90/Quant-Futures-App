@@ -4,6 +4,8 @@
   "journal_file": "mini-journal.jsonl",
   "schema_version": 1,
   "event_count": 24,
+  "first_event_ts_ns": "1700000000000000000",
+  "last_event_ts_ns": "1700000001361000000",
   "journal_sha256_lf": "619b5cedbef84bbfc53eefda4fd7e92533069fb524c286749537e6d71c102fe4",
   "source_file": "April 23 2026 Rithmic soak run summary; raw vendor capture not committed",
   "extraction_range": {
