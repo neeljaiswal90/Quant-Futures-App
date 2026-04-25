@@ -1,0 +1,30 @@
+version: 1
+instrument_root: MNQ
+exchange: CME
+timezone: America/New_York
+policy:
+  block_new_entries_before_cutover_minutes: 15
+  block_new_entries_after_cutover_minutes: 15
+  flatten_before_cutover_minutes: 5
+contract_month_codes:
+  H: March
+  M: June
+  U: September
+  Z: December
+periods:
+  mnqm6_to_mnqu6:
+    front_contract: MNQM6
+    next_contract: MNQU6
+    roll_start_ts_ns: "1780666200000000000"
+    cutover_ts_ns: "1781271000000000000"
+    roll_end_ts_ns: "1781899200000000000"
+    expiry_ts_ns: "1781875800000000000"
+    policy_note: June_2026_example_roll_window
+  mnqu6_to_mnqz6:
+    front_contract: MNQU6
+    next_contract: MNQZ6
+    roll_start_ts_ns: "1788528600000000000"
+    cutover_ts_ns: "1789133400000000000"
+    roll_end_ts_ns: "1789761600000000000"
+    expiry_ts_ns: "1789738200000000000"
+    policy_note: September_2026_example_roll_window
