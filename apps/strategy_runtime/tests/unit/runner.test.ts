@@ -5,10 +5,12 @@ import { loadAppConfig } from '../../src/config/index.js';
 import {
   createJournalEventEnvelope,
   makeEventId,
+  makeFeatureSnapshotId,
   makeRunId,
   makeSessionId,
   ns,
   stableJsonStringify,
+  validateJournalEventEnvelope,
   type JournalEventEnvelope,
   type JournalEventPayloadFor,
   type JsonValue,
@@ -29,9 +31,15 @@ import {
 import {
   STRATEGY_SYNTHETIC_FIXTURES,
 } from '../fixtures/strategies/synthetic-feature-snapshots.js';
+import type { StrategyFeatureSnapshot } from '../../src/strategies/index.js';
 
 const RUN_ID = makeRunId('run-orch-02');
 const SESSION_ID = makeSessionId('2026-04-23-rth');
+const RTH_TS = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot.created_ts_ns;
+const ETH_TS = ns('1776983400000000000');
+const MAINTENANCE_TS = ns('1776979800000000000');
+const ROLL_BLOCK_TS = ns('1781271600000000000');
+const ROLL_FLATTEN_TS = ns('1781270760000000000');
 
 function createRunner(options: {
   readonly initialOpenTradeCount?: number;
@@ -101,6 +109,29 @@ function sourceQuoteEvent(
   });
 }
 
+function snapshotAt(input: {
+  readonly id: string;
+  readonly sourceEventId: string;
+  readonly tsNs: ReturnType<typeof ns>;
+  readonly sessionPhase?: StrategyFeatureSnapshot['session']['phase'];
+  readonly isRth?: boolean;
+  readonly isRollBlock?: boolean;
+}): StrategyFeatureSnapshot {
+  const base = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+  return {
+    ...base,
+    feature_snapshot_id: makeFeatureSnapshotId(input.id),
+    source_event_id: makeEventId(input.sourceEventId),
+    created_ts_ns: input.tsNs,
+    session: {
+      ...base.session,
+      phase: input.sessionPhase ?? base.session.phase,
+      is_rth: input.isRth ?? base.session.is_rth,
+      is_roll_block: input.isRollBlock ?? base.session.is_roll_block,
+    },
+  };
+}
+
 function listOrchestrationSourceFiles(directory = join(process.cwd(), 'apps/strategy_runtime/src/orchestration')): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -137,6 +168,7 @@ describe('ORCH-02 deterministic runner loop', () => {
 
     expect(published.map((event) => event.type)).toEqual([
       'QUOTE',
+      'SESSION_PHASE',
       'FEATURES',
       'STRAT_EVAL',
       'CANDIDATE',
@@ -155,6 +187,18 @@ describe('ORCH-02 deterministic runner loop', () => {
         .filter((event) => event.type !== 'QUOTE')
         .every((event) => BigInt(event.ts_ns) === BigInt(snapshot.created_ts_ns)),
     ).toBe(true);
+    expect(result.session_phase_event?.payload).toMatchObject({
+      phase: 'rth',
+      session_phase: 'rth',
+      trading_date: '2026-04-23',
+      candidate_eligible: true,
+      should_flatten: false,
+    });
+    expect(result.mnq_eligibility).toMatchObject({
+      session_phase: 'rth',
+      candidate_eligible: true,
+      active_contract: 'MNQM6',
+    });
     expect(result.candidate_events[0]!.payload.strategy_config_hash).toBe(
       container.config.strategyConfig?.lineage.strategy_config_hash,
     );
@@ -168,6 +212,183 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.position_events[0]!.payload.management_profile_hash).toBe(
       container.config.managementProfiles?.profiles.trend_pullback_long.profile_hash,
     );
+  });
+
+  it('blocks candidates outside RTH with stable STRAT_EVAL reasons', async () => {
+    const { runner } = createRunner();
+    const snapshot = snapshotAt({
+      id: 'fixture-eth-blocked',
+      sourceEventId: 'source-eth-blocked',
+      tsNs: ETH_TS,
+      sessionPhase: 'pre_open',
+      isRth: false,
+    });
+
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id), ETH_TS));
+    const result = await runner.processFeatureSnapshot(snapshot);
+
+    expect(result.mnq_eligibility).toMatchObject({
+      session_phase: 'eth',
+      candidate_eligible: false,
+      block_reason: 'outside_rth',
+    });
+    expect(result.candidate_events).toEqual([]);
+    expect(result.sizing_events).toEqual([]);
+    expect(result.strategy_evaluation_events).toHaveLength(4);
+    expect(result.strategy_evaluation_events.every((event) => (
+      event.payload.gate_state === 'blocked' &&
+      event.payload.reasons.includes('mnq_eligibility:outside_rth')
+    ))).toBe(true);
+    expect(result.rank_event.payload.ranked_candidate_ids).toEqual([]);
+  });
+
+  it('emits SESSION_PHASE for maintenance halt and suppresses duplicate phase ticks', async () => {
+    const { runner } = createRunner();
+    const first = snapshotAt({
+      id: 'fixture-maintenance-1',
+      sourceEventId: 'source-maintenance-1',
+      tsNs: MAINTENANCE_TS,
+      sessionPhase: 'maintenance',
+      isRth: false,
+    });
+    const second = snapshotAt({
+      id: 'fixture-maintenance-2',
+      sourceEventId: 'source-maintenance-2',
+      tsNs: ns(BigInt(MAINTENANCE_TS) + 60_000_000_000n),
+      sessionPhase: 'maintenance',
+      isRth: false,
+    });
+
+    await runner.publishExternalEvent(sourceQuoteEvent(String(first.source_event_id), first.created_ts_ns));
+    const firstResult = await runner.processFeatureSnapshot(first);
+    await runner.publishExternalEvent(sourceQuoteEvent(String(second.source_event_id), second.created_ts_ns));
+    const secondResult = await runner.processFeatureSnapshot(second);
+
+    expect(firstResult.session_phase_event?.payload).toMatchObject({
+      phase: 'maintenance',
+      session_phase: 'maintenance',
+      block_reason: 'maintenance_halt',
+      candidate_eligible: false,
+    });
+    expect(firstResult.session_phase_event?.causation_id).toBe(first.source_event_id);
+    expect(firstResult.session_phase_event?.ts_ns).toBe(first.created_ts_ns);
+    expect(firstResult.candidate_events).toEqual([]);
+    expect(secondResult.session_phase_event).toBeUndefined();
+    expect(secondResult.candidate_events).toEqual([]);
+  });
+
+  it('emits roll block and flatten advisories only on meaningful transitions', async () => {
+    const { runner } = createRunner();
+    const block = snapshotAt({
+      id: 'fixture-roll-block',
+      sourceEventId: 'source-roll-block',
+      tsNs: ROLL_BLOCK_TS,
+      isRollBlock: true,
+    });
+    const sameBlock = snapshotAt({
+      id: 'fixture-roll-block-repeat',
+      sourceEventId: 'source-roll-block-repeat',
+      tsNs: ns(BigInt(ROLL_BLOCK_TS) + 60_000_000_000n),
+      isRollBlock: true,
+    });
+    const flatten = snapshotAt({
+      id: 'fixture-roll-flatten',
+      sourceEventId: 'source-roll-flatten',
+      tsNs: ROLL_FLATTEN_TS,
+      sessionPhase: 'pre_open',
+      isRth: false,
+      isRollBlock: true,
+    });
+
+    await runner.publishExternalEvent(sourceQuoteEvent(String(block.source_event_id), block.created_ts_ns));
+    const blockResult = await runner.processFeatureSnapshot(block);
+    await runner.publishExternalEvent(sourceQuoteEvent(String(sameBlock.source_event_id), sameBlock.created_ts_ns));
+    const repeatResult = await runner.processFeatureSnapshot(sameBlock);
+    await runner.publishExternalEvent(sourceQuoteEvent(String(flatten.source_event_id), flatten.created_ts_ns));
+    const flattenResult = await runner.processFeatureSnapshot(flatten);
+
+    expect(blockResult.roll_advisory_event?.payload).toMatchObject({
+      advisory: 'block_new_entries',
+      active_symbol: 'MNQU6',
+      next_symbol: 'MNQU6',
+      roll_phase: 'roll_block',
+      candidate_eligible: false,
+      block_reason: 'roll_block_window',
+      should_flatten: false,
+    });
+    expect(blockResult.candidate_events).toEqual([]);
+    expect(repeatResult.roll_advisory_event).toBeUndefined();
+    expect(flattenResult.roll_advisory_event?.payload).toMatchObject({
+      advisory: 'flatten_required',
+      active_symbol: 'MNQM6',
+      next_symbol: 'MNQU6',
+      roll_phase: 'roll_block',
+      block_reason: 'outside_rth',
+      should_flatten: true,
+    });
+    expect(flattenResult.roll_advisory_event?.causation_id).toBe(flatten.source_event_id);
+    expect(flattenResult.roll_advisory_event?.ts_ns).toBe(flatten.created_ts_ns);
+  });
+
+  it('keeps existing-position management active while new entries are blocked', async () => {
+    const { runner } = createRunner();
+    const openingSnapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    await runner.publishExternalEvent(sourceQuoteEvent(String(openingSnapshot.source_event_id)));
+    const opening = await runner.processFeatureSnapshot(openingSnapshot);
+    const openPosition = opening.open_positions[0]!;
+    const blockedSnapshot = snapshotAt({
+      id: 'fixture-eth-management-block',
+      sourceEventId: 'source-eth-management-block',
+      tsNs: ETH_TS,
+      sessionPhase: 'pre_open',
+      isRth: false,
+    });
+    const blockedSource = await runner.publishExternalEvent(
+      sourceQuoteEvent(String(blockedSnapshot.source_event_id), blockedSnapshot.created_ts_ns),
+    );
+    const blocked = await runner.processFeatureSnapshot(blockedSnapshot);
+    const management = await runner.processManagementTick({
+      cause_event: blockedSource,
+      mark_price: openPosition.entry_price,
+      high_price: openPosition.entry_price,
+      low_price: openPosition.entry_price,
+      authority: 'authoritative',
+    });
+
+    expect(blocked.candidate_events).toEqual([]);
+    expect(blocked.strategy_evaluation_events[0]!.payload.reasons).toContain(
+      'mnq_eligibility:outside_rth',
+    );
+    expect(management.management_tick_events).toHaveLength(1);
+    expect(management.management_tick_events[0]!.ts_ns).toBe(blockedSnapshot.created_ts_ns);
+    expect(management.management_results).toHaveLength(1);
+  });
+
+  it('emits OBS-valid and causation-linked session and roll events', async () => {
+    const { runner } = createRunner();
+    const snapshot = snapshotAt({
+      id: 'fixture-roll-schema',
+      sourceEventId: 'source-roll-schema',
+      tsNs: ROLL_BLOCK_TS,
+      isRollBlock: true,
+    });
+
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id), snapshot.created_ts_ns));
+    const result = await runner.processFeatureSnapshot(snapshot);
+    const emitted: JournalEventEnvelope[] = [];
+    if (result.session_phase_event !== undefined) {
+      emitted.push(result.session_phase_event);
+    }
+    if (result.roll_advisory_event !== undefined) {
+      emitted.push(result.roll_advisory_event);
+    }
+
+    expect(emitted).toHaveLength(2);
+    for (const event of emitted) {
+      expect(validateJournalEventEnvelope(event)).toMatchObject({ ok: true, issues: [] });
+      expect(event.causation_id).toBe(snapshot.source_event_id);
+      expect(event.ts_ns).toBe(snapshot.created_ts_ns);
+    }
   });
 
   it('routes risk rejection without submitting simulated orders', async () => {
