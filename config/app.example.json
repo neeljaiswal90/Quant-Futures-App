@@ -29,5 +29,15 @@
     "directory": "config/strategies",
     "format": "yaml",
     "required": true
+  },
+  "risk_config": {
+    "path": "config/risk/risk-policy.yaml",
+    "format": "yaml",
+    "required": true
+  },
+  "management_profiles": {
+    "path": "config/management/profiles.yaml",
+    "format": "yaml",
+    "required": true
   }
 }

@@ -14,6 +14,7 @@ const LIVE_DATA_PROVIDERS = ['rithmic'] as const;
 const HISTORICAL_DATA_PROVIDERS = ['databento'] as const;
 const EXECUTION_ADAPTERS = ['simulated'] as const;
 const STRATEGY_CONFIG_FORMATS = ['yaml'] as const;
+const RUNTIME_CONFIG_FORMATS = ['yaml'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -116,7 +117,18 @@ export function parsePublicRuntimeConfig(input: unknown): PublicRuntimeConfig {
   checkUnknownKeys(
     input,
     '',
-    ['version', 'app', 'runtime', 'data', 'execution', 'replay', 'paths', 'strategy_configs'],
+    [
+      'version',
+      'app',
+      'runtime',
+      'data',
+      'execution',
+      'replay',
+      'paths',
+      'strategy_configs',
+      'risk_config',
+      'management_profiles',
+    ],
     issues,
   );
 
@@ -142,6 +154,12 @@ export function parsePublicRuntimeConfig(input: unknown): PublicRuntimeConfig {
 
   const strategyConfigs = readRecord(input, 'strategy_configs', '', issues);
   checkUnknownKeys(strategyConfigs, 'strategy_configs', ['directory', 'format', 'required'], issues);
+
+  const riskConfig = readRecord(input, 'risk_config', '', issues);
+  checkUnknownKeys(riskConfig, 'risk_config', ['path', 'format', 'required'], issues);
+
+  const managementProfiles = readRecord(input, 'management_profiles', '', issues);
+  checkUnknownKeys(managementProfiles, 'management_profiles', ['path', 'format', 'required'], issues);
 
   const config: PublicRuntimeConfig = {
     version,
@@ -191,6 +209,22 @@ export function parsePublicRuntimeConfig(input: unknown): PublicRuntimeConfig {
         issues,
       ),
       required: readBoolean(strategyConfigs, 'required', 'strategy_configs', issues),
+    },
+    risk_config: {
+      path: readString(riskConfig, 'path', 'risk_config', issues),
+      format: readLiteral(riskConfig, 'format', 'risk_config', RUNTIME_CONFIG_FORMATS, issues),
+      required: readBoolean(riskConfig, 'required', 'risk_config', issues),
+    },
+    management_profiles: {
+      path: readString(managementProfiles, 'path', 'management_profiles', issues),
+      format: readLiteral(
+        managementProfiles,
+        'format',
+        'management_profiles',
+        RUNTIME_CONFIG_FORMATS,
+        issues,
+      ),
+      required: readBoolean(managementProfiles, 'required', 'management_profiles', issues),
     },
   };
 

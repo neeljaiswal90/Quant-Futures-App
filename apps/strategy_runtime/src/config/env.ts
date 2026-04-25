@@ -24,6 +24,10 @@ export const PUBLIC_CONFIG_ENV_KEYS = [
   'QFA_STRATEGY_CONFIG_DIR',
   'QFA_STRATEGY_CONFIG_FORMAT',
   'QFA_REQUIRE_STRATEGY_CONFIGS',
+  'QFA_RISK_CONFIG_PATH',
+  'QFA_REQUIRE_RISK_CONFIG',
+  'QFA_MANAGEMENT_PROFILES_PATH',
+  'QFA_REQUIRE_MANAGEMENT_PROFILES',
 ] as const;
 
 export const SECRET_ENV_KEYS = [
@@ -44,6 +48,8 @@ function cloneConfig(config: PublicRuntimeConfig): PublicRuntimeConfig {
     replay: { ...config.replay },
     paths: { ...config.paths },
     strategy_configs: { ...config.strategy_configs },
+    risk_config: { ...config.risk_config },
+    management_profiles: { ...config.management_profiles },
   };
 }
 
@@ -150,6 +156,18 @@ export function applyPublicEnvOverrides(
   });
   setBoolean('QFA_REQUIRE_STRATEGY_CONFIGS', (value) => {
     next.strategy_configs.required = value;
+  });
+  setString('QFA_RISK_CONFIG_PATH', (value) => {
+    next.risk_config.path = value;
+  });
+  setBoolean('QFA_REQUIRE_RISK_CONFIG', (value) => {
+    next.risk_config.required = value;
+  });
+  setString('QFA_MANAGEMENT_PROFILES_PATH', (value) => {
+    next.management_profiles.path = value;
+  });
+  setBoolean('QFA_REQUIRE_MANAGEMENT_PROFILES', (value) => {
+    next.management_profiles.required = value;
   });
 
   return { config: next, appliedEnvKeys };

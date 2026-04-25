@@ -40,7 +40,13 @@ This is a pure risk layer. It does not implement a runner, sockets, live executi
 - `circuit_breaker_enabled`
 - `reset_circuit_breaker_on_new_session`
 
-`RiskPolicyConfig.session` carries the resolved session policy. The default still lives in code for now; a future risk-config ticket should move account/risk policy to typed config/YAML and include a risk-config hash in replay lineage.
+`RiskPolicyConfig.session` carries the resolved session policy. CFG-01 moves runtime risk policy into:
+
+```text
+config/risk/risk-policy.yaml
+```
+
+`loadRiskPolicyConfig()` validates the YAML, canonicalizes the typed policy, and emits `risk_config_hash` for replay lineage. `default_regime` is a typed literal union, not an arbitrary string.
 
 ## State Transitions
 
@@ -88,6 +94,7 @@ ORCH-02 should:
 - pass `session_risk` into `assessCandidateRisk`;
 - journal every `RISK_GATE` decision;
 - include `risk_manager_version`;
+- include `risk_config_hash`;
 - include the session risk summary from `toRiskGateEventPayload`;
 - use the candidate/causation event timestamp as `decided_ts_ns`;
 - never use `Date.now()` or local wall-clock time for transition timestamps.

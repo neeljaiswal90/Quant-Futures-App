@@ -175,6 +175,7 @@ export interface RiskGateEventPayload {
   readonly risk_manager_version?: string;
   readonly strategy_config_hash?: string;
   readonly risk_policy_hash?: string;
+  readonly risk_config_hash?: string;
   readonly session_risk?: {
     readonly session_id: SessionId;
     readonly account_ref: string;
@@ -197,6 +198,8 @@ export interface SizingEventPayload {
   readonly risk_points: number;
   readonly rejected_reason?: string;
   readonly strategy_config_hash?: string;
+  readonly risk_config_hash?: string;
+  readonly risk_manager_version?: string;
 }
 
 export interface OrderIntentEventPayload {
@@ -234,6 +237,9 @@ export interface PositionEventPayload {
   readonly avg_entry_price: number;
   readonly updated_ts_ns: UnixNs;
   readonly strategy_config_hash?: string;
+  readonly management_profile_hash?: string;
+  readonly management_profile_id?: string;
+  readonly management_profile_version?: number;
 }
 
 export interface ManagementTickEventPayload {
@@ -241,6 +247,10 @@ export interface ManagementTickEventPayload {
   readonly mark_price: number;
   readonly unrealized_pnl_usd: number;
   readonly strategy_config_hash?: string;
+  readonly management_profile_hash?: string;
+  readonly management_profile_id?: string;
+  readonly management_profile_version?: number;
+  readonly position_manager_version?: string;
 }
 
 export interface ManagementActionEventPayload {
@@ -255,6 +265,10 @@ export interface ManagementActionEventPayload {
   readonly realized_pnl_usd?: number;
   readonly realized_r?: number;
   readonly strategy_config_hash?: string;
+  readonly management_profile_hash?: string;
+  readonly management_profile_id?: string;
+  readonly management_profile_version?: number;
+  readonly position_manager_version?: string;
 }
 
 export interface JournalEventPayloadByType {

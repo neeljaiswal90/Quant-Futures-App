@@ -75,6 +75,16 @@ function validAppConfig(strategyConfigDirectory: string): PublicRuntimeConfig {
       format: 'yaml',
       required: true,
     },
+    risk_config: {
+      path: 'config/risk/risk-policy.yaml',
+      format: 'yaml',
+      required: false,
+    },
+    management_profiles: {
+      path: 'config/management/profiles.yaml',
+      format: 'yaml',
+      required: false,
+    },
   };
 }
 

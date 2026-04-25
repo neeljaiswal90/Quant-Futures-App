@@ -51,6 +51,7 @@ export {
   type LoadedAppConfig,
   type LogLevel,
   type PublicRuntimeConfig,
+  type RuntimeConfigFormat,
   type RuntimeEnvironment,
   type RuntimeMode,
   type SecretRuntimeConfig,

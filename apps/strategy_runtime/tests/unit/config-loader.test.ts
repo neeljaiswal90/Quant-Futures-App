@@ -10,7 +10,7 @@ import {
   type PublicRuntimeConfig,
 } from '../../src/config/index.js';
 
-const EXPECTED_EXAMPLE_HASH = '9ae175c4e6d352e6e854f3cdf8eeff6c379725bc35af358939d7cd3e0bd4b48a';
+const EXPECTED_EXAMPLE_HASH = '8c5b26dd266c3b9207395ddea0ae825e11a39602869ce5eafec0a042bc6f1b82';
 
 const tempDirs: string[] = [];
 
@@ -50,6 +50,16 @@ function validConfig(): PublicRuntimeConfig {
     },
     strategy_configs: {
       directory: 'config/strategies',
+      format: 'yaml',
+      required: false,
+    },
+    risk_config: {
+      path: 'config/risk/risk-policy.yaml',
+      format: 'yaml',
+      required: false,
+    },
+    management_profiles: {
+      path: 'config/management/profiles.yaml',
       format: 'yaml',
       required: false,
     },
@@ -147,6 +157,8 @@ describe('application config loader', () => {
     const config = validConfig();
     const reordered = parsePublicRuntimeConfig({
       strategy_configs: config.strategy_configs,
+      risk_config: config.risk_config,
+      management_profiles: config.management_profiles,
       paths: config.paths,
       replay: config.replay,
       execution: config.execution,

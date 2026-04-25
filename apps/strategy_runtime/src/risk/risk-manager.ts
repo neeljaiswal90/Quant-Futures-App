@@ -35,6 +35,7 @@ import {
 
 export const RISK_MANAGER_VERSION = 'risk_manager_v1' as const;
 export const DEFAULT_MAX_NET_POSITION_PER_SYMBOL = 10 as const;
+export type RiskRegime = 'strong_trend' | 'mixed' | 'chop' | 'unknown';
 
 export interface RiskPolicyConfig {
   readonly account_equity_usd: number;
@@ -44,7 +45,7 @@ export interface RiskPolicyConfig {
   readonly max_net_position_per_symbol: number;
   readonly hard_cap_contracts: number;
   readonly sizing_mode: SizerExecutionMode;
-  readonly default_regime: string;
+  readonly default_regime: RiskRegime;
   readonly default_n_eff: number;
   readonly session: SessionRiskPolicy;
   readonly sizing: Phase1SizingConfig;
