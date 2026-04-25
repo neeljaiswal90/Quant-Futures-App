@@ -1,0 +1,27 @@
+# RSRCH-00 V1 continuity policy.
+# This file uses the project strict YAML subset: named maps only, two-space
+# indentation, scalar values, and no inline comments after values.
+version: 1
+policy_id: databento_mnq_nq_2017_v1
+coverage_start_year: 2017
+source_provider: databento
+exchange_event_ts_ns_basis: exchange_event_ts_ns
+canonical_instrument_root: MNQ
+surrogate_instrument_root: NQ
+mnq_canonical_start_ts_ns: "1557149400000000000"
+normalization_policy: tick_r_volatility_v1
+domains:
+  MNQ_CANONICAL:
+    instrument_root: MNQ
+    domain: MNQ_CANONICAL
+    surrogate_for: none
+    normalization_policy: tick_r_volatility_v1
+    source_provider: databento
+    exchange_event_ts_ns_basis: exchange_event_ts_ns
+  NQ_SURROGATE_PRE_MNQ:
+    instrument_root: NQ
+    domain: NQ_SURROGATE_PRE_MNQ
+    surrogate_for: MNQ
+    normalization_policy: tick_r_volatility_v1
+    source_provider: databento
+    exchange_event_ts_ns_basis: exchange_event_ts_ns
