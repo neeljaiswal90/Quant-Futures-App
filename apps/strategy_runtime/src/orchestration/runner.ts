@@ -5,6 +5,7 @@ import {
   makeConfigHash,
   makeCorrelationId,
   makeEventId,
+  makeManagementActionId,
   makeRiskGateDecisionId,
   makeStrategyEvaluationId,
   type AnyJournalEventEnvelope,
@@ -72,6 +73,7 @@ import {
   evaluateMnqSessionEligibility,
   type MnqEligibilityReason,
   type MnqRollCalendarConfig,
+  type MnqRollPeriod,
   type MnqRollPhase,
   type MnqSessionCalendarConfig,
   type MnqSessionEligibility,
@@ -106,6 +108,7 @@ export interface StrategyEvaluationCycleResult {
   readonly feature_event: JournalEventEnvelope<'FEATURES', JournalEventPayloadFor<'FEATURES'>>;
   readonly session_phase_event?: JournalEventEnvelope<'SESSION_PHASE', JournalEventPayloadFor<'SESSION_PHASE'>>;
   readonly roll_advisory_event?: JournalEventEnvelope<'ROLL_ADVISORY', JournalEventPayloadFor<'ROLL_ADVISORY'>>;
+  readonly forced_flatten_action_events: readonly JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[];
   readonly mnq_eligibility: MnqSessionEligibility;
   readonly strategy_evaluation_events: readonly JournalEventEnvelope<'STRAT_EVAL', JournalEventPayloadFor<'STRAT_EVAL'>>[];
   readonly candidate_events: readonly JournalEventEnvelope<'CANDIDATE', JournalEventPayloadFor<'CANDIDATE'>>[];
@@ -158,6 +161,7 @@ export class StrategyRuntimeRunner {
   private openPositions: TargetPosition[] = [];
   private lastSessionTransition: RunnerSessionTransition | undefined;
   private lastRollTransition: RunnerRollTransition | undefined;
+  private readonly emittedRollFlattenActions = new Set<string>();
 
   constructor(options: StrategyRuntimeRunnerOptions) {
     if (
@@ -222,6 +226,11 @@ export class StrategyRuntimeRunner {
     });
     const sessionPhaseEvent = await this.publishSessionPhaseTransition(snapshot, eligibility);
     const rollAdvisoryEvent = await this.publishRollAdvisoryTransition(snapshot, eligibility);
+    const forcedFlattenActionEvents = await this.publishRollForcedFlattenActions(
+      snapshot,
+      eligibility,
+      rollAdvisoryEvent,
+    );
     const featureEvent = await this.publishDerivedEvent({
       event_id: makeEventId(`features-${snapshot.feature_snapshot_id}`),
       type: 'FEATURES',
@@ -403,6 +412,7 @@ export class StrategyRuntimeRunner {
       feature_event: featureEvent,
       session_phase_event: sessionPhaseEvent,
       roll_advisory_event: rollAdvisoryEvent,
+      forced_flatten_action_events: forcedFlattenActionEvents,
       mnq_eligibility: eligibility,
       strategy_evaluation_events: evaluationEvents,
       candidate_events: candidateEvents,
@@ -664,6 +674,64 @@ export class StrategyRuntimeRunner {
     });
   }
 
+  private async publishRollForcedFlattenActions(
+    snapshot: StrategyFeatureSnapshot,
+    eligibility: MnqSessionEligibility,
+    rollAdvisoryEvent: JournalEventEnvelope<'ROLL_ADVISORY', JournalEventPayloadFor<'ROLL_ADVISORY'>> | undefined,
+  ): Promise<readonly JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[]> {
+    if (!eligibility.flatten_required) {
+      return [];
+    }
+
+    const rollPeriod = rollPeriodForEligibility(this.mnqRollCalendar, eligibility, snapshot.created_ts_ns);
+    if (rollPeriod === undefined) {
+      return [];
+    }
+
+    const causeEventId = rollAdvisoryEvent?.event_id ?? snapshot.source_event_id;
+    const openPositions = [...this.openPositions]
+      .filter((position) => position.lifecycle_state !== 'closed' && position.remaining_quantity > 0)
+      .sort(compareTargetPositionsById);
+    const actionEvents: JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[] = [];
+
+    for (const position of openPositions) {
+      const flattenKey = rollFlattenActionKey(position, rollPeriod);
+      if (this.emittedRollFlattenActions.has(flattenKey)) {
+        continue;
+      }
+      this.emittedRollFlattenActions.add(flattenKey);
+
+      const actionId = makeManagementActionId(
+        `mgmt-roll-flatten-${position.position_id}-${rollPeriod.cutover_ts_ns}`,
+      );
+      const actionEvent = await this.publishDerivedEvent({
+        event_id: makeEventId(`mgmt-action-${actionId}`),
+        type: 'MGMT_ACTION',
+        ts_ns: snapshot.created_ts_ns,
+        causation_id: toCausationId(causeEventId),
+        payload: {
+          management_action_id: actionId,
+          position_id: position.position_id,
+          action_type: 'EXIT_FULL',
+          reason: 'roll_window_flatten',
+          exit_quantity: position.remaining_quantity,
+          strategy_config_hash: this.strategyConfigHash,
+          management_profile_hash: position.profile_hash,
+          management_profile_id: position.profile_id,
+          management_profile_version: position.profile_version,
+          position_manager_version: POSITION_MANAGER_VERSION,
+          active_contract: eligibility.active_contract,
+          ...(eligibility.next_contract === undefined ? {} : { next_contract: eligibility.next_contract }),
+          cutover_ts_ns: rollPeriod.cutover_ts_ns,
+          roll_phase: eligibility.roll_phase,
+        },
+      });
+      actionEvents.push(actionEvent);
+    }
+
+    return actionEvents;
+  }
+
   private ensureSessionRisk(snapshot: StrategyFeatureSnapshot): SessionRiskState {
     if (this.sessionRisk === undefined) {
       this.sessionRisk = createSessionRiskState({
@@ -810,19 +878,39 @@ function minutesToCutover(
   eligibility: MnqSessionEligibility,
   tsNs: UnixNs,
 ): number | undefined {
+  const period = rollPeriodForEligibility(rollCalendar, eligibility, tsNs);
+  if (period === undefined) {
+    return undefined;
+  }
+  return Number((BigInt(period.cutover_ts_ns) - BigInt(tsNs)) / 60_000_000_000n);
+}
+
+function rollPeriodForEligibility(
+  rollCalendar: MnqRollCalendarConfig,
+  eligibility: MnqSessionEligibility,
+  tsNs: UnixNs,
+): MnqRollPeriod | undefined {
   if (eligibility.next_contract === undefined || eligibility.roll_phase === 'normal') {
     return undefined;
   }
-  const period = rollCalendar.periods.find(
+  return rollCalendar.periods.find(
     (candidate) =>
       candidate.next_contract === eligibility.next_contract &&
       tsNs >= candidate.roll_start_ts_ns &&
       tsNs <= candidate.roll_end_ts_ns,
   );
-  if (period === undefined) {
-    return undefined;
-  }
-  return Number((BigInt(period.cutover_ts_ns) - BigInt(tsNs)) / 60_000_000_000n);
+}
+
+function compareTargetPositionsById(left: TargetPosition, right: TargetPosition): number {
+  const leftId = String(left.position_id);
+  const rightId = String(right.position_id);
+  if (leftId < rightId) return -1;
+  if (leftId > rightId) return 1;
+  return 0;
+}
+
+function rollFlattenActionKey(position: TargetPosition, rollPeriod: MnqRollPeriod): string {
+  return `${position.position_id}:${rollPeriod.cutover_ts_ns}`;
 }
 
 function evaluateStrategySafely(

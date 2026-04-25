@@ -23,6 +23,7 @@ The runner follows ADR-0001 and EVT-01:
 - `STRAT_EVAL`, `CANDIDATE`, `RANK`, `SIZING`, `RISK_GATE`, `ORDER_INTENT`, `SIM_FILL`, and `POSITION` inherit the same causation-chain timestamp;
 - management ticks inherit the source market event timestamp;
 - `MGMT_ACTION` and management `POSITION` updates inherit from `MGMT_TICK`.
+- roll forced-flatten `MGMT_ACTION` events inherit from the `ROLL_ADVISORY` event that announced the flatten window.
 
 The runner never calls `Date.now`, `new Date`, or any wall-clock helper.
 
@@ -33,17 +34,18 @@ For each feature snapshot:
 1. Evaluate MNQ session/roll eligibility from `exchange_event_ts_ns`/`created_ts_ns`.
 2. Emit `SESSION_PHASE` when the MNQ session phase or trading date changes.
 3. Emit `ROLL_ADVISORY` when roll advisory state changes.
-4. Publish `FEATURES`, caused by the source market event.
-5. If MNQ eligibility blocks new entries, publish blocked `STRAT_EVAL` events with stable MNQ reason codes and do not emit `CANDIDATE` events.
-6. If eligible, run every executable V1 strategy with the loaded STRAT-07 config.
-7. Publish one `STRAT_EVAL` per strategy.
-8. Publish a `CANDIDATE` for each armed candidate.
-9. Publish `RANK` with the STRAT-06 deterministic ranking method.
-10. Run sizing and risk for the top configured candidate count; V1 defaults to one.
-11. Publish `SIZING` and `RISK_GATE`.
-12. If accepted, publish `ORDER_INTENT`.
-13. Submit to the SIM-01 simulated adapter and publish `SIM_FILL`.
-14. Build/open an MGMT-02 target position and publish `POSITION`.
+4. If roll policy enters `flatten_required`, emit one `EXIT_FULL` `MGMT_ACTION` for each open position.
+5. Publish `FEATURES`, caused by the source market event.
+6. If MNQ eligibility blocks new entries, publish blocked `STRAT_EVAL` events with stable MNQ reason codes and do not emit `CANDIDATE` events.
+7. If eligible, run every executable V1 strategy with the loaded STRAT-07 config.
+8. Publish one `STRAT_EVAL` per strategy.
+9. Publish a `CANDIDATE` for each armed candidate.
+10. Publish `RANK` with the STRAT-06 deterministic ranking method.
+11. Run sizing and risk for the top configured candidate count; V1 defaults to one.
+12. Publish `SIZING` and `RISK_GATE`.
+13. If accepted, publish `ORDER_INTENT`.
+14. Submit to the SIM-01 simulated adapter and publish `SIM_FILL`.
+15. Build/open an MGMT-02 target position and publish `POSITION`.
 
 For each management market tick:
 
@@ -67,7 +69,11 @@ New-entry blocking reasons are journaled as `STRAT_EVAL.gate_state = "blocked"` 
 
 `SESSION_PHASE` and `ROLL_ADVISORY` events are emitted only on transition or meaningful advisory changes, not on every tick. Both are caused by the current source market event and inherit its `ts_ns`.
 
-Existing-position management is not blocked merely because new entries are blocked. Open positions continue through the MGMT-03 tick/action path. Roll `flatten_required` is surfaced as a journal advisory; the actual forced flatten action remains a follow-up until DATA-06 provides production roll calendars and ORCH consumes the finalized roll policy.
+Existing-position management is not blocked merely because new entries are blocked. Open positions continue through the MGMT-03 tick/action path. ORCH-02B adds the roll exception: when roll eligibility reports `flatten_required`, the runner emits an `MGMT_ACTION` with `action_type = "EXIT_FULL"` and `reason = "roll_window_flatten"` for each open position.
+
+Forced-flatten actions are caused by the `ROLL_ADVISORY` event when that advisory is emitted, otherwise by the same source market event that caused the advisory state. The action `ts_ns` always equals the causation event timestamp. Positions are processed in `position_id` ascending order, and duplicate `EXIT_FULL` actions are suppressed per `position_id + cutover_ts_ns` so repeated ticks inside the same flatten window do not reissue the same close request.
+
+The forced-flatten action is journal-ready intent for the simulated/runtime execution layer. ORCH-02B does not broker-route or mutate the position terminal state immediately; SIM/live execution remains responsible for producing the close fill and the follow-on `POSITION` update.
 
 ## Lineage
 
