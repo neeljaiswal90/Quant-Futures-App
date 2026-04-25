@@ -284,6 +284,10 @@ export interface ManagementActionEventPayload {
   readonly management_profile_id?: string;
   readonly management_profile_version?: number;
   readonly position_manager_version?: string;
+  readonly active_contract?: string;
+  readonly next_contract?: string;
+  readonly cutover_ts_ns?: UnixNs;
+  readonly roll_phase?: 'normal' | 'pre_roll' | 'roll_block' | 'post_roll';
 }
 
 export interface JournalEventPayloadByType {

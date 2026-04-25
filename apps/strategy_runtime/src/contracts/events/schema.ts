@@ -661,6 +661,15 @@ function validateManagementActionPayload(
   optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
   optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
   optionalNonEmptyString(record.position_manager_version, `${path}.position_manager_version`, issues);
+  optionalNonEmptyString(record.active_contract, `${path}.active_contract`, issues);
+  optionalNonEmptyString(record.next_contract, `${path}.next_contract`, issues);
+  optionalTimestamp(record.cutover_ts_ns, `${path}.cutover_ts_ns`, issues);
+  optionalEnum(record.roll_phase, `${path}.roll_phase`, issues, [
+    'normal',
+    'pre_roll',
+    'roll_block',
+    'post_roll',
+  ]);
 }
 
 function validateConfigLineageRef(

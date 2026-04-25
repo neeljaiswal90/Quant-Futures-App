@@ -132,6 +132,36 @@ function snapshotAt(input: {
   };
 }
 
+async function openPositionFromSnapshot(
+  runner: StrategyRuntimeRunner,
+  snapshot: StrategyFeatureSnapshot,
+) {
+  await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id), snapshot.created_ts_ns, {
+    bid_px: snapshot.quote.bid_px,
+    ask_px: snapshot.quote.ask_px,
+  }));
+  return runner.processFeatureSnapshot(snapshot);
+}
+
+async function processRollFlattenSnapshot(
+  runner: StrategyRuntimeRunner,
+  input: {
+    readonly id: string;
+    readonly tsNs?: ReturnType<typeof ns>;
+  },
+) {
+  const snapshot = snapshotAt({
+    id: input.id,
+    sourceEventId: `source-${input.id}`,
+    tsNs: input.tsNs ?? ROLL_FLATTEN_TS,
+    sessionPhase: 'pre_open',
+    isRth: false,
+    isRollBlock: true,
+  });
+  await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id), snapshot.created_ts_ns));
+  return runner.processFeatureSnapshot(snapshot);
+}
+
 function listOrchestrationSourceFiles(directory = join(process.cwd(), 'apps/strategy_runtime/src/orchestration')): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -328,6 +358,163 @@ describe('ORCH-02 deterministic runner loop', () => {
     });
     expect(flattenResult.roll_advisory_event?.causation_id).toBe(flatten.source_event_id);
     expect(flattenResult.roll_advisory_event?.ts_ns).toBe(flatten.created_ts_ns);
+  });
+
+  it('forces a full exit for an open long position in the roll flatten window', async () => {
+    const { runner } = createRunner();
+    const opening = await openPositionFromSnapshot(
+      runner,
+      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+    );
+    const openPosition = opening.open_positions[0]!;
+
+    const result = await processRollFlattenSnapshot(runner, { id: 'fixture-roll-flatten-long' });
+
+    expect(result.roll_advisory_event?.payload.advisory).toBe('flatten_required');
+    expect(result.forced_flatten_action_events).toHaveLength(1);
+    expect(result.forced_flatten_action_events[0]!.payload).toMatchObject({
+      action_type: 'EXIT_FULL',
+      reason: 'roll_window_flatten',
+      position_id: openPosition.position_id,
+      exit_quantity: openPosition.remaining_quantity,
+      management_profile_hash: openPosition.profile_hash,
+      management_profile_id: openPosition.profile_id,
+      management_profile_version: openPosition.profile_version,
+      position_manager_version: 'position_manager_fsm_v1',
+      active_contract: 'MNQM6',
+      next_contract: 'MNQU6',
+      roll_phase: 'roll_block',
+    });
+    expect(result.forced_flatten_action_events[0]!.payload.cutover_ts_ns).toBe(ns('1781271000000000000'));
+    expect(result.forced_flatten_action_events[0]!.causation_id).toBe(
+      result.roll_advisory_event!.event_id,
+    );
+    expect(result.forced_flatten_action_events[0]!.ts_ns).toBe(ROLL_FLATTEN_TS);
+    expect(validateJournalEventEnvelope(result.forced_flatten_action_events[0]!)).toMatchObject({
+      ok: true,
+      issues: [],
+    });
+  });
+
+  it('forces a full exit for an open short position in the roll flatten window', async () => {
+    const { runner } = createRunner();
+    const opening = await openPositionFromSnapshot(
+      runner,
+      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_short.snapshot,
+    );
+    const openPosition = opening.open_positions[0]!;
+
+    const result = await processRollFlattenSnapshot(runner, { id: 'fixture-roll-flatten-short' });
+
+    expect(openPosition.side).toBe('short');
+    expect(result.forced_flatten_action_events).toHaveLength(1);
+    expect(result.forced_flatten_action_events[0]!.payload).toMatchObject({
+      action_type: 'EXIT_FULL',
+      reason: 'roll_window_flatten',
+      position_id: openPosition.position_id,
+      exit_quantity: openPosition.remaining_quantity,
+    });
+  });
+
+  it('emits roll forced-flatten actions in deterministic position-id order', async () => {
+    const { runner } = createRunner();
+    await openPositionFromSnapshot(
+      runner,
+      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+    );
+    await openPositionFromSnapshot(
+      runner,
+      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_short.snapshot,
+    );
+    const expectedOrder = runner.snapshot().open_positions
+      .map((position) => String(position.position_id))
+      .sort();
+
+    const result = await processRollFlattenSnapshot(runner, { id: 'fixture-roll-flatten-many' });
+
+    expect(result.forced_flatten_action_events.map((event) => String(event.payload.position_id))).toEqual(
+      expectedOrder,
+    );
+    expect(result.forced_flatten_action_events.map((event) => event.payload.action_type)).toEqual([
+      'EXIT_FULL',
+      'EXIT_FULL',
+    ]);
+  });
+
+  it('emits roll advisory but no forced-flatten action when no positions are open', async () => {
+    const { runner } = createRunner();
+
+    const result = await processRollFlattenSnapshot(runner, { id: 'fixture-roll-flatten-empty' });
+
+    expect(result.roll_advisory_event?.payload.advisory).toBe('flatten_required');
+    expect(result.forced_flatten_action_events).toEqual([]);
+  });
+
+  it('does not force-flatten during ordinary roll blocks or maintenance halts', async () => {
+    const { runner } = createRunner();
+    await openPositionFromSnapshot(
+      runner,
+      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+    );
+    const rollBlock = snapshotAt({
+      id: 'fixture-roll-block-no-flatten',
+      sourceEventId: 'source-roll-block-no-flatten',
+      tsNs: ROLL_BLOCK_TS,
+      isRollBlock: true,
+    });
+    await runner.publishExternalEvent(sourceQuoteEvent(String(rollBlock.source_event_id), rollBlock.created_ts_ns));
+    const rollBlockResult = await runner.processFeatureSnapshot(rollBlock);
+    const maintenance = snapshotAt({
+      id: 'fixture-maintenance-no-flatten',
+      sourceEventId: 'source-maintenance-no-flatten',
+      tsNs: MAINTENANCE_TS,
+      sessionPhase: 'maintenance',
+      isRth: false,
+    });
+    await runner.publishExternalEvent(sourceQuoteEvent(String(maintenance.source_event_id), maintenance.created_ts_ns));
+    const maintenanceResult = await runner.processFeatureSnapshot(maintenance);
+
+    expect(rollBlockResult.roll_advisory_event?.payload.advisory).toBe('block_new_entries');
+    expect(rollBlockResult.forced_flatten_action_events).toEqual([]);
+    expect(maintenanceResult.mnq_eligibility.block_reason).toBe('maintenance_halt');
+    expect(maintenanceResult.forced_flatten_action_events).toEqual([]);
+  });
+
+  it('suppresses duplicate forced-flatten actions in the same roll flatten window', async () => {
+    const { runner } = createRunner();
+    await openPositionFromSnapshot(
+      runner,
+      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+    );
+
+    const first = await processRollFlattenSnapshot(runner, { id: 'fixture-roll-flatten-duplicate-1' });
+    const second = await processRollFlattenSnapshot(runner, {
+      id: 'fixture-roll-flatten-duplicate-2',
+      tsNs: ns(BigInt(ROLL_FLATTEN_TS) + 60_000_000_000n),
+    });
+
+    expect(first.forced_flatten_action_events).toHaveLength(1);
+    expect(second.roll_advisory_event).toBeUndefined();
+    expect(second.forced_flatten_action_events).toEqual([]);
+  });
+
+  it('produces deterministic roll forced-flatten output across repeated equivalent runs', async () => {
+    const first = createRunner();
+    const second = createRunner();
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    await openPositionFromSnapshot(first.runner, snapshot);
+    await openPositionFromSnapshot(second.runner, snapshot);
+
+    const firstFlatten = await processRollFlattenSnapshot(first.runner, {
+      id: 'fixture-roll-flatten-deterministic',
+    });
+    const secondFlatten = await processRollFlattenSnapshot(second.runner, {
+      id: 'fixture-roll-flatten-deterministic',
+    });
+
+    expect(stableSnapshot(firstFlatten.forced_flatten_action_events)).toBe(
+      stableSnapshot(secondFlatten.forced_flatten_action_events),
+    );
   });
 
   it('keeps existing-position management active while new entries are blocked', async () => {
