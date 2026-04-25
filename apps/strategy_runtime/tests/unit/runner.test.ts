@@ -26,6 +26,7 @@ import {
   createSessionRiskState,
   loadVenueCostTable,
   updateSessionRiskState,
+  type PartialRiskPolicyConfig,
   type SessionRiskState,
 } from '../../src/risk/index.js';
 import {
@@ -43,6 +44,7 @@ const ROLL_FLATTEN_TS = ns('1781270760000000000');
 
 function createRunner(options: {
   readonly initialOpenTradeCount?: number;
+  readonly riskPolicy?: PartialRiskPolicyConfig;
 } = {}) {
   const config = loadAppConfig({
     configPath: 'config/app.example.json',
@@ -80,6 +82,7 @@ function createRunner(options: {
       session_id: SESSION_ID,
       execution_adapter: executionAdapter,
       initial_session_risk_state: initial,
+      risk_policy: options.riskPolicy,
     }),
   };
 }
@@ -394,6 +397,28 @@ describe('ORCH-02 deterministic runner loop', () => {
       ok: true,
       issues: [],
     });
+    expect(result.order_intent_events).toHaveLength(1);
+    expect(result.order_intent_events[0]!.payload).toMatchObject({
+      side: 'sell',
+      quantity: openPosition.remaining_quantity,
+      management_action_id: result.forced_flatten_action_events[0]!.payload.management_action_id,
+      position_id: openPosition.position_id,
+      management_profile_hash: openPosition.profile_hash,
+    });
+    expect(result.order_intent_events[0]!.causation_id).toBe(
+      result.forced_flatten_action_events[0]!.event_id,
+    );
+    expect(result.sim_fill_events).toHaveLength(1);
+    expect(result.sim_fill_events[0]!.causation_id).toBe(result.order_intent_events[0]!.event_id);
+    expect(result.position_events).toHaveLength(1);
+    expect(result.position_events[0]!.causation_id).toBe(result.sim_fill_events[0]!.event_id);
+    expect(result.position_events[0]!.payload).toMatchObject({
+      position_id: openPosition.position_id,
+      side: 'flat',
+      status: 'closed',
+      quantity_open: 0,
+    });
+    expect(result.open_positions).toEqual([]);
   });
 
   it('forces a full exit for an open short position in the roll flatten window', async () => {
@@ -414,6 +439,9 @@ describe('ORCH-02 deterministic runner loop', () => {
       position_id: openPosition.position_id,
       exit_quantity: openPosition.remaining_quantity,
     });
+    expect(result.order_intent_events[0]!.payload.side).toBe('buy');
+    expect(result.sim_fill_events).toHaveLength(1);
+    expect(result.position_events[0]!.payload.status).toBe('closed');
   });
 
   it('emits roll forced-flatten actions in deterministic position-id order', async () => {
@@ -439,6 +467,11 @@ describe('ORCH-02 deterministic runner loop', () => {
       'EXIT_FULL',
       'EXIT_FULL',
     ]);
+    expect(result.order_intent_events.map((event) => String(event.payload.position_id))).toEqual(
+      expectedOrder,
+    );
+    expect(result.sim_fill_events).toHaveLength(2);
+    expect(result.open_positions).toEqual([]);
   });
 
   it('emits roll advisory but no forced-flatten action when no positions are open', async () => {
@@ -448,6 +481,8 @@ describe('ORCH-02 deterministic runner loop', () => {
 
     expect(result.roll_advisory_event?.payload.advisory).toBe('flatten_required');
     expect(result.forced_flatten_action_events).toEqual([]);
+    expect(result.order_intent_events).toEqual([]);
+    expect(result.sim_fill_events).toEqual([]);
   });
 
   it('does not force-flatten during ordinary roll blocks or maintenance halts', async () => {
@@ -476,8 +511,10 @@ describe('ORCH-02 deterministic runner loop', () => {
 
     expect(rollBlockResult.roll_advisory_event?.payload.advisory).toBe('block_new_entries');
     expect(rollBlockResult.forced_flatten_action_events).toEqual([]);
+    expect(rollBlockResult.order_intent_events).toEqual([]);
     expect(maintenanceResult.mnq_eligibility.block_reason).toBe('maintenance_halt');
     expect(maintenanceResult.forced_flatten_action_events).toEqual([]);
+    expect(maintenanceResult.order_intent_events).toEqual([]);
   });
 
   it('suppresses duplicate forced-flatten actions in the same roll flatten window', async () => {
@@ -494,8 +531,10 @@ describe('ORCH-02 deterministic runner loop', () => {
     });
 
     expect(first.forced_flatten_action_events).toHaveLength(1);
+    expect(first.order_intent_events).toHaveLength(1);
     expect(second.roll_advisory_event).toBeUndefined();
     expect(second.forced_flatten_action_events).toEqual([]);
+    expect(second.order_intent_events).toEqual([]);
   });
 
   it('produces deterministic roll forced-flatten output across repeated equivalent runs', async () => {
@@ -622,8 +661,28 @@ describe('ORCH-02 deterministic runner loop', () => {
       String(event.causation_id) === String(result.management_tick_events[0]!.event_id) &&
       BigInt(event.ts_ns) === BigInt(managementTs)
     ))).toBe(true);
+    expect(result.order_intent_events).toHaveLength(1);
+    expect(result.order_intent_events[0]!.payload).toMatchObject({
+      side: 'sell',
+      quantity: openPosition.remaining_quantity,
+      management_action_id: result.management_action_events[0]!.payload.management_action_id,
+      position_id: openPosition.position_id,
+      management_profile_hash: openPosition.profile_hash,
+      position_manager_version: 'position_manager_fsm_v1',
+    });
+    expect(result.order_intent_events[0]!.causation_id).toBe(
+      result.management_action_events[0]!.event_id,
+    );
+    expect(result.sim_fill_events).toHaveLength(1);
+    expect(result.sim_fill_events[0]!.causation_id).toBe(result.order_intent_events[0]!.event_id);
     expect(result.open_positions).toEqual([]);
     expect(result.session_risk?.closed_trade_count).toBe(1);
+    expect(result.position_events[0]!.causation_id).toBe(result.sim_fill_events[0]!.event_id);
+    expect(result.position_events[0]!.payload).toMatchObject({
+      position_id: openPosition.position_id,
+      status: 'closed',
+      quantity_open: 0,
+    });
     expect(result.position_events[0]!.payload.strategy_config_hash).toBe(
       cycle.position_events[0]!.payload.strategy_config_hash,
     );
@@ -633,6 +692,146 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.management_action_events[0]!.payload.management_profile_hash).toBe(
       cycle.open_positions[0]!.profile_hash,
     );
+  });
+
+  it('executes PT1 TAKE_PARTIAL through ORDER_INTENT, SIM_FILL, and POSITION updates', async () => {
+    const { runner } = createRunner({
+      riskPolicy: {
+        account_equity_usd: 500_000,
+        max_risk_per_trade_pct: 2,
+        max_net_position_per_symbol: 10,
+        hard_cap_contracts: 10,
+        sizing_mode: 'replay',
+        default_n_eff: 10_000,
+        default_regime: 'mixed',
+        sizing: {
+          C_abs: 10,
+          C_base: 100,
+        },
+        session: {
+          max_open_trade_count: 10,
+          max_trades_per_session: 20,
+          max_daily_realized_loss_usd: 100_000,
+        },
+      },
+    });
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
+    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const openedPosition = cycle.open_positions[0]!;
+    const openPosition = {
+      ...openedPosition,
+      quantity: 4,
+      remaining_quantity: 4,
+      targets: openedPosition.targets.map((target) => ({
+        ...target,
+        quantity: target.label === 'pt1' || target.label === 'pt2' ? 2 : target.quantity,
+        filled_quantity: 0,
+        status: 'pending' as const,
+      })),
+    } satisfies typeof openedPosition;
+    (runner as unknown as { openPositions: typeof cycle.open_positions }).openPositions = [
+      openPosition,
+    ];
+    const pt1 = openPosition.targets.find((target) => target.label === 'pt1')!;
+    const managementTs = ns(BigInt(snapshot.created_ts_ns) + 60_000_000_000n);
+    const managementSource = await runner.publishExternalEvent(
+      sourceQuoteEvent('source-management-partial-1', managementTs),
+    );
+
+    const result = await runner.processManagementTick({
+      cause_event: managementSource,
+      mark_price: pt1.price,
+      high_price: pt1.price,
+      low_price: openPosition.entry_price,
+      authority: 'authoritative',
+    });
+
+    const partialAction = result.management_action_events.find(
+      (event) => event.payload.action_type === 'TAKE_PARTIAL',
+    );
+    expect(partialAction?.payload).toMatchObject({
+      position_id: openPosition.position_id,
+      target_label: 'pt1',
+      exit_quantity: pt1.quantity,
+    });
+    expect(result.order_intent_events).toHaveLength(1);
+    expect(result.order_intent_events[0]!.causation_id).toBe(partialAction!.event_id);
+    expect(result.sim_fill_events[0]!.causation_id).toBe(result.order_intent_events[0]!.event_id);
+    expect(result.position_events[0]!.causation_id).toBe(result.sim_fill_events[0]!.event_id);
+    expect(result.position_events[0]!.payload).toMatchObject({
+      position_id: openPosition.position_id,
+      status: 'closing',
+      quantity_open: openPosition.remaining_quantity - pt1.quantity,
+    });
+    expect(result.open_positions[0]!.remaining_quantity).toBe(
+      openPosition.remaining_quantity - pt1.quantity,
+    );
+  });
+
+  it('executes fail-safe exits through simulated close fills', async () => {
+    const { runner } = createRunner();
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
+    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const openPosition = cycle.open_positions[0]!;
+    const managementTs = ns(BigInt(snapshot.created_ts_ns) + 60_000_000_000n);
+    const managementSource = await runner.publishExternalEvent(
+      sourceQuoteEvent('source-management-failsafe-1', managementTs),
+    );
+
+    const result = await runner.processManagementTick({
+      cause_event: managementSource,
+      mark_price: openPosition.entry_price,
+      high_price: openPosition.entry_price,
+      low_price: openPosition.entry_price,
+      authority: 'gap',
+      is_stale: true,
+    });
+
+    expect(result.management_action_events.map((event) => event.payload.action_type)).toEqual([
+      'FAIL_SAFE_EXIT',
+    ]);
+    expect(result.order_intent_events[0]!.payload.management_action_id).toBe(
+      result.management_action_events[0]!.payload.management_action_id,
+    );
+    expect(result.sim_fill_events).toHaveLength(1);
+    expect(result.position_events[0]!.payload).toMatchObject({
+      position_id: openPosition.position_id,
+      status: 'closed',
+      quantity_open: 0,
+    });
+    expect(result.open_positions).toEqual([]);
+  });
+
+  it('executes time-stop exits through simulated close fills', async () => {
+    const { runner } = createRunner();
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
+    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const openPosition = cycle.open_positions[0]!;
+    const managementTs = openPosition.time_stop.deadline_ts_ns!;
+    const managementSource = await runner.publishExternalEvent(
+      sourceQuoteEvent('source-management-time-stop-1', managementTs),
+    );
+
+    const result = await runner.processManagementTick({
+      cause_event: managementSource,
+      mark_price: openPosition.entry_price,
+      high_price: openPosition.entry_price,
+      low_price: openPosition.entry_price,
+      authority: 'authoritative',
+    });
+
+    expect(result.management_action_events.map((event) => event.payload.action_type)).toEqual([
+      'TIME_STOP_EXIT',
+    ]);
+    expect(result.order_intent_events[0]!.causation_id).toBe(
+      result.management_action_events[0]!.event_id,
+    );
+    expect(result.sim_fill_events[0]!.ts_ns).toBe(managementTs);
+    expect(result.position_events[0]!.causation_id).toBe(result.sim_fill_events[0]!.event_id);
+    expect(result.open_positions).toEqual([]);
   });
 
   it('resets session risk state on SESSION_PHASE without wall-clock input', async () => {

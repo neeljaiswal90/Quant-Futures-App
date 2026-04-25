@@ -228,6 +228,12 @@ export interface OrderIntentEventPayload {
   readonly stop_price?: number;
   readonly time_in_force: 'ioc' | 'day' | 'gtc';
   readonly strategy_config_hash?: string;
+  readonly management_action_id?: ManagementActionId;
+  readonly position_id?: PositionId;
+  readonly management_profile_hash?: string;
+  readonly management_profile_id?: string;
+  readonly management_profile_version?: number;
+  readonly position_manager_version?: string;
 }
 
 export interface SimFillEventPayload {
@@ -241,6 +247,12 @@ export interface SimFillEventPayload {
   readonly exchange_fee_usd?: number;
   readonly commission_usd?: number;
   readonly strategy_config_hash?: string;
+  readonly management_action_id?: ManagementActionId;
+  readonly position_id?: PositionId;
+  readonly management_profile_hash?: string;
+  readonly management_profile_id?: string;
+  readonly management_profile_version?: number;
+  readonly position_manager_version?: string;
 }
 
 export interface PositionEventPayload {

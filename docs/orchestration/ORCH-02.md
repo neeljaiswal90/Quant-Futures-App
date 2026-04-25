@@ -22,8 +22,8 @@ The runner follows ADR-0001 and EVT-01:
 - `FEATURES.ts_ns` equals the triggering source event timestamp;
 - `STRAT_EVAL`, `CANDIDATE`, `RANK`, `SIZING`, `RISK_GATE`, `ORDER_INTENT`, `SIM_FILL`, and `POSITION` inherit the same causation-chain timestamp;
 - management ticks inherit the source market event timestamp;
-- `MGMT_ACTION` and management `POSITION` updates inherit from `MGMT_TICK`.
-- roll forced-flatten `MGMT_ACTION` events inherit from the `ROLL_ADVISORY` event that announced the flatten window.
+- `MGMT_ACTION` events inherit from `MGMT_TICK` or the roll advisory/source event that triggered them;
+- management-driven close `ORDER_INTENT`, `SIM_FILL`, and `POSITION` events inherit through `MGMT_ACTION -> ORDER_INTENT -> SIM_FILL`.
 
 The runner never calls `Date.now`, `new Date`, or any wall-clock helper.
 
@@ -34,7 +34,7 @@ For each feature snapshot:
 1. Evaluate MNQ session/roll eligibility from `exchange_event_ts_ns`/`created_ts_ns`.
 2. Emit `SESSION_PHASE` when the MNQ session phase or trading date changes.
 3. Emit `ROLL_ADVISORY` when roll advisory state changes.
-4. If roll policy enters `flatten_required`, emit one `EXIT_FULL` `MGMT_ACTION` for each open position.
+4. If roll policy enters `flatten_required`, emit one `EXIT_FULL` `MGMT_ACTION` for each open position and execute it through the simulated close-fill bridge.
 5. Publish `FEATURES`, caused by the source market event.
 6. If MNQ eligibility blocks new entries, publish blocked `STRAT_EVAL` events with stable MNQ reason codes and do not emit `CANDIDATE` events.
 7. If eligible, run every executable V1 strategy with the loaded STRAT-07 config.
@@ -52,8 +52,9 @@ For each management market tick:
 1. Evaluate MGMT-03 against every open target position.
 2. Publish `MGMT_TICK`.
 3. Publish zero or more `MGMT_ACTION` events.
-4. Publish the resulting `POSITION` summary.
-5. Update session risk realized PnL and open/closed trade counts deterministically.
+4. For exit actions (`TAKE_PARTIAL`, `TAKE_PROFIT`, `EXIT_FULL`, `TIME_STOP_EXIT`, `FAIL_SAFE_EXIT`), publish `ORDER_INTENT`, submit to SIM-01, publish `SIM_FILL`, and publish the resulting `POSITION` summary caused by the fill.
+5. For non-exit management actions, publish the resulting `POSITION` summary caused by the latest management action or tick.
+6. Update session risk realized PnL and open/closed trade counts deterministically.
 
 ## MNQ Session And Roll Eligibility
 
@@ -73,7 +74,13 @@ Existing-position management is not blocked merely because new entries are block
 
 Forced-flatten actions are caused by the `ROLL_ADVISORY` event when that advisory is emitted, otherwise by the same source market event that caused the advisory state. The action `ts_ns` always equals the causation event timestamp. Positions are processed in `position_id` ascending order, and duplicate `EXIT_FULL` actions are suppressed per `position_id + cutover_ts_ns` so repeated ticks inside the same flatten window do not reissue the same close request.
 
-The forced-flatten action is journal-ready intent for the simulated/runtime execution layer. ORCH-02B does not broker-route or mutate the position terminal state immediately; SIM/live execution remains responsible for producing the close fill and the follow-on `POSITION` update.
+ORCH-02C wires those forced-flatten actions into the same simulated close lifecycle used by ordinary management exits. Each executable management action is idempotent by `management_action_id`: duplicates inside a runner instance are ignored after the first simulated execution. The emitted chain is:
+
+```text
+MGMT_ACTION -> ORDER_INTENT -> SIM_FILL -> POSITION
+```
+
+The close order is marketable and side-correct: long positions close with `sell`, short positions close with `buy`. The bridge is still sim-only; no live broker routing or DATA-01 dependency is introduced.
 
 ## Lineage
 
@@ -84,8 +91,8 @@ Strategy/ranking/decision payloads also carry `strategy_config_hash` from STRAT-
 CFG-01 adds the remaining config lineage:
 
 - `SIZING` and `RISK_GATE` carry `risk_config_hash` plus `risk_manager_version`.
-- `POSITION`, `MGMT_TICK`, and `MGMT_ACTION` carry `management_profile_hash`, `management_profile_id`, and `management_profile_version`.
-- `MGMT_TICK` and `MGMT_ACTION` carry `position_manager_version`.
+- `POSITION`, `MGMT_TICK`, `MGMT_ACTION`, management close `ORDER_INTENT`, and management close `SIM_FILL` carry `management_profile_hash`, `management_profile_id`, and `management_profile_version`.
+- `MGMT_TICK`, `MGMT_ACTION`, management close `ORDER_INTENT`, and management close `SIM_FILL` carry `position_manager_version`.
 
 The runner consumes loaded YAML config from `loadAppConfig()`: `config/risk/risk-policy.yaml` and `config/management/profiles.yaml`.
 
