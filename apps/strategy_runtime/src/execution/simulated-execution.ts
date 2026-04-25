@@ -9,9 +9,14 @@ import type {
 import {
   makeFillId,
   makeOrderIntentId,
+  makeSizingDecisionId,
+  type CandidateId,
+  type ManagementActionId,
   type OrderIntentId,
+  type PositionId,
 } from '../contracts/ids.js';
-import type { InstrumentIdentity } from '../contracts/market.js';
+import type { ConfigLineageRef } from '../contracts/lineage.js';
+import type { InstrumentIdentity, PositionSide } from '../contracts/market.js';
 import type {
   SimulatedFill,
   SimulatedOrderIntent,
@@ -172,6 +177,41 @@ export function createEntryOrderIntent(input: CreateEntryOrderIntentInput): Simu
     time_in_force: input.time_in_force ?? (orderType === 'market' ? 'ioc' : 'day'),
     submitted_ts_ns: input.submitted_ts_ns,
     config: input.candidate.config,
+  };
+}
+
+export interface CreateManagementExitOrderIntentInput {
+  readonly position: {
+    readonly position_id: PositionId;
+    readonly candidate_id: CandidateId;
+    readonly instrument: InstrumentIdentity;
+    readonly side: Extract<PositionSide, 'long' | 'short'>;
+  };
+  readonly management_action_id: ManagementActionId;
+  readonly quantity: number;
+  readonly submitted_ts_ns: UnixNs;
+  readonly config: ConfigLineageRef;
+}
+
+export function createManagementExitOrderIntent(
+  input: CreateManagementExitOrderIntentInput,
+): SimulatedOrderIntent {
+  if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+    throw new Error('management exit quantity must be a positive integer');
+  }
+  return {
+    order_intent_id: makeOrderIntentId(
+      `order-exit-${input.position.position_id}-${input.management_action_id}`,
+    ),
+    candidate_id: input.position.candidate_id,
+    sizing_decision_id: makeSizingDecisionId(`sizing-exit-${input.management_action_id}`),
+    instrument: input.position.instrument,
+    side: input.position.side === 'long' ? 'sell' : 'buy',
+    type: 'market',
+    quantity: input.quantity,
+    time_in_force: 'ioc',
+    submitted_ts_ns: input.submitted_ts_ns,
+    config: input.config,
   };
 }
 

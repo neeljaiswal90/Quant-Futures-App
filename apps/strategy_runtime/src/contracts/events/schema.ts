@@ -564,6 +564,12 @@ function validateOrderIntentPayload(
   optionalNumber(record.stop_price, `${path}.stop_price`, issues);
   requireEnum(record.time_in_force, `${path}.time_in_force`, issues, ['ioc', 'day', 'gtc']);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
+  optionalNonEmptyString(record.management_action_id, `${path}.management_action_id`, issues);
+  optionalNonEmptyString(record.position_id, `${path}.position_id`, issues);
+  optionalNonEmptyString(record.management_profile_hash, `${path}.management_profile_hash`, issues);
+  optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
+  optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
+  optionalNonEmptyString(record.position_manager_version, `${path}.position_manager_version`, issues);
 }
 
 function validateSimFillPayload(
@@ -583,6 +589,12 @@ function validateSimFillPayload(
   optionalNumber(record.exchange_fee_usd, `${path}.exchange_fee_usd`, issues);
   optionalNumber(record.commission_usd, `${path}.commission_usd`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
+  optionalNonEmptyString(record.management_action_id, `${path}.management_action_id`, issues);
+  optionalNonEmptyString(record.position_id, `${path}.position_id`, issues);
+  optionalNonEmptyString(record.management_profile_hash, `${path}.management_profile_hash`, issues);
+  optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
+  optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
+  optionalNonEmptyString(record.position_manager_version, `${path}.position_manager_version`, issues);
 }
 
 function validatePositionPayload(

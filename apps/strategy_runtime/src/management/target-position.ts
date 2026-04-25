@@ -12,7 +12,7 @@ import {
   type PositionId,
 } from '../contracts/ids.js';
 import type { Direction, InstrumentIdentity, PositionSide } from '../contracts/market.js';
-import type { PositionStatus } from '../contracts/position.js';
+import type { ManagementActionType, PositionStatus } from '../contracts/position.js';
 import {
   ns,
   type UnixNs,
@@ -110,6 +110,16 @@ export interface BuildTargetPositionFromCandidateInput {
   readonly quantity: number;
   readonly opened_ts_ns: UnixNs;
   readonly position_id?: PositionId;
+}
+
+export interface ApplyExitFillToTargetPositionInput {
+  readonly fill: SimulatedFill;
+  readonly action_type: Extract<
+    ManagementActionType,
+    'TAKE_PARTIAL' | 'TAKE_PROFIT' | 'EXIT_FULL' | 'TIME_STOP_EXIT' | 'FAIL_SAFE_EXIT'
+  >;
+  readonly reason: string;
+  readonly target_label?: PriceTarget['label'];
 }
 
 export interface PartialTargetQuantity {
@@ -241,6 +251,43 @@ export function applyInitialFillToTargetPosition(
     throw new Error(formatTargetPositionValidationErrors(issues));
   }
   return openPosition;
+}
+
+export function applyExitFillToTargetPosition(
+  position: TargetPosition,
+  input: ApplyExitFillToTargetPositionInput,
+): TargetPosition {
+  validateExitFill(position, input.fill);
+  const nextRemainingQuantity = position.remaining_quantity - input.fill.quantity;
+  const isFlat = nextRemainingQuantity === 0;
+  const updatedTargets = updateTargetsForExit(position, {
+    target_label: input.target_label,
+    exit_quantity: input.fill.quantity,
+    is_flat: isFlat,
+  });
+  const realizedPnlUsd = computeRealizedPnlUsd(position, input.fill.price, input.fill.quantity);
+  const updated = {
+    ...position,
+    lifecycle_state: isFlat ? 'closed' : 'closing',
+    remaining_quantity: nextRemainingQuantity,
+    targets: updatedTargets,
+    realized_pnl_usd: round6(position.realized_pnl_usd + realizedPnlUsd),
+    unrealized_pnl_usd: isFlat
+      ? 0
+      : computeUnrealizedPnlUsd(position, input.fill.price, nextRemainingQuantity),
+    updated_ts_ns: input.fill.filled_ts_ns,
+    reasons: [
+      ...position.reasons,
+      `management_action:${input.action_type}:${input.reason}`,
+      `exit_fill:${input.fill.fill_id}`,
+    ],
+  } satisfies TargetPosition;
+
+  const issues = validateTargetPosition(updated);
+  if (issues.length > 0) {
+    throw new Error(formatTargetPositionValidationErrors(issues));
+  }
+  return updated;
 }
 
 export function computePartialTargetQuantities(
@@ -482,6 +529,77 @@ function validateInitialFill(position: TargetPosition, fill: SimulatedFill): voi
   if (!Number.isFinite(fill.price) || fill.price <= 0) {
     throw new Error('fill.price must be positive finite');
   }
+}
+
+function validateExitFill(position: TargetPosition, fill: SimulatedFill): void {
+  if (position.lifecycle_state === 'closed' || position.remaining_quantity <= 0) {
+    throw new Error('exit fill cannot apply to a closed target position');
+  }
+  if (fill.instrument.symbol !== position.instrument.symbol) {
+    throw new Error('exit fill instrument does not match target position instrument');
+  }
+  const expectedSide = position.side === 'long' ? 'sell' : 'buy';
+  if (fill.side !== expectedSide) {
+    throw new Error(`exit fill side ${fill.side} does not close target position ${position.side}`);
+  }
+  validatePositiveInteger(fill.quantity, 'fill.quantity');
+  if (fill.quantity > position.remaining_quantity) {
+    throw new Error('exit fill quantity exceeds target position remaining quantity');
+  }
+  if (!Number.isFinite(fill.price) || fill.price <= 0) {
+    throw new Error('fill.price must be positive finite');
+  }
+}
+
+function updateTargetsForExit(
+  position: TargetPosition,
+  input: {
+    readonly target_label?: PriceTarget['label'];
+    readonly exit_quantity: number;
+    readonly is_flat: boolean;
+  },
+): readonly TargetPositionTarget[] {
+  return position.targets.map((target) => {
+    if (input.target_label !== undefined && target.label === input.target_label) {
+      const filledQuantity = Math.min(target.quantity, target.filled_quantity + input.exit_quantity);
+      return {
+        ...target,
+        filled_quantity: filledQuantity,
+        status: filledQuantity >= target.quantity ? 'filled' : target.status,
+      } satisfies TargetPositionTarget;
+    }
+    if (input.is_flat && target.status === 'pending') {
+      return {
+        ...target,
+        status: 'cancelled',
+      } satisfies TargetPositionTarget;
+    }
+    return target;
+  });
+}
+
+function computeRealizedPnlUsd(
+  position: TargetPosition,
+  exitPrice: number,
+  quantity: number,
+): number {
+  const points =
+    position.side === 'long'
+      ? exitPrice - position.entry_price
+      : position.entry_price - exitPrice;
+  return round6(points * quantity * position.instrument.point_value);
+}
+
+function computeUnrealizedPnlUsd(
+  position: TargetPosition,
+  markPrice: number,
+  quantity: number,
+): number {
+  const points =
+    position.side === 'long'
+      ? markPrice - position.entry_price
+      : position.entry_price - markPrice;
+  return round6(points * quantity * position.instrument.point_value);
 }
 
 function computeRiskPoints(side: Direction, entry: number, stop: number): number {

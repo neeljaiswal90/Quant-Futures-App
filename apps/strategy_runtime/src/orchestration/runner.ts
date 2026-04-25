@@ -15,6 +15,7 @@ import {
   type EventId,
   type JournalEventEnvelope,
   type JournalEventPayloadFor,
+  type ManagementActionType,
   type PositionStatus,
   type RunId,
   type SessionId,
@@ -26,12 +27,14 @@ import {
 } from '../contracts/index.js';
 import {
   createEntryOrderIntent,
+  createManagementExitOrderIntent,
   toOrderIntentEventPayload,
   toSimFillEventPayload,
   type SimulatedExecutionAdapter,
   type SimulatedExecutionMarketState,
 } from '../execution/simulated-execution.js';
 import {
+  applyExitFillToTargetPosition,
   applyInitialFillToTargetPosition,
   buildTargetPositionFromCandidate,
   evaluatePositionManager,
@@ -136,6 +139,8 @@ export interface RunnerManagementTickInput {
 export interface RunnerManagementTickResult {
   readonly management_tick_events: readonly JournalEventEnvelope<'MGMT_TICK', JournalEventPayloadFor<'MGMT_TICK'>>[];
   readonly management_action_events: readonly JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[];
+  readonly order_intent_events: readonly JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[];
+  readonly sim_fill_events: readonly JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[];
   readonly position_events: readonly JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[];
   readonly management_results: readonly PositionManagerEvaluation[];
   readonly session_risk?: SessionRiskState;
@@ -162,6 +167,7 @@ export class StrategyRuntimeRunner {
   private lastSessionTransition: RunnerSessionTransition | undefined;
   private lastRollTransition: RunnerRollTransition | undefined;
   private readonly emittedRollFlattenActions = new Set<string>();
+  private readonly executedManagementActionIds = new Set<string>();
 
   constructor(options: StrategyRuntimeRunnerOptions) {
     if (
@@ -231,6 +237,10 @@ export class StrategyRuntimeRunner {
       eligibility,
       rollAdvisoryEvent,
     );
+    const forcedFlattenExecution = await this.executeManagementActionEvents({
+      action_events: forcedFlattenActionEvents,
+      market: toExecutionMarketState(snapshot),
+    });
     const featureEvent = await this.publishDerivedEvent({
       event_id: makeEventId(`features-${snapshot.feature_snapshot_id}`),
       type: 'FEATURES',
@@ -293,9 +303,15 @@ export class StrategyRuntimeRunner {
 
     const sizingEvents: JournalEventEnvelope<'SIZING', JournalEventPayloadFor<'SIZING'>>[] = [];
     const riskGateEvents: JournalEventEnvelope<'RISK_GATE', JournalEventPayloadFor<'RISK_GATE'>>[] = [];
-    const orderIntentEvents: JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[] = [];
-    const simFillEvents: JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[] = [];
-    const positionEvents: JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[] = [];
+    const orderIntentEvents: JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[] = [
+      ...forcedFlattenExecution.order_intent_events,
+    ];
+    const simFillEvents: JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[] = [
+      ...forcedFlattenExecution.sim_fill_events,
+    ];
+    const positionEvents: JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[] = [
+      ...forcedFlattenExecution.position_events,
+    ];
 
     for (const ranked of ranking.ranked_candidates.slice(0, this.maxCandidatesPerCycle)) {
       const candidate = ranked.candidate;
@@ -447,6 +463,8 @@ export class StrategyRuntimeRunner {
   ): Promise<RunnerManagementTickResult> {
     const managementTickEvents: JournalEventEnvelope<'MGMT_TICK', JournalEventPayloadFor<'MGMT_TICK'>>[] = [];
     const managementActionEvents: JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[] = [];
+    const orderIntentEvents: JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[] = [];
+    const simFillEvents: JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[] = [];
     const positionEvents: JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[] = [];
     const managementResults: PositionManagerEvaluation[] = [];
     const nextPositions: TargetPosition[] = [];
@@ -485,6 +503,7 @@ export class StrategyRuntimeRunner {
       managementTickEvents.push(tickEvent);
 
       let positionCauseEventId: EventId = tickEvent.event_id;
+      const positionActionEvents: JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[] = [];
       for (const actionPayload of result.management_action_payloads) {
         const actionEvent = await this.publishDerivedEvent({
           event_id: makeEventId(`mgmt-action-${actionPayload.management_action_id}`),
@@ -502,39 +521,40 @@ export class StrategyRuntimeRunner {
         });
         positionCauseEventId = actionEvent.event_id;
         managementActionEvents.push(actionEvent);
+        positionActionEvents.push(actionEvent);
       }
 
-      const updatedPosition = result.updated_position;
-      const realizedDelta = round6(updatedPosition.realized_pnl_usd - position.realized_pnl_usd);
-      if (this.sessionRisk !== undefined && realizedDelta !== 0) {
-        this.sessionRisk = updatedPosition.lifecycle_state === 'closed'
-          ? updateSessionRiskState(this.sessionRisk, {
-            kind: 'trade_closed',
-            realized_pnl_delta_usd: realizedDelta,
-            event_ts_ns: input.cause_event.ts_ns,
-          }, resolveRiskPolicy(this.riskPolicy).session)
-          : applyRealizedPnl({
-            state: this.sessionRisk,
-            realized_pnl_delta_usd: realizedDelta,
-            event_ts_ns: input.cause_event.ts_ns,
-            policy: resolveRiskPolicy(this.riskPolicy).session,
-          });
-      }
-
-      const positionEvent = await this.publishDerivedEvent({
-        event_id: makeEventId(`position-update-${updatedPosition.position_id}-${input.cause_event.ts_ns}`),
-        type: 'POSITION',
-        ts_ns: input.cause_event.ts_ns,
-        causation_id: toCausationId(positionCauseEventId),
-        payload: {
-          ...result.position_event_payload,
-          strategy_config_hash: this.strategyConfigHash,
-          management_profile_hash: updatedPosition.profile_hash,
-          management_profile_id: updatedPosition.profile_id,
-          management_profile_version: updatedPosition.profile_version,
-        },
+      const execution = await this.executeManagementActionEvents({
+        action_events: positionActionEvents,
+        market: toExecutionMarketStateFromManagementTick(position, input),
+        positions: [position],
+        manager_updated_position: result.updated_position,
       });
-      positionEvents.push(positionEvent);
+      orderIntentEvents.push(...execution.order_intent_events);
+      simFillEvents.push(...execution.sim_fill_events);
+      positionEvents.push(...execution.position_events);
+
+      const updatedPosition = execution.updated_positions.length > 0
+        ? execution.updated_positions[execution.updated_positions.length - 1]!
+        : result.updated_position;
+      if (execution.position_events.length === 0) {
+        this.applySessionRiskPositionChange(position, updatedPosition, input.cause_event.ts_ns);
+
+        const positionEvent = await this.publishDerivedEvent({
+          event_id: makeEventId(`position-update-${updatedPosition.position_id}-${input.cause_event.ts_ns}`),
+          type: 'POSITION',
+          ts_ns: input.cause_event.ts_ns,
+          causation_id: toCausationId(positionCauseEventId),
+          payload: {
+            ...result.position_event_payload,
+            strategy_config_hash: this.strategyConfigHash,
+            management_profile_hash: updatedPosition.profile_hash,
+            management_profile_id: updatedPosition.profile_id,
+            management_profile_version: updatedPosition.profile_version,
+          },
+        });
+        positionEvents.push(positionEvent);
+      }
 
       if (updatedPosition.lifecycle_state !== 'closed') {
         nextPositions.push(updatedPosition);
@@ -545,6 +565,8 @@ export class StrategyRuntimeRunner {
     return {
       management_tick_events: managementTickEvents,
       management_action_events: managementActionEvents,
+      order_intent_events: orderIntentEvents,
+      sim_fill_events: simFillEvents,
       position_events: positionEvents,
       management_results: managementResults,
       session_risk: this.sessionRisk,
@@ -781,6 +803,159 @@ export class StrategyRuntimeRunner {
       fill,
     );
   }
+
+  private async executeManagementActionEvents(input: {
+    readonly action_events: readonly JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[];
+    readonly market: SimulatedExecutionMarketState;
+    readonly positions?: readonly TargetPosition[];
+    readonly manager_updated_position?: TargetPosition;
+  }): Promise<ManagementActionExecutionResult> {
+    const orderIntentEvents: JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[] = [];
+    const simFillEvents: JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[] = [];
+    const positionEvents: JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[] = [];
+    const updatedPositions: TargetPosition[] = [];
+    const positionById = new Map(
+      (input.positions ?? this.openPositions).map((position) => [String(position.position_id), position]),
+    );
+
+    for (const actionEvent of input.action_events) {
+      const action = actionEvent.payload;
+      if (!isExecutableManagementActionType(action.action_type)) {
+        continue;
+      }
+      if (this.executedManagementActionIds.has(String(action.management_action_id))) {
+        continue;
+      }
+      const position = positionById.get(String(action.position_id));
+      if (position === undefined || position.lifecycle_state === 'closed' || position.remaining_quantity <= 0) {
+        continue;
+      }
+      const exitQuantity = managementActionExitQuantity(action, position);
+      if (exitQuantity === undefined) {
+        continue;
+      }
+
+      this.executedManagementActionIds.add(String(action.management_action_id));
+      const intent = createManagementExitOrderIntent({
+        position,
+        management_action_id: action.management_action_id,
+        quantity: exitQuantity,
+        submitted_ts_ns: actionEvent.ts_ns,
+        config: this.appConfigRef,
+      });
+      const intentEvent = await this.publishDerivedEvent({
+        event_id: makeEventId(`order-intent-${intent.order_intent_id}`),
+        type: 'ORDER_INTENT',
+        ts_ns: actionEvent.ts_ns,
+        causation_id: toCausationId(actionEvent.event_id),
+        payload: {
+          ...toOrderIntentEventPayload(intent),
+          strategy_config_hash: this.strategyConfigHash,
+          management_action_id: action.management_action_id,
+          position_id: position.position_id,
+          management_profile_hash: position.profile_hash,
+          management_profile_id: position.profile_id,
+          management_profile_version: position.profile_version,
+          position_manager_version: POSITION_MANAGER_VERSION,
+        },
+        correlation_id: makeCorrelationId(`corr-${position.candidate_id}`),
+      });
+      orderIntentEvents.push(intentEvent);
+
+      const orderResult = await this.executionAdapter.submit({
+        intent,
+        market: {
+          ...input.market,
+          instrument: position.instrument,
+        },
+        fill_ts_ns: actionEvent.ts_ns,
+      });
+
+      for (const fill of orderResult.fills) {
+        const fillEvent = await this.publishDerivedEvent({
+          event_id: makeEventId(`sim-fill-${fill.fill_id}`),
+          type: 'SIM_FILL',
+          ts_ns: fill.filled_ts_ns,
+          causation_id: toCausationId(intentEvent.event_id),
+          payload: {
+            ...toSimFillEventPayload(fill),
+            strategy_config_hash: this.strategyConfigHash,
+            management_action_id: action.management_action_id,
+            position_id: position.position_id,
+            management_profile_hash: position.profile_hash,
+            management_profile_id: position.profile_id,
+            management_profile_version: position.profile_version,
+            position_manager_version: POSITION_MANAGER_VERSION,
+          },
+          correlation_id: makeCorrelationId(`corr-${position.candidate_id}`),
+        });
+        simFillEvents.push(fillEvent);
+
+        const currentPosition = positionById.get(String(position.position_id)) ?? position;
+        const exitPosition = applyExitFillToTargetPosition(currentPosition, {
+          fill,
+          action_type: action.action_type,
+          reason: action.reason,
+          target_label: action.target_label,
+        });
+        const updatedPosition = mergeManagerStateAfterExecution(
+          exitPosition,
+          input.manager_updated_position,
+        );
+        positionById.set(String(position.position_id), updatedPosition);
+        updatedPositions.push(updatedPosition);
+        this.applySessionRiskPositionChange(currentPosition, updatedPosition, fill.filled_ts_ns);
+
+        const positionEvent = await this.publishDerivedEvent({
+          event_id: makeEventId(`position-close-${updatedPosition.position_id}-${fill.fill_id}`),
+          type: 'POSITION',
+          ts_ns: fill.filled_ts_ns,
+          causation_id: toCausationId(fillEvent.event_id),
+          payload: toPositionEventPayload(updatedPosition, this.strategyConfigHash),
+          correlation_id: makeCorrelationId(`corr-${updatedPosition.candidate_id}`),
+        });
+        positionEvents.push(positionEvent);
+      }
+    }
+
+    this.openPositions = this.openPositions
+      .map((position) => positionById.get(String(position.position_id)) ?? position)
+      .filter((position) => position.lifecycle_state !== 'closed');
+
+    return {
+      order_intent_events: orderIntentEvents,
+      sim_fill_events: simFillEvents,
+      position_events: positionEvents,
+      updated_positions: updatedPositions,
+    };
+  }
+
+  private applySessionRiskPositionChange(
+    previousPosition: TargetPosition,
+    updatedPosition: TargetPosition,
+    eventTsNs: UnixNs,
+  ): void {
+    if (this.sessionRisk === undefined) {
+      return;
+    }
+    const realizedDelta = round6(updatedPosition.realized_pnl_usd - previousPosition.realized_pnl_usd);
+    if (updatedPosition.lifecycle_state === 'closed' && previousPosition.lifecycle_state !== 'closed') {
+      this.sessionRisk = updateSessionRiskState(this.sessionRisk, {
+        kind: 'trade_closed',
+        realized_pnl_delta_usd: realizedDelta,
+        event_ts_ns: eventTsNs,
+      }, resolveRiskPolicy(this.riskPolicy).session);
+      return;
+    }
+    if (realizedDelta !== 0) {
+      this.sessionRisk = applyRealizedPnl({
+        state: this.sessionRisk,
+        realized_pnl_delta_usd: realizedDelta,
+        event_ts_ns: eventTsNs,
+        policy: resolveRiskPolicy(this.riskPolicy).session,
+      });
+    }
+  }
 }
 
 function failMissingStrategyConfig(config: LoadedAppConfig): never {
@@ -814,6 +989,18 @@ interface RunnerRollTransition {
   readonly next_contract: string;
   readonly block_reason?: MnqEligibilityReason;
   readonly flatten_required: boolean;
+}
+
+type ExecutableManagementActionType = Extract<
+  ManagementActionType,
+  'TAKE_PARTIAL' | 'TAKE_PROFIT' | 'EXIT_FULL' | 'TIME_STOP_EXIT' | 'FAIL_SAFE_EXIT'
+>;
+
+interface ManagementActionExecutionResult {
+  readonly order_intent_events: readonly JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[];
+  readonly sim_fill_events: readonly JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[];
+  readonly position_events: readonly JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[];
+  readonly updated_positions: readonly TargetPosition[];
 }
 
 function buildMnqBlockedStrategyEvaluation(
@@ -1035,8 +1222,82 @@ function toExecutionMarketState(snapshot: StrategyFeatureSnapshot): SimulatedExe
   };
 }
 
+function toExecutionMarketStateFromManagementTick(
+  position: TargetPosition,
+  input: RunnerManagementTickInput,
+): SimulatedExecutionMarketState {
+  return {
+    instrument: position.instrument,
+    ts_ns: input.cause_event.ts_ns,
+    bid_px: input.bid_px ?? input.mark_price,
+    ask_px: input.ask_px ?? input.mark_price,
+    last_trade_price: input.mark_price,
+  };
+}
+
 function toCausationId(eventId: EventId): CausationId {
   return makeCausationId(String(eventId));
+}
+
+function isExecutableManagementActionType(
+  actionType: ManagementActionType,
+): actionType is ExecutableManagementActionType {
+  return (
+    actionType === 'TAKE_PARTIAL' ||
+    actionType === 'TAKE_PROFIT' ||
+    actionType === 'EXIT_FULL' ||
+    actionType === 'TIME_STOP_EXIT' ||
+    actionType === 'FAIL_SAFE_EXIT'
+  );
+}
+
+function managementActionExitQuantity(
+  action: JournalEventPayloadFor<'MGMT_ACTION'>,
+  position: TargetPosition,
+): number | undefined {
+  const exitQuantity = action.exit_quantity;
+  if (!Number.isInteger(exitQuantity) || exitQuantity === undefined || exitQuantity <= 0) {
+    return undefined;
+  }
+  return Math.min(exitQuantity, position.remaining_quantity);
+}
+
+function mergeManagerStateAfterExecution(
+  executedPosition: TargetPosition,
+  managerUpdatedPosition: TargetPosition | undefined,
+): TargetPosition {
+  if (
+    managerUpdatedPosition === undefined ||
+    managerUpdatedPosition.position_id !== executedPosition.position_id ||
+    executedPosition.lifecycle_state === 'closed'
+  ) {
+    return executedPosition;
+  }
+
+  return {
+    ...executedPosition,
+    active_stop_price: managerUpdatedPosition.active_stop_price,
+    break_even: managerUpdatedPosition.break_even,
+    trailing_stop: managerUpdatedPosition.trailing_stop,
+    time_stop: managerUpdatedPosition.time_stop,
+    fail_safe: managerUpdatedPosition.fail_safe,
+    reasons: uniqueStrings([
+      ...executedPosition.reasons,
+      ...managerUpdatedPosition.reasons.filter((reason) => !executedPosition.reasons.includes(reason)),
+    ]),
+  };
+}
+
+function uniqueStrings(values: readonly string[]): readonly string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const value of values) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      unique.push(value);
+    }
+  }
+  return unique;
 }
 
 function round6(value: number): number {
