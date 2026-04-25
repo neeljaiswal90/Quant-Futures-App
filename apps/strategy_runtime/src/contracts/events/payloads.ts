@@ -131,6 +131,7 @@ export interface StrategyEvaluationEventPayload {
   readonly gate_state: 'armed' | 'waiting' | 'blocked';
   readonly score?: number;
   readonly reasons: readonly string[];
+  readonly strategy_config_hash?: string;
 }
 
 export interface PriceTargetEventPayload {
@@ -150,6 +151,7 @@ export interface CandidateEventPayload {
   readonly targets: readonly PriceTargetEventPayload[];
   readonly confidence: number;
   readonly reasons: readonly string[];
+  readonly strategy_config_hash?: string;
 }
 
 export interface MlUpliftEventPayload {
@@ -162,6 +164,7 @@ export interface MlUpliftEventPayload {
 export interface RankEventPayload {
   readonly ranked_candidate_ids: readonly CandidateId[];
   readonly method: string;
+  readonly strategy_config_hash?: string;
 }
 
 export interface RiskGateEventPayload {
@@ -170,6 +173,7 @@ export interface RiskGateEventPayload {
   readonly status: 'pass' | 'reject';
   readonly reasons: readonly string[];
   readonly risk_manager_version?: string;
+  readonly strategy_config_hash?: string;
   readonly risk_policy_hash?: string;
   readonly session_risk?: {
     readonly session_id: SessionId;
@@ -192,6 +196,7 @@ export interface SizingEventPayload {
   readonly risk_usd: number;
   readonly risk_points: number;
   readonly rejected_reason?: string;
+  readonly strategy_config_hash?: string;
 }
 
 export interface OrderIntentEventPayload {
@@ -204,6 +209,7 @@ export interface OrderIntentEventPayload {
   readonly limit_price?: number;
   readonly stop_price?: number;
   readonly time_in_force: 'ioc' | 'day' | 'gtc';
+  readonly strategy_config_hash?: string;
 }
 
 export interface SimFillEventPayload {
@@ -216,6 +222,7 @@ export interface SimFillEventPayload {
   readonly slippage_points?: number;
   readonly exchange_fee_usd?: number;
   readonly commission_usd?: number;
+  readonly strategy_config_hash?: string;
 }
 
 export interface PositionEventPayload {
@@ -226,12 +233,14 @@ export interface PositionEventPayload {
   readonly quantity_open: number;
   readonly avg_entry_price: number;
   readonly updated_ts_ns: UnixNs;
+  readonly strategy_config_hash?: string;
 }
 
 export interface ManagementTickEventPayload {
   readonly position_id: PositionId;
   readonly mark_price: number;
   readonly unrealized_pnl_usd: number;
+  readonly strategy_config_hash?: string;
 }
 
 export interface ManagementActionEventPayload {
@@ -245,6 +254,7 @@ export interface ManagementActionEventPayload {
   readonly exit_price?: number;
   readonly realized_pnl_usd?: number;
   readonly realized_r?: number;
+  readonly strategy_config_hash?: string;
 }
 
 export interface JournalEventPayloadByType {
