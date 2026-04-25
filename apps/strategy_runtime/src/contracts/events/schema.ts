@@ -386,6 +386,7 @@ function validateStrategyEvaluationPayload(
   requireEnum(record.gate_state, `${path}.gate_state`, issues, ['armed', 'waiting', 'blocked']);
   optionalNumber(record.score, `${path}.score`, issues);
   requireStringArray(record.reasons, `${path}.reasons`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validateCandidatePayload(
@@ -410,6 +411,7 @@ function validateCandidatePayload(
   requireTargetArray(record.targets, `${path}.targets`, issues);
   requireNumber(record.confidence, `${path}.confidence`, issues);
   requireStringArray(record.reasons, `${path}.reasons`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validateMlUpliftPayload(
@@ -434,6 +436,7 @@ function validateRankPayload(
   if (record === undefined) return;
   requireStringArray(record.ranked_candidate_ids, `${path}.ranked_candidate_ids`, issues);
   requireNonEmptyString(record.method, `${path}.method`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validateRiskGatePayload(
@@ -448,6 +451,7 @@ function validateRiskGatePayload(
   requireEnum(record.status, `${path}.status`, issues, ['pass', 'reject']);
   requireStringArray(record.reasons, `${path}.reasons`, issues);
   optionalNonEmptyString(record.risk_manager_version, `${path}.risk_manager_version`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
   optionalNonEmptyString(record.risk_policy_hash, `${path}.risk_policy_hash`, issues);
   optionalSessionRiskState(record.session_risk, `${path}.session_risk`, issues);
 }
@@ -490,6 +494,7 @@ function validateSizingPayload(
   requireNumber(record.risk_usd, `${path}.risk_usd`, issues);
   requireNumber(record.risk_points, `${path}.risk_points`, issues);
   optionalNonEmptyString(record.rejected_reason, `${path}.rejected_reason`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validateOrderIntentPayload(
@@ -508,6 +513,7 @@ function validateOrderIntentPayload(
   optionalNumber(record.limit_price, `${path}.limit_price`, issues);
   optionalNumber(record.stop_price, `${path}.stop_price`, issues);
   requireEnum(record.time_in_force, `${path}.time_in_force`, issues, ['ioc', 'day', 'gtc']);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validateSimFillPayload(
@@ -526,6 +532,7 @@ function validateSimFillPayload(
   optionalNumber(record.slippage_points, `${path}.slippage_points`, issues);
   optionalNumber(record.exchange_fee_usd, `${path}.exchange_fee_usd`, issues);
   optionalNumber(record.commission_usd, `${path}.commission_usd`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validatePositionPayload(
@@ -542,6 +549,7 @@ function validatePositionPayload(
   requireNumber(record.quantity_open, `${path}.quantity_open`, issues);
   requireNumber(record.avg_entry_price, `${path}.avg_entry_price`, issues);
   requireTimestamp(record.updated_ts_ns, `${path}.updated_ts_ns`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validateManagementTickPayload(
@@ -554,6 +562,7 @@ function validateManagementTickPayload(
   requireNonEmptyString(record.position_id, `${path}.position_id`, issues);
   requireNumber(record.mark_price, `${path}.mark_price`, issues);
   requireNumber(record.unrealized_pnl_usd, `${path}.unrealized_pnl_usd`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validateManagementActionPayload(
@@ -590,6 +599,7 @@ function validateManagementActionPayload(
   optionalNumber(record.exit_price, `${path}.exit_price`, issues);
   optionalNumber(record.realized_pnl_usd, `${path}.realized_pnl_usd`, issues);
   optionalNumber(record.realized_r, `${path}.realized_r`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
 }
 
 function validateConfigLineageRef(
