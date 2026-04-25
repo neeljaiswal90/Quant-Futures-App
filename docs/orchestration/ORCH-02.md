@@ -53,7 +53,15 @@ For each management market tick:
 
 Every runner-created envelope carries APP-03 `config_hash` via `event.config`.
 
-Strategy/ranking/decision payloads also carry `strategy_config_hash` from STRAT-07 so replay can prove which threshold bundle created the event. Risk and management YAML hashes are still future work; until then, RISK/MGMT payloads retain their version strings and placeholder/profile metadata.
+Strategy/ranking/decision payloads also carry `strategy_config_hash` from STRAT-07 so replay can prove which threshold bundle created the event.
+
+CFG-01 adds the remaining config lineage:
+
+- `SIZING` and `RISK_GATE` carry `risk_config_hash` plus `risk_manager_version`.
+- `POSITION`, `MGMT_TICK`, and `MGMT_ACTION` carry `management_profile_hash`, `management_profile_id`, and `management_profile_version`.
+- `MGMT_TICK` and `MGMT_ACTION` carry `position_manager_version`.
+
+The runner consumes loaded YAML config from `loadAppConfig()`: `config/risk/risk-policy.yaml` and `config/management/profiles.yaml`.
 
 ## Session Risk
 

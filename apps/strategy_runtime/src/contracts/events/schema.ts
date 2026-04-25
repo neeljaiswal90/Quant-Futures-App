@@ -453,6 +453,7 @@ function validateRiskGatePayload(
   optionalNonEmptyString(record.risk_manager_version, `${path}.risk_manager_version`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
   optionalNonEmptyString(record.risk_policy_hash, `${path}.risk_policy_hash`, issues);
+  optionalNonEmptyString(record.risk_config_hash, `${path}.risk_config_hash`, issues);
   optionalSessionRiskState(record.session_risk, `${path}.session_risk`, issues);
 }
 
@@ -495,6 +496,8 @@ function validateSizingPayload(
   requireNumber(record.risk_points, `${path}.risk_points`, issues);
   optionalNonEmptyString(record.rejected_reason, `${path}.rejected_reason`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
+  optionalNonEmptyString(record.risk_config_hash, `${path}.risk_config_hash`, issues);
+  optionalNonEmptyString(record.risk_manager_version, `${path}.risk_manager_version`, issues);
 }
 
 function validateOrderIntentPayload(
@@ -550,6 +553,9 @@ function validatePositionPayload(
   requireNumber(record.avg_entry_price, `${path}.avg_entry_price`, issues);
   requireTimestamp(record.updated_ts_ns, `${path}.updated_ts_ns`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
+  optionalNonEmptyString(record.management_profile_hash, `${path}.management_profile_hash`, issues);
+  optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
+  optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
 }
 
 function validateManagementTickPayload(
@@ -563,6 +569,10 @@ function validateManagementTickPayload(
   requireNumber(record.mark_price, `${path}.mark_price`, issues);
   requireNumber(record.unrealized_pnl_usd, `${path}.unrealized_pnl_usd`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
+  optionalNonEmptyString(record.management_profile_hash, `${path}.management_profile_hash`, issues);
+  optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
+  optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
+  optionalNonEmptyString(record.position_manager_version, `${path}.position_manager_version`, issues);
 }
 
 function validateManagementActionPayload(
@@ -600,6 +610,10 @@ function validateManagementActionPayload(
   optionalNumber(record.realized_pnl_usd, `${path}.realized_pnl_usd`, issues);
   optionalNumber(record.realized_r, `${path}.realized_r`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
+  optionalNonEmptyString(record.management_profile_hash, `${path}.management_profile_hash`, issues);
+  optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
+  optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
+  optionalNonEmptyString(record.position_manager_version, `${path}.position_manager_version`, issues);
 }
 
 function validateConfigLineageRef(

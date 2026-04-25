@@ -91,7 +91,7 @@ export interface ManagementProfile {
   readonly strategy_id: ManagementProfileStrategyId;
   readonly setup_family: CandidateSetupFamily | 'fallback';
   readonly display_name: string;
-  readonly profile_hash: typeof MANAGEMENT_PROFILE_HASH_PLACEHOLDER;
+  readonly profile_hash: string;
   readonly initial_stop: InitialStopBehavior;
   readonly targets: readonly TargetExitBehavior[];
   readonly break_even: BreakEvenPolicy;
@@ -135,7 +135,7 @@ export interface PlannedManagementTarget {
 export interface CandidateTargetPlan {
   readonly profile_id: ManagementProfileId;
   readonly profile_version: typeof MANAGEMENT_PROFILE_VERSION;
-  readonly profile_hash: typeof MANAGEMENT_PROFILE_HASH_PLACEHOLDER;
+  readonly profile_hash: string;
   readonly strategy_id: StrategyId;
   readonly candidate_id: Candidate['candidate_id'];
   readonly entry_price: number;
@@ -169,14 +169,7 @@ export function validateManagementProfile(
   }
   requireNonEmptyString(profile.strategy_id, '$.strategy_id', issues);
   requireNonEmptyString(profile.display_name, '$.display_name', issues);
-  if (profile.profile_hash !== MANAGEMENT_PROFILE_HASH_PLACEHOLDER) {
-    addIssue(
-      issues,
-      '$.profile_hash',
-      'invalid_field_value',
-      `must be ${MANAGEMENT_PROFILE_HASH_PLACEHOLDER}`,
-    );
-  }
+  requireNonEmptyString(profile.profile_hash, '$.profile_hash', issues);
 
   validateInitialStop(profile.initial_stop, issues);
   validateTargets(profile.targets, issues);

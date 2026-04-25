@@ -33,7 +33,13 @@ Each `ManagementProfile` includes:
 - `partial_exit`
 - deterministic `reasons`
 
-`profile_hash` is currently the explicit placeholder `management_profile_hash_pending_config_v1`. Management profile values are hardcoded for MGMT-01 so later MGMT/ORCH tickets have a typed substrate. A future config migration should move these values into typed management config and replace the placeholder with a deterministic config hash.
+CFG-01 moves runtime profile values into:
+
+```text
+config/management/profiles.yaml
+```
+
+`loadManagementProfilesConfig()` validates the YAML, computes a deterministic `profile_hash` for each profile, and computes a whole-file `management_config_hash`. The hardcoded profile constants remain as test/default fallback scaffolding, but ORCH-02 runtime paths consume the loaded YAML profiles.
 
 ## Default Profile Mapping
 
@@ -95,6 +101,6 @@ ORCH-02 and later management producers must journal `MGMT_TICK` and `MGMT_ACTION
 - `payload.action_type` should use the uppercase V1 vocabulary;
 - `event.ts_ns` must inherit from the causation chain, never runtime wall-clock time;
 - journaled payloads should include enough reason text to identify the profile and rule used;
-- once management config hashing exists, events should include the management profile/config hash.
+- runtime events include `management_profile_hash`, `management_profile_id`, and `management_profile_version`.
 
 Existing positions must remain manageable even when RISK-03 circuit breakers block new entries.

@@ -24,7 +24,6 @@ import {
   createSessionRiskState,
   loadVenueCostTable,
   updateSessionRiskState,
-  type PartialRiskPolicyConfig,
   type SessionRiskState,
 } from '../../src/risk/index.js';
 import {
@@ -33,13 +32,6 @@ import {
 
 const RUN_ID = makeRunId('run-orch-02');
 const SESSION_ID = makeSessionId('2026-04-23-rth');
-const TEST_PASSING_RISK_POLICY = {
-  sizing_mode: 'replay',
-  default_n_eff: 10_000,
-  sizing: {
-    C_base: 100,
-  },
-} as const satisfies PartialRiskPolicyConfig;
 
 function createRunner(options: {
   readonly initialOpenTradeCount?: number;
@@ -79,7 +71,6 @@ function createRunner(options: {
       run_id: RUN_ID,
       session_id: SESSION_ID,
       execution_adapter: executionAdapter,
-      risk_policy: TEST_PASSING_RISK_POLICY,
       initial_session_risk_state: initial,
     }),
   };
@@ -168,6 +159,15 @@ describe('ORCH-02 deterministic runner loop', () => {
       container.config.strategyConfig?.lineage.strategy_config_hash,
     );
     expect(result.position_events[0]!.config?.config_hash).toBe(container.config.lineage.config_hash);
+    expect(result.sizing_events[0]!.payload.risk_config_hash).toBe(
+      container.config.riskConfig?.lineage.risk_config_hash,
+    );
+    expect(result.risk_gate_events[0]!.payload.risk_config_hash).toBe(
+      container.config.riskConfig?.lineage.risk_config_hash,
+    );
+    expect(result.position_events[0]!.payload.management_profile_hash).toBe(
+      container.config.managementProfiles?.profiles.trend_pullback_long.profile_hash,
+    );
   });
 
   it('routes risk rejection without submitting simulated orders', async () => {
@@ -218,6 +218,12 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.session_risk?.closed_trade_count).toBe(1);
     expect(result.position_events[0]!.payload.strategy_config_hash).toBe(
       cycle.position_events[0]!.payload.strategy_config_hash,
+    );
+    expect(result.management_tick_events[0]!.payload.management_profile_hash).toBe(
+      cycle.open_positions[0]!.profile_hash,
+    );
+    expect(result.management_action_events[0]!.payload.management_profile_hash).toBe(
+      cycle.open_positions[0]!.profile_hash,
     );
   });
 

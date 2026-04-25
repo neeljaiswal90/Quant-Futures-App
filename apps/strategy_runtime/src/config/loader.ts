@@ -8,6 +8,8 @@ import {
 } from './env.js';
 import { buildConfigLineage } from './hash.js';
 import { loadStrategyRuntimeConfig } from './strategy-config.js';
+import { loadRiskPolicyConfig } from '../risk/risk-policy-config.js';
+import { loadManagementProfilesConfig } from '../management/management-config.js';
 import type { EnvRecord, LoadedAppConfig } from './types.js';
 import { parsePublicRuntimeConfig } from './validation.js';
 
@@ -55,11 +57,27 @@ export function loadAppConfig(options: LoadAppConfigOptions = {}): LoadedAppConf
       required: true,
     })
     : undefined;
+  const riskConfig = publicConfig.risk_config.required
+    ? loadRiskPolicyConfig({
+      cwd,
+      path: publicConfig.risk_config.path,
+      required: true,
+    })
+    : undefined;
+  const managementProfiles = publicConfig.management_profiles.required
+    ? loadManagementProfilesConfig({
+      cwd,
+      path: publicConfig.management_profiles.path,
+      required: true,
+    })
+    : undefined;
 
   return {
     publicConfig,
     secrets,
     ...(strategyConfig === undefined ? {} : { strategyConfig }),
+    ...(riskConfig === undefined ? {} : { riskConfig }),
+    ...(managementProfiles === undefined ? {} : { managementProfiles }),
     lineage: buildConfigLineage(publicConfig),
     source: {
       config_path: configPath,

@@ -10,6 +10,7 @@ export type LiveMarketDataProvider = 'rithmic';
 export type HistoricalDataProvider = 'databento';
 export type ExecutionAdapter = 'simulated';
 export type StrategyConfigFormat = 'yaml';
+export type RuntimeConfigFormat = 'yaml';
 
 export interface PublicRuntimeConfig {
   version: typeof CONFIG_SCHEMA_VERSION;
@@ -43,6 +44,16 @@ export interface PublicRuntimeConfig {
     format: StrategyConfigFormat;
     required: boolean;
   };
+  risk_config: {
+    path: string;
+    format: RuntimeConfigFormat;
+    required: boolean;
+  };
+  management_profiles: {
+    path: string;
+    format: RuntimeConfigFormat;
+    required: boolean;
+  };
 }
 
 export interface SecretRuntimeConfig {
@@ -72,6 +83,8 @@ export interface LoadedAppConfig {
   publicConfig: PublicRuntimeConfig;
   secrets: SecretRuntimeConfig;
   strategyConfig?: import('./strategy-config.js').StrategyRuntimeConfig;
+  riskConfig?: import('../risk/risk-policy-config.js').LoadedRiskPolicyConfig;
+  managementProfiles?: import('../management/management-config.js').ManagementProfilesConfig;
   lineage: ConfigLineage;
   source: ConfigSource;
 }

@@ -33,8 +33,10 @@ import {
   applyInitialFillToTargetPosition,
   buildTargetPositionFromCandidate,
   evaluatePositionManager,
+  POSITION_MANAGER_VERSION,
   resolveManagementProfile,
   summarizeTargetPositionForJournal,
+  type ManagementProfilesConfig,
   type PositionManagerMarketInput,
   type PositionManagerEvaluation,
   type TargetPosition,
@@ -43,11 +45,13 @@ import {
   applyRealizedPnl,
   createSessionRiskState,
   evaluateRiskGate,
+  RISK_MANAGER_VERSION,
   resetSessionRiskState,
   resolveRiskPolicy,
   sizeCandidate,
   toRiskGateEventPayload,
   updateSessionRiskState,
+  type LoadedRiskPolicyConfig,
   type PartialRiskPolicyConfig,
   type RiskRuntimeState,
   type SessionRiskState,
@@ -71,6 +75,8 @@ export interface StrategyRuntimeRunnerOptions {
   readonly execution_adapter: SimulatedExecutionAdapter;
   readonly account_ref?: string;
   readonly risk_policy?: PartialRiskPolicyConfig;
+  readonly risk_config?: LoadedRiskPolicyConfig;
+  readonly management_profiles?: ManagementProfilesConfig;
   readonly max_candidates_per_cycle?: number;
   readonly initial_session_risk_state?: SessionRiskState;
   readonly strategy_config?: StrategyRuntimeConfig;
@@ -123,6 +129,8 @@ export class StrategyRuntimeRunner {
   private readonly executionAdapter: SimulatedExecutionAdapter;
   private readonly accountRef: string;
   private readonly riskPolicy: PartialRiskPolicyConfig;
+  private readonly riskConfigHash: string | undefined;
+  private readonly managementProfiles: ManagementProfilesConfig;
   private readonly maxCandidatesPerCycle: number;
   private readonly appConfigRef: ConfigLineageRef;
   private readonly strategyConfig: StrategyRuntimeConfig;
@@ -142,7 +150,16 @@ export class StrategyRuntimeRunner {
     this.sessionId = options.session_id;
     this.executionAdapter = options.execution_adapter;
     this.accountRef = options.account_ref ?? 'sim-account';
-    this.riskPolicy = options.risk_policy ?? {};
+    const loadedRiskConfig = options.risk_config ?? options.container.config.riskConfig;
+    this.riskPolicy =
+      options.risk_policy ??
+      loadedRiskConfig?.policy ??
+      failMissingRiskConfig(options.container.config);
+    this.riskConfigHash = loadedRiskConfig?.lineage.risk_config_hash;
+    this.managementProfiles =
+      options.management_profiles ??
+      options.container.config.managementProfiles ??
+      failMissingManagementProfilesConfig(options.container.config);
     this.maxCandidatesPerCycle = options.max_candidates_per_cycle ?? 1;
     this.sessionRisk = options.initial_session_risk_state;
     this.strategyConfig =
@@ -257,7 +274,7 @@ export class StrategyRuntimeRunner {
         type: 'SIZING',
         ts_ns: sizing.decided_ts_ns,
         causation_id: toCausationId(candidateEvent.event_id),
-        payload: toSizingEventPayload(sizing, this.strategyConfigHash),
+        payload: toSizingEventPayload(sizing, this.strategyConfigHash, this.riskConfigHash),
         correlation_id: makeCorrelationId(`corr-${candidate.candidate_id}`),
       });
       sizingEvents.push(sizingEvent);
@@ -277,6 +294,7 @@ export class StrategyRuntimeRunner {
         payload: {
           ...toRiskGateEventPayload(riskGate, this.sessionRisk),
           strategy_config_hash: this.strategyConfigHash,
+          risk_config_hash: this.riskConfigHash,
         },
         correlation_id: makeCorrelationId(`corr-${candidate.candidate_id}`),
       });
@@ -328,7 +346,7 @@ export class StrategyRuntimeRunner {
         });
         simFillEvents.push(fillEvent);
 
-        const openPosition = openTargetPositionFromFill(candidate, fill);
+        const openPosition = this.openTargetPositionFromFill(candidate, fill);
         this.openPositions.push(openPosition);
         this.sessionRisk = updateSessionRiskState(this.ensureSessionRisk(snapshot), {
           kind: 'trade_opened',
@@ -340,7 +358,7 @@ export class StrategyRuntimeRunner {
           type: 'POSITION',
           ts_ns: fill.filled_ts_ns,
           causation_id: toCausationId(fillEvent.event_id),
-          payload: toPositionEventPayload(openPosition, this.strategyConfigHash),
+        payload: toPositionEventPayload(openPosition, this.strategyConfigHash),
           correlation_id: makeCorrelationId(`corr-${candidate.candidate_id}`),
         });
         positionEvents.push(positionEvent);
@@ -389,7 +407,7 @@ export class StrategyRuntimeRunner {
     for (const position of this.openPositions) {
       const result = evaluatePositionManager({
         position,
-        profile: resolveManagementProfile(position.strategy_id).profile,
+        profile: this.resolveManagementProfile(position.strategy_id).profile,
         market: {
           event_ts_ns: input.cause_event.ts_ns,
           mark_price: input.mark_price,
@@ -411,6 +429,10 @@ export class StrategyRuntimeRunner {
         payload: {
           ...result.management_tick_payload,
           strategy_config_hash: this.strategyConfigHash,
+          management_profile_hash: position.profile_hash,
+          management_profile_id: position.profile_id,
+          management_profile_version: position.profile_version,
+          position_manager_version: POSITION_MANAGER_VERSION,
         },
       });
       managementTickEvents.push(tickEvent);
@@ -425,6 +447,10 @@ export class StrategyRuntimeRunner {
           payload: {
             ...actionPayload,
             strategy_config_hash: this.strategyConfigHash,
+            management_profile_hash: position.profile_hash,
+            management_profile_id: position.profile_id,
+            management_profile_version: position.profile_version,
+            position_manager_version: POSITION_MANAGER_VERSION,
           },
         });
         positionCauseEventId = actionEvent.event_id;
@@ -456,6 +482,9 @@ export class StrategyRuntimeRunner {
         payload: {
           ...result.position_event_payload,
           strategy_config_hash: this.strategyConfigHash,
+          management_profile_hash: updatedPosition.profile_hash,
+          management_profile_id: updatedPosition.profile_id,
+          management_profile_version: updatedPosition.profile_version,
         },
       });
       positionEvents.push(positionEvent);
@@ -525,11 +554,46 @@ export class StrategyRuntimeRunner {
       now_ms: Number(BigInt(tsNs) / 1_000_000n),
     };
   }
+
+  private resolveManagementProfile(strategyId: string) {
+    return resolveManagementProfile(strategyId, {
+      profiles: this.managementProfiles.profiles,
+      fallback_profile: this.managementProfiles.fallback_profile,
+    });
+  }
+
+  private openTargetPositionFromFill(
+    candidate: Candidate,
+    fill: SimulatedFill,
+  ): TargetPosition {
+    const profile = this.resolveManagementProfile(candidate.strategy_id);
+    return applyInitialFillToTargetPosition(
+      buildTargetPositionFromCandidate({
+        candidate,
+        profile: profile.profile,
+        quantity: fill.quantity,
+        opened_ts_ns: fill.filled_ts_ns,
+      }),
+      fill,
+    );
+  }
 }
 
 function failMissingStrategyConfig(config: LoadedAppConfig): never {
   throw new Error(
     `strategy runtime config is required for ${STRATEGY_RUNNER_VERSION}; config source ${config.source.config_path}`,
+  );
+}
+
+function failMissingManagementProfilesConfig(config: LoadedAppConfig): never {
+  throw new Error(
+    `management profiles config is required for ${STRATEGY_RUNNER_VERSION}; config source ${config.source.config_path}`,
+  );
+}
+
+function failMissingRiskConfig(config: LoadedAppConfig): never {
+  throw new Error(
+    `risk config is required for ${STRATEGY_RUNNER_VERSION}; config source ${config.source.config_path}`,
   );
 }
 
@@ -604,6 +668,7 @@ function toCandidateEventPayload(
 function toSizingEventPayload(
   sizing: SizingDecision,
   strategyConfigHash: string,
+  riskConfigHash: string | undefined,
 ): JournalEventPayloadFor<'SIZING'> {
   return {
     sizing_decision_id: sizing.sizing_decision_id,
@@ -613,6 +678,8 @@ function toSizingEventPayload(
     risk_points: sizing.risk_points,
     rejected_reason: sizing.rejected_reason,
     strategy_config_hash: strategyConfigHash,
+    risk_config_hash: riskConfigHash,
+    risk_manager_version: RISK_MANAGER_VERSION,
   };
 }
 
@@ -630,6 +697,9 @@ function toPositionEventPayload(
     avg_entry_price: summary.entry_price,
     updated_ts_ns: summary.updated_ts_ns,
     strategy_config_hash: strategyConfigHash,
+    management_profile_hash: summary.profile_hash,
+    management_profile_id: summary.profile_id,
+    management_profile_version: summary.profile_version,
   };
 }
 
@@ -637,23 +707,6 @@ function toPositionStatus(lifecycleState: TargetPosition['lifecycle_state']): Po
   if (lifecycleState === 'closed') return 'closed';
   if (lifecycleState === 'closing') return 'closing';
   return 'open';
-}
-
-function openTargetPositionFromFill(
-  candidate: Candidate,
-  fill: SimulatedFill,
-): TargetPosition {
-  const profile = resolveManagementProfile(candidate.strategy_id);
-  const managementProfile = profile.profile;
-  return applyInitialFillToTargetPosition(
-    buildTargetPositionFromCandidate({
-      candidate,
-      profile: managementProfile,
-      quantity: fill.quantity,
-      opened_ts_ns: fill.filled_ts_ns,
-    }),
-    fill,
-  );
 }
 
 function toExecutionMarketState(snapshot: StrategyFeatureSnapshot): SimulatedExecutionMarketState {
