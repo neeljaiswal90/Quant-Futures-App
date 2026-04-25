@@ -154,6 +154,30 @@ describe('OBS-01 journal event schema validation', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts explicit RTH, ETH, maintenance, and closed SESSION_PHASE payloads', () => {
+    const phases = ['rth', 'eth', 'maintenance', 'closed'] as const;
+
+    for (const phase of phases) {
+      const event = createJournalEventEnvelope({
+        event_id: makeEventId(`session-phase-${phase}`),
+        type: 'SESSION_PHASE',
+        ts_ns: ns(TS_NS),
+        run_id: makeRunId('run-obs-01'),
+        session_id: makeSessionId(`2026-04-23-${phase}`),
+        payload: {
+          phase,
+          trading_date: '2026-04-23',
+          session_phase: phase,
+        },
+      });
+
+      expect(validateJournalEventEnvelope(event)).toMatchObject({
+        ok: true,
+        issues: [],
+      });
+    }
+  });
+
   it('accepts CONFIG events with numeric config_version', () => {
     const event = createJournalEventEnvelope({
       event_id: makeEventId('config-1'),

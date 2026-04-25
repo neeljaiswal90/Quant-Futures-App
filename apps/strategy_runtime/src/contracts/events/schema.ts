@@ -299,6 +299,7 @@ function validateSessionPhasePayload(
   if (record === undefined) return;
   requireEnum(record.phase, `${path}.phase`, issues, [
     'pre_open',
+    'eth',
     'rth',
     'maintenance',
     'closed',
@@ -307,6 +308,7 @@ function validateSessionPhasePayload(
   requireNonEmptyString(record.trading_date, `${path}.trading_date`, issues);
   optionalEnum(record.previous_phase, `${path}.previous_phase`, issues, [
     'pre_open',
+    'eth',
     'rth',
     'maintenance',
     'closed',

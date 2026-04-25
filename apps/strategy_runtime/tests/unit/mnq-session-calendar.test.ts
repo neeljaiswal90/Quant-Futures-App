@@ -66,7 +66,7 @@ describe('MNQ-01 session and roll calendar policy', () => {
     expect(isEth(config, ETH_TS)).toBe(true);
     expect(getMnqSessionPhase(config, ETH_TS)).toMatchObject({
       phase: 'eth',
-      journal_phase: 'pre_open',
+      journal_phase: 'eth',
       candidate_eligible: false,
       block_reason: 'outside_rth',
       trading_date: '2026-04-24',
@@ -80,6 +80,7 @@ describe('MNQ-01 session and roll calendar policy', () => {
     expect(getMnqSessionPhase(config, SUNDAY_CLOSED_TS).phase).toBe('closed');
     expect(getMnqSessionPhase(config, SUNDAY_ETH_TS)).toMatchObject({
       phase: 'eth',
+      journal_phase: 'eth',
       trading_date: '2026-04-27',
     });
   });

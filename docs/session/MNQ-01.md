@@ -20,7 +20,7 @@ The internal MNQ session helper returns:
 - `maintenance`: daily maintenance halt, 17:00-18:00 ET Monday through Thursday.
 - `closed`: weekend or configured holiday/closed override.
 
-For OBS-01 journal compatibility, `eth` maps to the existing `SessionPhase` value `pre_open`; the richer `session_phase: "eth"` remains available in the MNQ eligibility summary.
+`eth` is represented explicitly in OBS-01 `SESSION_PHASE` payloads. V1 no longer maps ETH to `pre_open`; `journal_phase`, `phase`, and the richer `session_phase` field all report `eth` for electronic trading windows outside RTH and outside maintenance.
 
 Candidate gating is intentionally RTH-only for V1:
 
@@ -64,6 +64,8 @@ Use `apps/strategy_runtime/src/session/index.ts`:
 - `evaluateMnqSessionEligibility({ sessionCalendar, rollCalendar, timestamp_ns })`
 
 `evaluateMnqSessionEligibility` is the ORCH-02 integration surface. It returns `active_contract`, optional `next_contract`, `session_phase`, `journal_phase`, `roll_phase`, `candidate_eligible`, `flatten_required`, and stable reason codes.
+
+For ETH windows, `journal_phase = "eth"` and `candidate_eligible = false` with reason `outside_rth`. ORCH-02 should journal the explicit ETH phase while continuing to block new entries for V1.
 
 ## ORCH-02 Consumption
 
