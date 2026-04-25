@@ -54,6 +54,8 @@ apps/strategy_runtime/src/contracts/events/schema.ts
 
 The validator returns structured issues with stable `path`, `code`, and `message` fields. It does not throw opaque exceptions.
 
+`SESSION_PHASE.phase` supports explicit `rth`, `eth`, `maintenance`, `closed`, `halted`, and `pre_open` values. MNQ V1 uses `eth` directly for electronic trading windows rather than mapping ETH to `pre_open`.
+
 ## Timestamp Rules
 
 ADR-0001 remains authoritative.

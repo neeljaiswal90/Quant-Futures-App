@@ -7,7 +7,7 @@ export type TradeAggressorSide = OrderSide | 'unknown';
 export type Direction = 'long' | 'short';
 export type PositionSide = Direction | 'flat';
 export type BarTimeframe = '1m' | '5m' | '15m' | '60m' | '1d';
-export type SessionPhase = 'pre_open' | 'rth' | 'maintenance' | 'closed' | 'halted';
+export type SessionPhase = 'pre_open' | 'eth' | 'rth' | 'maintenance' | 'closed' | 'halted';
 export type QuoteAuthorityState = 'unknown' | 'warming' | 'authoritative' | 'stale' | 'gap';
 export type L3AuthorityState = 'unavailable' | 'warming' | 'authoritative' | 'stale';
 

@@ -70,6 +70,8 @@ New-entry blocking reasons are journaled as `STRAT_EVAL.gate_state = "blocked"` 
 
 `SESSION_PHASE` and `ROLL_ADVISORY` events are emitted only on transition or meaningful advisory changes, not on every tick. Both are caused by the current source market event and inherit its `ts_ns`.
 
+ETH is journaled as an explicit `SESSION_PHASE.phase = "eth"` and `session_phase = "eth"`. It is still a V1 new-entry block with `mnq_eligibility:outside_rth`; `pre_open` is not used as an ETH stand-in.
+
 Existing-position management is not blocked merely because new entries are blocked. Open positions continue through the MGMT-03 tick/action path. ORCH-02B adds the roll exception: when roll eligibility reports `flatten_required`, the runner emits an `MGMT_ACTION` with `action_type = "EXIT_FULL"` and `reason = "roll_window_flatten"` for each open position.
 
 Forced-flatten actions are caused by the `ROLL_ADVISORY` event when that advisory is emitted, otherwise by the same source market event that caused the advisory state. The action `ts_ns` always equals the causation event timestamp. Positions are processed in `position_id` ascending order, and duplicate `EXIT_FULL` actions are suppressed per `position_id + cutover_ts_ns` so repeated ticks inside the same flatten window do not reissue the same close request.

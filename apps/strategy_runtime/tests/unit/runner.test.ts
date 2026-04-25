@@ -157,7 +157,7 @@ async function processRollFlattenSnapshot(
     id: input.id,
     sourceEventId: `source-${input.id}`,
     tsNs: input.tsNs ?? ROLL_FLATTEN_TS,
-    sessionPhase: 'pre_open',
+    sessionPhase: 'eth',
     isRth: false,
     isRollBlock: true,
   });
@@ -253,7 +253,7 @@ describe('ORCH-02 deterministic runner loop', () => {
       id: 'fixture-eth-blocked',
       sourceEventId: 'source-eth-blocked',
       tsNs: ETH_TS,
-      sessionPhase: 'pre_open',
+      sessionPhase: 'eth',
       isRth: false,
     });
 
@@ -262,9 +262,16 @@ describe('ORCH-02 deterministic runner loop', () => {
 
     expect(result.mnq_eligibility).toMatchObject({
       session_phase: 'eth',
+      journal_phase: 'eth',
       candidate_eligible: false,
       block_reason: 'outside_rth',
     });
+    expect(result.session_phase_event?.payload).toMatchObject({
+      phase: 'eth',
+      session_phase: 'eth',
+    });
+    expect(result.session_phase_event?.causation_id).toBe(snapshot.source_event_id);
+    expect(result.session_phase_event?.ts_ns).toBe(snapshot.created_ts_ns);
     expect(result.candidate_events).toEqual([]);
     expect(result.sizing_events).toEqual([]);
     expect(result.strategy_evaluation_events).toHaveLength(4);
@@ -328,7 +335,7 @@ describe('ORCH-02 deterministic runner loop', () => {
       id: 'fixture-roll-flatten',
       sourceEventId: 'source-roll-flatten',
       tsNs: ROLL_FLATTEN_TS,
-      sessionPhase: 'pre_open',
+      sessionPhase: 'eth',
       isRth: false,
       isRollBlock: true,
     });
@@ -566,7 +573,7 @@ describe('ORCH-02 deterministic runner loop', () => {
       id: 'fixture-eth-management-block',
       sourceEventId: 'source-eth-management-block',
       tsNs: ETH_TS,
-      sessionPhase: 'pre_open',
+      sessionPhase: 'eth',
       isRth: false,
     });
     const blockedSource = await runner.publishExternalEvent(

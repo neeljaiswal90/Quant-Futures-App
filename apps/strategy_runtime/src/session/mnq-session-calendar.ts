@@ -398,7 +398,6 @@ function getTradingDate(config: MnqSessionCalendarConfig, local: NewYorkLocalTim
 }
 
 function toJournalSessionPhase(phase: MnqSessionPhase): SessionPhase {
-  if (phase === 'eth') return 'pre_open';
   return phase;
 }
 
