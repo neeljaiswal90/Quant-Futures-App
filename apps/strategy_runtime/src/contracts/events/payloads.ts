@@ -94,12 +94,27 @@ export interface GapEventPayload {
 export interface SessionPhaseEventPayload {
   readonly phase: SessionPhase;
   readonly trading_date: string;
+  readonly previous_phase?: SessionPhase;
+  readonly session_phase?: 'rth' | 'eth' | 'maintenance' | 'closed';
+  readonly previous_session_phase?: 'rth' | 'eth' | 'maintenance' | 'closed';
+  readonly active_contract?: string;
+  readonly next_contract?: string;
+  readonly roll_phase?: 'normal' | 'pre_roll' | 'roll_block' | 'post_roll';
+  readonly candidate_eligible?: boolean;
+  readonly block_reason?: string;
+  readonly should_flatten?: boolean;
 }
 
 export interface RollAdvisoryEventPayload {
-  readonly advisory: 'block_new_entries' | 'flatten_required' | 'roll_complete';
+  readonly advisory: 'roll_window' | 'block_new_entries' | 'flatten_required' | 'roll_complete';
   readonly active_symbol: string;
   readonly next_symbol: string;
+  readonly roll_phase?: 'normal' | 'pre_roll' | 'roll_block' | 'post_roll';
+  readonly previous_roll_phase?: 'normal' | 'pre_roll' | 'roll_block' | 'post_roll';
+  readonly candidate_eligible?: boolean;
+  readonly block_reason?: string;
+  readonly should_flatten?: boolean;
+  readonly minutes_to_cutover?: number;
 }
 
 export interface HaltEventPayload {

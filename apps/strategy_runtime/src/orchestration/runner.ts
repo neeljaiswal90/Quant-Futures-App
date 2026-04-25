@@ -19,6 +19,7 @@ import {
   type SessionId,
   type SimulatedFill,
   type SizingDecision,
+  type SessionPhase,
   type StrategyEvaluation,
   type UnixNs,
 } from '../contracts/index.js';
@@ -65,6 +66,17 @@ import {
 } from '../strategies/index.js';
 import type { StrategyId } from '../contracts/strategy-ids.js';
 import type { StrategyRuntimeEngineContainer } from './engine-container.js';
+import {
+  DEFAULT_MNQ_ROLL_CALENDAR_CONFIG,
+  DEFAULT_MNQ_SESSION_CALENDAR_CONFIG,
+  evaluateMnqSessionEligibility,
+  type MnqEligibilityReason,
+  type MnqRollCalendarConfig,
+  type MnqRollPhase,
+  type MnqSessionCalendarConfig,
+  type MnqSessionEligibility,
+  type MnqSessionPhase,
+} from '../session/index.js';
 
 export const STRATEGY_RUNNER_VERSION = 'strategy_runner_loop_v1' as const;
 
@@ -77,6 +89,8 @@ export interface StrategyRuntimeRunnerOptions {
   readonly risk_policy?: PartialRiskPolicyConfig;
   readonly risk_config?: LoadedRiskPolicyConfig;
   readonly management_profiles?: ManagementProfilesConfig;
+  readonly mnq_session_calendar?: MnqSessionCalendarConfig;
+  readonly mnq_roll_calendar?: MnqRollCalendarConfig;
   readonly max_candidates_per_cycle?: number;
   readonly initial_session_risk_state?: SessionRiskState;
   readonly strategy_config?: StrategyRuntimeConfig;
@@ -90,6 +104,9 @@ export interface StrategyRuntimeRunnerSnapshot {
 
 export interface StrategyEvaluationCycleResult {
   readonly feature_event: JournalEventEnvelope<'FEATURES', JournalEventPayloadFor<'FEATURES'>>;
+  readonly session_phase_event?: JournalEventEnvelope<'SESSION_PHASE', JournalEventPayloadFor<'SESSION_PHASE'>>;
+  readonly roll_advisory_event?: JournalEventEnvelope<'ROLL_ADVISORY', JournalEventPayloadFor<'ROLL_ADVISORY'>>;
+  readonly mnq_eligibility: MnqSessionEligibility;
   readonly strategy_evaluation_events: readonly JournalEventEnvelope<'STRAT_EVAL', JournalEventPayloadFor<'STRAT_EVAL'>>[];
   readonly candidate_events: readonly JournalEventEnvelope<'CANDIDATE', JournalEventPayloadFor<'CANDIDATE'>>[];
   readonly rank_event: JournalEventEnvelope<'RANK', JournalEventPayloadFor<'RANK'>>;
@@ -131,12 +148,16 @@ export class StrategyRuntimeRunner {
   private readonly riskPolicy: PartialRiskPolicyConfig;
   private readonly riskConfigHash: string | undefined;
   private readonly managementProfiles: ManagementProfilesConfig;
+  private readonly mnqSessionCalendar: MnqSessionCalendarConfig;
+  private readonly mnqRollCalendar: MnqRollCalendarConfig;
   private readonly maxCandidatesPerCycle: number;
   private readonly appConfigRef: ConfigLineageRef;
   private readonly strategyConfig: StrategyRuntimeConfig;
   private readonly strategyConfigHash: string;
   private sessionRisk: SessionRiskState | undefined;
   private openPositions: TargetPosition[] = [];
+  private lastSessionTransition: RunnerSessionTransition | undefined;
+  private lastRollTransition: RunnerRollTransition | undefined;
 
   constructor(options: StrategyRuntimeRunnerOptions) {
     if (
@@ -160,6 +181,8 @@ export class StrategyRuntimeRunner {
       options.management_profiles ??
       options.container.config.managementProfiles ??
       failMissingManagementProfilesConfig(options.container.config);
+    this.mnqSessionCalendar = options.mnq_session_calendar ?? DEFAULT_MNQ_SESSION_CALENDAR_CONFIG;
+    this.mnqRollCalendar = options.mnq_roll_calendar ?? DEFAULT_MNQ_ROLL_CALENDAR_CONFIG;
     this.maxCandidatesPerCycle = options.max_candidates_per_cycle ?? 1;
     this.sessionRisk = options.initial_session_risk_state;
     this.strategyConfig =
@@ -192,6 +215,13 @@ export class StrategyRuntimeRunner {
     snapshot: StrategyFeatureSnapshot,
   ): Promise<StrategyEvaluationCycleResult> {
     const sessionRisk = this.ensureSessionRisk(snapshot);
+    const eligibility = evaluateMnqSessionEligibility({
+      sessionCalendar: this.mnqSessionCalendar,
+      rollCalendar: this.mnqRollCalendar,
+      timestamp_ns: snapshot.created_ts_ns,
+    });
+    const sessionPhaseEvent = await this.publishSessionPhaseTransition(snapshot, eligibility);
+    const rollAdvisoryEvent = await this.publishRollAdvisoryTransition(snapshot, eligibility);
     const featureEvent = await this.publishDerivedEvent({
       event_id: makeEventId(`features-${snapshot.feature_snapshot_id}`),
       type: 'FEATURES',
@@ -209,7 +239,11 @@ export class StrategyRuntimeRunner {
     const candidates: Candidate[] = [];
 
     for (const strategyId of listExecutableStrategyIds()) {
-      const result = evaluateStrategySafely(strategyId, snapshot, this.strategyConfig);
+      const result: { readonly evaluation: StrategyEvaluation; readonly candidate?: Candidate } = eligibility.candidate_eligible
+        ? evaluateStrategySafely(strategyId, snapshot, this.strategyConfig)
+        : {
+          evaluation: buildMnqBlockedStrategyEvaluation(strategyId, snapshot, eligibility),
+        };
       const evaluationEvent = await this.publishDerivedEvent({
         event_id: makeEventId(`strat-eval-${result.evaluation.strategy_evaluation_id}`),
         type: 'STRAT_EVAL',
@@ -367,6 +401,9 @@ export class StrategyRuntimeRunner {
 
     return {
       feature_event: featureEvent,
+      session_phase_event: sessionPhaseEvent,
+      roll_advisory_event: rollAdvisoryEvent,
+      mnq_eligibility: eligibility,
       strategy_evaluation_events: evaluationEvents,
       candidate_events: candidateEvents,
       rank_event: rankEvent,
@@ -528,6 +565,105 @@ export class StrategyRuntimeRunner {
     return event;
   }
 
+  private async publishSystemEvent<TType extends 'SESSION_PHASE' | 'ROLL_ADVISORY'>(input: {
+    readonly event_id: EventId;
+    readonly type: TType;
+    readonly ts_ns: UnixNs;
+    readonly causation_id: CausationId;
+    readonly payload: JournalEventPayloadFor<TType>;
+  }): Promise<JournalEventEnvelope<TType, JournalEventPayloadFor<TType>>> {
+    const event = createJournalEventEnvelope({
+      event_id: input.event_id,
+      type: input.type,
+      ts_ns: input.ts_ns,
+      run_id: this.runId,
+      session_id: this.sessionId,
+      payload: input.payload,
+      causation_id: input.causation_id,
+      config: this.appConfigRef,
+    });
+    await this.container.eventBus.publish(event as JournalEventEnvelope);
+    return event;
+  }
+
+  private async publishSessionPhaseTransition(
+    snapshot: StrategyFeatureSnapshot,
+    eligibility: MnqSessionEligibility,
+  ): Promise<JournalEventEnvelope<'SESSION_PHASE', JournalEventPayloadFor<'SESSION_PHASE'>> | undefined> {
+    const transition = {
+      session_phase: eligibility.session_phase,
+      journal_phase: eligibility.journal_phase,
+      trading_date: eligibility.trading_date,
+    } satisfies RunnerSessionTransition;
+    if (sameSessionTransition(this.lastSessionTransition, transition)) {
+      return undefined;
+    }
+    const previous = this.lastSessionTransition;
+    this.lastSessionTransition = transition;
+    return this.publishSystemEvent({
+      event_id: makeEventId(`session-phase-${snapshot.feature_snapshot_id}-${transition.session_phase}`),
+      type: 'SESSION_PHASE',
+      ts_ns: snapshot.created_ts_ns,
+      causation_id: makeCausationId(snapshot.source_event_id),
+      payload: {
+        phase: transition.journal_phase,
+        trading_date: transition.trading_date,
+        ...(previous === undefined ? {} : { previous_phase: previous.journal_phase }),
+        session_phase: transition.session_phase,
+        ...(previous === undefined ? {} : { previous_session_phase: previous.session_phase }),
+        active_contract: eligibility.active_contract,
+        ...(eligibility.next_contract === undefined ? {} : { next_contract: eligibility.next_contract }),
+        roll_phase: eligibility.roll_phase,
+        candidate_eligible: eligibility.candidate_eligible,
+        ...(eligibility.block_reason === undefined ? {} : { block_reason: eligibility.block_reason }),
+        should_flatten: eligibility.flatten_required,
+      },
+    });
+  }
+
+  private async publishRollAdvisoryTransition(
+    snapshot: StrategyFeatureSnapshot,
+    eligibility: MnqSessionEligibility,
+  ): Promise<JournalEventEnvelope<'ROLL_ADVISORY', JournalEventPayloadFor<'ROLL_ADVISORY'>> | undefined> {
+    const advisory = rollAdvisoryForEligibility(eligibility);
+    if (advisory === undefined || eligibility.next_contract === undefined) {
+      if (eligibility.roll_phase === 'normal') {
+        this.lastRollTransition = undefined;
+      }
+      return undefined;
+    }
+    const transition = {
+      advisory,
+      roll_phase: eligibility.roll_phase,
+      active_contract: eligibility.active_contract,
+      next_contract: eligibility.next_contract,
+      block_reason: eligibility.block_reason,
+      flatten_required: eligibility.flatten_required,
+    } satisfies RunnerRollTransition;
+    if (sameRollTransition(this.lastRollTransition, transition)) {
+      return undefined;
+    }
+    const previous = this.lastRollTransition;
+    this.lastRollTransition = transition;
+    return this.publishSystemEvent({
+      event_id: makeEventId(`roll-advisory-${snapshot.feature_snapshot_id}-${advisory}`),
+      type: 'ROLL_ADVISORY',
+      ts_ns: snapshot.created_ts_ns,
+      causation_id: makeCausationId(snapshot.source_event_id),
+      payload: {
+        advisory,
+        active_symbol: eligibility.active_contract,
+        next_symbol: eligibility.next_contract,
+        roll_phase: eligibility.roll_phase,
+        ...(previous === undefined ? {} : { previous_roll_phase: previous.roll_phase }),
+        candidate_eligible: eligibility.candidate_eligible,
+        ...(eligibility.block_reason === undefined ? {} : { block_reason: eligibility.block_reason }),
+        should_flatten: eligibility.flatten_required,
+        minutes_to_cutover: minutesToCutover(this.mnqRollCalendar, eligibility, snapshot.created_ts_ns),
+      },
+    });
+  }
+
   private ensureSessionRisk(snapshot: StrategyFeatureSnapshot): SessionRiskState {
     if (this.sessionRisk === undefined) {
       this.sessionRisk = createSessionRiskState({
@@ -595,6 +731,98 @@ function failMissingRiskConfig(config: LoadedAppConfig): never {
   throw new Error(
     `risk config is required for ${STRATEGY_RUNNER_VERSION}; config source ${config.source.config_path}`,
   );
+}
+
+interface RunnerSessionTransition {
+  readonly session_phase: MnqSessionPhase;
+  readonly journal_phase: SessionPhase;
+  readonly trading_date: string;
+}
+
+interface RunnerRollTransition {
+  readonly advisory: JournalEventPayloadFor<'ROLL_ADVISORY'>['advisory'];
+  readonly roll_phase: MnqRollPhase;
+  readonly active_contract: string;
+  readonly next_contract: string;
+  readonly block_reason?: MnqEligibilityReason;
+  readonly flatten_required: boolean;
+}
+
+function buildMnqBlockedStrategyEvaluation(
+  strategyId: StrategyId,
+  snapshot: StrategyFeatureSnapshot,
+  eligibility: MnqSessionEligibility,
+): StrategyEvaluation {
+  const reasons = eligibility.reasons.length === 0
+    ? ['mnq_eligibility:blocked']
+    : eligibility.reasons.map((reason) => `mnq_eligibility:${reason}`);
+  return {
+    strategy_evaluation_id: makeStrategyEvaluationId(
+      `eval-${snapshot.feature_snapshot_id}-${strategyId}-mnq-blocked`,
+    ),
+    strategy_id: strategyId,
+    instrument: snapshot.instrument,
+    feature_snapshot_id: snapshot.feature_snapshot_id,
+    evaluated_ts_ns: snapshot.created_ts_ns,
+    gate_state: 'blocked',
+    reasons,
+    config: snapshot.config,
+  };
+}
+
+function rollAdvisoryForEligibility(
+  eligibility: MnqSessionEligibility,
+): JournalEventPayloadFor<'ROLL_ADVISORY'>['advisory'] | undefined {
+  if (eligibility.flatten_required) return 'flatten_required';
+  if (eligibility.reasons.includes('roll_block_window')) return 'block_new_entries';
+  if (eligibility.roll_phase === 'pre_roll') return 'roll_window';
+  if (eligibility.roll_phase === 'post_roll') return 'roll_complete';
+  return undefined;
+}
+
+function sameSessionTransition(
+  left: RunnerSessionTransition | undefined,
+  right: RunnerSessionTransition,
+): boolean {
+  return (
+    left?.session_phase === right.session_phase &&
+    left.journal_phase === right.journal_phase &&
+    left.trading_date === right.trading_date
+  );
+}
+
+function sameRollTransition(
+  left: RunnerRollTransition | undefined,
+  right: RunnerRollTransition,
+): boolean {
+  return (
+    left?.advisory === right.advisory &&
+    left.roll_phase === right.roll_phase &&
+    left.active_contract === right.active_contract &&
+    left.next_contract === right.next_contract &&
+    left.block_reason === right.block_reason &&
+    left.flatten_required === right.flatten_required
+  );
+}
+
+function minutesToCutover(
+  rollCalendar: MnqRollCalendarConfig,
+  eligibility: MnqSessionEligibility,
+  tsNs: UnixNs,
+): number | undefined {
+  if (eligibility.next_contract === undefined || eligibility.roll_phase === 'normal') {
+    return undefined;
+  }
+  const period = rollCalendar.periods.find(
+    (candidate) =>
+      candidate.next_contract === eligibility.next_contract &&
+      tsNs >= candidate.roll_start_ts_ns &&
+      tsNs <= candidate.roll_end_ts_ns,
+  );
+  if (period === undefined) {
+    return undefined;
+  }
+  return Number((BigInt(period.cutover_ts_ns) - BigInt(tsNs)) / 60_000_000_000n);
 }
 
 function evaluateStrategySafely(

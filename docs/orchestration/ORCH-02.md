@@ -30,16 +30,20 @@ The runner never calls `Date.now`, `new Date`, or any wall-clock helper.
 
 For each feature snapshot:
 
-1. Publish `FEATURES`, caused by the source market event.
-2. Run every executable V1 strategy with the loaded STRAT-07 config.
-3. Publish one `STRAT_EVAL` per strategy.
-4. Publish a `CANDIDATE` for each armed candidate.
-5. Publish `RANK` with the STRAT-06 deterministic ranking method.
-6. Run sizing and risk for the top configured candidate count; V1 defaults to one.
-7. Publish `SIZING` and `RISK_GATE`.
-8. If accepted, publish `ORDER_INTENT`.
-9. Submit to the SIM-01 simulated adapter and publish `SIM_FILL`.
-10. Build/open an MGMT-02 target position and publish `POSITION`.
+1. Evaluate MNQ session/roll eligibility from `exchange_event_ts_ns`/`created_ts_ns`.
+2. Emit `SESSION_PHASE` when the MNQ session phase or trading date changes.
+3. Emit `ROLL_ADVISORY` when roll advisory state changes.
+4. Publish `FEATURES`, caused by the source market event.
+5. If MNQ eligibility blocks new entries, publish blocked `STRAT_EVAL` events with stable MNQ reason codes and do not emit `CANDIDATE` events.
+6. If eligible, run every executable V1 strategy with the loaded STRAT-07 config.
+7. Publish one `STRAT_EVAL` per strategy.
+8. Publish a `CANDIDATE` for each armed candidate.
+9. Publish `RANK` with the STRAT-06 deterministic ranking method.
+10. Run sizing and risk for the top configured candidate count; V1 defaults to one.
+11. Publish `SIZING` and `RISK_GATE`.
+12. If accepted, publish `ORDER_INTENT`.
+13. Submit to the SIM-01 simulated adapter and publish `SIM_FILL`.
+14. Build/open an MGMT-02 target position and publish `POSITION`.
 
 For each management market tick:
 
@@ -48,6 +52,22 @@ For each management market tick:
 3. Publish zero or more `MGMT_ACTION` events.
 4. Publish the resulting `POSITION` summary.
 5. Update session risk realized PnL and open/closed trade counts deterministically.
+
+## MNQ Session And Roll Eligibility
+
+ORCH-02A wires the MNQ-01 helper into the runner. The runner consumes the configured or default MNQ session and roll calendars and calls `evaluateMnqSessionEligibility` before strategy evaluation.
+
+New-entry blocking reasons are journaled as `STRAT_EVAL.gate_state = "blocked"` with reason codes:
+
+- `mnq_eligibility:outside_rth`
+- `mnq_eligibility:maintenance_halt`
+- `mnq_eligibility:session_closed`
+- `mnq_eligibility:roll_block_window`
+- `mnq_eligibility:roll_flatten_window`
+
+`SESSION_PHASE` and `ROLL_ADVISORY` events are emitted only on transition or meaningful advisory changes, not on every tick. Both are caused by the current source market event and inherit its `ts_ns`.
+
+Existing-position management is not blocked merely because new entries are blocked. Open positions continue through the MGMT-03 tick/action path. Roll `flatten_required` is surfaced as a journal advisory; the actual forced flatten action remains a follow-up until DATA-06 provides production roll calendars and ORCH consumes the finalized roll policy.
 
 ## Lineage
 

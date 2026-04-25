@@ -305,6 +305,36 @@ function validateSessionPhasePayload(
     'halted',
   ]);
   requireNonEmptyString(record.trading_date, `${path}.trading_date`, issues);
+  optionalEnum(record.previous_phase, `${path}.previous_phase`, issues, [
+    'pre_open',
+    'rth',
+    'maintenance',
+    'closed',
+    'halted',
+  ]);
+  optionalEnum(record.session_phase, `${path}.session_phase`, issues, [
+    'rth',
+    'eth',
+    'maintenance',
+    'closed',
+  ]);
+  optionalEnum(record.previous_session_phase, `${path}.previous_session_phase`, issues, [
+    'rth',
+    'eth',
+    'maintenance',
+    'closed',
+  ]);
+  optionalNonEmptyString(record.active_contract, `${path}.active_contract`, issues);
+  optionalNonEmptyString(record.next_contract, `${path}.next_contract`, issues);
+  optionalEnum(record.roll_phase, `${path}.roll_phase`, issues, [
+    'normal',
+    'pre_roll',
+    'roll_block',
+    'post_roll',
+  ]);
+  optionalBoolean(record.candidate_eligible, `${path}.candidate_eligible`, issues);
+  optionalNonEmptyString(record.block_reason, `${path}.block_reason`, issues);
+  optionalBoolean(record.should_flatten, `${path}.should_flatten`, issues);
 }
 
 function validateRollAdvisoryPayload(
@@ -315,12 +345,29 @@ function validateRollAdvisoryPayload(
   const record = requireRecord(payload, path, issues);
   if (record === undefined) return;
   requireEnum(record.advisory, `${path}.advisory`, issues, [
+    'roll_window',
     'block_new_entries',
     'flatten_required',
     'roll_complete',
   ]);
   requireNonEmptyString(record.active_symbol, `${path}.active_symbol`, issues);
   requireNonEmptyString(record.next_symbol, `${path}.next_symbol`, issues);
+  optionalEnum(record.roll_phase, `${path}.roll_phase`, issues, [
+    'normal',
+    'pre_roll',
+    'roll_block',
+    'post_roll',
+  ]);
+  optionalEnum(record.previous_roll_phase, `${path}.previous_roll_phase`, issues, [
+    'normal',
+    'pre_roll',
+    'roll_block',
+    'post_roll',
+  ]);
+  optionalBoolean(record.candidate_eligible, `${path}.candidate_eligible`, issues);
+  optionalNonEmptyString(record.block_reason, `${path}.block_reason`, issues);
+  optionalBoolean(record.should_flatten, `${path}.should_flatten`, issues);
+  optionalNumber(record.minutes_to_cutover, `${path}.minutes_to_cutover`, issues);
 }
 
 function validateHaltPayload(
@@ -760,6 +807,12 @@ function requireBoolean(value: unknown, path: string, issues: JournalEventSchema
   }
   if (typeof value !== 'boolean') {
     addIssue(issues, path, 'invalid_field_type', 'must be a boolean');
+  }
+}
+
+function optionalBoolean(value: unknown, path: string, issues: JournalEventSchemaIssue[]): void {
+  if (value !== undefined) {
+    requireBoolean(value, path, issues);
   }
 }
 
