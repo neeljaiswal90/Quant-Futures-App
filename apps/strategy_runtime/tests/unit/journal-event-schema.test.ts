@@ -196,6 +196,32 @@ describe('OBS-01 journal event schema validation', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts EXEC_REJECT events with causation and simulated execution lineage', () => {
+    const event = createJournalEventEnvelope({
+      event_id: makeEventId('exec-reject-order-1'),
+      type: 'EXEC_REJECT',
+      ts_ns: ns(TS_NS),
+      run_id: makeRunId('run-obs-01'),
+      session_id: makeSessionId('2026-04-23-rth'),
+      causation_id: makeCausationId('order-intent-1'),
+      payload: {
+        execution_reject_id: 'exec-reject-order-1',
+        order_intent_id: 'order-1',
+        candidate_id: 'candidate-1',
+        sizing_decision_id: 'sizing-1',
+        status: 'rejected',
+        reason: 'sim_reject:no_liquidity',
+        execution_adapter: 'simulated',
+        execution_version: 'simulated_execution_v1',
+      },
+    });
+
+    expect(validateJournalEventEnvelope(event)).toMatchObject({
+      ok: true,
+      issues: [],
+    });
+  });
+
   it('rejects payload field type mismatches', () => {
     const result = validateJournalEventEnvelope(quoteEvent({ bid_px: '18500.25' }));
 

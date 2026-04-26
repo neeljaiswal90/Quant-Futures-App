@@ -60,6 +60,7 @@ const PAYLOAD_VALIDATORS = {
   SIZING: validateSizingPayload,
   ORDER_INTENT: validateOrderIntentPayload,
   SIM_FILL: validateSimFillPayload,
+  EXEC_REJECT: validateExecutionRejectPayload,
   POSITION: validatePositionPayload,
   MGMT_TICK: validateManagementTickPayload,
   MGMT_ACTION: validateManagementActionPayload,
@@ -590,6 +591,30 @@ function validateSimFillPayload(
   optionalNumber(record.slippage_points, `${path}.slippage_points`, issues);
   optionalNumber(record.exchange_fee_usd, `${path}.exchange_fee_usd`, issues);
   optionalNumber(record.commission_usd, `${path}.commission_usd`, issues);
+  optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
+  optionalNonEmptyString(record.management_action_id, `${path}.management_action_id`, issues);
+  optionalNonEmptyString(record.position_id, `${path}.position_id`, issues);
+  optionalNonEmptyString(record.management_profile_hash, `${path}.management_profile_hash`, issues);
+  optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
+  optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
+  optionalNonEmptyString(record.position_manager_version, `${path}.position_manager_version`, issues);
+}
+
+function validateExecutionRejectPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.execution_reject_id, `${path}.execution_reject_id`, issues);
+  requireNonEmptyString(record.order_intent_id, `${path}.order_intent_id`, issues);
+  requireNonEmptyString(record.candidate_id, `${path}.candidate_id`, issues);
+  requireNonEmptyString(record.sizing_decision_id, `${path}.sizing_decision_id`, issues);
+  requireEnum(record.status, `${path}.status`, issues, ['rejected', 'cancelled']);
+  requireNonEmptyString(record.reason, `${path}.reason`, issues);
+  requireEnum(record.execution_adapter, `${path}.execution_adapter`, issues, ['simulated']);
+  requireNonEmptyString(record.execution_version, `${path}.execution_version`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
   optionalNonEmptyString(record.management_action_id, `${path}.management_action_id`, issues);
   optionalNonEmptyString(record.position_id, `${path}.position_id`, issues);

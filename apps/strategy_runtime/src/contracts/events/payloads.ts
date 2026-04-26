@@ -22,6 +22,7 @@ import type {
   TradeAggressorSide,
 } from '../market.js';
 import type { ManagementActionType, PositionStatus } from '../position.js';
+import type { SimulatedOrderStatus } from '../execution.js';
 import type { StrategyId } from '../strategy-ids.js';
 import type { UnixNs } from '../time.js';
 import type { RuntimeEventType } from './event-types.js';
@@ -255,6 +256,24 @@ export interface SimFillEventPayload {
   readonly position_manager_version?: string;
 }
 
+export interface ExecutionRejectEventPayload {
+  readonly execution_reject_id: string;
+  readonly order_intent_id: OrderIntentId;
+  readonly candidate_id: CandidateId;
+  readonly sizing_decision_id: SizingDecisionId;
+  readonly status: Extract<SimulatedOrderStatus, 'rejected' | 'cancelled'>;
+  readonly reason: string;
+  readonly execution_adapter: 'simulated';
+  readonly execution_version: string;
+  readonly strategy_config_hash?: string;
+  readonly management_action_id?: ManagementActionId;
+  readonly position_id?: PositionId;
+  readonly management_profile_hash?: string;
+  readonly management_profile_id?: string;
+  readonly management_profile_version?: number;
+  readonly position_manager_version?: string;
+}
+
 export interface PositionEventPayload {
   readonly position_id: PositionId;
   readonly candidate_id: CandidateId;
@@ -324,6 +343,7 @@ export interface JournalEventPayloadByType {
   readonly SIZING: SizingEventPayload;
   readonly ORDER_INTENT: OrderIntentEventPayload;
   readonly SIM_FILL: SimFillEventPayload;
+  readonly EXEC_REJECT: ExecutionRejectEventPayload;
   readonly POSITION: PositionEventPayload;
   readonly MGMT_TICK: ManagementTickEventPayload;
   readonly MGMT_ACTION: ManagementActionEventPayload;

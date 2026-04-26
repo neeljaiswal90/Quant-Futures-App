@@ -44,7 +44,11 @@ The current V1 event set covers:
 - System/control: `CONN`, `FEED`, `GAP`, `SESSION_PHASE`, `ROLL_ADVISORY`, `HALT`, `CONFIG`.
 - Feature/structure: `FEATURES`, `STRUCTURE`.
 - Strategy/candidate: `STRAT_EVAL`, `CANDIDATE`, `ML_UPLIFT`, `RANK`, `RISK_GATE`, `SIZING`.
-- Simulation/position: `ORDER_INTENT`, `SIM_FILL`, `POSITION`, `MGMT_TICK`, `MGMT_ACTION`.
+- Simulation/position: `ORDER_INTENT`, `SIM_FILL`, `EXEC_REJECT`, `POSITION`, `MGMT_TICK`, `MGMT_ACTION`.
+
+`EXEC_REJECT` records deterministic simulated execution rejection/cancel outcomes after an `ORDER_INTENT`
+when no `SIM_FILL` is returned. It is a derived event caused by the `ORDER_INTENT` and inherits the same
+causation-chain `ts_ns`.
 
 Runtime validation lives in:
 

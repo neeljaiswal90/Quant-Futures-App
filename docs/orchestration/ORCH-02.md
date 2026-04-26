@@ -20,10 +20,10 @@ The runner follows ADR-0001 and EVT-01:
 
 - source market-data events are published before the runner derives from them;
 - `FEATURES.ts_ns` equals the triggering source event timestamp;
-- `STRAT_EVAL`, `CANDIDATE`, `RANK`, `SIZING`, `RISK_GATE`, `ORDER_INTENT`, `SIM_FILL`, and `POSITION` inherit the same causation-chain timestamp;
+- `STRAT_EVAL`, `CANDIDATE`, `RANK`, `SIZING`, `RISK_GATE`, `ORDER_INTENT`, `SIM_FILL`, `EXEC_REJECT`, and `POSITION` inherit the same causation-chain timestamp;
 - management ticks inherit the source market event timestamp;
 - `MGMT_ACTION` events inherit from `MGMT_TICK` or the roll advisory/source event that triggered them;
-- management-driven close `ORDER_INTENT`, `SIM_FILL`, and `POSITION` events inherit through `MGMT_ACTION -> ORDER_INTENT -> SIM_FILL`.
+- management-driven close `ORDER_INTENT`, `SIM_FILL`, `EXEC_REJECT`, and `POSITION` events inherit through `MGMT_ACTION -> ORDER_INTENT -> SIM_FILL` or `MGMT_ACTION -> ORDER_INTENT -> EXEC_REJECT`.
 
 The runner never calls `Date.now`, `new Date`, or any wall-clock helper.
 
@@ -44,15 +44,15 @@ For each feature snapshot:
 11. Run sizing and risk for the top configured candidate count; V1 defaults to one.
 12. Publish `SIZING` and `RISK_GATE`.
 13. If accepted, publish `ORDER_INTENT`.
-14. Submit to the SIM-01 simulated adapter and publish `SIM_FILL`.
-15. Build/open an MGMT-02 target position and publish `POSITION`.
+14. Submit to the SIM-01 simulated adapter and publish `SIM_FILL`, or publish `EXEC_REJECT` if the adapter rejects/cancels without a fill.
+15. Build/open an MGMT-02 target position and publish `POSITION` only from accepted fills.
 
 For each management market tick:
 
 1. Evaluate MGMT-03 against every open target position.
 2. Publish `MGMT_TICK`.
 3. Publish zero or more `MGMT_ACTION` events.
-4. For exit actions (`TAKE_PARTIAL`, `TAKE_PROFIT`, `EXIT_FULL`, `TIME_STOP_EXIT`, `FAIL_SAFE_EXIT`), publish `ORDER_INTENT`, submit to SIM-01, publish `SIM_FILL`, and publish the resulting `POSITION` summary caused by the fill.
+4. For exit actions (`TAKE_PARTIAL`, `TAKE_PROFIT`, `EXIT_FULL`, `TIME_STOP_EXIT`, `FAIL_SAFE_EXIT`), publish `ORDER_INTENT`, submit to SIM-01, publish `SIM_FILL`, and publish the resulting `POSITION` summary caused by the fill. If SIM-01 rejects/cancels without a fill, publish `EXEC_REJECT` and keep the position open under the current model.
 5. For non-exit management actions, publish the resulting `POSITION` summary caused by the latest management action or tick.
 6. Update session risk realized PnL and open/closed trade counts deterministically.
 
@@ -80,9 +80,10 @@ ORCH-02C wires those forced-flatten actions into the same simulated close lifecy
 
 ```text
 MGMT_ACTION -> ORDER_INTENT -> SIM_FILL -> POSITION
+MGMT_ACTION -> ORDER_INTENT -> EXEC_REJECT
 ```
 
-The close order is marketable and side-correct: long positions close with `sell`, short positions close with `buy`. The bridge is still sim-only; no live broker routing or DATA-01 dependency is introduced.
+The close order is marketable and side-correct: long positions close with `sell`, short positions close with `buy`. ORCH-FU1 adds the rejection branch so failed required closes are visible in the journal instead of silently stopping after `ORDER_INTENT`. The bridge is still sim-only; no live broker routing or DATA-01 dependency is introduced.
 
 ## Lineage
 
@@ -93,8 +94,8 @@ Strategy/ranking/decision payloads also carry `strategy_config_hash` from STRAT-
 CFG-01 adds the remaining config lineage:
 
 - `SIZING` and `RISK_GATE` carry `risk_config_hash` plus `risk_manager_version`.
-- `POSITION`, `MGMT_TICK`, `MGMT_ACTION`, management close `ORDER_INTENT`, and management close `SIM_FILL` carry `management_profile_hash`, `management_profile_id`, and `management_profile_version`.
-- `MGMT_TICK`, `MGMT_ACTION`, management close `ORDER_INTENT`, and management close `SIM_FILL` carry `position_manager_version`.
+- `POSITION`, `MGMT_TICK`, `MGMT_ACTION`, management close `ORDER_INTENT`, management close `SIM_FILL`, and management close `EXEC_REJECT` carry `management_profile_hash`, `management_profile_id`, and `management_profile_version`.
+- `MGMT_TICK`, `MGMT_ACTION`, management close `ORDER_INTENT`, management close `SIM_FILL`, and management close `EXEC_REJECT` carry `position_manager_version`.
 
 The runner consumes loaded YAML config from `loadAppConfig()`: `config/risk/risk-policy.yaml` and `config/management/profiles.yaml`.
 

@@ -45,6 +45,7 @@ export type {
   CandidateEventPayload,
   ConfigEventPayload,
   ConnectionEventPayload,
+  ExecutionRejectEventPayload,
   FeaturesEventPayload,
   FeedEventPayload,
   GapEventPayload,

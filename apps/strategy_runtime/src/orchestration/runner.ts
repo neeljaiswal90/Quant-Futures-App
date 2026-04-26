@@ -20,6 +20,7 @@ import {
   type RunId,
   type SessionId,
   type SimulatedFill,
+  type SimulatedOrderResult,
   type SizingDecision,
   type SessionPhase,
   type StrategyEvaluation,
@@ -120,6 +121,7 @@ export interface StrategyEvaluationCycleResult {
   readonly risk_gate_events: readonly JournalEventEnvelope<'RISK_GATE', JournalEventPayloadFor<'RISK_GATE'>>[];
   readonly order_intent_events: readonly JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[];
   readonly sim_fill_events: readonly JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[];
+  readonly exec_reject_events: readonly JournalEventEnvelope<'EXEC_REJECT', JournalEventPayloadFor<'EXEC_REJECT'>>[];
   readonly position_events: readonly JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[];
   readonly session_risk: SessionRiskState;
   readonly open_positions: readonly TargetPosition[];
@@ -141,6 +143,7 @@ export interface RunnerManagementTickResult {
   readonly management_action_events: readonly JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[];
   readonly order_intent_events: readonly JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[];
   readonly sim_fill_events: readonly JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[];
+  readonly exec_reject_events: readonly JournalEventEnvelope<'EXEC_REJECT', JournalEventPayloadFor<'EXEC_REJECT'>>[];
   readonly position_events: readonly JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[];
   readonly management_results: readonly PositionManagerEvaluation[];
   readonly session_risk?: SessionRiskState;
@@ -309,6 +312,9 @@ export class StrategyRuntimeRunner {
     const simFillEvents: JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[] = [
       ...forcedFlattenExecution.sim_fill_events,
     ];
+    const execRejectEvents: JournalEventEnvelope<'EXEC_REJECT', JournalEventPayloadFor<'EXEC_REJECT'>>[] = [
+      ...forcedFlattenExecution.exec_reject_events,
+    ];
     const positionEvents: JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[] = [
       ...forcedFlattenExecution.position_events,
     ];
@@ -390,6 +396,17 @@ export class StrategyRuntimeRunner {
         market: toExecutionMarketState(snapshot),
         fill_ts_ns: candidate.proposed_ts_ns,
       });
+      const rejectEvent = await this.publishExecutionRejectIfNeeded({
+        order_result: orderResult,
+        intent_event: intentEvent,
+        lineage: {
+          strategy_config_hash: this.strategyConfigHash,
+        },
+        correlation_id: makeCorrelationId(`corr-${candidate.candidate_id}`),
+      });
+      if (rejectEvent !== undefined) {
+        execRejectEvents.push(rejectEvent);
+      }
 
       for (const fill of orderResult.fills) {
         const fillEvent = await this.publishDerivedEvent({
@@ -437,6 +454,7 @@ export class StrategyRuntimeRunner {
       risk_gate_events: riskGateEvents,
       order_intent_events: orderIntentEvents,
       sim_fill_events: simFillEvents,
+      exec_reject_events: execRejectEvents,
       position_events: positionEvents,
       session_risk: this.ensureSessionRisk(snapshot),
       open_positions: [...this.openPositions],
@@ -465,6 +483,7 @@ export class StrategyRuntimeRunner {
     const managementActionEvents: JournalEventEnvelope<'MGMT_ACTION', JournalEventPayloadFor<'MGMT_ACTION'>>[] = [];
     const orderIntentEvents: JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[] = [];
     const simFillEvents: JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[] = [];
+    const execRejectEvents: JournalEventEnvelope<'EXEC_REJECT', JournalEventPayloadFor<'EXEC_REJECT'>>[] = [];
     const positionEvents: JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[] = [];
     const managementResults: PositionManagerEvaluation[] = [];
     const nextPositions: TargetPosition[] = [];
@@ -532,10 +551,14 @@ export class StrategyRuntimeRunner {
       });
       orderIntentEvents.push(...execution.order_intent_events);
       simFillEvents.push(...execution.sim_fill_events);
+      execRejectEvents.push(...execution.exec_reject_events);
       positionEvents.push(...execution.position_events);
 
+      const rejectionEvent = execution.exec_reject_events.at(-1);
       const updatedPosition = execution.updated_positions.length > 0
         ? execution.updated_positions[execution.updated_positions.length - 1]!
+        : rejectionEvent !== undefined
+          ? position
         : result.updated_position;
       if (execution.position_events.length === 0) {
         this.applySessionRiskPositionChange(position, updatedPosition, input.cause_event.ts_ns);
@@ -544,9 +567,11 @@ export class StrategyRuntimeRunner {
           event_id: makeEventId(`position-update-${updatedPosition.position_id}-${input.cause_event.ts_ns}`),
           type: 'POSITION',
           ts_ns: input.cause_event.ts_ns,
-          causation_id: toCausationId(positionCauseEventId),
+          causation_id: toCausationId(rejectionEvent?.event_id ?? positionCauseEventId),
           payload: {
-            ...result.position_event_payload,
+            ...(rejectionEvent === undefined
+              ? result.position_event_payload
+              : toPositionEventPayload(position, this.strategyConfigHash)),
             strategy_config_hash: this.strategyConfigHash,
             management_profile_hash: updatedPosition.profile_hash,
             management_profile_id: updatedPosition.profile_id,
@@ -567,6 +592,7 @@ export class StrategyRuntimeRunner {
       management_action_events: managementActionEvents,
       order_intent_events: orderIntentEvents,
       sim_fill_events: simFillEvents,
+      exec_reject_events: execRejectEvents,
       position_events: positionEvents,
       management_results: managementResults,
       session_risk: this.sessionRisk,
@@ -812,6 +838,7 @@ export class StrategyRuntimeRunner {
   }): Promise<ManagementActionExecutionResult> {
     const orderIntentEvents: JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[] = [];
     const simFillEvents: JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[] = [];
+    const execRejectEvents: JournalEventEnvelope<'EXEC_REJECT', JournalEventPayloadFor<'EXEC_REJECT'>>[] = [];
     const positionEvents: JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[] = [];
     const updatedPositions: TargetPosition[] = [];
     const positionById = new Map(
@@ -870,6 +897,23 @@ export class StrategyRuntimeRunner {
         },
         fill_ts_ns: actionEvent.ts_ns,
       });
+      const rejectEvent = await this.publishExecutionRejectIfNeeded({
+        order_result: orderResult,
+        intent_event: intentEvent,
+        lineage: {
+          strategy_config_hash: this.strategyConfigHash,
+          management_action_id: action.management_action_id,
+          position_id: position.position_id,
+          management_profile_hash: position.profile_hash,
+          management_profile_id: position.profile_id,
+          management_profile_version: position.profile_version,
+          position_manager_version: POSITION_MANAGER_VERSION,
+        },
+        correlation_id: makeCorrelationId(`corr-${position.candidate_id}`),
+      });
+      if (rejectEvent !== undefined) {
+        execRejectEvents.push(rejectEvent);
+      }
 
       for (const fill of orderResult.fills) {
         const fillEvent = await this.publishDerivedEvent({
@@ -925,9 +969,42 @@ export class StrategyRuntimeRunner {
     return {
       order_intent_events: orderIntentEvents,
       sim_fill_events: simFillEvents,
+      exec_reject_events: execRejectEvents,
       position_events: positionEvents,
       updated_positions: updatedPositions,
     };
+  }
+
+  private async publishExecutionRejectIfNeeded(input: {
+    readonly order_result: SimulatedOrderResult;
+    readonly intent_event: JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>;
+    readonly lineage: ExecutionRejectLineage;
+    readonly correlation_id?: ReturnType<typeof makeCorrelationId>;
+  }): Promise<JournalEventEnvelope<'EXEC_REJECT', JournalEventPayloadFor<'EXEC_REJECT'>> | undefined> {
+    if (!shouldJournalExecutionReject(input.order_result)) {
+      return undefined;
+    }
+
+    const rejectId = `exec-reject-${input.order_result.order_intent_id}`;
+    const reason = input.order_result.reject_reason ?? `execution_${input.order_result.status}`;
+    return this.publishDerivedEvent({
+      event_id: makeEventId(rejectId),
+      type: 'EXEC_REJECT',
+      ts_ns: input.intent_event.ts_ns,
+      causation_id: toCausationId(input.intent_event.event_id),
+      payload: {
+        execution_reject_id: rejectId,
+        order_intent_id: input.order_result.order_intent_id,
+        candidate_id: input.intent_event.payload.candidate_id,
+        sizing_decision_id: input.intent_event.payload.sizing_decision_id,
+        status: input.order_result.status,
+        reason,
+        execution_adapter: this.executionAdapter.adapter,
+        execution_version: this.executionAdapter.version,
+        ...input.lineage,
+      },
+      correlation_id: input.correlation_id,
+    });
   }
 
   private applySessionRiskPositionChange(
@@ -999,9 +1076,25 @@ type ExecutableManagementActionType = Extract<
 interface ManagementActionExecutionResult {
   readonly order_intent_events: readonly JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>[];
   readonly sim_fill_events: readonly JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>[];
+  readonly exec_reject_events: readonly JournalEventEnvelope<'EXEC_REJECT', JournalEventPayloadFor<'EXEC_REJECT'>>[];
   readonly position_events: readonly JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[];
   readonly updated_positions: readonly TargetPosition[];
 }
+
+type RejectedExecutionResult = SimulatedOrderResult & {
+  readonly status: 'rejected' | 'cancelled';
+};
+
+type ExecutionRejectLineage = Partial<Pick<
+  JournalEventPayloadFor<'EXEC_REJECT'>,
+  | 'strategy_config_hash'
+  | 'management_action_id'
+  | 'position_id'
+  | 'management_profile_hash'
+  | 'management_profile_id'
+  | 'management_profile_version'
+  | 'position_manager_version'
+>>;
 
 function buildMnqBlockedStrategyEvaluation(
   strategyId: StrategyId,
@@ -1249,6 +1342,12 @@ function isExecutableManagementActionType(
     actionType === 'TIME_STOP_EXIT' ||
     actionType === 'FAIL_SAFE_EXIT'
   );
+}
+
+function shouldJournalExecutionReject(
+  result: SimulatedOrderResult,
+): result is RejectedExecutionResult {
+  return result.fills.length === 0 && (result.status === 'rejected' || result.status === 'cancelled');
 }
 
 function managementActionExitQuantity(

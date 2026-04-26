@@ -96,7 +96,11 @@ describe('TUI-01 operator event-bus contract', () => {
       'RISK_GATE',
       'SIZING',
     ]);
-    expect(eventTypesForChannel('ORDERS')).toEqual(['ORDER_INTENT', 'SIM_FILL']);
+    expect(eventTypesForChannel('ORDERS')).toEqual([
+      'ORDER_INTENT',
+      'SIM_FILL',
+      'EXEC_REJECT',
+    ]);
     expect(eventTypesForChannel('POSITION')).toEqual([
       'POSITION',
       'MGMT_TICK',
