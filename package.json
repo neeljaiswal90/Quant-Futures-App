@@ -10,6 +10,7 @@
     "journal:query": "tsx scripts/journal/journal-query.ts",
     "lint": "npm run lint:forbidden-imports",
     "lint:forbidden-imports": "node scripts/check-forbidden-imports.mjs",
+    "rel:00a": "tsx scripts/rel/rel-00a-offline-readiness.ts",
     "test": "vitest run",
     "tui": "tsx apps/strategy_runtime/src/operator/tui.ts",
     "tui:fixture": "tsx apps/strategy_runtime/src/operator/tui.ts --fixture obs00"
