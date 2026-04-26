@@ -60,5 +60,6 @@ ORCH-02 should:
 - create order intents from approved candidates and sizing decisions;
 - publish `ORDER_INTENT` before submitting to the adapter;
 - publish `SIM_FILL` only from the returned fills;
+- publish `EXEC_REJECT` when a rejected/cancelled simulated order returns no fills, especially for management-driven required closes;
 - set event `ts_ns` via the EVT-01 causation chain, not `Date.now()`;
 - journal venue-cost and execution-version lineage through producer metadata once the risk/sim config surface exists.

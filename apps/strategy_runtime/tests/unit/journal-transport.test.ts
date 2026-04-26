@@ -155,6 +155,17 @@ function derivedPayload(type: RuntimeEventType): JsonValue {
         liquidity: 'taker',
         slippage_points: 0.25,
       };
+    case 'EXEC_REJECT':
+      return {
+        execution_reject_id: 'exec-reject-order-1',
+        order_intent_id: 'order-1',
+        candidate_id: 'candidate-CANDIDATE',
+        sizing_decision_id: 'sizing-1',
+        status: 'rejected',
+        reason: 'fixture_reject',
+        execution_adapter: 'simulated',
+        execution_version: 'simulated_execution_v1',
+      };
     default:
       return {
         feature_snapshot_id: 'feat-1',

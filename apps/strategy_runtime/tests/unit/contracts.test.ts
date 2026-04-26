@@ -201,6 +201,7 @@ describe('APP-02 contracts', () => {
   it('maps event types to planned operator channels without recompute contracts', () => {
     expect(channelsForEventType('QUOTE')).toEqual(['MARKET']);
     expect(channelsForEventType('SIM_FILL')).toEqual(['ORDERS']);
+    expect(channelsForEventType('EXEC_REJECT')).toEqual(['ORDERS']);
     expect(channelsForEventType('MGMT_ACTION')).toEqual(['POSITION']);
   });
 

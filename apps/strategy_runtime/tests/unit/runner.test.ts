@@ -14,9 +14,12 @@ import {
   type JournalEventEnvelope,
   type JournalEventPayloadFor,
   type JsonValue,
+  type SimulatedOrderResult,
 } from '../../src/contracts/index.js';
 import {
   createSimulatedExecutionAdapter,
+  SIMULATED_EXECUTION_VERSION,
+  type SimulatedExecutionAdapter,
 } from '../../src/execution/simulated-execution.js';
 import {
   createStrategyRuntimeEngineContainer,
@@ -45,6 +48,7 @@ const ROLL_FLATTEN_TS = ns('1781270760000000000');
 function createRunner(options: {
   readonly initialOpenTradeCount?: number;
   readonly riskPolicy?: PartialRiskPolicyConfig;
+  readonly executionAdapter?: SimulatedExecutionAdapter;
 } = {}) {
   const config = loadAppConfig({
     configPath: 'config/app.example.json',
@@ -54,7 +58,7 @@ function createRunner(options: {
     },
   });
   const container = createStrategyRuntimeEngineContainer({ config });
-  const executionAdapter = createSimulatedExecutionAdapter({
+  const executionAdapter = options.executionAdapter ?? createSimulatedExecutionAdapter({
     venue_costs: loadVenueCostTable(),
   });
   const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
@@ -84,6 +88,54 @@ function createRunner(options: {
       initial_session_risk_state: initial,
       risk_policy: options.riskPolicy,
     }),
+  };
+}
+
+function createRejectingExecutionAdapter(reason: string): SimulatedExecutionAdapter {
+  return {
+    adapter: 'simulated',
+    version: SIMULATED_EXECUTION_VERSION,
+    async submit(input) {
+      return rejectedOrderResult(input.intent.order_intent_id, input.intent.submitted_ts_ns, reason);
+    },
+    async cancel(input) {
+      return rejectedOrderResult(input.order_intent_id, input.submitted_ts_ns, input.reason);
+    },
+  };
+}
+
+function createFillThenRejectExecutionAdapter(reason: string): SimulatedExecutionAdapter {
+  const fillingAdapter = createSimulatedExecutionAdapter({
+    venue_costs: loadVenueCostTable(),
+  });
+  let submitCount = 0;
+  return {
+    adapter: 'simulated',
+    version: SIMULATED_EXECUTION_VERSION,
+    async submit(input) {
+      submitCount += 1;
+      if (submitCount === 1) {
+        return fillingAdapter.submit(input);
+      }
+      return rejectedOrderResult(input.intent.order_intent_id, input.intent.submitted_ts_ns, reason);
+    },
+    async cancel(input) {
+      return fillingAdapter.cancel(input);
+    },
+  };
+}
+
+function rejectedOrderResult(
+  orderIntentId: SimulatedOrderResult['order_intent_id'],
+  submittedTsNs: SimulatedOrderResult['submitted_ts_ns'],
+  reason: string,
+): SimulatedOrderResult {
+  return {
+    order_intent_id: orderIntentId,
+    status: 'rejected',
+    submitted_ts_ns: submittedTsNs,
+    fills: [],
+    reject_reason: reason,
   };
 }
 
@@ -451,6 +503,39 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.position_events[0]!.payload.status).toBe('closed');
   });
 
+  it('journals rejected roll forced-flatten execution without closing the position', async () => {
+    const { runner } = createRunner({
+      executionAdapter: createFillThenRejectExecutionAdapter('sim_reject:roll_flatten_no_fill'),
+    });
+    const opening = await openPositionFromSnapshot(
+      runner,
+      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+    );
+    const openPosition = opening.open_positions[0]!;
+
+    const result = await processRollFlattenSnapshot(runner, { id: 'fixture-roll-flatten-reject' });
+
+    expect(result.forced_flatten_action_events).toHaveLength(1);
+    expect(result.order_intent_events).toHaveLength(1);
+    expect(result.sim_fill_events).toEqual([]);
+    expect(result.exec_reject_events).toHaveLength(1);
+    expect(result.exec_reject_events[0]!.causation_id).toBe(result.order_intent_events[0]!.event_id);
+    expect(result.exec_reject_events[0]!.payload).toMatchObject({
+      order_intent_id: result.order_intent_events[0]!.payload.order_intent_id,
+      management_action_id: result.forced_flatten_action_events[0]!.payload.management_action_id,
+      position_id: openPosition.position_id,
+      reason: 'sim_reject:roll_flatten_no_fill',
+      status: 'rejected',
+    });
+    expect(validateJournalEventEnvelope(result.exec_reject_events[0]!)).toMatchObject({
+      ok: true,
+      issues: [],
+    });
+    expect(result.open_positions.map((position) => position.position_id)).toEqual([
+      openPosition.position_id,
+    ]);
+  });
+
   it('emits roll forced-flatten actions in deterministic position-id order', async () => {
     const { runner } = createRunner();
     await openPositionFromSnapshot(
@@ -641,6 +726,35 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.session_risk.rejected_trade_count).toBe(1);
   });
 
+  it('journals rejected entry execution without emitting fills', async () => {
+    const { runner } = createRunner({
+      executionAdapter: createRejectingExecutionAdapter('sim_reject:no_liquidity'),
+    });
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
+    const result = await runner.processFeatureSnapshot(snapshot);
+
+    expect(result.order_intent_events).toHaveLength(1);
+    expect(result.sim_fill_events).toEqual([]);
+    expect(result.position_events).toEqual([]);
+    expect(result.open_positions).toEqual([]);
+    expect(result.exec_reject_events).toHaveLength(1);
+    expect(result.exec_reject_events[0]!.causation_id).toBe(result.order_intent_events[0]!.event_id);
+    expect(result.exec_reject_events[0]!.ts_ns).toBe(result.order_intent_events[0]!.ts_ns);
+    expect(result.exec_reject_events[0]!.payload).toMatchObject({
+      order_intent_id: result.order_intent_events[0]!.payload.order_intent_id,
+      status: 'rejected',
+      reason: 'sim_reject:no_liquidity',
+      execution_adapter: 'simulated',
+      execution_version: SIMULATED_EXECUTION_VERSION,
+    });
+    expect(validateJournalEventEnvelope(result.exec_reject_events[0]!)).toMatchObject({
+      ok: true,
+      issues: [],
+    });
+  });
+
   it('drives open positions through management ticks with causation-safe timestamps', async () => {
     const { runner } = createRunner();
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
@@ -811,6 +925,45 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.open_positions).toEqual([]);
   });
 
+  it('journals rejected fail-safe close attempts and keeps the position open', async () => {
+    const { runner } = createRunner({
+      executionAdapter: createFillThenRejectExecutionAdapter('sim_reject:failsafe_no_fill'),
+    });
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
+    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const openPosition = cycle.open_positions[0]!;
+    const managementTs = ns(BigInt(snapshot.created_ts_ns) + 60_000_000_000n);
+    const managementSource = await runner.publishExternalEvent(
+      sourceQuoteEvent('source-management-failsafe-reject-1', managementTs),
+    );
+
+    const result = await runner.processManagementTick({
+      cause_event: managementSource,
+      mark_price: openPosition.entry_price,
+      high_price: openPosition.entry_price,
+      low_price: openPosition.entry_price,
+      authority: 'gap',
+      is_stale: true,
+    });
+
+    expect(result.management_action_events.map((event) => event.payload.action_type)).toEqual([
+      'FAIL_SAFE_EXIT',
+    ]);
+    expect(result.order_intent_events).toHaveLength(1);
+    expect(result.sim_fill_events).toEqual([]);
+    expect(result.exec_reject_events).toHaveLength(1);
+    expect(result.exec_reject_events[0]!.payload.reason).toBe('sim_reject:failsafe_no_fill');
+    expect(result.exec_reject_events[0]!.causation_id).toBe(result.order_intent_events[0]!.event_id);
+    expect(result.position_events[0]!.causation_id).toBe(result.exec_reject_events[0]!.event_id);
+    expect(result.position_events[0]!.payload).toMatchObject({
+      position_id: openPosition.position_id,
+      status: 'open',
+      quantity_open: openPosition.remaining_quantity,
+    });
+    expect(result.open_positions[0]!.position_id).toBe(openPosition.position_id);
+  });
+
   it('executes time-stop exits through simulated close fills', async () => {
     const { runner } = createRunner();
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
@@ -839,6 +992,41 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.sim_fill_events[0]!.ts_ns).toBe(managementTs);
     expect(result.position_events[0]!.causation_id).toBe(result.sim_fill_events[0]!.event_id);
     expect(result.open_positions).toEqual([]);
+  });
+
+  it('journals rejected time-stop close attempts and keeps the position open', async () => {
+    const { runner } = createRunner({
+      executionAdapter: createFillThenRejectExecutionAdapter('sim_reject:timestop_no_fill'),
+    });
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
+    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const openPosition = cycle.open_positions[0]!;
+    const managementSource = await runner.publishExternalEvent(
+      sourceQuoteEvent('source-management-time-stop-reject-1', openPosition.time_stop.deadline_ts_ns!),
+    );
+
+    const result = await runner.processManagementTick({
+      cause_event: managementSource,
+      mark_price: openPosition.entry_price,
+      high_price: openPosition.entry_price,
+      low_price: openPosition.entry_price,
+      authority: 'authoritative',
+    });
+
+    expect(result.management_action_events.map((event) => event.payload.action_type)).toEqual([
+      'TIME_STOP_EXIT',
+    ]);
+    expect(result.order_intent_events).toHaveLength(1);
+    expect(result.sim_fill_events).toEqual([]);
+    expect(result.exec_reject_events).toHaveLength(1);
+    expect(result.exec_reject_events[0]!.payload.reason).toBe('sim_reject:timestop_no_fill');
+    expect(result.exec_reject_events[0]!.ts_ns).toBe(openPosition.time_stop.deadline_ts_ns);
+    expect(validateJournalEventEnvelope(result.exec_reject_events[0]!)).toMatchObject({
+      ok: true,
+      issues: [],
+    });
+    expect(result.open_positions[0]!.position_id).toBe(openPosition.position_id);
   });
 
   it('resets session risk state on SESSION_PHASE without wall-clock input', async () => {

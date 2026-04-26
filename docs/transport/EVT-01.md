@@ -36,6 +36,7 @@ Derived events:
 - `SIZING`
 - `ORDER_INTENT`
 - `SIM_FILL`
+- `EXEC_REJECT`
 - `POSITION`
 - `MGMT_TICK`
 - `MGMT_ACTION`

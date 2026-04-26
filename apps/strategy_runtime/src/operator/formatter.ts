@@ -359,6 +359,13 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
         `px=${numberField(payload, 'price')}`,
         `liq=${stringField(payload, 'liquidity')}`,
       ]);
+    case 'EXEC_REJECT':
+      return compactParts([
+        `reject=${stringField(payload, 'execution_reject_id')}`,
+        `order=${stringField(payload, 'order_intent_id')}`,
+        `status=${stringField(payload, 'status')}`,
+        `reason=${stringField(payload, 'reason')}`,
+      ]);
     case 'POSITION':
       return compactParts([
         `position=${stringField(payload, 'position_id')}`,
@@ -508,7 +515,7 @@ function colorize(value: string, color: string, enabled: boolean): string {
 }
 
 function colorForEventType(type: RuntimeEventType): string {
-  if (['GAP', 'HALT'].includes(type)) {
+  if (['GAP', 'HALT', 'EXEC_REJECT'].includes(type)) {
     return RED;
   }
   if (['RISK_GATE', 'MGMT_ACTION', 'ROLL_ADVISORY'].includes(type)) {

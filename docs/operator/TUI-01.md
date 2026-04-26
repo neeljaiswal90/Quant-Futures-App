@@ -24,7 +24,7 @@ Required default TUI channels:
 | `MICROSTRUCTURE` | `MICROSTRUCTURE` | 2 Hz using `event.ts_ns` |
 | `STRATEGY_GATES` | `STRAT_EVAL` | per evaluation cycle |
 | `CANDIDATES` | `CANDIDATE`, `ML_UPLIFT`, `RANK`, `RISK_GATE`, `SIZING` | event-driven |
-| `ORDERS` | `ORDER_INTENT`, `SIM_FILL` | event-driven |
+| `ORDERS` | `ORDER_INTENT`, `SIM_FILL`, `EXEC_REJECT` | event-driven |
 | `POSITION` | `POSITION`, `MGMT_TICK`, `MGMT_ACTION` | event-driven plus per-bar management ticks |
 
 Additional non-default channels:

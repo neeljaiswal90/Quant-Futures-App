@@ -211,14 +211,14 @@ export const EVENT_CHANNEL_CONTRACTS: readonly EventChannelContract[] = [
   },
   {
     channel: 'ORDERS',
-    event_types: ['ORDER_INTENT', 'SIM_FILL'],
+    event_types: ['ORDER_INTENT', 'SIM_FILL', 'EXEC_REJECT'],
     emission_cadence: 'event_driven',
     throttle: { kind: 'none' },
     default_subscribers: EVENT_DRIVEN_SUBSCRIBERS,
     tui_default: true,
     facts_are_authoritative: true,
     recomputation_allowed: false,
-    description: 'Simulation-only order intents and fills.',
+    description: 'Simulation-only order intents, fills, and execution rejections.',
   },
   {
     channel: 'POSITION',

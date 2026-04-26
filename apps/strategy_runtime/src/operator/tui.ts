@@ -395,6 +395,9 @@ function panelStatus(
   }
 
   if (panel === 'POSITION') {
+    if (latestOf(eventMap, 'EXEC_REJECT') !== undefined) {
+      return 'alert';
+    }
     const upnl = numberPayloadField(latestOf(eventMap, 'MGMT_TICK'), 'unrealized_pnl_usd');
     if (upnl !== undefined && upnl < 0) {
       return 'alert';
@@ -515,6 +518,7 @@ function strategyGateLines(eventMap: EventMap): readonly string[] {
 function positionLines(eventMap: EventMap): readonly string[] {
   const order = latestOf(eventMap, 'ORDER_INTENT');
   const fill = latestOf(eventMap, 'SIM_FILL');
+  const reject = latestOf(eventMap, 'EXEC_REJECT');
   const position = latestOf(eventMap, 'POSITION');
   const tick = latestOf(eventMap, 'MGMT_TICK');
   const action = latestOf(eventMap, 'MGMT_ACTION');
@@ -524,6 +528,7 @@ function positionLines(eventMap: EventMap): readonly string[] {
     `avg_entry=${numberString(numberPayloadField(position, 'avg_entry_price'))} mark=${numberString(numberPayloadField(tick, 'mark_price'))} upnl_usd=${numberString(numberPayloadField(tick, 'unrealized_pnl_usd'))} today_r=--`,
     `order=${stringPayloadField(order, 'order_intent_id') ?? '--'} type=${stringPayloadField(order, 'order_type') ?? '--'} side=${stringPayloadField(order, 'side') ?? '--'} qty=${numberString(numberPayloadField(order, 'quantity'))}`,
     `fill=${stringPayloadField(fill, 'fill_id') ?? '--'} px=${numberString(numberPayloadField(fill, 'price'))} liq=${stringPayloadField(fill, 'liquidity') ?? '--'} fills_today=${eventCount(eventMap, 'SIM_FILL')}`,
+    `reject=${stringPayloadField(reject, 'execution_reject_id') ?? '--'} status=${stringPayloadField(reject, 'status') ?? '--'} reason=${stringPayloadField(reject, 'reason') ?? '--'}`,
     `management=${stringPayloadField(action, 'action_type') ?? '--'} reason=${stringPayloadField(action, 'reason') ?? '--'}`,
   ];
 }

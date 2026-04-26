@@ -425,7 +425,7 @@ Deliver `contracts/events/` with event schemas, channel mapping, emission cadenc
 | MICROSTRUCTURE | sidecar microstructure snapshot | 2 Hz throttled |
 | STRATEGY_GATES | `STRAT_EVAL` | per evaluation cycle |
 | CANDIDATES | `CANDIDATE`, `ML_UPLIFT`, `RANK`, `RISK_GATE`, `SIZING` | event-driven |
-| ORDERS | `ORDER_INTENT`, `SIM_FILL` | event-driven |
+| ORDERS | `ORDER_INTENT`, `SIM_FILL`, `EXEC_REJECT` | event-driven |
 | POSITION | `POSITION`, `MGMT_TICK`, `MGMT_ACTION` | event-driven + per-bar tick |
 
 Throttling is part of the contract. Consumers do not decide their own raw-feed rate. A normal `QUOTE` subscriber receives the 5 Hz stream; `QUOTE_RAW` is explicit and should not feed the TUI by default.

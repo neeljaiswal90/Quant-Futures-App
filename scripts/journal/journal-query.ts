@@ -694,6 +694,13 @@ function payloadSummary(event: JournalEventEnvelope): string {
         `fill=${stringPayloadField(event, 'fill_id') ?? '--'}`,
         `order=${stringPayloadField(event, 'order_intent_id') ?? '--'}`,
       ].join(' ');
+    case 'EXEC_REJECT':
+      return [
+        `reject=${stringPayloadField(event, 'execution_reject_id') ?? '--'}`,
+        `order=${stringPayloadField(event, 'order_intent_id') ?? '--'}`,
+        `status=${stringPayloadField(event, 'status') ?? '--'}`,
+        `reason=${stringPayloadField(event, 'reason') ?? '--'}`,
+      ].join(' ');
     case 'POSITION':
       return [
         `position=${stringPayloadField(event, 'position_id') ?? '--'}`,
