@@ -67,6 +67,35 @@ Use this report to decide whether the extractor needs a scale fix, a side/level 
 fix, or direct manual proto review. The debug analyzer does not automatically alter
 normalization behavior.
 
+## DATA-PARITY-04C Price-Level Semantics
+
+The DATA-PARITY-04B debug dump showed that Rithmic `OrderBook` prices are already in
+the correct scale for MNQ. The failure was field semantics:
+
+- `update_type = snapshot_image` rows can contain large bid/ask price arrays rather than
+  pre-trimmed top-10 levels.
+- Bid snapshot arrays can arrive low-to-high, so the best bid is near the end of the raw
+  array, not necessarily at index `0`.
+- Ask snapshot arrays must be sorted before deriving depth levels.
+- `update_type = solo` rows are price-level updates, often one bid or one ask price, not
+  complete depth snapshots and not "replace depth level 0" records.
+
+The collector therefore normalizes Rithmic `MBP10` as follows:
+
+- Snapshot-like `OrderBook` rows are filtered to positive price/size, sorted by price
+  (`bid` high-to-low, `ask` low-to-high), and only then assigned derived `level` values
+  `0..9`.
+- Incremental `solo` rows are emitted as `book_update_kind = price_level_update` with
+  `source_index` preserved. Downstream reconstruction keys them by `px`, not by raw array
+  index.
+- Zero-size price-level updates delete that price from the reconstructed side.
+- `level` on Rithmic rows is an output convenience only. It must not be treated as a
+  stable Rithmic state key.
+
+After this change, a fresh rich probe is required. Older probe files captured before
+DATA-PARITY-04C can still contain truncated or unsorted seed rows and should not be used
+to declare extraction trusted.
+
 ## Core Invariant
 
 Before comparing Rithmic `MBP10` to Databento `mbp-10`, reconstructed Rithmic `MBP10`

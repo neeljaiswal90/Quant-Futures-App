@@ -77,7 +77,36 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
       bid_only_update_rows_count: 1,
       reconstructed_book_sample_count: 1,
     });
-    expect(result.samples[0]?.bids).toEqual([{ level: 0, px: 100.25, sz: 8, order_count: 4 }]);
+    expect(result.samples[0]?.bids).toEqual([
+      { level: 0, px: 100.25, sz: 8, order_count: 4 },
+      { level: 1, px: 100, sz: 5, order_count: 2 },
+    ]);
+    expect(result.samples[0]?.asks).toEqual([{ level: 0, px: 101, sz: 7, order_count: 3 }]);
+  });
+
+  it('keys Rithmic price-level updates by price instead of treating source index as depth', () => {
+    const result = reconstructRithmicMbp10FromRecords([
+      seedRow(),
+      mbp10Record(1_000_000n, {
+        bids: [{ level: 0, px: 99.75, sz: 8, order_count: 4 }],
+      }),
+    ]);
+
+    expect(result.samples[0]?.bids).toEqual([
+      { level: 0, px: 100, sz: 5, order_count: 2 },
+      { level: 1, px: 99.75, sz: 8, order_count: 4 },
+    ]);
+  });
+
+  it('deletes a price level when Rithmic sends a zero-size update', () => {
+    const result = reconstructRithmicMbp10FromRecords([
+      seedRow(),
+      mbp10Record(1_000_000n, {
+        bids: [{ level: 0, px: 100, sz: 0, order_count: 0 }],
+      }),
+    ]);
+
+    expect(result.samples[0]?.bids).toEqual([]);
     expect(result.samples[0]?.asks).toEqual([{ level: 0, px: 101, sz: 7, order_count: 3 }]);
   });
 
@@ -94,7 +123,10 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
       reconstructed_book_sample_count: 1,
     });
     expect(result.samples[0]?.bids).toEqual([{ level: 0, px: 100, sz: 5, order_count: 2 }]);
-    expect(result.samples[0]?.asks).toEqual([{ level: 0, px: 100.75, sz: 9, order_count: 5 }]);
+    expect(result.samples[0]?.asks).toEqual([
+      { level: 0, px: 100.75, sz: 9, order_count: 5 },
+      { level: 1, px: 101, sz: 7, order_count: 3 },
+    ]);
   });
 
   it('uses null-timestamp book rows as seed state while excluding them from timestamped samples', () => {
@@ -130,7 +162,10 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
       {
         ts_ns: (START_TS_NS + 2_000_000n).toString(),
         source_record_index: 1,
-        bids: [{ level: 0, px: 100.25, sz: 8, order_count: 4 }],
+        bids: [
+          { level: 0, px: 100.25, sz: 8, order_count: 4 },
+          { level: 1, px: 100, sz: 5, order_count: 2 },
+        ],
         asks: [{ level: 0, px: 101, sz: 7, order_count: 3 }],
       },
     ];
@@ -146,8 +181,8 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
         mismatch_count: 0,
       },
       depth_levels: {
-        comparable_field_count: 6,
-        matching_field_count: 6,
+        comparable_field_count: 9,
+        matching_field_count: 9,
         mismatch_count: 0,
       },
     });
@@ -169,6 +204,9 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
           bid_px_00: 100.25,
           bid_sz_00: 8,
           bid_ct_00: 4,
+          bid_px_01: 100,
+          bid_sz_01: 5,
+          bid_ct_01: 2,
           ask_px_00: 101,
           ask_sz_00: 7,
           ask_ct_00: 3,
@@ -223,6 +261,9 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
           ask_px_00: 100.75,
           ask_sz_00: 9,
           ask_ct_00: 5,
+          ask_px_01: 101,
+          ask_sz_01: 7,
+          ask_ct_01: 3,
         }),
       ],
       'databento.jsonl',

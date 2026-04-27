@@ -123,6 +123,7 @@ interface CliArgs {
 }
 
 interface BookState {
+  // Rithmic OrderBook updates are keyed by price level; depth level is derived after sorting.
   readonly bids: Map<number, BookLevel>;
   readonly asks: Map<number, BookLevel>;
 }
@@ -565,15 +566,12 @@ function normalizeLevel(
   const sz = optionalFiniteNumber(value, ['sz', 'size']);
   const orderCount = optionalFiniteInteger(value, ['order_count', 'orders', 'ct', 'count']);
 
-  if (level === null || level < 0 || level > MAX_DEPTH_LEVEL) {
-    return null;
-  }
   if (px === null || sz === null) {
     return null;
   }
 
   return {
-    level,
+    level: level ?? arrayIndex,
     px,
     sz,
     order_count: orderCount,
@@ -590,24 +588,39 @@ function isMbp10Record(record: unknown): record is Record<string, unknown> {
 
 function applyBookUpdate(state: BookState, row: ParsedRithmicMbp10Row): void {
   for (const level of row.bids) {
-    state.bids.set(level.level, level);
+    applyPriceLevelUpdate(state.bids, level);
   }
   for (const level of row.asks) {
-    state.asks.set(level.level, level);
+    applyPriceLevelUpdate(state.asks, level);
   }
 }
 
 function stateToSample(state: BookState, tsNs: string, sourceRecordIndex: number): BookSample {
   return {
     ts_ns: tsNs,
-    bids: levelsFromMap(state.bids),
-    asks: levelsFromMap(state.asks),
+    bids: levelsFromPriceMap(state.bids, 'bid'),
+    asks: levelsFromPriceMap(state.asks, 'ask'),
     source_record_index: sourceRecordIndex,
   };
 }
 
-function levelsFromMap(levels: ReadonlyMap<number, BookLevel>): readonly BookLevel[] {
-  return [...levels.values()].sort((left, right) => left.level - right.level);
+function applyPriceLevelUpdate(levels: Map<number, BookLevel>, level: BookLevel): void {
+  if (level.sz <= 0) {
+    levels.delete(level.px);
+    return;
+  }
+  levels.set(level.px, level);
+}
+
+function levelsFromPriceMap(levels: ReadonlyMap<number, BookLevel>, side: BookSide): readonly BookLevel[] {
+  return [...levels.values()]
+    .filter((level) => level.px > 0 && level.sz > 0)
+    .sort((left, right) => (side === 'bid' ? right.px - left.px : left.px - right.px))
+    .slice(0, MAX_DEPTH_LEVEL + 1)
+    .map((level, index) => ({
+      ...level,
+      level: index,
+    }));
 }
 
 function findLevel(sample: BookSample, side: BookSide, level: number): BookLevel | null {
