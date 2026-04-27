@@ -14,6 +14,10 @@ DATA-07A reads the same rich Rithmic probe/provider JSONL accepted by DATA-01A a
 the DATA-01A normalizer. Only rows that can become OBS-01 `QUOTE` or `TRADE` source events
 enter gap detection. Rows from `MBP10` and `MBO` are counted as blocked diagnostics.
 
+Because Rithmic `L1_QUOTE` rows can be side-specific updates, quote gaps are measured after
+DATA-01A reconstructs complete BBO state. This avoids treating sparse full-BBO rows as the
+only quote stream and keeps gap metrics tied to actual bid/ask state changes.
+
 `exchange_event_ts_ns` is the only canonical clock. `sidecar_recv_ts_ns` is preserved in
 gap diagnostics as telemetry, but it is never used to decide whether a gap occurred.
 

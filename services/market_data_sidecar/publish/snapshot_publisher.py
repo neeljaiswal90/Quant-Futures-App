@@ -18,9 +18,9 @@ from services.market_data_sidecar.config import (
 )
 from services.market_data_sidecar.providers.rithmic_live import (
     NormalizationDiagnostic,
-    normalize_rithmic_l1_trade_row,
+    RithmicL1TradeNormalizer,
 )
-from services.market_data_sidecar.publish.event_journal import make_source_event_envelope, write_jsonl
+from services.market_data_sidecar.publish.event_journal import make_source_event_envelope
 
 MAX_RECORDED_DIAGNOSTICS = 100
 
@@ -50,18 +50,23 @@ def publish_l1_trade_journal_from_probe(
     run_id: str,
     session_id: str,
 ) -> L1TradePublishReport:
-    events: list[dict[str, Any]] = []
     diagnostics: list[NormalizationDiagnostic] = []
     diagnostic_counts: dict[str, int] = {}
     diagnostic_count = 0
     input_rows = 0
+    emitted_events = 0
     quote_events = 0
     trade_events = 0
     skipped_mbp10_rows = 0
     skipped_mbo_rows = 0
     skipped_null_exchange_ts_rows = 0
+    normalizer = RithmicL1TradeNormalizer()
 
-    with input_path.open("r", encoding="utf-8", errors="replace") as source:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with (
+        input_path.open("r", encoding="utf-8", errors="replace") as source,
+        output_path.open("w", encoding="utf-8", newline="\n") as output,
+    ):
         for line_number, line in enumerate(source, 1):
             if line.strip() == "":
                 continue
@@ -76,7 +81,7 @@ def publish_l1_trade_journal_from_probe(
                 )
                 continue
 
-            normalized, diagnostic = normalize_rithmic_l1_trade_row(row, line_number=line_number)
+            normalized, diagnostic = normalizer.normalize_row(row, line_number=line_number)
             if diagnostic is not None:
                 diagnostic_count = _record_diagnostic(
                     diagnostics,
@@ -95,24 +100,24 @@ def publish_l1_trade_journal_from_probe(
             if normalized is None:
                 continue
 
-            sequence = len(events) + 1
+            sequence = emitted_events + 1
             event_id = f"{normalized.event_id_prefix}-{run_id}-{sequence:012d}"
-            events.append(
-                make_source_event_envelope(
-                    event_id=event_id,
-                    event_type=normalized.event_type,
-                    ts_ns=normalized.ts_ns,
-                    run_id=run_id,
-                    session_id=session_id,
-                    payload=normalized.payload,
-                )
+            envelope = make_source_event_envelope(
+                event_id=event_id,
+                event_type=normalized.event_type,
+                ts_ns=normalized.ts_ns,
+                run_id=run_id,
+                session_id=session_id,
+                payload=normalized.payload,
             )
+            output.write(json.dumps(envelope, sort_keys=True, separators=(",", ":")))
+            output.write("\n")
+            emitted_events += 1
             if normalized.event_type == "QUOTE":
                 quote_events += 1
             else:
                 trade_events += 1
 
-    emitted_events = write_jsonl(output_path, events)
     return L1TradePublishReport(
         input_rows=input_rows,
         emitted_events=emitted_events,

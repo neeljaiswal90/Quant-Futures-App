@@ -10,6 +10,10 @@ It consumes only the verified DATA-01A surface:
 - `QUOTE`
 - `TRADE`
 
+`QUOTE` rows are OBS-01 BBO events emitted by DATA-01A after reconstructing Rithmic
+side-specific L1 quote updates. OBS-04 should be run against the reconstructed DATA-01A
+journal, not directly against raw Rithmic probe rows.
+
 It does not consume or verify `MBP10` or `MBO` data. Full DATA-01 remains blocked until
 Databento MBP-10 and MBO parity evidence is available.
 

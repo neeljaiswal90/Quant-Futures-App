@@ -19,7 +19,7 @@ from services.market_data_sidecar.config import (
 )
 from services.market_data_sidecar.providers.rithmic_live import (
     NormalizationDiagnostic,
-    normalize_rithmic_l1_trade_row,
+    RithmicL1TradeNormalizer,
 )
 
 GapSeverity = Literal["info", "warning", "fail"]
@@ -259,6 +259,7 @@ def analyze_l1_trade_gaps_from_probe(
     skipped_mbp10_rows = 0
     skipped_mbo_rows = 0
     skipped_null_exchange_ts_rows = 0
+    normalizer = RithmicL1TradeNormalizer()
 
     with input_path.open("r", encoding="utf-8", errors="replace") as source:
         for line_number, line in enumerate(source, 1):
@@ -275,7 +276,7 @@ def analyze_l1_trade_gaps_from_probe(
                 )
                 continue
 
-            normalized, diagnostic = normalize_rithmic_l1_trade_row(row, line_number=line_number)
+            normalized, diagnostic = normalizer.normalize_row(row, line_number=line_number)
             if diagnostic is not None:
                 diagnostic_count = _record_normalization_diagnostic(
                     diagnostics,

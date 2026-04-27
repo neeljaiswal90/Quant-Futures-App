@@ -114,6 +114,59 @@ describe('DATA-07A L1/trade-only gap detection', () => {
     });
   });
 
+  it('detects quote gaps from reconstructed side-specific BBO updates', () => {
+    const { report } = runGapReport([
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: tsNs(0),
+        sidecar_recv_ts_ns: tsNs(1),
+        bid_px: 27526.25,
+        bid_sz: 4,
+      },
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: tsNs(100),
+        sidecar_recv_ts_ns: tsNs(101),
+        ask_px: 27526.5,
+        ask_sz: 5,
+      },
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: tsNs(250),
+        sidecar_recv_ts_ns: tsNs(251),
+        bid_px: 27526,
+        bid_sz: 6,
+      },
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: tsNs(500),
+        sidecar_recv_ts_ns: tsNs(501),
+        ask_px: 27526.75,
+        ask_sz: 2,
+      },
+    ]);
+
+    expect(report).toMatchObject({
+      status: 'pass',
+      quote_gap_count: 0,
+      max_quote_gap_ms: 250,
+      diagnostic_count: 1,
+      diagnostic_counts: {
+        'L1_QUOTE:warming_quote_bbo_state': 1,
+      },
+    });
+    expect(streamSummaries(report).L1_QUOTE).toMatchObject({
+      record_count: 3,
+      observed_interval_count: 2,
+      gap_count: 2,
+      gaps_over_threshold: 0,
+    });
+  });
+
   it('classifies quote gaps over warning and fail thresholds as feed gaps', () => {
     const { report } = runGapReport([quoteRow(0), quoteRow(1500), quoteRow(7000)]);
     const gaps = report.gaps as readonly Record<string, unknown>[];

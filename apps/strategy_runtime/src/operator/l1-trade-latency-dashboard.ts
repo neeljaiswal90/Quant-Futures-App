@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { closeSync, openSync, readSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   stderr as processStderr,
@@ -87,6 +87,15 @@ interface LatencyAccumulator {
   event_count: number;
 }
 
+interface L1TradeLatencyDashboardState {
+  readonly quote: LatencyAccumulator;
+  readonly trade: LatencyAccumulator;
+  readonly combined: LatencyAccumulator;
+  readonly diagnostics: L1TradeLatencyDiagnostic[];
+  events_seen: number;
+  ignored_event_count: number;
+}
+
 export const DEFAULT_L1_TRADE_LATENCY_DASHBOARD_OPTIONS: L1TradeLatencyDashboardOptions = {
   format: 'text',
 };
@@ -138,6 +147,13 @@ export function renderL1TradeLatencyDashboardJsonl(
   options: L1TradeLatencyDashboardOptions = DEFAULT_L1_TRADE_LATENCY_DASHBOARD_OPTIONS,
 ): RenderL1TradeLatencyDashboardResult {
   const report = buildL1TradeLatencyDashboardReport(input);
+  return renderL1TradeLatencyDashboardResult(report, options);
+}
+
+export function renderL1TradeLatencyDashboardResult(
+  report: L1TradeLatencyDashboardReport,
+  options: L1TradeLatencyDashboardOptions = DEFAULT_L1_TRADE_LATENCY_DASHBOARD_OPTIONS,
+): RenderL1TradeLatencyDashboardResult {
   const stdout =
     options.format === 'json'
       ? `${stableJsonStringify(report as unknown as JsonValue)}\n`
@@ -158,58 +174,88 @@ export function renderL1TradeLatencyDashboardJsonl(
 export function buildL1TradeLatencyDashboardReport(
   input: string,
 ): L1TradeLatencyDashboardReport {
-  const quote: LatencyAccumulator = { stream: 'QUOTE', event_count: 0, samples_ms: [] };
-  const trade: LatencyAccumulator = { stream: 'TRADE', event_count: 0, samples_ms: [] };
-  const combined: LatencyAccumulator = { stream: 'COMBINED', event_count: 0, samples_ms: [] };
-  const diagnostics: L1TradeLatencyDiagnostic[] = [];
-  let eventsSeen = 0;
-  let ignoredEventCount = 0;
+  const state = createLatencyDashboardState();
 
   const lines = input.split(/\n/);
   for (let index = 0; index < lines.length; index += 1) {
     const rawLine = stripTrailingCarriageReturn(lines[index]!);
-    if (rawLine.trim() === '') {
-      continue;
+    if (rawLine.trim() !== '') {
+      observeLatencyDashboardLine(state, rawLine, index + 1);
     }
-
-    const lineNumber = index + 1;
-    let event: JournalEventEnvelope;
-    try {
-      event = journalEventFromJsonLine(rawLine);
-    } catch (error) {
-      diagnostics.push({
-        line_number: lineNumber,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      continue;
-    }
-
-    const validation = validateJournalEventEnvelope(event);
-    if (!validation.ok) {
-      diagnostics.push({
-        line_number: lineNumber,
-        message: formatJournalEventSchemaValidationErrors(validation.issues),
-      });
-      continue;
-    }
-
-    eventsSeen += 1;
-    if (event.type !== 'QUOTE' && event.type !== 'TRADE') {
-      ignoredEventCount += 1;
-      continue;
-    }
-
-    const stream = event.type === 'QUOTE' ? quote : trade;
-    addLatencySample(stream, event);
-    addLatencySample(combined, event);
   }
 
-  const quoteStats = summarizeAccumulator(quote);
-  const tradeStats = summarizeAccumulator(trade);
-  const combinedStats = summarizeAccumulator(combined);
+  return finishLatencyDashboardReport(state);
+}
+
+export function buildL1TradeLatencyDashboardReportFromFile(
+  path: string,
+): L1TradeLatencyDashboardReport {
+  const state = createLatencyDashboardState();
+  forEachLineFromFile(path, (line, lineNumber) => {
+    observeLatencyDashboardLine(state, line, lineNumber);
+  });
+  return finishLatencyDashboardReport(state);
+}
+
+function createLatencyDashboardState(): L1TradeLatencyDashboardState {
+  const quote: LatencyAccumulator = { stream: 'QUOTE', event_count: 0, samples_ms: [] };
+  const trade: LatencyAccumulator = { stream: 'TRADE', event_count: 0, samples_ms: [] };
+  const combined: LatencyAccumulator = { stream: 'COMBINED', event_count: 0, samples_ms: [] };
+  return {
+    quote,
+    trade,
+    combined,
+    diagnostics: [],
+    events_seen: 0,
+    ignored_event_count: 0,
+  };
+}
+
+function observeLatencyDashboardLine(
+  state: L1TradeLatencyDashboardState,
+  rawLine: string,
+  lineNumber: number,
+): void {
+  let event: JournalEventEnvelope;
+  try {
+    event = journalEventFromJsonLine(rawLine);
+  } catch (error) {
+    state.diagnostics.push({
+      line_number: lineNumber,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  const validation = validateJournalEventEnvelope(event);
+  if (!validation.ok) {
+    state.diagnostics.push({
+      line_number: lineNumber,
+      message: formatJournalEventSchemaValidationErrors(validation.issues),
+    });
+    return;
+  }
+
+  state.events_seen += 1;
+  if (event.type !== 'QUOTE' && event.type !== 'TRADE') {
+    state.ignored_event_count += 1;
+    return;
+  }
+
+  const stream = event.type === 'QUOTE' ? state.quote : state.trade;
+  addLatencySample(stream, event);
+  addLatencySample(state.combined, event);
+}
+
+function finishLatencyDashboardReport(
+  state: L1TradeLatencyDashboardState,
+): L1TradeLatencyDashboardReport {
+  const quoteStats = summarizeAccumulator(state.quote);
+  const tradeStats = summarizeAccumulator(state.trade);
+  const combinedStats = summarizeAccumulator(state.combined);
   const negativeLatencyCount =
     quoteStats.negative_latency_count + tradeStats.negative_latency_count;
-  const status = dashboardStatus(diagnostics.length, negativeLatencyCount);
+  const status = dashboardStatus(state.diagnostics.length, negativeLatencyCount);
 
   return {
     schema_version: L1_TRADE_LATENCY_DASHBOARD_SCHEMA_VERSION,
@@ -217,12 +263,12 @@ export function buildL1TradeLatencyDashboardReport(
     partial_parity_status: L1_TRADE_LATENCY_PARTIAL_PARITY_STATUS,
     data01_full_gate_status: L1_TRADE_LATENCY_DATA01_FULL_GATE_STATUS,
     data01b_status: L1_TRADE_LATENCY_DATA01B_STATUS,
-    events_seen: eventsSeen,
-    l1_trade_events_seen: quote.event_count + trade.event_count,
-    quote_events_seen: quote.event_count,
-    trade_events_seen: trade.event_count,
-    ignored_event_count: ignoredEventCount,
-    invalid_event_count: diagnostics.length,
+    events_seen: state.events_seen,
+    l1_trade_events_seen: state.quote.event_count + state.trade.event_count,
+    quote_events_seen: state.quote.event_count,
+    trade_events_seen: state.trade.event_count,
+    ignored_event_count: state.ignored_event_count,
+    invalid_event_count: state.diagnostics.length,
     negative_latency_count: negativeLatencyCount,
     streams_checked: ['QUOTE', 'TRADE'],
     latency: {
@@ -230,7 +276,7 @@ export function buildL1TradeLatencyDashboardReport(
       quote: quoteStats,
       trade: tradeStats,
     },
-    diagnostics,
+    diagnostics: state.diagnostics,
     notes: [
       'sidecar_recv_ts_ns is telemetry only; exchange_event_ts_ns remains canonical event time.',
       'This L1/trade dashboard does not verify MBP10/MBO and does not unblock full DATA-01.',
@@ -398,19 +444,51 @@ function stripTrailingCarriageReturn(value: string): string {
   return value.endsWith('\r') ? value.slice(0, -1) : value;
 }
 
+function forEachLineFromFile(
+  path: string,
+  callback: (line: string, lineNumber: number) => void,
+): void {
+  const fd = openSync(path, 'r');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  let carry = '';
+  let lineNumber = 0;
+
+  try {
+    while (true) {
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) {
+        break;
+      }
+
+      const chunk = carry + buffer.subarray(0, bytesRead).toString('utf8');
+      const lines = chunk.split(/\n/);
+      carry = lines.pop() ?? '';
+
+      for (const line of lines) {
+        lineNumber += 1;
+        const cleaned = stripTrailingCarriageReturn(line);
+        if (cleaned.trim() !== '') {
+          callback(cleaned, lineNumber);
+        }
+      }
+    }
+
+    const cleanedCarry = stripTrailingCarriageReturn(carry);
+    if (cleanedCarry.trim() !== '') {
+      lineNumber += 1;
+      callback(cleanedCarry, lineNumber);
+    }
+  } finally {
+    closeSync(fd);
+  }
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of processStdin) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks).toString('utf8');
-}
-
-async function inputForCli(options: L1TradeLatencyCliOptions): Promise<string> {
-  if (options.journal_path !== undefined) {
-    return readFileSync(resolve(options.journal_path), 'utf8');
-  }
-  return readStdin();
 }
 
 class L1TradeLatencyDashboardHelpRequested extends Error {
@@ -434,8 +512,11 @@ async function main(): Promise<void> {
   }
 
   try {
-    const input = await inputForCli(options);
-    const result = renderL1TradeLatencyDashboardJsonl(input, options);
+    const report =
+      options.journal_path === undefined
+        ? buildL1TradeLatencyDashboardReport(await readStdin())
+        : buildL1TradeLatencyDashboardReportFromFile(resolve(options.journal_path));
+    const result = renderL1TradeLatencyDashboardResult(report, options);
     processStdout.write(result.stdout);
     processStderr.write(result.stderr);
     process.exitCode = result.exit_code;

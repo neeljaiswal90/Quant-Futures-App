@@ -192,6 +192,82 @@ describe('DATA-01A L1/trade-only sidecar ingestion', () => {
     });
   });
 
+  it('reconstructs complete BBO events from side-specific L1 quote updates', () => {
+    const result = runData01a([
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: START_TS_NS.toString(),
+        sidecar_recv_ts_ns: (START_TS_NS + 1_000_000n).toString(),
+        bid_px: 27526.25,
+        bid_sz: 4,
+      },
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: (START_TS_NS + 1_000_000n).toString(),
+        sidecar_recv_ts_ns: (START_TS_NS + 2_000_000n).toString(),
+        ask_px: 27526.5,
+        ask_sz: 5,
+      },
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: (START_TS_NS + 2_000_000n).toString(),
+        sidecar_recv_ts_ns: (START_TS_NS + 3_000_000n).toString(),
+        bid_px: 27526,
+        bid_sz: 6,
+      },
+      {
+        schema_version: 1,
+        stream: 'LAST_TRADE',
+        exchange_event_ts_ns: (START_TS_NS + 3_000_000n).toString(),
+        sidecar_recv_ts_ns: (START_TS_NS + 4_000_000n).toString(),
+        price: 27526.25,
+        size: 2,
+        aggressor: 'buy',
+      },
+    ]);
+    const [firstQuote, secondQuote, trade] = result.lines.map((line) => JSON.parse(line) as JournalEventEnvelope);
+
+    expect(result.report).toMatchObject({
+      input_rows: 4,
+      emitted_events: 3,
+      emitted_quote_events: 2,
+      emitted_trade_events: 1,
+      diagnostic_count: 1,
+      diagnostic_counts: {
+        'L1_QUOTE:warming_quote_bbo_state': 1,
+      },
+    });
+    expect(firstQuote).toMatchObject({
+      event_id: 'quote-run-data01a-test-000000000001',
+      type: 'QUOTE',
+      ts_ns: (START_TS_NS + 1_000_000n).toString(),
+      payload: {
+        bid_px: 27526.25,
+        bid_qty: 4,
+        ask_px: 27526.5,
+        ask_qty: 5,
+      },
+    });
+    expect(secondQuote).toMatchObject({
+      event_id: 'quote-run-data01a-test-000000000002',
+      type: 'QUOTE',
+      ts_ns: (START_TS_NS + 2_000_000n).toString(),
+      payload: {
+        bid_px: 27526,
+        bid_qty: 6,
+        ask_px: 27526.5,
+        ask_qty: 5,
+      },
+    });
+    expect(trade).toMatchObject({
+      event_id: 'trade-run-data01a-test-000000000003',
+      type: 'TRADE',
+    });
+  });
+
   it('is byte-stable across repeated runs', () => {
     const first = runData01a(richProbeRows());
     const second = runData01a(richProbeRows());
