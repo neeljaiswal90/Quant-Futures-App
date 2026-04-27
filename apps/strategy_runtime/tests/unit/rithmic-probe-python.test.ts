@@ -235,6 +235,246 @@ print(json.dumps({"has_sequence": "sequence" in record, "timestamp_source": reco
     });
   });
 
+  it('normalizes LAST_TRADE parity payload fields only when requested', () => {
+    const stdout = runPython(`
+class LastTrade:
+    source_ssboe = 1700000000
+    source_nsecs = 123456789
+    trade_price = 27369.25
+    trade_size = 3
+    aggressor = 1
+    exchange_order_id = "ord-1"
+    sequence_number = 42
+
+minimal = mod.make_probe_record(
+    probe_id="probe-1",
+    symbol="MNQM6",
+    exchange="CME",
+    stream="LAST_TRADE",
+    template_id=150,
+    payload_kind="LastTrade",
+    message=LastTrade(),
+    raw=False,
+    raw_buffer=b"",
+)
+rich = mod.make_probe_record(
+    probe_id="probe-1",
+    symbol="MNQM6",
+    exchange="CME",
+    stream="LAST_TRADE",
+    template_id=150,
+    payload_kind="LastTrade",
+    message=LastTrade(),
+    raw=False,
+    raw_buffer=b"",
+    parity_payload=True,
+)
+print(json.dumps({
+    "minimal_has_price": "price" in minimal,
+    "rich_price": rich.get("price"),
+    "rich_size": rich.get("size"),
+    "rich_aggressor": rich.get("aggressor"),
+    "rich_side": rich.get("side"),
+    "rich_order_id": rich.get("exchange_order_id"),
+    "sequence": rich.get("sequence"),
+    "exchange_ts_type": type(rich.get("exchange_event_ts_ns")).__name__,
+}))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly minimal_has_price: boolean;
+      readonly rich_price: number;
+      readonly rich_size: number;
+      readonly rich_aggressor: string;
+      readonly rich_side: string;
+      readonly rich_order_id: string;
+      readonly sequence: string;
+      readonly exchange_ts_type: string;
+    };
+
+    expect(payload).toEqual({
+      minimal_has_price: false,
+      rich_price: 27369.25,
+      rich_size: 3,
+      rich_aggressor: 'buy',
+      rich_side: 'buy',
+      rich_order_id: 'ord-1',
+      sequence: '42',
+      exchange_ts_type: 'str',
+    });
+  });
+
+  it('normalizes L1_QUOTE parity payload fields', () => {
+    const stdout = runPython(`
+class BestBidOffer:
+    ssboe = 1700000000
+    usecs = 250
+    bid_price = 27369.0
+    ask_price = 27369.25
+    bid_size = 5
+    ask_size = 2
+    bid_orders = 4
+    ask_orders = 1
+
+record = mod.make_probe_record(
+    probe_id="probe-1",
+    symbol="MNQM6",
+    exchange="CME",
+    stream="L1_QUOTE",
+    template_id=151,
+    payload_kind="BestBidOffer",
+    message=BestBidOffer(),
+    raw=False,
+    raw_buffer=b"",
+    parity_payload=True,
+)
+print(json.dumps({
+    "bid_px": record.get("bid_px"),
+    "ask_px": record.get("ask_px"),
+    "bid_sz": record.get("bid_sz"),
+    "ask_sz": record.get("ask_sz"),
+    "bid_orders": record.get("bid_orders"),
+    "ask_orders": record.get("ask_orders"),
+    "exchange_event_ts_ns": record.get("exchange_event_ts_ns"),
+}))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly bid_px: number;
+      readonly ask_px: number;
+      readonly bid_sz: number;
+      readonly ask_sz: number;
+      readonly bid_orders: number;
+      readonly ask_orders: number;
+      readonly exchange_event_ts_ns: string;
+    };
+
+    expect(payload).toEqual({
+      bid_px: 27369,
+      ask_px: 27369.25,
+      bid_sz: 5,
+      ask_sz: 2,
+      bid_orders: 4,
+      ask_orders: 1,
+      exchange_event_ts_ns: '1700000000000250000',
+    });
+  });
+
+  it('normalizes MBP10 parity payload levels', () => {
+    const stdout = runPython(`
+class OrderBook:
+    ssboe = 1700000000
+    usecs = 250
+    bid_price = [27369.0, 27368.75]
+    bid_size = [5, 4]
+    bid_orders = [4, 3]
+    ask_price = [27369.25, 27369.5]
+    ask_size = [2, 6]
+    ask_orders = [1, 5]
+
+record = mod.make_probe_record(
+    probe_id="probe-1",
+    symbol="MNQM6",
+    exchange="CME",
+    stream="MBP10",
+    template_id=156,
+    payload_kind="OrderBook",
+    message=OrderBook(),
+    raw=False,
+    raw_buffer=b"",
+    parity_payload=True,
+)
+print(json.dumps({"bids": record.get("bids"), "asks": record.get("asks")}))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly bids: readonly { readonly level: number; readonly px: number; readonly sz: number; readonly order_count: number }[];
+      readonly asks: readonly { readonly level: number; readonly px: number; readonly sz: number; readonly order_count: number }[];
+    };
+
+    expect(payload.bids).toEqual([
+      { level: 0, px: 27369, sz: 5, order_count: 4 },
+      { level: 1, px: 27368.75, sz: 4, order_count: 3 },
+    ]);
+    expect(payload.asks).toEqual([
+      { level: 0, px: 27369.25, sz: 2, order_count: 1 },
+      { level: 1, px: 27369.5, sz: 6, order_count: 5 },
+    ]);
+  });
+
+  it('normalizes MBO parity payload order updates', () => {
+    const stdout = runPython(`
+class DepthByOrder:
+    source_ssboe = 1700000000
+    source_usecs = 500
+    sequence_number = 987654321
+    update_type = [1, 2]
+    transaction_type = [1, 2]
+    depth_price = [27369.0, 27369.25]
+    depth_size = [5, 1]
+    exchange_order_id = ["bid-1", "ask-1"]
+    depth_order_priority = [100, 200]
+
+record = mod.make_probe_record(
+    probe_id="probe-1",
+    symbol="MNQM6",
+    exchange="CME",
+    stream="MBO",
+    template_id=160,
+    payload_kind="DepthByOrder",
+    message=DepthByOrder(),
+    raw=False,
+    raw_buffer=b"",
+    parity_payload=True,
+)
+print(json.dumps({
+    "sequence": record.get("sequence"),
+    "action": record.get("action"),
+    "side": record.get("side"),
+    "price": record.get("price"),
+    "size": record.get("size"),
+    "order_id": record.get("order_id"),
+    "priority": record.get("priority"),
+    "orders": record.get("orders"),
+}))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly sequence: string;
+      readonly action: string;
+      readonly side: string;
+      readonly price: number;
+      readonly size: number;
+      readonly order_id: string;
+      readonly priority: string;
+      readonly orders: readonly Record<string, unknown>[];
+    };
+
+    expect(payload.sequence).toBe('987654321');
+    expect(payload.action).toBe('new');
+    expect(payload.side).toBe('buy');
+    expect(payload.price).toBe(27369);
+    expect(payload.size).toBe(5);
+    expect(payload.order_id).toBe('bid-1');
+    expect(payload.priority).toBe('100');
+    expect(payload.orders).toEqual([
+      {
+        index: 0,
+        action: 'new',
+        side: 'buy',
+        price: 27369,
+        size: 5,
+        order_id: 'bid-1',
+        priority: '100',
+      },
+      {
+        index: 1,
+        action: 'change',
+        side: 'sell',
+        price: 27369.25,
+        size: 1,
+        order_id: 'ask-1',
+        priority: '200',
+      },
+    ]);
+  });
+
   it('uses confirmed RProtocol template IDs as CLI defaults', () => {
     const stdout = runPython(`
 import sys
@@ -262,6 +502,29 @@ print(json.dumps({
       response_depth: 118,
       depth_by_order: 160,
       depth_end: 161,
+    });
+  });
+
+  it('defaults parity payload capture off and enables it only by flag', () => {
+    const stdout = runPython(`
+import sys
+sys.argv = ["capture-rithmic-probe.py"]
+default_args = mod.parse_args()
+sys.argv = ["capture-rithmic-probe.py", "--parity-payload"]
+enabled_args = mod.parse_args()
+print(json.dumps({
+    "default_parity_payload": default_args.parity_payload,
+    "enabled_parity_payload": enabled_args.parity_payload,
+}))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly default_parity_payload: boolean;
+      readonly enabled_parity_payload: boolean;
+    };
+
+    expect(payload).toEqual({
+      default_parity_payload: false,
+      enabled_parity_payload: true,
     });
   });
 
