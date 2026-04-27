@@ -101,6 +101,33 @@ describe('DATA-PARITY-04 Rithmic MBP10 extraction audit', () => {
     expect(report.internal_l1_mbp10_parity.within_1_tick_pct).toBe(100);
   });
 
+  it('reconstructs side-specific L1 quote updates before using them as MBP10 checkpoints', () => {
+    const probePath = writeProbe([
+      l1Quote(0n, { bid_px: 100, bid_sz: 3, ask_px: undefined, ask_sz: undefined }),
+      l1Quote(1_000_000n, { ask_px: 101, ask_sz: 4, bid_px: undefined, bid_sz: undefined }),
+      mbp10Row(1_000_000n, {
+        bids: [{ level: 0, px: 100, sz: 3, order_count: 1 }],
+        asks: [{ level: 0, px: 101, sz: 4, order_count: 1 }],
+      }),
+      l1Quote(2_000_000n, { bid_px: 100.25, bid_sz: 5, ask_px: undefined, ask_sz: undefined }),
+      mbp10Row(2_000_000n, {
+        bids: [{ level: 0, px: 100.25, sz: 5, order_count: 2 }],
+      }),
+    ]);
+
+    const report = auditRithmicMbp10Extraction({ probe_path: probePath });
+
+    expect(report.probe_parsing).toMatchObject({
+      l1_quote_rows: 3,
+      l1_quote_rows_with_exchange_ts: 3,
+      l1_quote_reconstructed_checkpoint_count: 2,
+      l1_quote_warming_rows: 1,
+    });
+    expect(report.mbp10_extraction_trusted).toBe(true);
+    expect(report.internal_l1_mbp10_parity.compared_sample_count).toBe(2);
+    expect(report.internal_l1_mbp10_parity.within_1_tick_pct).toBe(100);
+  });
+
   it('does not let a deeper price-level update overwrite top of book', () => {
     const probePath = writeProbe([
       l1Quote(0n, { bid_px: 100, ask_px: 101 }),

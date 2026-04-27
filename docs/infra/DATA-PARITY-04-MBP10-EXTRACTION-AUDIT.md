@@ -133,6 +133,38 @@ internal_l1_mbp10_parity.comparison_rule =
 internal_l1_mbp10_parity.within_1_tick_pct >= 99
 ```
 
+## DATA-PARITY-04E Full-Probe Reconstructed L1 Checkpoints
+
+DATA-01A-FU showed that Rithmic `L1_QUOTE` is also side-specific state updates. The rich
+diagnostic audit remains useful for smoke/debug probes, but the canonical 35-minute probe
+can contain millions of reconstructed L1 checkpoints and millions of MBP10 updates. Use the
+disk-backed checkpoint audit for full-probe trust evidence:
+
+```powershell
+npm run infra:audit-mbp10-l1-checkpoints -- `
+  --probe data/probes/infra01/full/probe-parity-post04d.jsonl `
+  --out reports/infra/mbp10_l1_checkpoint_audit_post04d_full.json
+```
+
+This command stores sortable checkpoint/update rows in a local sqlite work DB, applies
+MBP10 updates in exchange-time order, reconstructs L1 BBO checkpoints from bid-only and
+ask-only `L1_QUOTE` rows, and compares MBP10 top-of-book at every reconstructed L1
+checkpoint. The sqlite work DB is deleted after the run unless `--keep-work-db` is set.
+
+Post DATA-01A-FU full-probe evidence:
+
+```text
+mbp10_extraction_trusted = true
+classification = state_stream_incremental_valid
+l1_quote_reconstructed_checkpoint_count = 1,929,904
+compared_checkpoint_count = 1,929,904
+within_1_tick_pct = 99.823748
+```
+
+This supersedes the earlier sparse-checkpoint MBP10 trust result. It confirms MBP10
+extraction remains trusted when scored against reconstructed L1 BBO checkpoints at fine
+granularity. It still does not unblock DATA-01B without Databento MBP10 and MBO parity.
+
 ## Core Invariant
 
 Before comparing Rithmic `MBP10` to Databento `mbp-10`, reconstructed Rithmic `MBP10`
