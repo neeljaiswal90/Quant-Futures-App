@@ -98,6 +98,27 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
     ]);
   });
 
+  it('reconstructs Rithmic MBP10 timestamped updates in exchange-time order', () => {
+    const result = reconstructRithmicMbp10FromRecords([
+      seedRow(),
+      mbp10Record(2_000_000n, {
+        bids: [{ level: 0, px: 100.25, sz: 8, order_count: 4 }],
+      }),
+      mbp10Record(1_000_000n, {
+        bids: [{ level: 0, px: 100, sz: 0, order_count: 0 }],
+      }),
+    ]);
+
+    expect(result.samples.map((sample) => sample.ts_ns)).toEqual([
+      (START_TS_NS + 1_000_000n).toString(),
+      (START_TS_NS + 2_000_000n).toString(),
+    ]);
+    expect(result.samples[0]?.bids).toEqual([]);
+    expect(result.samples[1]?.bids).toEqual([
+      { level: 0, px: 100.25, sz: 8, order_count: 4 },
+    ]);
+  });
+
   it('deletes a price level when Rithmic sends a zero-size update', () => {
     const result = reconstructRithmicMbp10FromRecords([
       seedRow(),

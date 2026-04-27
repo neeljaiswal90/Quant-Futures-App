@@ -135,6 +135,8 @@ interface ParsedRithmicMbp10Row {
   readonly asks: readonly BookLevel[];
 }
 
+type TimestampedParsedRithmicMbp10Row = ParsedRithmicMbp10Row & { readonly ts_ns: string };
+
 const DEFAULT_REPORT_PATH = 'reports/infra/databento_overlap_parity_report.json';
 const MAX_DEPTH_LEVEL = 9;
 const MISMATCH_LIMIT = 50;
@@ -156,6 +158,7 @@ export function reconstructRithmicMbp10FromRecords(
   let askOnlyUpdateRowsCount = 0;
   let bothSidesUpdateRowsCount = 0;
   let noLevelUpdateRowsCount = 0;
+  const timestampedRows: TimestampedParsedRithmicMbp10Row[] = [];
 
   records.forEach((record, index) => {
     if (!isMbp10Record(record)) {
@@ -192,9 +195,13 @@ export function reconstructRithmicMbp10FromRecords(
       askOnlyUpdateRowsCount += 1;
     }
 
+    timestampedRows.push({ ...row, ts_ns: row.ts_ns });
+  });
+
+  for (const row of timestampedRows.sort(compareParsedRithmicRowsByTimestamp)) {
     applyBookUpdate(state, row);
     samples.push(stateToSample(state, row.ts_ns, row.record_index));
-  });
+  }
 
   const firstSample = samples[0];
   const lastSample = samples[samples.length - 1];
@@ -218,6 +225,15 @@ export function reconstructRithmicMbp10FromRecords(
       last_sample_ts_ns: lastSample?.ts_ns ?? null,
     },
   };
+}
+
+function compareParsedRithmicRowsByTimestamp(
+  left: TimestampedParsedRithmicMbp10Row,
+  right: TimestampedParsedRithmicMbp10Row,
+): number {
+  const ts = compareDecimalIntegerStrings(left.ts_ns, right.ts_ns);
+  if (ts !== 0) return ts;
+  return left.record_index - right.record_index;
 }
 
 export function normalizeDatabentoMbp10FromRecords(

@@ -96,11 +96,49 @@ After this change, a fresh rich probe is required. Older probe files captured be
 DATA-PARITY-04C can still contain truncated or unsorted seed rows and should not be used
 to declare extraction trusted.
 
+## DATA-PARITY-04D Audit Checkpoints
+
+DATA-PARITY-04C fixed the Rithmic extraction model, but the first post-fix audit still
+reported a false failure because it compared every individual `MBP10` update as though
+each row were a complete top-of-book checkpoint.
+
+The audit now applies timestamped Rithmic `MBP10` price-level updates in
+`exchange_event_ts_ns` order and compares the latest reconstructed book state only at
+Rithmic `L1_QUOTE` timestamps. This matches the internal-consistency question the audit is
+meant to answer:
+
+```text
+At each L1 quote checkpoint, does reconstructed MBP10 top-of-book match L1 bid/ask?
+```
+
+Do not score internal extraction trust by treating every `solo` MBP10 price-level update
+as a standalone quote. A bid-only or ask-only book update can be correct even when the
+opposite side was not updated in the same row.
+
+The post-04D confirmation command is:
+
+```powershell
+npm run infra:audit-rithmic-mbp10 -- `
+  --probe data/probes/infra01/smoke/probe-mbp10-04c-smoke.jsonl `
+  --out reports/infra/rithmic_mbp10_extraction_audit_after_04d.json
+```
+
+Expected trusted-extraction evidence:
+
+```text
+mbp10_extraction_trusted = true
+classification = state_stream_incremental_valid
+internal_l1_mbp10_parity.comparison_rule =
+  exchange_ordered_mbp10_state_at_rithmic_l1_quote_checkpoints
+internal_l1_mbp10_parity.within_1_tick_pct >= 99
+```
+
 ## Core Invariant
 
 Before comparing Rithmic `MBP10` to Databento `mbp-10`, reconstructed Rithmic `MBP10`
 top-of-book should agree with Rithmic `L1_QUOTE` top-of-book over overlapping
-exchange-time windows.
+exchange-time windows. The comparison is performed at Rithmic `L1_QUOTE` checkpoints
+after applying Rithmic `MBP10` updates in exchange-time order.
 
 The audit requires the internal L1/MBP10 comparison to reach at least:
 

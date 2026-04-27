@@ -62,6 +62,8 @@ export interface Mbp10Row {
   readonly field_names: readonly string[];
 }
 
+type TimestampedMbp10Row = Mbp10Row & { readonly ts_ns: string };
+
 export interface ReconstructedBookSample {
   readonly ts_ns: string;
   readonly source_record_index: number;
@@ -590,6 +592,7 @@ function reconstructAndCompareMode(
   let resetOnImplausibleSeedCount = 0;
   let appliedTimestampedRows = 0;
   let skippedImplausibleTimestampedLevels = 0;
+  const timestampedRows: TimestampedMbp10Row[] = [];
 
   for (const row of rows) {
     if (row.ts_ns === null) {
@@ -610,6 +613,10 @@ function reconstructAndCompareMode(
       continue;
     }
 
+    timestampedRows.push({ ...row, ts_ns: row.ts_ns });
+  }
+
+  for (const row of timestampedRows.sort(compareMbp10RowsByTimestamp)) {
     const filtered = options.plausible_l1_range_only
       ? plausibleLevels(row, l1Quotes, plausibleDistance)
       : { bids: row.bids, asks: row.asks, skipped_count: 0 };
@@ -650,7 +657,7 @@ export function compareReconstructedBookToL1(
   const sortedSamples = [...samples].sort(compareSamples);
   const sortedQuotes = sortL1Quotes(l1Quotes);
   const firstMismatches: InternalParityMismatch[] = [];
-  let quoteIndex = -1;
+  let sampleIndex = -1;
   let comparedSamples = 0;
   let missingL1 = 0;
   let missingBest = 0;
@@ -662,37 +669,39 @@ export function compareReconstructedBookToL1(
     TOLERANCE_WINDOWS_MS.map((window) => [window, emptyWindowCounter(window)]),
   );
 
-  for (const sample of sortedSamples) {
+  for (const quote of sortedQuotes) {
     while (
-      quoteIndex + 1 < sortedQuotes.length &&
-      compareDecimalIntegerStrings(sortedQuotes[quoteIndex + 1]!.ts_ns, sample.ts_ns) <= 0
+      sampleIndex + 1 < sortedSamples.length &&
+      compareDecimalIntegerStrings(sortedSamples[sampleIndex + 1]!.ts_ns, quote.ts_ns) <= 0
     ) {
-      quoteIndex += 1;
+      sampleIndex += 1;
     }
 
-    const priorQuote = quoteIndex < 0 ? null : sortedQuotes[quoteIndex]!;
+    const sample = sampleIndex < 0 ? null : sortedSamples[sampleIndex]!;
+    if (sample === null) {
+      missingBest += 1;
+      continue;
+    }
     const bestBid = findLevel(sample.bids, 0);
     const bestAsk = findLevel(sample.asks, 0);
-    if (priorQuote === null) {
-      missingL1 += 1;
-    } else if (bestBid === null || bestAsk === null) {
+    if (bestBid === null || bestAsk === null) {
       missingBest += 1;
     } else {
       comparedSamples += 1;
       const bid = compareTopOfBookSide({
         sample,
-        quote: priorQuote,
+        quote,
         side: 'bid',
         mbp10Px: bestBid.px,
-        l1Px: priorQuote.bid_px,
+        l1Px: quote.bid_px,
         firstMismatches,
       });
       const ask = compareTopOfBookSide({
         sample,
-        quote: priorQuote,
+        quote,
         side: 'ask',
         mbp10Px: bestAsk.px,
-        l1Px: priorQuote.ask_px,
+        l1Px: quote.ask_px,
         firstMismatches,
       });
       comparableSides += 2;
@@ -703,8 +712,10 @@ export function compareReconstructedBookToL1(
 
     for (const windowMs of TOLERANCE_WINDOWS_MS) {
       const counter = windowCounters.get(windowMs)!;
-      const nearby = nearestQuoteWithin(sortedQuotes, sample.ts_ns, BigInt(windowMs) * 1_000_000n);
-      if (nearby === null) {
+      const windowNs = BigInt(windowMs) * 1_000_000n;
+      const sampleInWindow =
+        sample !== null && absBigInt(BigInt(quote.ts_ns) - BigInt(sample.ts_ns)) <= windowNs;
+      if (!sampleInWindow) {
         counter.missing_l1_quote_count += 1;
         continue;
       }
@@ -713,13 +724,13 @@ export function compareReconstructedBookToL1(
       }
       counter.compared_sample_count += 1;
       counter.comparable_side_count += 2;
-      if (withinTick(bestBid.px, nearby.bid_px)) counter.within_1_tick_side_count += 1;
-      if (withinTick(bestAsk.px, nearby.ask_px)) counter.within_1_tick_side_count += 1;
+      if (withinTick(bestBid.px, quote.bid_px)) counter.within_1_tick_side_count += 1;
+      if (withinTick(bestAsk.px, quote.ask_px)) counter.within_1_tick_side_count += 1;
     }
   }
 
   return {
-    comparison_rule: 'reconstructed_mbp10_best_bid_ask_vs_rithmic_l1_quote',
+    comparison_rule: 'exchange_ordered_mbp10_state_at_rithmic_l1_quote_checkpoints',
     tick_tolerance_points: MNQ_TICK_SIZE,
     reconstructed_sample_count: sortedSamples.length,
     compared_sample_count: comparedSamples,
@@ -1287,6 +1298,12 @@ function sortL1Quotes(quotes: readonly L1QuoteSample[]): readonly L1QuoteSample[
 function compareSamples(left: ReconstructedBookSample, right: ReconstructedBookSample): number {
   const ts = compareDecimalIntegerStrings(left.ts_ns, right.ts_ns);
   return ts === 0 ? left.source_record_index - right.source_record_index : ts;
+}
+
+function compareMbp10RowsByTimestamp(left: TimestampedMbp10Row, right: TimestampedMbp10Row): number {
+  const ts = compareDecimalIntegerStrings(left.ts_ns, right.ts_ns);
+  if (ts !== 0) return ts;
+  return left.record_index - right.record_index;
 }
 
 function compareBookLevels(left: BookLevel, right: BookLevel): number {

@@ -39,7 +39,7 @@ describe('DATA-PARITY-04 Rithmic MBP10 extraction audit', () => {
 
     const report = auditRithmicMbp10Extraction({ probe_path: probePath });
 
-    expect(report.status).toBe('analysis_only');
+    expect(report.status).toBe('fail');
     expect(report.data01b_eligible).toBe(false);
     expect(report.data01_status).toBe('blocked');
     expect(report.null_seed_analysis).toMatchObject({
@@ -76,6 +76,29 @@ describe('DATA-PARITY-04 Rithmic MBP10 extraction audit', () => {
     });
     expect(mode.internal_l1_mbp10_parity.compared_sample_count).toBe(1);
     expect(mode.internal_l1_mbp10_parity.within_1_tick_pct).toBe(100);
+  });
+
+  it('compares exchange-ordered MBP10 state at L1 quote checkpoints', () => {
+    const probePath = writeProbe([
+      mbp10Row(2_000_000n, {
+        asks: [{ level: 0, px: 101, sz: 2, order_count: 1 }],
+      }),
+      mbp10Row(1_000_000n, {
+        bids: [{ level: 0, px: 100, sz: 3, order_count: 1 }],
+      }),
+      l1Quote(3_000_000n, { bid_px: 100, ask_px: 101 }),
+    ]);
+
+    const report = auditRithmicMbp10Extraction({ probe_path: probePath });
+
+    expect(report.status).toBe('analysis_only');
+    expect(report.mbp10_extraction_trusted).toBe(true);
+    expect(report.classification).toBe('state_stream_incremental_valid');
+    expect(report.internal_l1_mbp10_parity.comparison_rule).toBe(
+      'exchange_ordered_mbp10_state_at_rithmic_l1_quote_checkpoints',
+    );
+    expect(report.internal_l1_mbp10_parity.compared_sample_count).toBe(1);
+    expect(report.internal_l1_mbp10_parity.within_1_tick_pct).toBe(100);
   });
 
   it('does not let a deeper price-level update overwrite top of book', () => {
