@@ -7,6 +7,20 @@ This review does not unblock `DATA-01` by itself. `DATA-01` remains blocked unti
 final INFRA-01 verification report explicitly says `data01_eligible = true` and
 `route_to = DATA-01`.
 
+Current partial status:
+
+- Rithmic rich probe capture works.
+- Databento `trades` and `mbp-1` files cover the Rithmic window.
+- L1/trade partial parity can proceed.
+- Databento `mbp-10` parity, Databento `mbo` parity, L2/L3 feature parity, MBP10
+  reconstructed book parity, and MBO event/action parity are not validated.
+
+DATA-01 remains blocked as a full gate. If the work is split, `DATA-01A` may only cover
+L1/trade canonical ingestion and partial parity status `L1_TRADE_ONLY_PASS`; `DATA-01B`
+must remain blocked for L2/L3 parity. Do not enable MBP10/MBO feature gates, mark
+OFI/depth/MBO-derived features as verified, start SIM-02/SIM-03, generate ML datasets, or
+advance REL gates from L1/trade-only evidence.
+
 ## Required Rithmic Probe
 
 Use a rich parity probe:
