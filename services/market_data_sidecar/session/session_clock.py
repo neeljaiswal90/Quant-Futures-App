@@ -130,7 +130,7 @@ def evaluate_mnq_session(
         session_phase=phase,
         journal_phase=phase,
         trading_date=trading_date,
-        session_id=f"{trading_date}-rth",
+        session_id=f"{trading_date}-{'rth' if phase == 'rth' else 'eth'}",
         candidate_eligible=candidate_eligible,
         warmup_suppressed=warmup_suppressed,
         block_reason=block_reason,
@@ -162,13 +162,6 @@ def _phase_for_local_datetime(calendar: MnqSessionCalendar, local_dt: datetime) 
 
 def _trading_date_for_local_datetime(calendar: MnqSessionCalendar, local_dt: datetime, phase: SessionPhase) -> str:
     local_time = local_dt.time().replace(tzinfo=None)
-    weekday = local_dt.weekday()
-    if phase == "closed" and weekday == 4 and local_time >= calendar.maintenance_start:
-        return (local_dt.date() + timedelta(days=3)).isoformat()
-    if phase == "closed" and weekday == 5:
-        return (local_dt.date() + timedelta(days=2)).isoformat()
-    if phase == "closed" and weekday == 6:
-        return (local_dt.date() + timedelta(days=1)).isoformat()
     if local_time >= calendar.trading_day_roll_time:
         return (local_dt.date() + timedelta(days=1)).isoformat()
     return local_dt.date().isoformat()
