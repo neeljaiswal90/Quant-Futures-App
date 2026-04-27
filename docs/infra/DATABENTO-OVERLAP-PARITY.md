@@ -50,6 +50,13 @@ telemetry, not canonical replay time.
 
 Do not treat each Rithmic `MBP10` row as a complete top-10 book snapshot.
 
+Before using this Databento comparison as evidence, the Rithmic `MBP10` extractor must
+pass the internal Rithmic L1/MBP10 audit from DATA-PARITY-04. If that audit reports
+`mbp10_extraction_trusted = false`, run the DATA-PARITY-04B raw proto debug capture and
+fix or manually review the extractor before comparing against Databento. A failed internal
+Rithmic L1/MBP10 audit means Databento mismatch counts are not yet meaningful market-data
+parity evidence.
+
 The rich Rithmic probe can emit `MBP10` rows that contain only one bid level, only one ask
 level, or another partial level update. The parity review must maintain a reconstructed
 top-10 state:

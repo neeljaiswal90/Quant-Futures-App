@@ -399,6 +399,136 @@ print(json.dumps({"bids": record.get("bids"), "asks": record.get("asks")}))
     ]);
   });
 
+  it('builds a stable MBP10 raw debug record with descriptor and scaling diagnostics', () => {
+    const stdout = runPython(`
+class OrderBook:
+    def __init__(self):
+        self.ssboe = 1700000000
+        self.usecs = 250
+        self.bid_price = [273690000]
+        self.bid_size = [5]
+        self.bid_orders = [4]
+        self.ask_price = [273692500]
+        self.ask_size = [2]
+        self.ask_orders = [1]
+
+nearby_l1 = {
+    "exchange_event_ts_ns": "1700000000000250000",
+    "bid_px": 27369.0,
+    "ask_px": 27369.5,
+    "mid_px": 27369.25,
+}
+record = mod.make_mbp10_raw_debug_record(
+    probe_id="probe-1",
+    symbol="MNQM6",
+    exchange="CME",
+    template_id=156,
+    payload_kind="OrderBook",
+    message=OrderBook(),
+    raw_buffer=b"abc",
+    nearby_l1_quote=nearby_l1,
+    debug_index=0,
+)
+print(json.dumps({
+    "debug_record_type": record["debug_record_type"],
+    "data01b_eligible": record["data01b_eligible"],
+    "has_raw_b64": "raw_b64" in record,
+    "raw_bid_price": record["raw_fields"]["bid_price"][0],
+    "normalized_bid_px": record["normalized_extracted_fields"]["bids"][0]["px"],
+    "normalized_bid_plausible": record["normalized_extracted_fields"]["bids"][0]["debug_price_sanity"]["plausible_against_l1"],
+    "bid_price_field": [entry["field_path"] for entry in record["price_scaling_diagnostics"] if entry["field_path"] == "bid_price[0]"][0],
+    "scale_10000_value": [
+        candidate["value"]
+        for entry in record["price_scaling_diagnostics"]
+        if entry["field_path"] == "bid_price[0]"
+        for candidate in entry["scale_candidates"]
+        if candidate["divide_by"] == 10000
+    ][0],
+}))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly debug_record_type: string;
+      readonly data01b_eligible: boolean;
+      readonly has_raw_b64: boolean;
+      readonly raw_bid_price: number;
+      readonly normalized_bid_px: number;
+      readonly normalized_bid_plausible: boolean;
+      readonly bid_price_field: string;
+      readonly scale_10000_value: number;
+    };
+
+    expect(payload).toEqual({
+      debug_record_type: 'mbp10_raw_message',
+      data01b_eligible: false,
+      has_raw_b64: true,
+      raw_bid_price: 273690000,
+      normalized_bid_px: 273690000,
+      normalized_bid_plausible: false,
+      bid_price_field: 'bid_price[0]',
+      scale_10000_value: 27369,
+    });
+  });
+
+  it('inspects protobuf descriptors for field metadata', () => {
+    const stdout = runPython(`
+class FakeField:
+    def __init__(self, name, number, field_type, label):
+        self.name = name
+        self.number = number
+        self.type = field_type
+        self.label = label
+        self.message_type = None
+
+class FakeDescriptor:
+    name = "OrderBook"
+    full_name = "rithmic.OrderBook"
+    fields = [
+        FakeField("bid_price", 1, 1, 3),
+        FakeField("bid_size", 2, 5, 3),
+    ]
+
+class OrderBook:
+    DESCRIPTOR = FakeDescriptor()
+
+metadata = mod.protobuf_descriptor_metadata(OrderBook)
+print(json.dumps(metadata))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly available: boolean;
+      readonly full_name: string;
+      readonly fields: readonly { readonly name: string; readonly number: number; readonly type: string; readonly label: string; readonly repeated: boolean }[];
+    };
+
+    expect(payload.available).toBe(true);
+    expect(payload.full_name).toBe('rithmic.OrderBook');
+    expect(payload.fields).toEqual([
+      { name: 'bid_price', number: 1, type: 'double', label: 'repeated', repeated: true },
+      { name: 'bid_size', number: 2, type: 'int32', label: 'repeated', repeated: true },
+    ]);
+  });
+
+  it('marks implausible normalized MBP10 prices against nearby L1 context', () => {
+    const stdout = runPython(`
+class OrderBook:
+    bid_price = [2460.0]
+    bid_size = [1]
+    bid_orders = [1]
+
+nearby_l1 = {"bid_px": 27527.0, "ask_px": 27527.5, "mid_px": 27527.25}
+payload = mod.normalize_mbp10_payload_for_debug(OrderBook(), nearby_l1)
+print(json.dumps(payload["bids"][0]["debug_price_sanity"]))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly tick_aligned: boolean;
+      readonly distance_from_l1_mid_points: number;
+      readonly plausible_against_l1: boolean;
+    };
+
+    expect(payload.tick_aligned).toBe(true);
+    expect(payload.plausible_against_l1).toBe(false);
+    expect(payload.distance_from_l1_mid_points).toBeGreaterThan(1000);
+  });
+
   it('normalizes MBO parity payload order updates', () => {
     const stdout = runPython(`
 class DepthByOrder:
