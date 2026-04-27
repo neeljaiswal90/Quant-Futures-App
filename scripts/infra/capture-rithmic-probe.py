@@ -761,10 +761,11 @@ def make_probe_record(
         "recv_monotonic_ns": recv_monotonic_ns,
         "timestamp_source": timestamp_source,
         "template_id": template_id,
-        "sequence": sequence,
         "payload_kind": payload_kind,
         "raw_present": raw,
     }
+    if sequence is not None:
+        record["sequence"] = sequence
     if raw:
         record["raw_b64"] = base64.b64encode(raw_buffer).decode("ascii")
     return record
