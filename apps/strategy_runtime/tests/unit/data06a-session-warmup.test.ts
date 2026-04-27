@@ -114,6 +114,43 @@ describe('DATA-06A L1/trade session clock and warmup suppression', () => {
     });
   });
 
+  it('applies session warmup after reconstructing side-specific L1 quote updates', () => {
+    const { report } = runSessionWarmup([
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: tsNs(RTH_OPEN_TS_NS, 30),
+        sidecar_recv_ts_ns: tsNs(RTH_OPEN_TS_NS, 31),
+        bid_px: 27526.25,
+        bid_sz: 4,
+      },
+      {
+        schema_version: 1,
+        stream: 'L1_QUOTE',
+        exchange_event_ts_ns: tsNs(RTH_OPEN_TS_NS, 31),
+        sidecar_recv_ts_ns: tsNs(RTH_OPEN_TS_NS, 32),
+        ask_px: 27526.5,
+        ask_sz: 5,
+      },
+    ]);
+
+    expect(report).toMatchObject({
+      status: 'pass',
+      verified_l1_trade_rows: 1,
+      quote_rows: 1,
+      trade_rows: 0,
+      candidate_eligible_count: 0,
+      warmup_suppressed_count: 1,
+      blocked_count: 1,
+      phase_counts: { rth: 1 },
+      block_reason_counts: { warmup_suppression: 1 },
+      diagnostic_count: 1,
+      diagnostic_counts: {
+        'L1_QUOTE:warming_quote_bbo_state': 1,
+      },
+    });
+  });
+
   it('classifies ETH, maintenance, and closed phases with stable block reasons', () => {
     const { report } = runSessionWarmup([
       quoteRow(tsNs(ETH_TS_NS)),

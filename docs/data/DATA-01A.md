@@ -15,6 +15,21 @@ DATA-01 remains blocked as a full gate. DATA-01B remains blocked for L2/L3 parit
 - OBS-01 `TRADE` and `QUOTE` source event output.
 - Partial parity status recorded as `L1_TRADE_ONLY_PASS`.
 
+## L1 Quote Reconstruction
+
+Rithmic `L1_QUOTE` rows can be side-specific state updates rather than complete BBO
+snapshots. A row may carry only the bid side or only the ask side. DATA-01A therefore
+maintains an in-memory BBO state while reading the probe/provider stream:
+
+- bid-only rows update the current bid state.
+- ask-only rows update the current ask state.
+- no `QUOTE` event is emitted until both sides are known.
+- after both sides are known, every bid or ask update emits a complete OBS-01 `QUOTE`
+  carrying the reconstructed BBO.
+
+The reconstruction is deterministic and uses `exchange_event_ts_ns` from the row that
+caused the emitted BBO update. `sidecar_recv_ts_ns` remains telemetry only.
+
 ## Explicitly Blocked
 
 - MBP10 production feature gates.
@@ -40,6 +55,9 @@ npm run data:01a:l1-trade -- `
 The command is offline-safe. It does not connect to Rithmic, Databento, sockets, or live
 execution. It reads an existing rich probe/provider JSONL and emits only `QUOTE` and `TRADE`
 source events.
+
+Large probes are written as a streaming conversion; the publisher does not buffer the full
+OBS-01 journal in memory.
 
 ## Timestamp Rule
 
