@@ -28,6 +28,11 @@ INFRA-01C determines whether that pattern looks like:
 - a state stream that is not a strict event stream,
 - or inconclusive evidence.
 
+The original probe was timestamp-only. It is useful for INFRA-01C timestamp-order analysis,
+but it cannot prove Databento trade/BBO/book parity because it does not retain price,
+size, top-of-book, top-10 depth, or MBO order-update payload fields. Future probes intended
+for Databento overlap parity must be captured with `--parity-payload`.
+
 ## Command
 
 ```powershell
@@ -115,3 +120,15 @@ route_to = INFRA-01B
 DATA-01 remains blocked
 ```
 
+## Rich Parity Probe Dependency
+
+`scripts/infra/capture-rithmic-probe.py --parity-payload` extends future probe JSONL with
+normalized `LAST_TRADE`, `L1_QUOTE`, `MBP10`, and `MBO` payload fields while preserving the
+same timestamp-evidence fields used by INFRA-01B and INFRA-01C. This does not loosen the
+timestamp-order gate or mark Databento parity as passed. It only creates enough Rithmic
+payload evidence for a later Databento parity report to compare:
+
+- `LAST_TRADE` to Databento `trades`,
+- `L1_QUOTE` to Databento `mbp-1`,
+- `MBP10` to Databento `mbp-10`,
+- `MBO` to Databento `mbo`.

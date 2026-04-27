@@ -150,6 +150,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out")
     parser.add_argument("--rprotocol-home", default=os.getenv("RITHMIC_RPROTOCOL_HOME"))
     parser.add_argument("--raw", action="store_true", default=False)
+    parser.add_argument(
+        "--parity-payload",
+        action="store_true",
+        default=False,
+        help=(
+            "Include normalized trade/quote/book/order payload fields required for "
+            "Databento overlap parity. Default probe mode remains timestamp-only."
+        ),
+    )
     parser.add_argument("--list-systems", action="store_true")
     parser.add_argument(
         "--streams",
@@ -733,6 +742,200 @@ def optional_sequence(message: Any) -> str | None:
     return None
 
 
+def optional_string(message: Any, field_name: str) -> str | None:
+    if not message_has_field(message, field_name):
+        return None
+    value = getattr(message, field_name)
+    return str(value)
+
+
+def optional_int(message: Any, field_name: str) -> int | None:
+    if not message_has_field(message, field_name):
+        return None
+    return int(getattr(message, field_name))
+
+
+def optional_float(message: Any, field_name: str) -> float | None:
+    if not message_has_field(message, field_name):
+        return None
+    return float(getattr(message, field_name))
+
+
+def enum_text(value: Any, mapping: dict[int, str]) -> str | None:
+    if value is None:
+        return None
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        text = str(value).strip()
+        return text.lower() if text else None
+    return mapping.get(numeric, str(numeric))
+
+
+def repeated_value(message: Any, field_name: str, index: int) -> Any | None:
+    values = getattr(message, field_name, None)
+    if values is None:
+        return None
+    try:
+        return values[index]
+    except (IndexError, TypeError):
+        return None
+
+
+def repeated_length(message: Any, field_names: tuple[str, ...]) -> int:
+    lengths: list[int] = []
+    for field_name in field_names:
+        values = getattr(message, field_name, None)
+        if values is None:
+            continue
+        try:
+            lengths.append(len(values))
+        except TypeError:
+            continue
+    return max(lengths, default=0)
+
+
+def maybe_set(target: dict[str, Any], key: str, value: Any | None) -> None:
+    if value is not None:
+        target[key] = value
+
+
+def normalize_last_trade_payload(message: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    maybe_set(payload, "price", optional_float(message, "trade_price"))
+    maybe_set(payload, "size", optional_int(message, "trade_size"))
+    aggressor = enum_text(optional_int(message, "aggressor"), {1: "buy", 2: "sell"})
+    maybe_set(payload, "aggressor", aggressor)
+    maybe_set(payload, "side", aggressor)
+    maybe_set(payload, "exchange_order_id", optional_string(message, "exchange_order_id"))
+    maybe_set(
+        payload,
+        "aggressor_exchange_order_id",
+        optional_string(message, "aggressor_exchange_order_id"),
+    )
+    return payload
+
+
+def normalize_l1_quote_payload(message: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    maybe_set(payload, "bid_px", optional_float(message, "bid_price"))
+    maybe_set(payload, "ask_px", optional_float(message, "ask_price"))
+    maybe_set(payload, "bid_sz", optional_int(message, "bid_size"))
+    maybe_set(payload, "ask_sz", optional_int(message, "ask_size"))
+    maybe_set(payload, "bid_orders", optional_int(message, "bid_orders"))
+    maybe_set(payload, "ask_orders", optional_int(message, "ask_orders"))
+    return payload
+
+
+def normalize_book_side(
+    message: Any,
+    *,
+    price_field: str,
+    size_field: str,
+    orders_field: str,
+) -> list[dict[str, Any]]:
+    levels: list[dict[str, Any]] = []
+    level_count = min(
+        repeated_length(message, (price_field, size_field, orders_field)),
+        10,
+    )
+    for index in range(level_count):
+        level: dict[str, Any] = {"level": index}
+        price = repeated_value(message, price_field, index)
+        size = repeated_value(message, size_field, index)
+        orders = repeated_value(message, orders_field, index)
+        if price is not None:
+            level["px"] = float(price)
+        if size is not None:
+            level["sz"] = int(size)
+        if orders is not None:
+            level["order_count"] = int(orders)
+        levels.append(level)
+    return levels
+
+
+def normalize_mbp10_payload(message: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    bids = normalize_book_side(
+        message,
+        price_field="bid_price",
+        size_field="bid_size",
+        orders_field="bid_orders",
+    )
+    asks = normalize_book_side(
+        message,
+        price_field="ask_price",
+        size_field="ask_size",
+        orders_field="ask_orders",
+    )
+    if bids:
+        payload["bids"] = bids
+    if asks:
+        payload["asks"] = asks
+    return payload
+
+
+def normalize_mbo_payload(message: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    update_count = repeated_length(
+        message,
+        (
+            "update_type",
+            "transaction_type",
+            "depth_price",
+            "depth_size",
+            "exchange_order_id",
+            "depth_order_priority",
+        ),
+    )
+    orders: list[dict[str, Any]] = []
+    for index in range(update_count):
+        order: dict[str, Any] = {"index": index}
+        update_type = enum_text(
+            repeated_value(message, "update_type", index),
+            {1: "new", 2: "change", 3: "delete"},
+        )
+        side = enum_text(
+            repeated_value(message, "transaction_type", index),
+            {1: "buy", 2: "sell"},
+        )
+        price = repeated_value(message, "depth_price", index)
+        size = repeated_value(message, "depth_size", index)
+        order_id = repeated_value(message, "exchange_order_id", index)
+        priority = repeated_value(message, "depth_order_priority", index)
+        maybe_set(order, "action", update_type)
+        maybe_set(order, "side", side)
+        if price is not None:
+            order["price"] = float(price)
+        if size is not None:
+            order["size"] = int(size)
+        if order_id is not None:
+            order["order_id"] = str(order_id)
+        if priority is not None:
+            order["priority"] = str(priority)
+        orders.append(order)
+
+    if orders:
+        payload["orders"] = orders
+        first_order = orders[0]
+        for key in ["action", "side", "price", "size", "order_id", "priority"]:
+            if key in first_order:
+                payload[key] = first_order[key]
+    return payload
+
+
+def normalize_parity_payload(stream: str, message: Any) -> dict[str, Any]:
+    if stream == "LAST_TRADE":
+        return normalize_last_trade_payload(message)
+    if stream == "L1_QUOTE":
+        return normalize_l1_quote_payload(message)
+    if stream == "MBP10":
+        return normalize_mbp10_payload(message)
+    if stream == "MBO":
+        return normalize_mbo_payload(message)
+    return {}
+
+
 def make_probe_record(
     *,
     probe_id: str,
@@ -744,6 +947,7 @@ def make_probe_record(
     message: Any,
     raw: bool,
     raw_buffer: bytes,
+    parity_payload: bool = False,
 ) -> dict[str, Any]:
     sidecar_recv_ts_ns = str(time.time_ns())
     recv_monotonic_ns = str(time.perf_counter_ns())
@@ -766,6 +970,8 @@ def make_probe_record(
     }
     if sequence is not None:
         record["sequence"] = sequence
+    if parity_payload:
+        record.update(normalize_parity_payload(stream, message))
     if raw:
         record["raw_b64"] = base64.b64encode(raw_buffer).decode("ascii")
     return record
@@ -884,6 +1090,7 @@ async def consume_probe(
                 message=message,
                 raw=args.raw,
                 raw_buffer=msg_bytes,
+                parity_payload=args.parity_payload,
             )
             handle.write(json_line(record))
             handle.flush()

@@ -99,6 +99,17 @@ The INFRA-01B report includes:
 
 `scripts/infra/capture-rithmic-probe.py` is a standalone Rithmic RProtocol probe collector. It connects only to `TICKER_PLANT`; it is not the runtime sidecar and never connects to `ORDER_PLANT`.
 
+By default the collector writes a minimal timestamp-evidence probe. Minimal probes include stream identity, canonical exchange timestamp candidates, receive-time telemetry, template IDs, payload kind, and optional sequence, but they do not preserve trade price/size or book state. Minimal probes are sufficient for INFRA-01B timestamp coverage and order analysis, but they are not sufficient for true Databento trade/BBO/MBP10/MBO parity.
+
+Use `--parity-payload` for any probe intended to support Databento overlap parity. In rich parity mode the collector also writes normalized payload fields:
+
+- `LAST_TRADE`: `price`, `size`, `aggressor`, `side`, order IDs when available, and `sequence` when available.
+- `L1_QUOTE`: `bid_px`, `ask_px`, `bid_sz`, `ask_sz`, `bid_orders`, and `ask_orders` when available.
+- `MBP10`: `bids[]` and `asks[]` level arrays with `px`, `sz`, and `order_count` when available.
+- `MBO`: `orders[]` updates with `action`, `side`, `price`, `size`, `order_id`, `priority`, and `sequence` when available.
+
+Unavailable parity fields are omitted. Nanosecond timestamps remain unsigned decimal strings. Prices are emitted as JSON numbers from the RProtocol numeric fields for MNQ parity review.
+
 ## RProtocol SDK Setup
 
 Do not commit the RProtocol SDK, extracted vendor files, generated protobuf files, credentials, or raw full captures.
@@ -200,6 +211,12 @@ python scripts/infra/capture-rithmic-probe.py --duration-sec 60 --streams LAST_T
 npm run infra:01:evaluate -- --probe data/probes/infra01/smoke/probe-all.jsonl --clock data/probes/infra01/smoke/clock_sync.json --out data/probes/infra01/smoke/report-all.json
 ```
 
+For a 60-second rich parity smoke, add `--parity-payload` and write to a distinct file:
+
+```powershell
+python scripts/infra/capture-rithmic-probe.py --duration-sec 60 --streams LAST_TRADE,L1_QUOTE,MBP10,MBO --symbol MNQM6 --exchange CME --parity-payload --out data/probes/infra01/smoke/probe-parity-all.jsonl
+```
+
 The `--streams` flag accepts any comma-separated subset of:
 
 ```text
@@ -226,6 +243,14 @@ Run the full post-sync probe for 2100 seconds:
 New-Item -ItemType Directory -Force data/probes/infra01/full | Out-Null
 python scripts/infra/capture-rithmic-probe.py --duration-sec 2100 --streams LAST_TRADE,L1_QUOTE,MBP10,MBO --symbol MNQM6 --exchange CME --out data/probes/infra01/full/probe.jsonl
 npm run infra:01:evaluate -- --probe data/probes/infra01/full/probe.jsonl --clock data/probes/infra01/full/clock_sync.json --out reports/infra/infra01b_canonical_exchange_time_report.json
+```
+
+For the full Databento parity evidence capture, use the rich probe path:
+
+```powershell
+New-Item -ItemType Directory -Force data/probes/infra01/full | Out-Null
+python scripts/infra/capture-rithmic-probe.py --duration-sec 2100 --streams LAST_TRADE,L1_QUOTE,MBP10,MBO --symbol MNQM6 --exchange CME --parity-payload --out data/probes/infra01/full/probe-parity.jsonl
+npm run infra:01:evaluate -- --probe data/probes/infra01/full/probe-parity.jsonl --clock data/probes/infra01/full/clock_sync.json --out reports/infra/infra01b_canonical_exchange_time_parity_probe_report.json
 ```
 
 The INFRA-01B evaluator exits `0` only when the exchange-time evidence is ready to route to INFRA-01 verification. DATA-01 remains blocked until the subsequent INFRA-01 report exits `0` and says `data01_eligible = true`.
