@@ -252,6 +252,7 @@ interface ParsedProbe {
 }
 
 interface BookState {
+  // Rithmic OrderBook rows are price-level updates; top-10 depth is derived from sorted prices.
   readonly bids: Map<number, BookLevel>;
   readonly asks: Map<number, BookLevel>;
 }
@@ -892,11 +893,11 @@ function normalizeLevel(value: unknown, recordIndex: number, side: BookSide, ind
   const level = optionalFiniteInteger(value, ['level']);
   const px = optionalFiniteNumber(value, ['px', 'price']);
   const sz = optionalFiniteNumber(value, ['sz', 'size']);
-  if (level === null || px === null || sz === null) {
-    throw new Error(`probe line ${recordIndex}: ${side}s[${index}] requires level, px, and sz`);
+  if (px === null || sz === null) {
+    throw new Error(`probe line ${recordIndex}: ${side}s[${index}] requires px and sz`);
   }
   return {
-    level,
+    level: level ?? index,
     px,
     sz,
     order_count: optionalFiniteInteger(value, ['order_count', 'orders', 'count', 'ct']),
@@ -1012,17 +1013,36 @@ function applyBookUpdate(
   bids: readonly BookLevel[],
   asks: readonly BookLevel[],
 ): void {
-  for (const bid of bids) state.bids.set(bid.level, bid);
-  for (const ask of asks) state.asks.set(ask.level, ask);
+  for (const bid of bids) applyPriceLevelUpdate(state.bids, bid);
+  for (const ask of asks) applyPriceLevelUpdate(state.asks, ask);
 }
 
 function stateToSample(state: BookState, tsNs: string, sourceRecordIndex: number): ReconstructedBookSample {
   return {
     ts_ns: tsNs,
     source_record_index: sourceRecordIndex,
-    bids: [...state.bids.values()].sort(compareBookLevels),
-    asks: [...state.asks.values()].sort(compareBookLevels),
+    bids: levelsFromPriceMap(state.bids, 'bid'),
+    asks: levelsFromPriceMap(state.asks, 'ask'),
   };
+}
+
+function applyPriceLevelUpdate(levels: Map<number, BookLevel>, level: BookLevel): void {
+  if (level.sz <= 0) {
+    levels.delete(level.px);
+    return;
+  }
+  levels.set(level.px, level);
+}
+
+function levelsFromPriceMap(levels: ReadonlyMap<number, BookLevel>, side: BookSide): readonly BookLevel[] {
+  return [...levels.values()]
+    .filter((level) => level.px > 0 && level.sz > 0)
+    .sort((left, right) => (side === 'bid' ? right.px - left.px : left.px - right.px))
+    .slice(0, 10)
+    .map((level, index) => ({
+      ...level,
+      level: index,
+    }));
 }
 
 function findLevel(levels: readonly BookLevel[], level: number): BookLevel | null {

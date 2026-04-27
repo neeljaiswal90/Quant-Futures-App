@@ -58,6 +58,19 @@ DEFAULT_STREAMS = ",".join(VALID_STREAMS)
 MNQ_TICK_SIZE = 0.25
 DEBUG_PRICE_SCALE_FACTORS = (1, 10, 100, 1_000, 10_000, 1_000_000_000)
 DEBUG_PLAUSIBLE_L1_DISTANCE_POINTS = 100.0
+ORDER_BOOK_UPDATE_TYPES = {
+    1: "clear_order_book",
+    2: "no_book",
+    3: "snapshot_image",
+    4: "begin",
+    5: "middle",
+    6: "end",
+    7: "solo",
+}
+ORDER_BOOK_PRESENCE_BITS = {
+    1: "bid",
+    2: "ask",
+}
 
 MBP10_GENERATED_PROTO_MODULES = {
     "order_book_pb2": "order_book.proto",
@@ -932,17 +945,19 @@ def normalize_l1_quote_payload(message: Any) -> dict[str, Any]:
 def normalize_book_side(
     message: Any,
     *,
+    side: str,
     price_field: str,
     size_field: str,
     orders_field: str,
+    snapshot_like: bool,
 ) -> list[dict[str, Any]]:
-    levels: list[dict[str, Any]] = []
-    level_count = min(
-        repeated_length(message, (price_field, size_field, orders_field)),
-        10,
-    )
+    price_levels: list[dict[str, Any]] = []
+    level_count = repeated_length(message, (price_field, size_field, orders_field))
     for index in range(level_count):
-        level: dict[str, Any] = {"level": index}
+        level: dict[str, Any] = {
+            "source_index": index,
+            "book_update_kind": "snapshot_level" if snapshot_like else "price_level_update",
+        }
         price = repeated_value(message, price_field, index)
         size = repeated_value(message, size_field, index)
         orders = repeated_value(message, orders_field, index)
@@ -952,23 +967,78 @@ def normalize_book_side(
             level["sz"] = int(size)
         if orders is not None:
             level["order_count"] = int(orders)
-        levels.append(level)
-    return levels
+        if "px" in level and "sz" in level:
+            price_levels.append(level)
+
+    if not snapshot_like:
+        for index, level in enumerate(price_levels):
+            level["level"] = index
+        return price_levels
+
+    sorted_levels = sorted(
+        (
+            level
+            for level in price_levels
+            if float(level.get("px", 0)) > 0 and int(level.get("sz", 0)) > 0
+        ),
+        key=lambda level: float(level["px"]),
+        reverse=side == "bid",
+    )
+    top_levels: list[dict[str, Any]] = []
+    for level, entry in enumerate(sorted_levels[:10]):
+        normalized = dict(entry)
+        normalized["level"] = level
+        top_levels.append(normalized)
+    return top_levels
+
+
+def order_book_update_type_code(message: Any) -> int | None:
+    return optional_int(message, "update_type")
+
+
+def order_book_update_type_text(message: Any) -> str | None:
+    return enum_text(order_book_update_type_code(message), ORDER_BOOK_UPDATE_TYPES)
+
+
+def order_book_presence_bits(message: Any) -> int | None:
+    return optional_int(message, "presence_bits")
+
+
+def order_book_presence_sides(message: Any) -> list[str]:
+    bits = order_book_presence_bits(message)
+    if bits is None:
+        return []
+    return [side for bit, side in ORDER_BOOK_PRESENCE_BITS.items() if bits & bit]
 
 
 def normalize_mbp10_payload(message: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {}
+    update_type_code = order_book_update_type_code(message)
+    update_type = order_book_update_type_text(message)
+    presence_bits = order_book_presence_bits(message)
+    if update_type_code is not None:
+        payload["update_type_code"] = update_type_code
+    if update_type is not None:
+        payload["update_type"] = update_type
+    if presence_bits is not None:
+        payload["presence_bits"] = presence_bits
+        payload["presence_sides"] = order_book_presence_sides(message)
+    snapshot_like = update_type_code in (None, 3)
     bids = normalize_book_side(
         message,
+        side="bid",
         price_field="bid_price",
         size_field="bid_size",
         orders_field="bid_orders",
+        snapshot_like=snapshot_like,
     )
     asks = normalize_book_side(
         message,
+        side="ask",
         price_field="ask_price",
         size_field="ask_size",
         orders_field="ask_orders",
+        snapshot_like=snapshot_like,
     )
     if bids:
         payload["bids"] = bids

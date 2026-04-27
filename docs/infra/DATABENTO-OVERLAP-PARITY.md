@@ -57,17 +57,23 @@ fix or manually review the extractor before comparing against Databento. A faile
 Rithmic L1/MBP10 audit means Databento mismatch counts are not yet meaningful market-data
 parity evidence.
 
-The rich Rithmic probe can emit `MBP10` rows that contain only one bid level, only one ask
-level, or another partial level update. The parity review must maintain a reconstructed
-top-10 state:
+The rich Rithmic probe can emit `MBP10` rows that contain only one bid price, only one ask
+price, or another partial price-level update. The parity review must maintain a
+reconstructed top-10 state:
 
 1. Start with an empty bid/ask book.
-2. Apply usable null-`exchange_event_ts_ns` rows as optional seed state.
+2. Apply usable null-`exchange_event_ts_ns` rows as optional seed state only after the
+   extractor has sorted snapshot arrays into derived top-10 levels.
 3. Count every null-timestamp row, and exclude those rows from timestamp parity metrics.
-4. Apply each timestamped `MBP10` row as an incremental update to the existing side/level
-   state.
+4. Apply each timestamped `MBP10` row as an incremental update to the existing side/price
+   state. Rithmic raw array index is not a stable depth level.
 5. Emit reconstructed samples after timestamped updates for comparison with Databento
-   `mbp-10` samples.
+   `mbp-10` samples by sorting bids high-to-low and asks low-to-high, then deriving depth
+   levels `0..9`.
+
+Rithmic `OrderBook` rows now carry `book_update_kind` and `source_index` diagnostics in
+rich probe mode. Use `px` as the state key for Rithmic reconstruction; use derived
+`level` values only for the final comparable top-10 sample.
 
 This rule is implemented by:
 

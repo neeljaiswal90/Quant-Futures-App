@@ -78,6 +78,25 @@ describe('DATA-PARITY-04 Rithmic MBP10 extraction audit', () => {
     expect(mode.internal_l1_mbp10_parity.within_1_tick_pct).toBe(100);
   });
 
+  it('does not let a deeper price-level update overwrite top of book', () => {
+    const probePath = writeProbe([
+      l1Quote(0n, { bid_px: 100, ask_px: 101 }),
+      l1Quote(1_000_000n, { bid_px: 100, ask_px: 101 }),
+      mbp10Row(0n, {
+        bids: [{ level: 0, px: 100, sz: 3, order_count: 1 }],
+        asks: [{ level: 0, px: 101, sz: 2, order_count: 1 }],
+      }),
+      mbp10Row(1_000_000n, {
+        bids: [{ level: 0, px: 99.75, sz: 9, order_count: 3 }],
+      }),
+    ]);
+
+    const report = auditRithmicMbp10Extraction({ probe_path: probePath });
+
+    expect(report.mbp10_extraction_trusted).toBe(true);
+    expect(report.internal_l1_mbp10_parity.within_1_tick_pct).toBe(100);
+  });
+
   it('passes internal L1/MBP10 parity on synthetic aligned data', () => {
     const probePath = writeProbe([
       l1Quote(0n, { bid_px: 100, ask_px: 101 }),

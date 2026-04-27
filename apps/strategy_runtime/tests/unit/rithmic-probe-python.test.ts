@@ -390,12 +390,105 @@ print(json.dumps({"bids": record.get("bids"), "asks": record.get("asks")}))
     };
 
     expect(payload.bids).toEqual([
-      { level: 0, px: 27369, sz: 5, order_count: 4 },
-      { level: 1, px: 27368.75, sz: 4, order_count: 3 },
+      {
+        book_update_kind: 'snapshot_level',
+        level: 0,
+        order_count: 4,
+        px: 27369,
+        source_index: 0,
+        sz: 5,
+      },
+      {
+        book_update_kind: 'snapshot_level',
+        level: 1,
+        order_count: 3,
+        px: 27368.75,
+        source_index: 1,
+        sz: 4,
+      },
     ]);
     expect(payload.asks).toEqual([
-      { level: 0, px: 27369.25, sz: 2, order_count: 1 },
-      { level: 1, px: 27369.5, sz: 6, order_count: 5 },
+      {
+        book_update_kind: 'snapshot_level',
+        level: 0,
+        order_count: 1,
+        px: 27369.25,
+        source_index: 0,
+        sz: 2,
+      },
+      {
+        book_update_kind: 'snapshot_level',
+        level: 1,
+        order_count: 5,
+        px: 27369.5,
+        source_index: 1,
+        sz: 6,
+      },
+    ]);
+  });
+
+  it('sorts OrderBook snapshot arrays into top-10 depth instead of trusting raw bid order', () => {
+    const stdout = runPython(`
+class OrderBook:
+    update_type = 3
+    bid_price = [99.5, 100.0, 99.75]
+    bid_size = [1, 3, 2]
+    bid_orders = [1, 3, 2]
+    ask_price = [101.25, 100.75, 101.0]
+    ask_size = [4, 2, 3]
+    ask_orders = [4, 2, 3]
+
+payload = mod.normalize_mbp10_payload(OrderBook())
+print(json.dumps({"update_type": payload.get("update_type"), "bids": payload["bids"], "asks": payload["asks"]}))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly update_type: string;
+      readonly bids: readonly { readonly level: number; readonly px: number; readonly source_index: number }[];
+      readonly asks: readonly { readonly level: number; readonly px: number; readonly source_index: number }[];
+    };
+
+    expect(payload.update_type).toBe('snapshot_image');
+    expect(payload.bids.map(({ level, px, source_index }) => ({ level, px, source_index }))).toEqual([
+      { level: 0, px: 100, source_index: 1 },
+      { level: 1, px: 99.75, source_index: 2 },
+      { level: 2, px: 99.5, source_index: 0 },
+    ]);
+    expect(payload.asks.map(({ level, px, source_index }) => ({ level, px, source_index }))).toEqual([
+      { level: 0, px: 100.75, source_index: 1 },
+      { level: 1, px: 101, source_index: 2 },
+      { level: 2, px: 101.25, source_index: 0 },
+    ]);
+  });
+
+  it('marks solo OrderBook rows as price-level updates', () => {
+    const stdout = runPython(`
+class OrderBook:
+    update_type = 7
+    presence_bits = 1
+    bid_price = [99.75]
+    bid_size = [8]
+    bid_orders = [4]
+
+payload = mod.normalize_mbp10_payload(OrderBook())
+print(json.dumps(payload))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly update_type: string;
+      readonly presence_sides: readonly string[];
+      readonly bids: readonly { readonly book_update_kind: string; readonly level: number; readonly px: number }[];
+    };
+
+    expect(payload.update_type).toBe('solo');
+    expect(payload.presence_sides).toEqual(['bid']);
+    expect(payload.bids).toEqual([
+      {
+        book_update_kind: 'price_level_update',
+        level: 0,
+        order_count: 4,
+        px: 99.75,
+        source_index: 0,
+        sz: 8,
+      },
     ]);
   });
 
