@@ -206,6 +206,35 @@ print(json.dumps({"valid": valid, "invalid": invalid}))
     expect(payload.invalid).toContain('Allowed values');
   });
 
+  it('omits optional sequence when Rithmic does not provide one', () => {
+    const stdout = runPython(`
+class EmptyMessage:
+    pass
+
+record = mod.make_probe_record(
+    probe_id="probe-1",
+    symbol="MNQM6",
+    exchange="CME",
+    stream="L1_QUOTE",
+    template_id=151,
+    payload_kind="BestBidOffer",
+    message=EmptyMessage(),
+    raw=False,
+    raw_buffer=b"",
+)
+print(json.dumps({"has_sequence": "sequence" in record, "timestamp_source": record["timestamp_source"]}))
+`);
+    const payload = JSON.parse(stdout) as {
+      readonly has_sequence: boolean;
+      readonly timestamp_source: string;
+    };
+
+    expect(payload).toEqual({
+      has_sequence: false,
+      timestamp_source: 'unavailable',
+    });
+  });
+
   it('uses confirmed RProtocol template IDs as CLI defaults', () => {
     const stdout = runPython(`
 import sys
