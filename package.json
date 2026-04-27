@@ -6,6 +6,7 @@
     "build": "tsc -p tsconfig.json",
     "check:python": "node scripts/check-python-syntax.mjs",
     "data:01a:l1-trade": "python -m services.market_data_sidecar.app",
+    "data:07a:gap-report": "python -m services.market_data_sidecar.gap_report_app",
     "format:journal": "tsx apps/strategy_runtime/src/operator/formatter.ts",
     "infra:01:evaluate": "tsx scripts/infra/evaluate-infra-01-probe.ts",
     "infra:analyze-databento-parity": "tsx scripts/infra/analyze-databento-overlap-parity.ts",
