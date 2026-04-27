@@ -66,7 +66,8 @@ reconstructed top-10 state:
    extractor has sorted snapshot arrays into derived top-10 levels.
 3. Count every null-timestamp row, and exclude those rows from timestamp parity metrics.
 4. Apply each timestamped `MBP10` row as an incremental update to the existing side/price
-   state. Rithmic raw array index is not a stable depth level.
+   state in `exchange_event_ts_ns` order. Rithmic raw array index is not a stable depth
+   level, and capture/file order is not the comparison clock.
 5. Emit reconstructed samples after timestamped updates for comparison with Databento
    `mbp-10` samples by sorting bids high-to-low and asks low-to-high, then deriving depth
    levels `0..9`.
@@ -89,6 +90,10 @@ carry a decimal-nanosecond `ts_event_ns` and either `bids[]`/`asks[]` arrays or 
 such as `bid_px_00`, `bid_sz_00`, `bid_ct_00`, `ask_px_00`, `ask_sz_00`, and `ask_ct_00`.
 The analyzer compares each Databento sample against the latest reconstructed Rithmic book
 state at or before that Databento `ts_event_ns`.
+
+For internal Rithmic extraction trust, DATA-PARITY-04 compares reconstructed MBP10 state at
+Rithmic `L1_QUOTE` checkpoints after exchange-time ordering. Do not use per-row MBP10
+updates as top-of-book checkpoints; `solo` updates are partial price-level changes.
 
 The report includes:
 
