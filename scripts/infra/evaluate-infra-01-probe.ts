@@ -11,6 +11,7 @@ import {
   type Infra01bClockEvidence,
 } from '../../apps/strategy_runtime/src/infra/index.js';
 import { stableJsonStringify, type JsonValue } from '../../apps/strategy_runtime/src/contracts/index.js';
+import { forEachJsonlLine } from './jsonl.js';
 
 type CliReport = CanonicalExchangeTimeReport | InvalidInputReport;
 
@@ -281,26 +282,20 @@ function normalizeProbeRecord(record: unknown, lineNumber: number): CanonicalExc
 }
 
 async function readProbeJsonl(path: string): Promise<ProbeReadResult> {
-  const source = await readFile(path, 'utf8');
   const records: CanonicalExchangeTimeProbeRecord[] = [];
   const recordsByStream: Record<string, number> = {};
 
-  source.split(/\r?\n/).forEach((line, index) => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      return;
-    }
-
+  forEachJsonlLine(path, (trimmed, lineNumber) => {
     let parsed: unknown;
     try {
       parsed = JSON.parse(trimmed);
     } catch (error) {
       throw new Error(
-        `probe line ${index + 1}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        `probe line ${lineNumber}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
-    const normalized = normalizeProbeRecord(parsed, index + 1);
+    const normalized = normalizeProbeRecord(parsed, lineNumber);
     recordsByStream[normalized.stream_id] = (recordsByStream[normalized.stream_id] ?? 0) + 1;
     records.push(normalized);
   });

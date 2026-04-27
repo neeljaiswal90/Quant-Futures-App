@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import {
   argv as processArgv,
@@ -10,6 +10,7 @@ import {
 } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { stableJsonStringify, type JsonValue } from '../../apps/strategy_runtime/src/contracts/index.js';
+import { forEachJsonlLine } from './jsonl.js';
 
 export const INFRA_01C_REPORT_SCHEMA_VERSION = 1 as const;
 
@@ -251,26 +252,18 @@ export function formatTimestampOrderSummary(report: TimestampOrderReport): strin
 }
 
 function readProbeJsonl(path: string): ParsedProbeRecord[] {
-  const source = readFileSync(path, 'utf8');
   const records: ParsedProbeRecord[] = [];
-  const lines = source.split(/\r?\n/);
-
-  lines.forEach((line, index) => {
-    const trimmed = line.trim();
-    if (trimmed === '') {
-      return;
-    }
-
+  forEachJsonlLine(path, (trimmed, lineNumber) => {
     let parsed: unknown;
     try {
       parsed = JSON.parse(trimmed);
     } catch (error) {
       throw new Error(
-        `probe line ${index + 1}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        `probe line ${lineNumber}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
-    records.push(normalizeProbeRecord(parsed, index + 1));
+    records.push(normalizeProbeRecord(parsed, lineNumber));
   });
 
   return records;
