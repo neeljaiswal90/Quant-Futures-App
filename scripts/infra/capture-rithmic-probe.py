@@ -55,6 +55,9 @@ DEPTH_BY_ORDER_END_EVENT_TEMPLATE_ID = 161
 
 VALID_STREAMS = ("LAST_TRADE", "L1_QUOTE", "MBP10", "MBO")
 DEFAULT_STREAMS = ",".join(VALID_STREAMS)
+MNQ_TICK_SIZE = 0.25
+DEBUG_PRICE_SCALE_FACTORS = (1, 10, 100, 1_000, 10_000, 1_000_000_000)
+DEBUG_PLAUSIBLE_L1_DISTANCE_POINTS = 100.0
 
 MBP10_GENERATED_PROTO_MODULES = {
     "order_book_pb2": "order_book.proto",
@@ -113,6 +116,7 @@ class ProbeSummary:
     first_sidecar_recv_ts_ns: str | None = None
     last_sidecar_recv_ts_ns: str | None = None
     error_count: int = 0
+    debug_mbp10_records: int = 0
 
     def observe_record(self, stream: str, sidecar_recv_ts_ns: str) -> None:
         self.records_by_stream[stream] += 1
@@ -158,6 +162,25 @@ def parse_args() -> argparse.Namespace:
             "Include normalized trade/quote/book/order payload fields required for "
             "Databento overlap parity. Default probe mode remains timestamp-only."
         ),
+    )
+    parser.add_argument(
+        "--debug-mbp10-raw",
+        action="store_true",
+        default=False,
+        help=(
+            "Write a DATA-PARITY-04B raw OrderBook/MBP10 debug JSONL artifact. "
+            "Requires --debug-mbp10-out and does not change the main probe JSONL."
+        ),
+    )
+    parser.add_argument(
+        "--debug-mbp10-limit",
+        type=int,
+        default=20,
+        help="Maximum OrderBook/MBP10 messages to write to --debug-mbp10-out. Default: 20.",
+    )
+    parser.add_argument(
+        "--debug-mbp10-out",
+        help="JSONL path for --debug-mbp10-raw descriptor and raw message diagnostics.",
     )
     parser.add_argument("--list-systems", action="store_true")
     parser.add_argument(
@@ -800,6 +823,85 @@ def maybe_set(target: dict[str, Any], key: str, value: Any | None) -> None:
         target[key] = value
 
 
+def numeric_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def l1_quote_debug_context(message: Any) -> dict[str, Any] | None:
+    payload = normalize_l1_quote_payload(message)
+    bid = numeric_or_none(payload.get("bid_px"))
+    ask = numeric_or_none(payload.get("ask_px"))
+    if bid is None or ask is None:
+        return None
+    exchange_event_ts_ns, timestamp_source = extract_exchange_timestamp(message)
+    return {
+        "exchange_event_ts_ns": exchange_event_ts_ns,
+        "timestamp_source": timestamp_source,
+        "bid_px": bid,
+        "ask_px": ask,
+        "mid_px": (bid + ask) / 2,
+        "bid_sz": payload.get("bid_sz"),
+        "ask_sz": payload.get("ask_sz"),
+        "bid_orders": payload.get("bid_orders"),
+        "ask_orders": payload.get("ask_orders"),
+    }
+
+
+def distance_from_l1_mid(value: float, nearby_l1_quote: dict[str, Any] | None) -> float | None:
+    if nearby_l1_quote is None:
+        return None
+    mid = numeric_or_none(nearby_l1_quote.get("mid_px"))
+    if mid is None:
+        return None
+    return abs(value - mid)
+
+
+def is_tick_aligned(value: float, tick_size: float = MNQ_TICK_SIZE) -> bool:
+    ticks = value / tick_size
+    return abs(ticks - round(ticks)) < 1e-9
+
+
+def price_scale_candidates(raw_value: Any, nearby_l1_quote: dict[str, Any] | None) -> list[dict[str, Any]]:
+    raw_number = numeric_or_none(raw_value)
+    if raw_number is None:
+        return []
+    candidates: list[dict[str, Any]] = []
+    for factor in DEBUG_PRICE_SCALE_FACTORS:
+        scaled = raw_number / factor
+        distance = distance_from_l1_mid(scaled, nearby_l1_quote)
+        candidate: dict[str, Any] = {
+            "divide_by": factor,
+            "value": scaled,
+            "tick_aligned": is_tick_aligned(scaled),
+            "distance_from_l1_mid_points": distance,
+        }
+        if distance is not None:
+            candidate["within_1_tick_of_l1_mid"] = distance <= MNQ_TICK_SIZE
+            candidate["within_100_points_of_l1_mid"] = distance <= DEBUG_PLAUSIBLE_L1_DISTANCE_POINTS
+        candidates.append(candidate)
+    return candidates
+
+
+def normalized_level_price_sanity(
+    level: dict[str, Any],
+    nearby_l1_quote: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    price = numeric_or_none(level.get("px"))
+    if price is None:
+        return None
+    distance = distance_from_l1_mid(price, nearby_l1_quote)
+    return {
+        "tick_aligned": is_tick_aligned(price),
+        "distance_from_l1_mid_points": distance,
+        "plausible_against_l1": distance is None or distance <= DEBUG_PLAUSIBLE_L1_DISTANCE_POINTS,
+    }
+
+
 def normalize_last_trade_payload(message: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     maybe_set(payload, "price", optional_float(message, "trade_price"))
@@ -875,6 +977,23 @@ def normalize_mbp10_payload(message: Any) -> dict[str, Any]:
     return payload
 
 
+def normalize_mbp10_payload_for_debug(
+    message: Any,
+    nearby_l1_quote: dict[str, Any] | None,
+) -> dict[str, Any]:
+    payload = normalize_mbp10_payload(message)
+    for side in ["bids", "asks"]:
+        levels = payload.get(side)
+        if not isinstance(levels, list):
+            continue
+        for level in levels:
+            if isinstance(level, dict):
+                sanity = normalized_level_price_sanity(level, nearby_l1_quote)
+                if sanity is not None:
+                    level["debug_price_sanity"] = sanity
+    return payload
+
+
 def normalize_mbo_payload(message: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     update_count = repeated_length(
@@ -934,6 +1053,196 @@ def normalize_parity_payload(stream: str, message: Any) -> dict[str, Any]:
     if stream == "MBO":
         return normalize_mbo_payload(message)
     return {}
+
+
+def protobuf_field_type_name(field: Any) -> str:
+    type_names = {
+        1: "double",
+        2: "float",
+        3: "int64",
+        4: "uint64",
+        5: "int32",
+        6: "fixed64",
+        7: "fixed32",
+        8: "bool",
+        9: "string",
+        10: "group",
+        11: "message",
+        12: "bytes",
+        13: "uint32",
+        14: "enum",
+        15: "sfixed32",
+        16: "sfixed64",
+        17: "sint32",
+        18: "sint64",
+    }
+    field_type = getattr(field, "type", None)
+    return type_names.get(field_type, str(field_type))
+
+
+def protobuf_field_label_name(field: Any) -> str:
+    label_names = {
+        1: "optional",
+        2: "required",
+        3: "repeated",
+    }
+    label = getattr(field, "label", None)
+    return label_names.get(label, str(label))
+
+
+def protobuf_descriptor_metadata(message_or_class: Any) -> dict[str, Any]:
+    descriptor = getattr(message_or_class, "DESCRIPTOR", None)
+    if descriptor is None and not isinstance(message_or_class, type):
+        descriptor = getattr(type(message_or_class), "DESCRIPTOR", None)
+    if descriptor is None:
+        return {"available": False, "fields": []}
+    return describe_protobuf_descriptor(descriptor)
+
+
+def describe_protobuf_descriptor(descriptor: Any, depth: int = 0) -> dict[str, Any]:
+    fields: list[dict[str, Any]] = []
+    for field in getattr(descriptor, "fields", []):
+        nested = getattr(field, "message_type", None)
+        field_payload: dict[str, Any] = {
+            "name": str(getattr(field, "name", "")),
+            "number": int(getattr(field, "number", 0)),
+            "type": protobuf_field_type_name(field),
+            "label": protobuf_field_label_name(field),
+            "repeated": protobuf_field_label_name(field) == "repeated",
+        }
+        if nested is not None:
+            field_payload["message_type"] = str(getattr(nested, "full_name", getattr(nested, "name", "")))
+            if depth < 2:
+                field_payload["nested_fields"] = describe_protobuf_descriptor(nested, depth + 1).get("fields", [])
+        fields.append(field_payload)
+    return {
+        "available": True,
+        "name": str(getattr(descriptor, "name", "")),
+        "full_name": str(getattr(descriptor, "full_name", getattr(descriptor, "name", ""))),
+        "fields": fields,
+    }
+
+
+def proto_value_to_json(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, bytes):
+        return {"bytes_b64": base64.b64encode(value).decode("ascii"), "byte_length": len(value)}
+    if hasattr(value, "ListFields"):
+        return {str(field.name): proto_value_to_json(field_value) for field, field_value in value.ListFields()}
+    if isinstance(value, dict):
+        return {str(key): proto_value_to_json(inner) for key, inner in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [proto_value_to_json(inner) for inner in value]
+    if not isinstance(value, (str, bytes)):
+        try:
+            return [proto_value_to_json(inner) for inner in value]
+        except TypeError:
+            pass
+    return str(value)
+
+
+def raw_proto_fields(message: Any) -> dict[str, Any]:
+    if hasattr(message, "ListFields"):
+        return {str(field.name): proto_value_to_json(value) for field, value in message.ListFields()}
+    fields: dict[str, Any] = {}
+    for key, value in sorted(vars(message).items()):
+        if key.startswith("_"):
+            continue
+        fields[key] = proto_value_to_json(value)
+    return fields
+
+
+def flatten_price_like_fields(raw_fields: dict[str, Any]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+
+    def visit(path: str, value: Any) -> None:
+        leaf_name = path.split(".")[-1].lower()
+        price_like = "price" in leaf_name or leaf_name.endswith("px") or "_px" in leaf_name
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                visit(f"{path}.{key}" if path else str(key), inner)
+            return
+        if isinstance(value, list):
+            for index, inner in enumerate(value):
+                visit(f"{path}[{index}]", inner)
+            return
+        if price_like and numeric_or_none(value) is not None:
+            entries.append({"field_path": path, "raw_value": value})
+
+    visit("", raw_fields)
+    return entries
+
+
+def debug_price_diagnostics(
+    raw_fields: dict[str, Any],
+    nearby_l1_quote: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    diagnostics: list[dict[str, Any]] = []
+    for entry in flatten_price_like_fields(raw_fields):
+        raw_value = entry["raw_value"]
+        diagnostics.append(
+            {
+                "field_path": entry["field_path"],
+                "raw_value": raw_value,
+                "scale_candidates": price_scale_candidates(raw_value, nearby_l1_quote),
+            },
+        )
+    return diagnostics
+
+
+def make_mbp10_descriptor_debug_record(modules: RProtocolModules, symbol: str, exchange: str) -> dict[str, Any]:
+    message_class = getattr(modules.order_book, "OrderBook", None) if modules.order_book is not None else None
+    return {
+        "schema_version": PROBE_SCHEMA_VERSION,
+        "debug_record_type": "mbp10_descriptor",
+        "ticket_id": "DATA-PARITY-04B",
+        "symbol": symbol,
+        "exchange": exchange,
+        "template_id": ORDER_BOOK_TEMPLATE_ID,
+        "payload_kind": "OrderBook",
+        "descriptor": protobuf_descriptor_metadata(message_class) if message_class is not None else {"available": False},
+        "data01b_eligible": False,
+        "data01_status": "blocked",
+    }
+
+
+def make_mbp10_raw_debug_record(
+    *,
+    probe_id: str,
+    symbol: str,
+    exchange: str,
+    template_id: int,
+    payload_kind: str,
+    message: Any,
+    raw_buffer: bytes,
+    nearby_l1_quote: dict[str, Any] | None,
+    debug_index: int,
+) -> dict[str, Any]:
+    exchange_event_ts_ns, timestamp_source = extract_exchange_timestamp(message)
+    raw_fields = raw_proto_fields(message)
+    return {
+        "schema_version": PROBE_SCHEMA_VERSION,
+        "debug_record_type": "mbp10_raw_message",
+        "ticket_id": "DATA-PARITY-04B",
+        "probe_id": probe_id,
+        "symbol": symbol,
+        "exchange": exchange,
+        "debug_index": debug_index,
+        "template_id": template_id,
+        "payload_kind": payload_kind,
+        "exchange_event_ts_ns": exchange_event_ts_ns,
+        "timestamp_source": timestamp_source,
+        "sidecar_recv_ts_ns": str(time.time_ns()),
+        "nearby_l1_quote": nearby_l1_quote,
+        "raw_size_bytes": len(raw_buffer),
+        "raw_b64": base64.b64encode(raw_buffer).decode("ascii"),
+        "raw_fields": raw_fields,
+        "normalized_extracted_fields": normalize_mbp10_payload_for_debug(message, nearby_l1_quote),
+        "price_scaling_diagnostics": debug_price_diagnostics(raw_fields, nearby_l1_quote),
+        "data01b_eligible": False,
+        "data01_status": "blocked",
+    }
 
 
 def make_probe_record(
@@ -1043,58 +1352,93 @@ async def consume_probe(
     summary = ProbeSummary(records_by_stream=Counter(), unknown_template_ids=Counter())
     deadline = time.monotonic() + args.duration_sec
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    debug_path = pathlib.Path(args.debug_mbp10_out).expanduser().resolve() if args.debug_mbp10_raw else None
+    if debug_path is not None:
+        debug_path.parent.mkdir(parents=True, exist_ok=True)
 
     with output_path.open("a", encoding="utf-8") as handle:
-        await send_heartbeat(ws, modules)
-        while time.monotonic() < deadline:
-            try:
-                msg_buffer = await asyncio.wait_for(ws.recv(), timeout=5)
-            except asyncio.TimeoutError:
-                await send_heartbeat(ws, modules)
-                continue
-            except KeyboardInterrupt:
-                break
-            except Exception as exc:
-                summary.error_count += 1
-                print(f"receive error: {exc}", file=sys.stderr)
-                break
+        debug_handle_context = (
+            debug_path.open("w", encoding="utf-8") if debug_path is not None else contextlib.nullcontext(None)
+        )
+        with debug_handle_context as debug_handle:
+            if debug_handle is not None:
+                descriptor_record = make_mbp10_descriptor_debug_record(modules, args.symbol, args.exchange)
+                descriptor_record["template_id"] = args.order_book_template_id
+                debug_handle.write(json_line(descriptor_record))
+                debug_handle.flush()
+            last_l1_quote: dict[str, Any] | None = None
+            await send_heartbeat(ws, modules)
+            while time.monotonic() < deadline:
+                try:
+                    msg_buffer = await asyncio.wait_for(ws.recv(), timeout=5)
+                except asyncio.TimeoutError:
+                    await send_heartbeat(ws, modules)
+                    continue
+                except KeyboardInterrupt:
+                    break
+                except Exception as exc:
+                    summary.error_count += 1
+                    print(f"receive error: {exc}", file=sys.stderr)
+                    break
 
-            if isinstance(msg_buffer, str):
-                msg_buffer = msg_buffer.encode("utf-8")
-            msg_bytes = bytes(msg_buffer)
-            recv_template_id = parse_base_template_id(modules, msg_bytes)
+                if isinstance(msg_buffer, str):
+                    msg_buffer = msg_buffer.encode("utf-8")
+                msg_bytes = bytes(msg_buffer)
+                recv_template_id = parse_base_template_id(modules, msg_bytes)
 
-            if recv_template_id in {
-                RESPONSE_LOGOUT_TEMPLATE_ID,
-                RESPONSE_HEARTBEAT_TEMPLATE_ID,
-                RESPONSE_MARKET_DATA_UPDATE_TEMPLATE_ID,
-            }:
-                continue
-            if "MBO" in args.streams and recv_template_id == args.response_depth_by_order_template_id:
-                log_depth_by_order_subscription_response(modules, recv_template_id, msg_bytes)
-                continue
+                if recv_template_id in {
+                    RESPONSE_LOGOUT_TEMPLATE_ID,
+                    RESPONSE_HEARTBEAT_TEMPLATE_ID,
+                    RESPONSE_MARKET_DATA_UPDATE_TEMPLATE_ID,
+                }:
+                    continue
+                if "MBO" in args.streams and recv_template_id == args.response_depth_by_order_template_id:
+                    log_depth_by_order_subscription_response(modules, recv_template_id, msg_bytes)
+                    continue
 
-            parsed = parse_payload(modules, recv_template_id, msg_bytes, args)
-            if parsed is None:
-                summary.unknown_template_ids[recv_template_id] += 1
-                continue
+                parsed = parse_payload(modules, recv_template_id, msg_bytes, args)
+                if parsed is None:
+                    summary.unknown_template_ids[recv_template_id] += 1
+                    continue
 
-            stream, payload_kind, message = parsed
-            record = make_probe_record(
-                probe_id=probe_id,
-                symbol=args.symbol,
-                exchange=args.exchange,
-                stream=stream,
-                template_id=recv_template_id,
-                payload_kind=payload_kind,
-                message=message,
-                raw=args.raw,
-                raw_buffer=msg_bytes,
-                parity_payload=args.parity_payload,
-            )
-            handle.write(json_line(record))
-            handle.flush()
-            summary.observe_record(stream, str(record["sidecar_recv_ts_ns"]))
+                stream, payload_kind, message = parsed
+                if stream == "L1_QUOTE":
+                    last_l1_quote = l1_quote_debug_context(message) or last_l1_quote
+                if (
+                    stream == "MBP10"
+                    and debug_handle is not None
+                    and summary.debug_mbp10_records < args.debug_mbp10_limit
+                ):
+                    debug_record = make_mbp10_raw_debug_record(
+                        probe_id=probe_id,
+                        symbol=args.symbol,
+                        exchange=args.exchange,
+                        template_id=recv_template_id,
+                        payload_kind=payload_kind,
+                        message=message,
+                        raw_buffer=msg_bytes,
+                        nearby_l1_quote=last_l1_quote,
+                        debug_index=summary.debug_mbp10_records,
+                    )
+                    debug_handle.write(json_line(debug_record))
+                    debug_handle.flush()
+                    summary.debug_mbp10_records += 1
+
+                record = make_probe_record(
+                    probe_id=probe_id,
+                    symbol=args.symbol,
+                    exchange=args.exchange,
+                    stream=stream,
+                    template_id=recv_template_id,
+                    payload_kind=payload_kind,
+                    message=message,
+                    raw=args.raw,
+                    raw_buffer=msg_bytes,
+                    parity_payload=args.parity_payload,
+                )
+                handle.write(json_line(record))
+                handle.flush()
+                summary.observe_record(stream, str(record["sidecar_recv_ts_ns"]))
 
     return summary
 
@@ -1108,6 +1452,7 @@ def print_summary(summary: ProbeSummary, output_path: pathlib.Path, duration_sec
         "duration_seconds": duration_sec,
         "output_path": str(output_path),
         "error_count": summary.error_count,
+        "debug_mbp10_records": summary.debug_mbp10_records,
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
 
@@ -1134,6 +1479,12 @@ async def run_probe(args: argparse.Namespace) -> int:
     out = require_value(args.out, "--out")
     if args.duration_sec <= 0:
         fail("--duration-sec must be positive")
+    if args.debug_mbp10_raw:
+        if "MBP10" not in args.streams:
+            fail("--debug-mbp10-raw requires --streams to include MBP10")
+        if args.debug_mbp10_limit <= 0:
+            fail("--debug-mbp10-limit must be positive")
+        require_value(args.debug_mbp10_out, "--debug-mbp10-out")
 
     output_path = pathlib.Path(out).expanduser().resolve()
     probe_id = f"rithmic-{args.symbol}-{int(time.time())}"
