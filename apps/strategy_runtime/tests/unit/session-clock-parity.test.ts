@@ -9,6 +9,10 @@ import {
 } from '../../src/session/index.js';
 
 const PYTHON = process.env.PYTHON ?? 'python';
+const RANDOM_PARITY_SEED = 0x5eed_2026;
+const RANDOM_PARITY_CASE_COUNT = 512;
+const RANDOM_PARITY_START_TS_NS = 1_767_225_600_000_000_000n;
+const RANDOM_PARITY_RANGE_SECONDS = 366 * 24 * 60 * 60;
 
 const SESSION_BOUNDARY_CASES = [
   ['rth_open', '1776951000000000000'],
@@ -46,6 +50,15 @@ describe('TS/Python MNQ session clock parity', () => {
     const tsEvaluations = evaluateWithTypescript(SESSION_BOUNDARY_CASES);
     const pythonEvaluations = evaluateWithPython(SESSION_BOUNDARY_CASES, 0);
 
+    expect(pythonEvaluations).toEqual(tsEvaluations);
+  });
+
+  it('keeps TS/Python session phase parity over a fixed-seed timestamp sample', () => {
+    const randomCases = fixedSeedSessionCases();
+    const tsEvaluations = evaluateWithTypescript(randomCases);
+    const pythonEvaluations = evaluateWithPython(randomCases, 0);
+
+    expect(randomCases).toHaveLength(RANDOM_PARITY_CASE_COUNT);
     expect(pythonEvaluations).toEqual(tsEvaluations);
   });
 
@@ -91,6 +104,20 @@ describe('TS/Python MNQ session clock parity', () => {
     }
   });
 });
+
+function fixedSeedSessionCases(): readonly (readonly [string, string])[] {
+  let state = RANDOM_PARITY_SEED >>> 0;
+  const nextUInt32 = (): number => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state;
+  };
+
+  return Array.from({ length: RANDOM_PARITY_CASE_COUNT }, (_, index) => {
+    const offsetSeconds = nextUInt32() % RANDOM_PARITY_RANGE_SECONDS;
+    const tsNs = RANDOM_PARITY_START_TS_NS + BigInt(offsetSeconds) * 1_000_000_000n;
+    return [`fixed_seed_${index.toString().padStart(3, '0')}`, tsNs.toString()] as const;
+  });
+}
 
 function evaluateWithTypescript(
   cases: readonly (readonly [string, string])[],
