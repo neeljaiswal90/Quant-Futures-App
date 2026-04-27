@@ -13,6 +13,7 @@
     "infra:01:evaluate": "tsx scripts/infra/evaluate-infra-01-probe.ts",
     "infra:analyze-databento-parity": "tsx scripts/infra/analyze-databento-overlap-parity.ts",
     "infra:analyze-timestamp-order": "tsx scripts/infra/analyze-rithmic-timestamp-order.ts",
+    "infra:audit-rithmic-mbp10": "tsx scripts/infra/audit-rithmic-mbp10-extraction.ts",
     "journal:query": "tsx scripts/journal/journal-query.ts",
     "lint": "npm run lint:forbidden-imports",
     "lint:forbidden-imports": "node scripts/check-forbidden-imports.mjs",
