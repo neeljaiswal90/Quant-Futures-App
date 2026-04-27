@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import {
   argv as processArgv,
@@ -10,6 +10,7 @@ import {
 } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { stableJsonStringify, type JsonValue } from '../../apps/strategy_runtime/src/contracts/index.js';
+import { forEachJsonlLine } from './jsonl.js';
 
 export const DATABENTO_OVERLAP_PARITY_SCHEMA_VERSION = 1 as const;
 
@@ -677,18 +678,13 @@ function sortSamplesByTimestamp(samples: readonly BookSample[]): readonly BookSa
 }
 
 function readJsonl(path: string, label: string): readonly unknown[] {
-  const source = readFileSync(path, 'utf8');
   const records: unknown[] = [];
-  source.split(/\r?\n/).forEach((line, index) => {
-    const trimmed = line.trim();
-    if (trimmed === '') {
-      return;
-    }
+  forEachJsonlLine(path, (trimmed, lineNumber) => {
     try {
       records.push(JSON.parse(trimmed));
     } catch (error) {
       throw new Error(
-        `${label} line ${index + 1}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        `${label} line ${lineNumber}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   });

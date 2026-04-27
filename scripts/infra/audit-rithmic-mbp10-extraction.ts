@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import {
   argv as processArgv,
@@ -10,6 +10,7 @@ import {
 } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { stableJsonStringify, type JsonValue } from '../../apps/strategy_runtime/src/contracts/index.js';
+import { forEachJsonlLine } from './jsonl.js';
 
 export const RITHMIC_MBP10_AUDIT_SCHEMA_VERSION = 1 as const;
 
@@ -371,7 +372,6 @@ export function formatRithmicMbp10ExtractionAuditSummary(
 }
 
 function parseProbeJsonl(path: string): ParsedProbe {
-  const source = readFileSync(path, 'utf8');
   const l1Quotes: L1QuoteSample[] = [];
   const mbp10Rows: Mbp10Row[] = [];
   let totalRows = 0;
@@ -384,20 +384,16 @@ function parseProbeJsonl(path: string): ParsedProbe {
   let rowsWithBothSides = 0;
   let rowsWithOneSideOnly = 0;
 
-  source.split(/\r?\n/).forEach((line, index) => {
-    const trimmed = line.trim();
-    if (trimmed === '') {
-      return;
-    }
+  forEachJsonlLine(path, (trimmed, lineNumber) => {
     totalRows += 1;
-    const record = parseJsonLine(trimmed, index + 1);
+    const record = parseJsonLine(trimmed, lineNumber);
     if (!isRecord(record)) {
-      throw new Error(`probe line ${index + 1}: JSON value must be an object`);
+      throw new Error(`probe line ${lineNumber}: JSON value must be an object`);
     }
     const stream = stringField(record, ['stream', 'stream_id', 'payload_kind']);
     if (stream === 'L1_QUOTE') {
       l1Rows += 1;
-      const quote = normalizeL1Quote(record, index + 1);
+      const quote = normalizeL1Quote(record, lineNumber);
       if (quote !== null) {
         l1Quotes.push(quote);
       }
@@ -408,7 +404,7 @@ function parseProbeJsonl(path: string): ParsedProbe {
     }
 
     mbp10RowsCount += 1;
-    const row = normalizeMbp10Row(record, index + 1);
+    const row = normalizeMbp10Row(record, lineNumber);
     const hasBids = row.bids.length > 0;
     const hasAsks = row.asks.length > 0;
     if (row.ts_ns === null) {
