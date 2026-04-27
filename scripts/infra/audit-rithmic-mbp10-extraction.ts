@@ -76,6 +76,8 @@ export interface ProbeParsingReport {
   readonly total_rows: number;
   readonly l1_quote_rows: number;
   readonly l1_quote_rows_with_exchange_ts: number;
+  readonly l1_quote_reconstructed_checkpoint_count: number;
+  readonly l1_quote_warming_rows: number;
   readonly mbp10_rows: number;
   readonly mbp10_null_exchange_ts_rows: number;
   readonly mbp10_timestamped_rows: number;
@@ -374,8 +376,12 @@ export function formatRithmicMbp10ExtractionAuditSummary(
 function parseProbeJsonl(path: string): ParsedProbe {
   const l1Quotes: L1QuoteSample[] = [];
   const mbp10Rows: Mbp10Row[] = [];
+  let l1Bid: { readonly px: number; readonly sz: number | null } | null = null;
+  let l1Ask: { readonly px: number; readonly sz: number | null } | null = null;
   let totalRows = 0;
   let l1Rows = 0;
+  let l1RowsWithExchangeTs = 0;
+  let l1WarmingRows = 0;
   let mbp10RowsCount = 0;
   let nullTsRows = 0;
   let timestampedRows = 0;
@@ -393,9 +399,24 @@ function parseProbeJsonl(path: string): ParsedProbe {
     const stream = stringField(record, ['stream', 'stream_id', 'payload_kind']);
     if (stream === 'L1_QUOTE') {
       l1Rows += 1;
-      const quote = normalizeL1Quote(record, lineNumber);
-      if (quote !== null) {
-        l1Quotes.push(quote);
+      const tsNs = optionalDecimalString(record, ['exchange_event_ts_ns']);
+      if (tsNs !== null) {
+        l1RowsWithExchangeTs += 1;
+        const bidUpdate = normalizeL1SideUpdate(record, 'bid');
+        const askUpdate = normalizeL1SideUpdate(record, 'ask');
+        if (bidUpdate !== null) {
+          l1Bid = bidUpdate.sz !== null && bidUpdate.sz <= 0 ? null : bidUpdate;
+        }
+        if (askUpdate !== null) {
+          l1Ask = askUpdate.sz !== null && askUpdate.sz <= 0 ? null : askUpdate;
+        }
+        if (bidUpdate === null && askUpdate === null) {
+          l1WarmingRows += 1;
+        } else if (l1Bid !== null && l1Ask !== null) {
+          l1Quotes.push(normalizeL1QuoteCheckpoint(lineNumber, tsNs, l1Bid, l1Ask));
+        } else {
+          l1WarmingRows += 1;
+        }
       }
       return;
     }
@@ -425,7 +446,9 @@ function parseProbeJsonl(path: string): ParsedProbe {
     report: {
       total_rows: totalRows,
       l1_quote_rows: l1Rows,
-      l1_quote_rows_with_exchange_ts: l1Quotes.length,
+      l1_quote_rows_with_exchange_ts: l1RowsWithExchangeTs,
+      l1_quote_reconstructed_checkpoint_count: l1Quotes.length,
+      l1_quote_warming_rows: l1WarmingRows,
       mbp10_rows: mbp10RowsCount,
       mbp10_null_exchange_ts_rows: nullTsRows,
       mbp10_timestamped_rows: timestampedRows,
@@ -856,21 +879,31 @@ function selectBestMode(modes: readonly ReconstructionModeReport[]): Reconstruct
   })[0]!;
 }
 
-function normalizeL1Quote(record: Record<string, unknown>, recordIndex: number): L1QuoteSample | null {
-  const tsNs = optionalDecimalString(record, ['exchange_event_ts_ns']);
-  if (tsNs === null) return null;
-  const bidPx = optionalFiniteNumber(record, ['bid_px']);
-  const askPx = optionalFiniteNumber(record, ['ask_px']);
-  if (bidPx === null || askPx === null) return null;
+function normalizeL1QuoteCheckpoint(
+  recordIndex: number,
+  tsNs: string,
+  bid: { readonly px: number; readonly sz: number | null },
+  ask: { readonly px: number; readonly sz: number | null },
+): L1QuoteSample {
   return {
     record_index: recordIndex,
     ts_ns: tsNs,
-    bid_px: bidPx,
-    ask_px: askPx,
-    bid_sz: optionalFiniteNumber(record, ['bid_sz', 'bid_qty']),
-    ask_sz: optionalFiniteNumber(record, ['ask_sz', 'ask_qty']),
-    mid_px: (bidPx + askPx) / 2,
+    bid_px: bid.px,
+    ask_px: ask.px,
+    bid_sz: bid.sz,
+    ask_sz: ask.sz,
+    mid_px: (bid.px + ask.px) / 2,
   };
+}
+
+function normalizeL1SideUpdate(
+  record: Record<string, unknown>,
+  side: BookSide,
+): { readonly px: number; readonly sz: number | null } | null {
+  const px = optionalFiniteNumber(record, [`${side}_px`]);
+  const sz = optionalFiniteNumber(record, [`${side}_sz`, `${side}_qty`]);
+  if (px === null) return null;
+  return { px, sz };
 }
 
 function normalizeMbp10Row(record: Record<string, unknown>, recordIndex: number): Mbp10Row {
