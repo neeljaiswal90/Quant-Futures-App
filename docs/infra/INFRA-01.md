@@ -110,6 +110,19 @@ Use `--parity-payload` for any probe intended to support Databento overlap parit
 
 Unavailable parity fields are omitted. Nanosecond timestamps remain unsigned decimal strings. Prices are emitted as JSON numbers from the RProtocol numeric fields for MNQ parity review.
 
+`MBP10` rich rows are incremental top-10 state updates. A row can contain only one bid level,
+only one ask level, or a partial side update. Do not compare each row as a full Databento
+`mbp-10` snapshot. Use the offline analyzer to reconstruct Rithmic book state before parity:
+
+```powershell
+npm run infra:analyze-databento-parity -- --rithmic-probe data/probes/infra01/full/probe-parity.jsonl --databento-mbp10 data/probes/infra01/full/databento/MNQM6_mbp10.normalized.jsonl --out reports/infra/databento_overlap_parity_report.json
+```
+
+Rows with `exchange_event_ts_ns = null` are excluded from timestamp parity metrics. If they
+contain usable book fields, the analyzer may apply them as seed state and reports that count
+separately. This analyzer is evidence only: it does not change the INFRA-01B gate and does
+not unblock `DATA-01`.
+
 ## RProtocol SDK Setup
 
 Do not commit the RProtocol SDK, extracted vendor files, generated protobuf files, credentials, or raw full captures.

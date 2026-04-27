@@ -132,3 +132,10 @@ payload evidence for a later Databento parity report to compare:
 - `L1_QUOTE` to Databento `mbp-1`,
 - `MBP10` to Databento `mbp-10`,
 - `MBO` to Databento `mbo`.
+
+For `MBP10`, the rich rows are state updates, not guaranteed full snapshots. The Databento
+parity review must reconstruct Rithmic top-10 state by applying each bid/ask level update
+over time. Null-`exchange_event_ts_ns` rows may seed the book if they contain usable levels,
+but they are excluded from timestamp parity metrics and counted separately in the report.
+Use `npm run infra:analyze-databento-parity` for this offline reconstruction report; it is
+evidence only and does not unblock `DATA-01`.
