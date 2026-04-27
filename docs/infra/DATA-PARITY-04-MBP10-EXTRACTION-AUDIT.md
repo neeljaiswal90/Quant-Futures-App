@@ -25,6 +25,48 @@ The command is offline-only. It reads an existing rich Rithmic probe and writes 
 report. It does not fetch Databento data, connect to Rithmic, open sockets, or modify any
 gate status.
 
+## DATA-PARITY-04B Raw Proto Debug Capture
+
+If the audit reports `classification = extraction_bug_suspected`, capture a small raw
+OrderBook debug sample:
+
+```powershell
+python scripts/infra/capture-rithmic-probe.py `
+  --duration-sec 60 `
+  --streams LAST_TRADE,L1_QUOTE,MBP10 `
+  --symbol MNQM6 `
+  --exchange CME `
+  --parity-payload `
+  --debug-mbp10-raw `
+  --debug-mbp10-limit 50 `
+  --debug-mbp10-out reports/infra/mbp10_raw_debug.jsonl `
+  --out data/probes/infra01/smoke/probe-mbp10-debug.jsonl
+```
+
+The debug JSONL is an artifact and must not be committed. It contains:
+
+- one `mbp10_descriptor` row with the OrderBook proto descriptor field names, field
+  numbers, protobuf types, repeated flags, and nested fields where available;
+- up to `--debug-mbp10-limit` `mbp10_raw_message` rows;
+- raw proto bytes as `raw_b64`;
+- raw proto field names and values;
+- current normalized MBP10 extraction output;
+- nearest prior `L1_QUOTE` bid/ask/mid when available;
+- candidate price scales: raw, `/10`, `/100`, `/1000`, `/10000`, and `/1e9`;
+- explicit `data01b_eligible = false` and `data01_status = blocked`.
+
+Analyze the dump with:
+
+```powershell
+npm run infra:analyze-mbp10-debug -- `
+  --debug-dump reports/infra/mbp10_raw_debug.jsonl `
+  --out reports/infra/mbp10_debug_dump_analysis.json
+```
+
+Use this report to decide whether the extractor needs a scale fix, a side/level semantic
+fix, or direct manual proto review. The debug analyzer does not automatically alter
+normalization behavior.
+
 ## Core Invariant
 
 Before comparing Rithmic `MBP10` to Databento `mbp-10`, reconstructed Rithmic `MBP10`
@@ -40,6 +82,18 @@ classification = state_stream_incremental_valid
 ```
 
 If this internal check fails, Databento parity is not meaningful yet.
+
+After any extraction change, rerun:
+
+```powershell
+npm run infra:audit-rithmic-mbp10 -- `
+  --probe data/probes/infra01/full/probe-parity.jsonl `
+  --out reports/infra/rithmic_mbp10_extraction_audit.json
+```
+
+Only proceed to Databento `mbp-10` parity when the audit reaches at least 99% internal
+Rithmic L1/MBP10 agreement within one MNQ tick and reports
+`classification = state_stream_incremental_valid`.
 
 ## Null Timestamp Seed Policy
 
