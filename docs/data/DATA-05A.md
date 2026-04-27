@@ -16,6 +16,7 @@ The DATA-05A defaults mirror the raw-journal slice of the plan §13.2 retention 
 |---|---|
 | Raw uncompressed L1/trade JSONL | Keep current RTH session + one prior RTH session |
 | Raw compressed L1/trade JSONL | Keep hot for 14 calendar days |
+| Disk pressure | Warn at 70% used, fail-closed at 85% used |
 
 The policy is intentionally scoped to L1/trade journals. Mixed journals or journals
 containing event types outside `QUOTE`/`TRADE` are skipped with diagnostics.
@@ -31,6 +32,17 @@ Retention never reads wall-clock time. Callers must provide:
 That reference session determines which raw sessions are retained and which compressed
 archives are older than the hot retention window.
 
+Disk pressure is also deterministic. The retention tool does not read host disk state on
+its own; callers pass a disk snapshot when they want pressure classification:
+
+```text
+--disk-total-bytes <bytes>
+--disk-free-bytes <bytes>
+```
+
+At or above 70% used, the report status becomes `warning`. At or above 85% used, the report
+status becomes `fail` and `disk_pressure.data_writes_allowed = false`.
+
 ## Command
 
 Plan-only mode is the default:
@@ -40,6 +52,8 @@ npm run data:05a:retention -- `
   --journal-dir data/probes/infra01/data01a `
   --archive-dir data/probes/infra01/data01a/archive `
   --reference-session-id 2026-04-26-rth `
+  --disk-total-bytes 1000000000000 `
+  --disk-free-bytes 250000000000 `
   --report reports/infra/data05a_retention_report.json
 ```
 
@@ -67,6 +81,7 @@ The report includes:
 - `delete_compressed_count`.
 - `actions`.
 - `diagnostics`.
+- `disk_pressure`, including `used_pct`, `severity`, and `data_writes_allowed`.
 - `policy`.
 - `partial_parity_status: L1_TRADE_ONLY_PASS`.
 - `data01_full_gate_status: blocked`.

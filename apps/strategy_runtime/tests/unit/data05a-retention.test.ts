@@ -60,6 +60,8 @@ function runRetention(options: {
   readonly archiveDir: string;
   readonly referenceSessionId?: string;
   readonly apply?: boolean;
+  readonly diskTotalBytes?: number;
+  readonly diskFreeBytes?: number;
 }): {
   readonly reportText: string;
   readonly report: Record<string, unknown>;
@@ -79,6 +81,12 @@ function runRetention(options: {
   ];
   if (options.apply === true) {
     args.push('--apply');
+  }
+  if (options.diskTotalBytes !== undefined) {
+    args.push('--disk-total-bytes', String(options.diskTotalBytes));
+  }
+  if (options.diskFreeBytes !== undefined) {
+    args.push('--disk-free-bytes', String(options.diskFreeBytes));
   }
   const result = spawnSync(PYTHON, args, {
     cwd: process.cwd(),
@@ -182,6 +190,58 @@ describe('DATA-05A L1/trade journal retention', () => {
     expect(existsSync(join(archiveDir, '2026-04-01-rth.l1-trade.jsonl.gz'))).toBe(false);
   });
 
+  it('warns at 70 percent disk use without fail-closing writes', () => {
+    const root = makeTempDir();
+    const archiveDir = join(root, 'archive');
+    writeL1TradeJournal(root, '2026-04-24-rth');
+
+    const { report } = runRetention({
+      journalDir: root,
+      archiveDir,
+      diskTotalBytes: 1000,
+      diskFreeBytes: 250,
+    });
+
+    expect(report).toMatchObject({
+      status: 'warning',
+      disk_pressure: {
+        checked: true,
+        total_bytes: 1000,
+        free_bytes: 250,
+        used_pct: 75,
+        severity: 'warning',
+        reason: 'disk_used_pct_at_or_above_warning_threshold',
+        data_writes_allowed: true,
+      },
+    });
+  });
+
+  it('fails closed at 85 percent disk use', () => {
+    const root = makeTempDir();
+    const archiveDir = join(root, 'archive');
+    writeL1TradeJournal(root, '2026-04-24-rth');
+
+    const { report } = runRetention({
+      journalDir: root,
+      archiveDir,
+      diskTotalBytes: 1000,
+      diskFreeBytes: 100,
+    });
+
+    expect(report).toMatchObject({
+      status: 'fail',
+      disk_pressure: {
+        checked: true,
+        used_pct: 90,
+        severity: 'fail',
+        reason: 'disk_used_pct_at_or_above_fail_threshold',
+        data_writes_allowed: false,
+      },
+      data01_full_gate_status: 'blocked',
+      data01b_status: 'blocked_l2_l3_parity',
+    });
+  });
+
   it('skips mixed or non-L1 journals with diagnostics instead of rotating them', () => {
     const root = makeTempDir();
     const archiveDir = join(root, 'archive');
@@ -226,6 +286,7 @@ describe('DATA-05A L1/trade journal retention', () => {
       'data01b_status',
       'delete_compressed_count',
       'diagnostics',
+      'disk_pressure',
       'keep_raw_count',
       'mode',
       'partial_parity_status',

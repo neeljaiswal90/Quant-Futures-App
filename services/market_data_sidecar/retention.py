@@ -23,6 +23,7 @@ from services.market_data_sidecar.config import (
 
 RetentionActionType = Literal["keep_raw", "compress_raw", "delete_compressed", "skip"]
 RetentionStatus = Literal["pass", "warning", "fail"]
+DiskPressureSeverity = Literal["not_checked", "pass", "warning", "fail"]
 
 L1_TRADE_EVENT_TYPES = frozenset({"QUOTE", "TRADE"})
 SESSION_ID_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}-rth$")
@@ -33,6 +34,25 @@ ARCHIVE_SESSION_PATTERN = re.compile(r"(?P<session_id>\d{4}-\d{2}-\d{2}-rth)\.l1
 class L1TradeRetentionPolicy:
     keep_raw_rth_sessions: int = 2
     compressed_hot_days: int = 14
+    disk_warning_used_pct: float = 70.0
+    disk_fail_used_pct: float = 85.0
+
+
+@dataclass(frozen=True)
+class DiskPressureSnapshot:
+    total_bytes: int
+    free_bytes: int
+
+
+@dataclass(frozen=True)
+class DiskPressureReport:
+    checked: bool
+    total_bytes: int | None
+    free_bytes: int | None
+    used_pct: float | None
+    severity: DiskPressureSeverity
+    reason: str
+    data_writes_allowed: bool
 
 
 @dataclass(frozen=True)
@@ -64,7 +84,8 @@ class L1TradeRetentionReport:
     skip_count: int
     actions: list[dict[str, Any]]
     diagnostics: list[dict[str, Any]]
-    policy: dict[str, int]
+    disk_pressure: dict[str, Any]
+    policy: dict[str, int | float]
     partial_parity_status: str
     data01_full_gate_status: str
     data01b_status: str
@@ -88,6 +109,7 @@ def plan_l1_trade_retention(
     archive_dir: Path,
     reference_session_id: str,
     policy: L1TradeRetentionPolicy | None = None,
+    disk_pressure: DiskPressureSnapshot | None = None,
 ) -> L1TradeRetentionReport:
     active_policy = policy or L1TradeRetentionPolicy()
     _validate_session_id(reference_session_id)
@@ -145,6 +167,7 @@ def plan_l1_trade_retention(
         actions=actions,
         diagnostics=diagnostics,
         policy=active_policy,
+        disk_pressure=_evaluate_disk_pressure(disk_pressure, active_policy),
     )
 
 
@@ -154,12 +177,14 @@ def apply_l1_trade_retention(
     archive_dir: Path,
     reference_session_id: str,
     policy: L1TradeRetentionPolicy | None = None,
+    disk_pressure: DiskPressureSnapshot | None = None,
 ) -> L1TradeRetentionReport:
     planned = plan_l1_trade_retention(
         journal_dir=journal_dir,
         archive_dir=archive_dir,
         reference_session_id=reference_session_id,
         policy=policy,
+        disk_pressure=disk_pressure,
     )
     actions = [_action_from_dict(action) for action in planned.actions]
     archive_dir.mkdir(parents=True, exist_ok=True)
@@ -182,6 +207,7 @@ def apply_l1_trade_retention(
         actions=actions,
         diagnostics=[_diagnostic_from_dict(diagnostic) for diagnostic in planned.diagnostics],
         policy=policy or L1TradeRetentionPolicy(),
+        disk_pressure=_disk_pressure_from_dict(planned.disk_pressure),
     )
 
 
@@ -289,8 +315,13 @@ def _to_report(
     actions: list[RetentionAction],
     diagnostics: list[RetentionDiagnostic],
     policy: L1TradeRetentionPolicy,
+    disk_pressure: DiskPressureReport,
 ) -> L1TradeRetentionReport:
-    status: RetentionStatus = "pass" if len(diagnostics) == 0 else "warning"
+    status: RetentionStatus = "pass"
+    if disk_pressure.severity == "fail":
+        status = "fail"
+    elif len(diagnostics) > 0 or disk_pressure.severity == "warning":
+        status = "warning"
     return L1TradeRetentionReport(
         status=status,
         mode=mode,
@@ -304,6 +335,7 @@ def _to_report(
         skip_count=sum(1 for action in actions if action.action == "skip"),
         actions=[asdict(action) for action in actions],
         diagnostics=[asdict(diagnostic) for diagnostic in diagnostics],
+        disk_pressure=asdict(disk_pressure),
         policy=asdict(policy),
         partial_parity_status=DATA01A_PARTIAL_PARITY_STATUS,
         data01_full_gate_status=DATA01A_FULL_GATE_STATUS,
@@ -333,6 +365,71 @@ def _action_from_dict(record: dict[str, Any]) -> RetentionAction:
 
 def _diagnostic_from_dict(record: dict[str, Any]) -> RetentionDiagnostic:
     return RetentionDiagnostic(path=record["path"], reason=record["reason"])
+
+
+def _evaluate_disk_pressure(
+    snapshot: DiskPressureSnapshot | None,
+    policy: L1TradeRetentionPolicy,
+) -> DiskPressureReport:
+    if snapshot is None:
+        return DiskPressureReport(
+            checked=False,
+            total_bytes=None,
+            free_bytes=None,
+            used_pct=None,
+            severity="not_checked",
+            reason="disk_pressure_not_provided",
+            data_writes_allowed=True,
+        )
+    if snapshot.total_bytes <= 0:
+        raise ValueError("disk total bytes must be positive")
+    if snapshot.free_bytes < 0:
+        raise ValueError("disk free bytes must be non-negative")
+    if snapshot.free_bytes > snapshot.total_bytes:
+        raise ValueError("disk free bytes cannot exceed total bytes")
+
+    used_pct = round(((snapshot.total_bytes - snapshot.free_bytes) / snapshot.total_bytes) * 100, 6)
+    if used_pct >= policy.disk_fail_used_pct:
+        return DiskPressureReport(
+            checked=True,
+            total_bytes=snapshot.total_bytes,
+            free_bytes=snapshot.free_bytes,
+            used_pct=used_pct,
+            severity="fail",
+            reason="disk_used_pct_at_or_above_fail_threshold",
+            data_writes_allowed=False,
+        )
+    if used_pct >= policy.disk_warning_used_pct:
+        return DiskPressureReport(
+            checked=True,
+            total_bytes=snapshot.total_bytes,
+            free_bytes=snapshot.free_bytes,
+            used_pct=used_pct,
+            severity="warning",
+            reason="disk_used_pct_at_or_above_warning_threshold",
+            data_writes_allowed=True,
+        )
+    return DiskPressureReport(
+        checked=True,
+        total_bytes=snapshot.total_bytes,
+        free_bytes=snapshot.free_bytes,
+        used_pct=used_pct,
+        severity="pass",
+        reason="disk_used_pct_below_warning_threshold",
+        data_writes_allowed=True,
+    )
+
+
+def _disk_pressure_from_dict(record: dict[str, Any]) -> DiskPressureReport:
+    return DiskPressureReport(
+        checked=bool(record["checked"]),
+        total_bytes=record.get("total_bytes"),
+        free_bytes=record.get("free_bytes"),
+        used_pct=record.get("used_pct"),
+        severity=record["severity"],
+        reason=record["reason"],
+        data_writes_allowed=bool(record["data_writes_allowed"]),
+    )
 
 
 def _validate_session_id(session_id: str) -> None:
