@@ -31,6 +31,37 @@ The revised gate confirms:
 - `sidecar_recv_ts_ns - exchange_event_ts_ns` telemetry has non-negative p50 and p99 below 500 ms.
 - Databento overlap parity report exists and confirms exchange-time-aligned live capture and historical data reconstruct comparable market state.
 
+## Partial INFRA-01 Verification Status
+
+INFRA-01 verification is partially complete.
+
+Validated:
+- Rithmic rich probe capture works.
+- Databento trades and mbp-1 files cover the Rithmic window.
+- L1/trade partial parity can proceed.
+
+Not validated:
+- Databento mbp-10 parity.
+- Databento mbo parity.
+- L2/L3 feature parity.
+- MBP10 reconstructed book parity.
+- MBO event/action parity.
+
+Decision:
+DATA-01 remains blocked as a full gate. We may proceed only with L1/trade-only preparatory work or split DATA-01 into DATA-01A and DATA-01B.
+
+If DATA-01 is split, `DATA-01A` is limited to L1/trade canonical ingestion: `LAST_TRADE`,
+`L1_QUOTE`/BBO, `exchange_event_ts_ns` as canonical event time, `sidecar_recv_ts_ns` as
+telemetry only, OBS-01 source event output, and partial parity status
+`L1_TRADE_ONLY_PASS`. `DATA-01B` remains blocked for L2/L3 parity.
+
+`DATA-01A` must not enable MBP10/MBO feature gates, mark OFI/depth/MBO-derived features as
+verified, start SIM-02/SIM-03, generate ML datasets, or advance REL gates.
+
+Full DATA-01 closure still requires Databento `mbp-10` and `mbo` availability, normalized
+Databento exports, matching rich Rithmic MBP10/MBO payloads, MBP10 reconstructed-state
+parity, MBO event/action parity, and a passing revised INFRA-01 verification report.
+
 ## INFRA-01B Primary Evidence
 
 `INFRA-01B` is the primary timestamp architecture path. It captures Linux/chrony or equivalent host-time evidence and a 30-minute RTH re-probe with all four streams:
