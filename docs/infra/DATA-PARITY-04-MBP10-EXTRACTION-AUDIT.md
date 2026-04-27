@@ -1,0 +1,130 @@
+# DATA-PARITY-04 - Rithmic MBP10 Extraction Audit
+
+## Purpose
+
+DATA-PARITY-04 validates the Rithmic `MBP10` extraction before Databento `mbp-10`
+parity is trusted.
+
+The trigger for this ticket was a failed Databento overlap parity run where reconstructed
+Rithmic `MBP10` produced very large top-of-book and depth mismatches. The first Rithmic
+`MBP10` seed row also contained implausible MNQ prices such as `2460.0`, `2477.25`,
+`2482.0`, `2750.0`, `10000.5`, and `12000.0`.
+
+That evidence should not be treated as proven market disagreement. It is first an
+extraction, scaling, or field-semantics question.
+
+## Command
+
+```powershell
+npm run infra:audit-rithmic-mbp10 -- `
+  --probe data/probes/infra01/full/probe-parity.jsonl `
+  --out reports/infra/rithmic_mbp10_extraction_audit.json
+```
+
+The command is offline-only. It reads an existing rich Rithmic probe and writes a JSON
+report. It does not fetch Databento data, connect to Rithmic, open sockets, or modify any
+gate status.
+
+## Core Invariant
+
+Before comparing Rithmic `MBP10` to Databento `mbp-10`, reconstructed Rithmic `MBP10`
+top-of-book should agree with Rithmic `L1_QUOTE` top-of-book over overlapping
+exchange-time windows.
+
+The audit requires the internal L1/MBP10 comparison to reach at least:
+
+```text
+mbp10_extraction_trusted = true
+internal_l1_mbp10_parity.within_1_tick_pct >= 99
+classification = state_stream_incremental_valid
+```
+
+If this internal check fails, Databento parity is not meaningful yet.
+
+## Null Timestamp Seed Policy
+
+Null `exchange_event_ts_ns` `MBP10` rows are not trusted as market-state seeds by default.
+The audit counts them separately and reports whether they contain implausible prices.
+
+The CLI option exists for experiments:
+
+```powershell
+--allow-null-seed true
+```
+
+Default behavior remains:
+
+```text
+--allow-null-seed false
+```
+
+## Analysis Performed
+
+The report includes:
+
+- `probe_parsing`: L1 and MBP10 row counts, timestamped/null row counts, one-sided update counts.
+- `null_seed_analysis`: null timestamp seed rows and implausible seed examples.
+- `price_sanity`: MNQ tick alignment and distance from nearby Rithmic L1 mid.
+- `internal_l1_mbp10_parity`: reconstructed MBP10 best bid/ask vs Rithmic L1 bid/ask.
+- `reconstruction_modes`: comparison across reconstruction policies.
+- `field_scaling_diagnostics`: field names, level counts, value distributions, and scale-factor evidence.
+- `classification`: the audit conclusion.
+- `recommendation`: the next action.
+
+## Reconstruction Modes
+
+The audit compares:
+
+- `no_null_seed_rows`
+- `null_seed_rows_allowed`
+- `reset_book_on_implausible_seed`
+- `timestamped_rows_only`
+- `plausible_l1_range_only`
+
+The best mode is selected by highest internal L1/MBP10 within-one-tick rate, then by the
+number of compared samples.
+
+## Classification Meanings
+
+`state_stream_incremental_valid`
+
+Rithmic MBP10 reconstruction is internally consistent with Rithmic L1. Databento MBP10
+parity may proceed, but DATA-01B still requires reviewer approval and MBO parity.
+
+`null_seed_contamination`
+
+Null timestamp seed rows appear to poison the reconstructed book. Disable null seed use
+before rerunning Databento MBP10 parity.
+
+`price_scaling_error_suspected`
+
+A non-1 scale factor appears materially more plausible than raw prices. Do not change
+scaling automatically; inspect Rithmic proto fields and update extraction only after
+manual review.
+
+`field_semantics_mismatch`
+
+The extracted fields are shaped like book levels but do not behave like current top-of-book
+state. Inspect raw Rithmic proto fields and message semantics.
+
+`extraction_bug_suspected`
+
+Implausible prices are present and internal L1/MBP10 parity fails. A direct proto debug
+dump is required before trusting MBP10 parity.
+
+`inconclusive`
+
+The probe does not contain enough comparable evidence to decide.
+
+## DATA-01B Guardrail
+
+DATA-01B remains blocked regardless of this tool's output. Full DATA-01 closure still
+requires:
+
+- trusted Rithmic MBP10 extraction,
+- reviewed Databento MBP10 parity,
+- reviewed Databento/Rithmic MBO parity,
+- revised INFRA-01 verification explicitly routing to `DATA-01`.
+
+Do not use this audit to enable MBP10/MBO feature gates, SIM-02/SIM-03, ML/RSRCH datasets,
+REL-00, or REL-01.
