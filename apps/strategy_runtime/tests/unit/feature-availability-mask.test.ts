@@ -8,7 +8,8 @@ import {
 
 const PYTHON = process.env.PYTHON ?? 'python';
 const V1_MASK_HASH = 'sha256:fd7672a243fe476e28e655a0a43ec8f31faf2abedda4fabd9f3d6f43bad3cb00';
-const CURRENT_MASK_HASH = 'sha256:f9039c8a9c19bd5de72cfd8d0200e44ff1c09ad439c02bcffbe2dbe639c4c4a3';
+const V2_MASK_HASH = 'sha256:f9039c8a9c19bd5de72cfd8d0200e44ff1c09ad439c02bcffbe2dbe639c4c4a3';
+const CURRENT_MASK_HASH = 'sha256:f6adf0fc9c985b0f5fb9dff490761c53fec7c8abeb65102046a8ef36535a6da3';
 
 function pythonMask(): Record<string, unknown> {
   const result = spawnSync(
@@ -42,8 +43,8 @@ describe('DATA-03 feature availability mask', () => {
 
     expect(mask).toMatchObject({
       schema_version: 1,
-      mask_version: 2,
-      mask_id: 'feature-availability-mask-v2-adr0002-infra01e-infra01f-data02mbo',
+      mask_version: 3,
+      mask_id: 'feature-availability-mask-v3-adr0002-infra01e-infra01f-data04',
       lineage: {
         adr: 'ADR-0002',
         infra01e: 'MBP10_PRICE_STATE_ACCEPTED_SUBSCOPE',
@@ -54,10 +55,14 @@ describe('DATA-03 feature availability mask', () => {
     });
     expect(mask.mask_hash).toBe(CURRENT_MASK_HASH);
     expect(mask.mask_hash).not.toBe(V1_MASK_HASH);
+    expect(mask.mask_hash).not.toBe(V2_MASK_HASH);
     expect(tierOf(mask, 'mbp10_top_bid_px')).toBe('authoritative');
     expect(tierOf(mask, 'mbo_order_id')).toBe('subscope');
     expect(tierOf(mask, 'mbo_book_state')).toBe('subscope');
     expect(tierOf(mask, 'queue_position_estimate')).toBe('subscope');
+    expect(tierOf(mask, 'microstructure_spread_ticks')).toBe('authoritative');
+    expect(tierOf(mask, 'mbo_ofi_short')).toBe('subscope');
+    expect(tierOf(mask, 'mbo_queue_imbalance')).toBe('subscope');
     expect(tierOf(mask, 'mbp10_size_diagnostic')).toBe('diagnostic_only');
     expect(tierOf(mask, 'queue_position')).toBe('blocked');
   });
