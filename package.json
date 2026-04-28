@@ -6,6 +6,7 @@
     "build": "tsc -p tsconfig.json",
     "check:python": "node scripts/check-python-syntax.mjs",
     "data:01a:l1-trade": "python -m services.market_data_sidecar.app",
+    "data:01b:price-state": "python -m services.market_data_sidecar.mbp10_price_state_app",
     "data:05a:retention": "python -m services.market_data_sidecar.retention_app",
     "data:06a:session-warmup": "python -m services.market_data_sidecar.session_warmup_app",
     "data:07a:gap-report": "python -m services.market_data_sidecar.gap_report_app",
