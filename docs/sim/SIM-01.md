@@ -33,6 +33,12 @@ Limit orders use a conservative queue-aware simplification:
 
 Stop-market orders fill only after the current BBO has crossed the stop trigger. Untriggered day/GTC stops are accepted with no fill.
 
+## SIM-02 Extension
+
+SIM-02 bumps the adapter implementation to `simulated_execution_v2` and adds
+`limit_post_only` queue-aware fills. SIM-01 marketable/BBO behavior remains the default
+path for `market`, `limit`, and `stop_market` orders.
+
 ## Costs
 
 Fills include per-side commission and exchange fees from the RISK-01 venue-cost table. SIM-02/SIM-03 will replace the basic slippage assumptions with calibrated MNQ tick-data models.

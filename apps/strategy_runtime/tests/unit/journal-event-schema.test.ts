@@ -225,6 +225,57 @@ describe('OBS-01 journal event schema validation', () => {
     });
   });
 
+  it('accepts SIM-02 order intents and queue-aware fill diagnostics', () => {
+    const orderIntent = createJournalEventEnvelope({
+      event_id: makeEventId('order-intent-sim02-1'),
+      type: 'ORDER_INTENT',
+      ts_ns: ns(TS_NS),
+      run_id: makeRunId('run-obs-01'),
+      session_id: makeSessionId('2026-04-23-rth'),
+      causation_id: makeCausationId('sizing-1'),
+      payload: {
+        order_intent_id: 'order-sim02-1',
+        candidate_id: 'candidate-1',
+        sizing_decision_id: 'sizing-1',
+        side: 'buy',
+        order_type: 'limit_post_only',
+        quantity: 2,
+        limit_price: 18500.25,
+        time_in_force: 'day',
+      },
+    });
+    const fill = createJournalEventEnvelope({
+      event_id: makeEventId('sim-fill-sim02-1'),
+      type: 'SIM_FILL',
+      ts_ns: ns(TS_NS),
+      run_id: makeRunId('run-obs-01'),
+      session_id: makeSessionId('2026-04-23-rth'),
+      causation_id: makeCausationId(orderIntent.event_id),
+      payload: {
+        fill_id: 'fill-sim02-1',
+        order_intent_id: 'order-sim02-1',
+        side: 'buy',
+        quantity: 2,
+        price: 18500.25,
+        liquidity: 'maker',
+        slippage_points: 0,
+        execution_model_version: 'simulated_execution_v2',
+        fill_model: 'queue_aware_limit_post_only',
+        input_tier: 'subscope',
+        fill_probability: 1,
+        time_to_fill_estimate_ms: 250,
+        queue_position_estimate: 0,
+        queue_ahead_size_estimate: 0,
+        queue_ahead_order_count_estimate: 0,
+        queue_consumed_size: 3,
+        calibration_status: 'placeholder_pending_sim03',
+      },
+    });
+
+    expect(validateJournalEventEnvelope(orderIntent)).toMatchObject({ ok: true, issues: [] });
+    expect(validateJournalEventEnvelope(fill)).toMatchObject({ ok: true, issues: [] });
+  });
+
   it('rejects payload field type mismatches', () => {
     const result = validateJournalEventEnvelope(quoteEvent({ bid_px: '18500.25' }));
 

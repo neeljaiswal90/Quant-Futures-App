@@ -563,7 +563,12 @@ function validateOrderIntentPayload(
   requireNonEmptyString(record.candidate_id, `${path}.candidate_id`, issues);
   requireNonEmptyString(record.sizing_decision_id, `${path}.sizing_decision_id`, issues);
   requireEnum(record.side, `${path}.side`, issues, ['buy', 'sell']);
-  requireEnum(record.order_type, `${path}.order_type`, issues, ['market', 'limit', 'stop_market']);
+  requireEnum(record.order_type, `${path}.order_type`, issues, [
+    'market',
+    'limit',
+    'limit_post_only',
+    'stop_market',
+  ]);
   requireNumber(record.quantity, `${path}.quantity`, issues);
   optionalNumber(record.limit_price, `${path}.limit_price`, issues);
   optionalNumber(record.stop_price, `${path}.stop_price`, issues);
@@ -593,6 +598,27 @@ function validateSimFillPayload(
   optionalNumber(record.slippage_points, `${path}.slippage_points`, issues);
   optionalNumber(record.exchange_fee_usd, `${path}.exchange_fee_usd`, issues);
   optionalNumber(record.commission_usd, `${path}.commission_usd`, issues);
+  optionalNonEmptyString(record.execution_model_version, `${path}.execution_model_version`, issues);
+  optionalEnum(record.fill_model, `${path}.fill_model`, issues, [
+    'bbo_market_taker',
+    'queue_aware_limit_post_only',
+  ]);
+  optionalEnum(record.input_tier, `${path}.input_tier`, issues, [
+    'authoritative',
+    'subscope',
+    'diagnostic_only',
+    'blocked',
+  ]);
+  optionalNumber(record.fill_probability, `${path}.fill_probability`, issues);
+  optionalNumber(record.time_to_fill_estimate_ms, `${path}.time_to_fill_estimate_ms`, issues);
+  optionalNumber(record.queue_position_estimate, `${path}.queue_position_estimate`, issues);
+  optionalNumber(record.queue_ahead_size_estimate, `${path}.queue_ahead_size_estimate`, issues);
+  optionalNumber(record.queue_ahead_order_count_estimate, `${path}.queue_ahead_order_count_estimate`, issues);
+  optionalNumber(record.queue_consumed_size, `${path}.queue_consumed_size`, issues);
+  optionalNonEmptyString(record.partial_fill_reason, `${path}.partial_fill_reason`, issues);
+  optionalNumber(record.adverse_tick_draw, `${path}.adverse_tick_draw`, issues);
+  optionalNumber(record.adverse_ticks, `${path}.adverse_ticks`, issues);
+  optionalNonEmptyString(record.calibration_status, `${path}.calibration_status`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
   optionalNonEmptyString(record.management_action_id, `${path}.management_action_id`, issues);
   optionalNonEmptyString(record.position_id, `${path}.position_id`, issues);
