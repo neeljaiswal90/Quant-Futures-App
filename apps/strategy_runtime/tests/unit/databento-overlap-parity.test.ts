@@ -61,6 +61,29 @@ function checkpointRow(offsetNs = 500_000n): Record<string, unknown> {
   });
 }
 
+function twoSidedUpdate(
+  offsetNs: bigint,
+  bidPx: number,
+  askPx: number,
+  size = 5,
+  orderCount = 2,
+): Record<string, unknown> {
+  return mbp10Record(offsetNs, {
+    bids: [{ level: 0, px: bidPx, sz: size, order_count: orderCount }],
+    asks: [{ level: 0, px: askPx, sz: size, order_count: orderCount }],
+  });
+}
+
+function shiftInsideTo101x102(offsetNs: bigint): Record<string, unknown> {
+  return mbp10Record(offsetNs, {
+    bids: [{ level: 0, px: 101, sz: 5, order_count: 2 }],
+    asks: [
+      { level: 0, px: 101, sz: 0, order_count: 0 },
+      { level: 1, px: 102, sz: 5, order_count: 2 },
+    ],
+  });
+}
+
 function writeJsonl(rows: readonly Record<string, unknown>[], fileName: string): string {
   const directory = makeTempDir();
   const path = join(directory, fileName);
@@ -507,6 +530,200 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
         }).mbp10_component_parity.first_mismatches,
       ),
     );
+  });
+
+  it('detects a known +50 ms temporal offset in the lag scan', () => {
+    const rithmicPath = writeJsonl(
+      [
+        seedRow(),
+        twoSidedUpdate(0n, 100, 101),
+        shiftInsideTo101x102(50_000_000n),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoPath = writeJsonl(
+      [
+        databentoRecord(0n, {
+          bid_px_00: 101,
+          bid_sz_00: 5,
+          bid_ct_00: 2,
+          ask_px_00: 102,
+          ask_sz_00: 5,
+          ask_ct_00: 2,
+        }),
+      ],
+      'databento.jsonl',
+    );
+
+    const report = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoPath,
+    });
+
+    expect(report.mbp10_temporal_alignment).toMatchObject({
+      best_offset_ms: 50,
+      classification: 'temporal_alignment_offset_required',
+    });
+    expect(
+      report.mbp10_temporal_alignment.lag_scan_scores.find((score) => score.offset_ms === 50),
+    ).toMatchObject({
+      both_sides_top_price_within_1_tick_pct: 100,
+    });
+    expect(
+      report.mbp10_temporal_alignment.lag_scan_scores.find((score) => score.offset_ms === 0),
+    ).toMatchObject({
+      both_sides_top_price_within_1_tick_pct: 0,
+    });
+  });
+
+  it('shows nearest-state lookup can improve over previous-or-equal sampling', () => {
+    const rithmicPath = writeJsonl(
+      [
+        seedRow(),
+        twoSidedUpdate(0n, 100, 101),
+        shiftInsideTo101x102(10_000_000n),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoPath = writeJsonl(
+      [
+        databentoRecord(6_000_000n, {
+          bid_px_00: 101,
+          bid_sz_00: 5,
+          bid_ct_00: 2,
+          ask_px_00: 102,
+          ask_sz_00: 5,
+          ask_ct_00: 2,
+        }),
+      ],
+      'databento.jsonl',
+    );
+
+    const report = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoPath,
+    });
+
+    expect(report.mbp10_temporal_alignment.lookup_policy_scores.previous_or_equal).toMatchObject({
+      both_sides_top_price_within_1_tick_pct: 0,
+    });
+    expect(report.mbp10_temporal_alignment.lookup_policy_scores.nearest).toMatchObject({
+      both_sides_top_price_within_1_tick_pct: 100,
+    });
+  });
+
+  it('scores ts_recv separately when normalized Databento rows provide it', () => {
+    const rithmicPath = writeJsonl(
+      [
+        seedRow(),
+        twoSidedUpdate(0n, 100, 101),
+        shiftInsideTo101x102(50_000_000n),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoPath = writeJsonl(
+      [
+        databentoRecord(0n, {
+          ts_recv_ns: (START_TS_NS + 50_000_000n).toString(),
+          bid_px_00: 101,
+          bid_sz_00: 5,
+          bid_ct_00: 2,
+          ask_px_00: 102,
+          ask_sz_00: 5,
+          ask_ct_00: 2,
+        }),
+      ],
+      'databento.jsonl',
+    );
+
+    const report = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoPath,
+    });
+
+    expect(report.mbp10_temporal_alignment.timestamp_basis_scores).toMatchObject({
+      ts_recv_available: true,
+      ts_event: {
+        both_sides_top_price_within_1_tick_pct: 0,
+      },
+      ts_recv: {
+        both_sides_top_price_within_1_tick_pct: 100,
+      },
+    });
+    expect(report.mbp10_temporal_alignment.best_timestamp_basis).toBe('ts_recv');
+  });
+
+  it('reports deterministic mismatch clusters and BBO cross-check shape', () => {
+    const rithmicPath = writeJsonl(
+      [
+        seedRow(),
+        twoSidedUpdate(0n, 100, 101),
+        shiftInsideTo101x102(90_000_000_000n),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoPath = writeJsonl(
+      [
+        databentoRecord(1_000_000n, {
+          bid_px_00: 100,
+          bid_sz_00: 5,
+          bid_ct_00: 2,
+          ask_px_00: 101,
+          ask_sz_00: 5,
+          ask_ct_00: 2,
+        }),
+        databentoRecord(2_000_000n, {
+          bid_px_00: 101,
+          bid_sz_00: 5,
+          bid_ct_00: 2,
+          ask_px_00: 102,
+          ask_sz_00: 5,
+          ask_ct_00: 2,
+        }),
+        databentoRecord(61_000_000_000n, {
+          bid_px_00: 101,
+          bid_sz_00: 5,
+          bid_ct_00: 2,
+          ask_px_00: 102,
+          ask_sz_00: 5,
+          ask_ct_00: 2,
+        }),
+      ],
+      'databento.jsonl',
+    );
+
+    const report = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoPath,
+    });
+
+    expect(report).toMatchObject({
+      status: 'analysis_only',
+      data01_eligible: false,
+      mbp10_temporal_alignment: {
+        mismatch_clusters: {
+          price_mismatch_sample_count: 2,
+          price_match_sample_count: 1,
+          max_consecutive_mismatch_run: 2,
+          first_clusters: [
+            {
+              start_ts_ns: (START_TS_NS + 2_000_000n).toString(),
+              end_ts_ns: (START_TS_NS + 61_000_000_000n).toString(),
+              sample_count: 2,
+            },
+          ],
+        },
+        bbo_cross_checks: {
+          rithmic_l1_quote_vs_databento_mbp1: {
+            status: 'not_available',
+          },
+          rithmic_mbp10_top_vs_databento_mbp10: {
+            lookup_policy: 'previous_or_equal',
+          },
+        },
+      },
+    });
+    expect(report.mbp10_temporal_alignment.mismatch_clusters.mismatch_rate_per_minute).toHaveLength(2);
   });
 
   it('writes a stable report shape', () => {

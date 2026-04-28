@@ -80,6 +80,7 @@ export interface DatabentoOverlapParityReport {
   readonly databento_mbp10_samples: DatabentoMbp10NormalizationReport;
   readonly mbp10_parity: Mbp10ParityComparisonReport;
   readonly mbp10_component_parity: Mbp10ComponentParityReport;
+  readonly mbp10_temporal_alignment: Mbp10TemporalAlignmentReport;
   readonly recommendation: {
     readonly summary: string;
     readonly requires_reviewer_decision: true;
@@ -216,6 +217,90 @@ export interface Mbp10ComponentMismatchExample {
     | 'level_presence_mismatch';
 }
 
+export type Mbp10LookupPolicy = 'previous_or_equal' | 'nearest' | 'next_or_equal' | 'midpoint_bucketed';
+
+export type Mbp10TimestampBasis = 'ts_event' | 'ts_recv' | 'unavailable';
+
+export type Mbp10TemporalAlignmentClassification =
+  | 'temporal_alignment_offset_required'
+  | 'sampling_policy_mismatch'
+  | 'timestamp_basis_mismatch'
+  | 'persistent_price_level_reconstruction_mismatch';
+
+export interface Mbp10TemporalAlignmentReport {
+  readonly lookup_policy_scores: Readonly<Record<Mbp10LookupPolicy, Mbp10TemporalPolicyScore>>;
+  readonly lag_scan_scores: readonly Mbp10LagScanScore[];
+  readonly timestamp_basis_scores: {
+    readonly ts_event: Mbp10TemporalPolicyScore;
+    readonly ts_recv: Mbp10TemporalPolicyScore | null;
+    readonly ts_recv_available: boolean;
+  };
+  readonly best_offset_ms: number;
+  readonly best_lookup_policy: Mbp10LookupPolicy;
+  readonly best_timestamp_basis: Mbp10TimestampBasis;
+  readonly mismatch_clusters: Mbp10MismatchClusterReport;
+  readonly bbo_cross_checks: Mbp10BboCrossCheckReport;
+  readonly classification: Mbp10TemporalAlignmentClassification;
+  readonly recommendation: string;
+}
+
+export interface Mbp10TemporalPolicyScore {
+  readonly lookup_policy: Mbp10LookupPolicy;
+  readonly timestamp_basis: Mbp10TimestampBasis;
+  readonly offset_ms: number;
+  readonly compared_samples: number;
+  readonly unmatched_samples: number;
+  readonly bid_top_price_within_1_tick_pct: number | null;
+  readonly ask_top_price_within_1_tick_pct: number | null;
+  readonly both_sides_top_price_within_1_tick_pct: number | null;
+  readonly depth_price_within_1_tick_pct: number | null;
+  readonly bid_top_size_exact_match_pct: number | null;
+  readonly ask_top_size_exact_match_pct: number | null;
+  readonly bid_top_order_count_exact_match_pct: number | null;
+  readonly ask_top_order_count_exact_match_pct: number | null;
+}
+
+export interface Mbp10LagScanScore extends Mbp10TemporalPolicyScore {
+  readonly offset_ms: number;
+}
+
+export interface Mbp10MismatchClusterReport {
+  readonly basis: 'previous_or_equal_ts_event_offset_0';
+  readonly price_mismatch_sample_count: number;
+  readonly price_match_sample_count: number;
+  readonly max_consecutive_mismatch_run: number;
+  readonly first_clusters: readonly Mbp10MismatchCluster[];
+  readonly mismatch_rate_per_minute: readonly Mbp10MinuteMismatchRate[];
+  readonly volatile_period_correlation: {
+    readonly status: 'not_available';
+    readonly reason: string;
+  };
+}
+
+export interface Mbp10MismatchCluster {
+  readonly start_ts_ns: string;
+  readonly end_ts_ns: string;
+  readonly sample_count: number;
+}
+
+export interface Mbp10MinuteMismatchRate {
+  readonly bucket_start_ts_ns: string;
+  readonly compared_samples: number;
+  readonly price_mismatch_samples: number;
+  readonly mismatch_rate_pct: number | null;
+}
+
+export interface Mbp10BboCrossCheckReport {
+  readonly rithmic_l1_quote_vs_databento_mbp1: UnavailableCrossCheck | Mbp10TemporalPolicyScore;
+  readonly rithmic_mbp10_top_vs_databento_mbp1: UnavailableCrossCheck | Mbp10TemporalPolicyScore;
+  readonly rithmic_mbp10_top_vs_databento_mbp10: Mbp10TemporalPolicyScore;
+}
+
+export interface UnavailableCrossCheck {
+  readonly status: 'not_available';
+  readonly reason: string;
+}
+
 interface CliArgs {
   readonly rithmic_probe_path: string;
   readonly databento_mbp10_path: string;
@@ -243,16 +328,28 @@ interface RithmicMbp10UpdateSet {
   readonly report: RithmicMbp10ReconstructionReport;
 }
 
+interface RithmicTopOfBookSnapshotIndex {
+  readonly ts_ns: BigInt64Array;
+  readonly bid_px: Float64Array;
+  readonly ask_px: Float64Array;
+  readonly bid_sz: Int32Array;
+  readonly ask_sz: Int32Array;
+  readonly bid_order_count: Int32Array;
+  readonly ask_order_count: Int32Array;
+}
+
 interface StreamingDatabentoMbp10ParityResult {
   readonly databento_report: DatabentoMbp10NormalizationReport;
   readonly parity_report: Mbp10ParityComparisonReport;
   readonly component_report: Mbp10ComponentParityReport;
+  readonly temporal_report: Mbp10TemporalAlignmentReport;
 }
 
 const DEFAULT_REPORT_PATH = 'reports/infra/databento_overlap_parity_report.json';
 const MAX_DEPTH_LEVEL = 9;
 const MISMATCH_LIMIT = 50;
 const MNQ_TICK_SIZE = 0.25;
+const TEMPORAL_LAG_SCAN_OFFSETS_MS = [-500, -250, -100, -50, -25, -10, -5, 0, 5, 10, 25, 50, 100, 250, 500] as const;
 
 export function reconstructRithmicMbp10FromRecords(
   records: readonly unknown[],
@@ -474,6 +571,7 @@ export function analyzeDatabentoOverlapParity(options: {
     databento_mbp10_samples: databento.databento_report,
     mbp10_parity: databento.parity_report,
     mbp10_component_parity: databento.component_report,
+    mbp10_temporal_alignment: databento.temporal_report,
     recommendation: {
       summary:
         'Use reconstructed Rithmic MBP10 state for Databento MBP10 comparison; keep DATA-01 blocked until parity is reviewed and INFRA-01 verification explicitly routes to DATA-01.',
@@ -580,6 +678,7 @@ function compareDatabentoMbp10JsonlWithRithmicUpdates(
   path: string,
   rithmic: RithmicMbp10UpdateSet,
 ): StreamingDatabentoMbp10ParityResult {
+  const temporal = analyzeTemporalAlignment(path, rithmic);
   const rithmicState = cloneBookState(rithmic.seed_state);
   const topOfBook = emptyFieldParitySummary();
   const depthLevels = emptyFieldParitySummary();
@@ -677,6 +776,7 @@ function compareDatabentoMbp10JsonlWithRithmicUpdates(
       mismatches_truncated: totalMismatchCount(mismatchesBySideLevel) > firstMismatches.length,
     },
     component_report: finalizeComponentParity(componentParity),
+    temporal_report: temporal,
   };
 }
 
@@ -702,6 +802,10 @@ export function formatDatabentoOverlapParitySummary(report: DatabentoOverlapPari
     `top_both_sides_price_within_1_tick_pct=${report.mbp10_component_parity.top_of_book.both_sides_price_within_1_tick_pct}`,
     `top_bid_size_exact_match_pct=${report.mbp10_component_parity.top_of_book.bid_size_exact_match_pct}`,
     `top_ask_size_exact_match_pct=${report.mbp10_component_parity.top_of_book.ask_size_exact_match_pct}`,
+    `temporal_classification=${report.mbp10_temporal_alignment.classification}`,
+    `best_lookup_policy=${report.mbp10_temporal_alignment.best_lookup_policy}`,
+    `best_offset_ms=${report.mbp10_temporal_alignment.best_offset_ms}`,
+    `best_timestamp_basis=${report.mbp10_temporal_alignment.best_timestamp_basis}`,
     'DATA-01 remains blocked pending INFRA-01 verification.',
     '',
   ].join('\n');
@@ -949,6 +1053,678 @@ function createComponentParityAccumulator(): ComponentParityAccumulator {
       level_presence_mismatches: [],
     },
   };
+}
+
+function analyzeTemporalAlignment(path: string, rithmic: RithmicMbp10UpdateSet): Mbp10TemporalAlignmentReport {
+  const snapshotIndex = buildRithmicTopOfBookSnapshotIndex(rithmic);
+  const lookupAccumulators = {
+    previous_or_equal: createTemporalScoreAccumulator('previous_or_equal', 'ts_event', 0),
+    nearest: createTemporalScoreAccumulator('nearest', 'ts_event', 0),
+    next_or_equal: createTemporalScoreAccumulator('next_or_equal', 'ts_event', 0),
+    midpoint_bucketed: createTemporalScoreAccumulator('midpoint_bucketed', 'ts_event', 0),
+  } satisfies Record<Mbp10LookupPolicy, TemporalScoreAccumulator>;
+  const lagAccumulators = TEMPORAL_LAG_SCAN_OFFSETS_MS.map((offsetMs) =>
+    createTemporalScoreAccumulator('previous_or_equal', 'ts_event', offsetMs),
+  );
+  const tsRecvAccumulator = createTemporalScoreAccumulator('previous_or_equal', 'ts_recv', 0);
+  const clusterAccumulator = createMismatchClusterAccumulator();
+  let tsRecvAvailable = false;
+
+  forEachJsonlLine(path, (trimmed, lineNumber) => {
+    let record: unknown;
+    try {
+      record = JSON.parse(trimmed);
+    } catch (error) {
+      throw new Error(
+        `Databento MBP10 line ${lineNumber}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (!isRecord(record)) {
+      throw new Error(`Databento line ${lineNumber}: JSON value must be an object`);
+    }
+    const databentoSample = normalizeDatabentoMbp10Record(record, lineNumber);
+    if (databentoSample === null) {
+      return;
+    }
+
+    for (const policy of Object.keys(lookupAccumulators) as Mbp10LookupPolicy[]) {
+      updateTemporalScoreWithLookup({
+        accumulator: lookupAccumulators[policy],
+        snapshotIndex,
+        databentoSample,
+        lookupPolicy: policy,
+        targetTsNs: BigInt(databentoSample.ts_ns),
+      });
+    }
+
+    for (const accumulator of lagAccumulators) {
+      updateTemporalScoreWithLookup({
+        accumulator,
+        snapshotIndex,
+        databentoSample,
+        lookupPolicy: 'previous_or_equal',
+        targetTsNs: BigInt(databentoSample.ts_ns) + BigInt(accumulator.offset_ms) * 1_000_000n,
+      });
+    }
+
+    const baseSelectedIndex = selectSnapshotIndex(snapshotIndex, BigInt(databentoSample.ts_ns), 'previous_or_equal');
+    updateMismatchClusters(clusterAccumulator, snapshotIndex, databentoSample, baseSelectedIndex);
+
+    const tsRecvNs = optionalDecimalString(record, ['ts_recv_ns', 'ts_recv', 'receive_ts_ns', 'databento_recv_ts_ns']);
+    if (tsRecvNs !== null) {
+      tsRecvAvailable = true;
+      updateTemporalScoreWithLookup({
+        accumulator: tsRecvAccumulator,
+        snapshotIndex,
+        databentoSample,
+        lookupPolicy: 'previous_or_equal',
+        targetTsNs: BigInt(tsRecvNs),
+      });
+    }
+  });
+
+  const lookupPolicyScores = {
+    previous_or_equal: finalizeTemporalScore(lookupAccumulators.previous_or_equal),
+    nearest: finalizeTemporalScore(lookupAccumulators.nearest),
+    next_or_equal: finalizeTemporalScore(lookupAccumulators.next_or_equal),
+    midpoint_bucketed: finalizeTemporalScore(lookupAccumulators.midpoint_bucketed),
+  } satisfies Record<Mbp10LookupPolicy, Mbp10TemporalPolicyScore>;
+  const lagScanScores = lagAccumulators.map(finalizeTemporalScore) as Mbp10LagScanScore[];
+  const timestampBasisScores = {
+    ts_event: lookupPolicyScores.previous_or_equal,
+    ts_recv: tsRecvAvailable ? finalizeTemporalScore(tsRecvAccumulator) : null,
+    ts_recv_available: tsRecvAvailable,
+  };
+  const bestPolicy = bestLookupPolicy(lookupPolicyScores);
+  const bestLag = bestLagScore(lagScanScores);
+  const bestTimestampBasis = bestTimestampBasisName(timestampBasisScores);
+  const classification = classifyTemporalAlignment({
+    lookupPolicyScores,
+    timestampBasisScores,
+    bestPolicy,
+    bestLag,
+    bestTimestampBasis,
+  });
+
+  return {
+    lookup_policy_scores: lookupPolicyScores,
+    lag_scan_scores: lagScanScores,
+    timestamp_basis_scores: timestampBasisScores,
+    best_offset_ms: bestLag.offset_ms,
+    best_lookup_policy: bestPolicy,
+    best_timestamp_basis: bestTimestampBasis,
+    mismatch_clusters: finalizeMismatchClusters(clusterAccumulator),
+    bbo_cross_checks: {
+      rithmic_l1_quote_vs_databento_mbp1: {
+        status: 'not_available',
+        reason: 'No normalized Databento MBP-1 input path is provided to this analyzer.',
+      },
+      rithmic_mbp10_top_vs_databento_mbp1: {
+        status: 'not_available',
+        reason: 'No normalized Databento MBP-1 input path is provided to this analyzer.',
+      },
+      rithmic_mbp10_top_vs_databento_mbp10: lookupPolicyScores.previous_or_equal,
+    },
+    classification,
+    recommendation: recommendationForTemporalClassification(classification),
+  };
+}
+
+function buildRithmicTopOfBookSnapshotIndex(rithmic: RithmicMbp10UpdateSet): RithmicTopOfBookSnapshotIndex {
+  const updateCount = rithmic.updates.length;
+  const tsNs = new BigInt64Array(updateCount);
+  const bidPx = new Float64Array(updateCount * (MAX_DEPTH_LEVEL + 1));
+  const askPx = new Float64Array(updateCount * (MAX_DEPTH_LEVEL + 1));
+  const bidSz = new Int32Array(updateCount * (MAX_DEPTH_LEVEL + 1));
+  const askSz = new Int32Array(updateCount * (MAX_DEPTH_LEVEL + 1));
+  const bidOrderCount = new Int32Array(updateCount * (MAX_DEPTH_LEVEL + 1));
+  const askOrderCount = new Int32Array(updateCount * (MAX_DEPTH_LEVEL + 1));
+  bidPx.fill(Number.NaN);
+  askPx.fill(Number.NaN);
+  bidSz.fill(-1);
+  askSz.fill(-1);
+  bidOrderCount.fill(-1);
+  askOrderCount.fill(-1);
+
+  const state = cloneBookState(rithmic.seed_state);
+  rithmic.updates.forEach((update, updateIndex) => {
+    applyBookUpdate(state, update);
+    const sample = stateToSample(state, update.ts_ns, update.record_index);
+    tsNs[updateIndex] = BigInt(update.ts_ns);
+    writeSnapshotSide({ updateIndex, levels: sample.bids, px: bidPx, sz: bidSz, orderCount: bidOrderCount });
+    writeSnapshotSide({ updateIndex, levels: sample.asks, px: askPx, sz: askSz, orderCount: askOrderCount });
+  });
+
+  return {
+    ts_ns: tsNs,
+    bid_px: bidPx,
+    ask_px: askPx,
+    bid_sz: bidSz,
+    ask_sz: askSz,
+    bid_order_count: bidOrderCount,
+    ask_order_count: askOrderCount,
+  };
+}
+
+function writeSnapshotSide(args: {
+  readonly updateIndex: number;
+  readonly levels: readonly BookLevel[];
+  readonly px: Float64Array;
+  readonly sz: Int32Array;
+  readonly orderCount: Int32Array;
+}): void {
+  for (const level of args.levels) {
+    if (level.level < 0 || level.level > MAX_DEPTH_LEVEL) {
+      continue;
+    }
+    const index = snapshotArrayIndex(args.updateIndex, level.level);
+    args.px[index] = level.px;
+    args.sz[index] = level.sz;
+    args.orderCount[index] = level.order_count ?? -1;
+  }
+}
+
+interface TemporalScoreAccumulator {
+  readonly lookup_policy: Mbp10LookupPolicy;
+  readonly timestamp_basis: Mbp10TimestampBasis;
+  readonly offset_ms: number;
+  compared_samples: number;
+  unmatched_samples: number;
+  bid_top_price_comparable_count: number;
+  bid_top_price_within_one_tick_count: number;
+  ask_top_price_comparable_count: number;
+  ask_top_price_within_one_tick_count: number;
+  both_sides_top_price_comparable_count: number;
+  both_sides_top_price_within_one_tick_count: number;
+  depth_price_comparable_count: number;
+  depth_price_within_one_tick_count: number;
+  bid_top_size_comparable_count: number;
+  bid_top_size_exact_match_count: number;
+  ask_top_size_comparable_count: number;
+  ask_top_size_exact_match_count: number;
+  bid_top_order_count_comparable_count: number;
+  bid_top_order_count_exact_match_count: number;
+  ask_top_order_count_comparable_count: number;
+  ask_top_order_count_exact_match_count: number;
+}
+
+function createTemporalScoreAccumulator(
+  lookupPolicy: Mbp10LookupPolicy,
+  timestampBasis: Mbp10TimestampBasis,
+  offsetMs: number,
+): TemporalScoreAccumulator {
+  return {
+    lookup_policy: lookupPolicy,
+    timestamp_basis: timestampBasis,
+    offset_ms: offsetMs,
+    compared_samples: 0,
+    unmatched_samples: 0,
+    bid_top_price_comparable_count: 0,
+    bid_top_price_within_one_tick_count: 0,
+    ask_top_price_comparable_count: 0,
+    ask_top_price_within_one_tick_count: 0,
+    both_sides_top_price_comparable_count: 0,
+    both_sides_top_price_within_one_tick_count: 0,
+    depth_price_comparable_count: 0,
+    depth_price_within_one_tick_count: 0,
+    bid_top_size_comparable_count: 0,
+    bid_top_size_exact_match_count: 0,
+    ask_top_size_comparable_count: 0,
+    ask_top_size_exact_match_count: 0,
+    bid_top_order_count_comparable_count: 0,
+    bid_top_order_count_exact_match_count: 0,
+    ask_top_order_count_comparable_count: 0,
+    ask_top_order_count_exact_match_count: 0,
+  };
+}
+
+function updateTemporalScoreWithLookup(args: {
+  readonly accumulator: TemporalScoreAccumulator;
+  readonly snapshotIndex: RithmicTopOfBookSnapshotIndex;
+  readonly databentoSample: BookSample;
+  readonly lookupPolicy: Mbp10LookupPolicy;
+  readonly targetTsNs: bigint;
+}): void {
+  const selectedIndex = selectSnapshotIndex(args.snapshotIndex, args.targetTsNs, args.lookupPolicy);
+  updateTemporalScore(args.accumulator, args.snapshotIndex, args.databentoSample, selectedIndex);
+}
+
+function updateTemporalScore(
+  accumulator: TemporalScoreAccumulator,
+  snapshotIndex: RithmicTopOfBookSnapshotIndex,
+  databentoSample: BookSample,
+  selectedIndex: number,
+): void {
+  if (selectedIndex < 0) {
+    accumulator.unmatched_samples += 1;
+    return;
+  }
+
+  accumulator.compared_samples += 1;
+  const bidTopWithin = updateTemporalTopSide(accumulator, snapshotIndex, databentoSample, selectedIndex, 'bid');
+  const askTopWithin = updateTemporalTopSide(accumulator, snapshotIndex, databentoSample, selectedIndex, 'ask');
+  if (bidTopWithin !== null && askTopWithin !== null) {
+    accumulator.both_sides_top_price_comparable_count += 1;
+    if (bidTopWithin && askTopWithin) {
+      accumulator.both_sides_top_price_within_one_tick_count += 1;
+    }
+  }
+
+  for (const side of ['bid', 'ask'] as const) {
+    for (let level = 0; level <= MAX_DEPTH_LEVEL; level += 1) {
+      const rithmicPx = getSnapshotPrice(snapshotIndex, selectedIndex, side, level);
+      const databentoLevel = findLevel(databentoSample, side, level);
+      if (rithmicPx === null || databentoLevel === null) {
+        continue;
+      }
+      accumulator.depth_price_comparable_count += 1;
+      if (Math.abs(rithmicPx - databentoLevel.px) <= MNQ_TICK_SIZE) {
+        accumulator.depth_price_within_one_tick_count += 1;
+      }
+    }
+  }
+}
+
+function updateTemporalTopSide(
+  accumulator: TemporalScoreAccumulator,
+  snapshotIndex: RithmicTopOfBookSnapshotIndex,
+  databentoSample: BookSample,
+  selectedIndex: number,
+  side: BookSide,
+): boolean | null {
+  const rithmicPx = getSnapshotPrice(snapshotIndex, selectedIndex, side, 0);
+  const rithmicSize = getSnapshotSize(snapshotIndex, selectedIndex, side, 0);
+  const rithmicOrderCount = getSnapshotOrderCount(snapshotIndex, selectedIndex, side, 0);
+  const databentoLevel = findLevel(databentoSample, side, 0);
+  if (rithmicPx === null || databentoLevel === null) {
+    return null;
+  }
+
+  const priceWithinOneTick = Math.abs(rithmicPx - databentoLevel.px) <= MNQ_TICK_SIZE;
+  if (side === 'bid') {
+    accumulator.bid_top_price_comparable_count += 1;
+    if (priceWithinOneTick) accumulator.bid_top_price_within_one_tick_count += 1;
+    if (rithmicSize !== null) {
+      accumulator.bid_top_size_comparable_count += 1;
+      if (rithmicSize === databentoLevel.sz) accumulator.bid_top_size_exact_match_count += 1;
+    }
+    if (rithmicOrderCount !== null && databentoLevel.order_count !== null) {
+      accumulator.bid_top_order_count_comparable_count += 1;
+      if (rithmicOrderCount === databentoLevel.order_count) {
+        accumulator.bid_top_order_count_exact_match_count += 1;
+      }
+    }
+  } else {
+    accumulator.ask_top_price_comparable_count += 1;
+    if (priceWithinOneTick) accumulator.ask_top_price_within_one_tick_count += 1;
+    if (rithmicSize !== null) {
+      accumulator.ask_top_size_comparable_count += 1;
+      if (rithmicSize === databentoLevel.sz) accumulator.ask_top_size_exact_match_count += 1;
+    }
+    if (rithmicOrderCount !== null && databentoLevel.order_count !== null) {
+      accumulator.ask_top_order_count_comparable_count += 1;
+      if (rithmicOrderCount === databentoLevel.order_count) {
+        accumulator.ask_top_order_count_exact_match_count += 1;
+      }
+    }
+  }
+  return priceWithinOneTick;
+}
+
+function finalizeTemporalScore(accumulator: TemporalScoreAccumulator): Mbp10TemporalPolicyScore {
+  return {
+    lookup_policy: accumulator.lookup_policy,
+    timestamp_basis: accumulator.timestamp_basis,
+    offset_ms: accumulator.offset_ms,
+    compared_samples: accumulator.compared_samples,
+    unmatched_samples: accumulator.unmatched_samples,
+    bid_top_price_within_1_tick_pct: pct(
+      accumulator.bid_top_price_within_one_tick_count,
+      accumulator.bid_top_price_comparable_count,
+    ),
+    ask_top_price_within_1_tick_pct: pct(
+      accumulator.ask_top_price_within_one_tick_count,
+      accumulator.ask_top_price_comparable_count,
+    ),
+    both_sides_top_price_within_1_tick_pct: pct(
+      accumulator.both_sides_top_price_within_one_tick_count,
+      accumulator.both_sides_top_price_comparable_count,
+    ),
+    depth_price_within_1_tick_pct: pct(
+      accumulator.depth_price_within_one_tick_count,
+      accumulator.depth_price_comparable_count,
+    ),
+    bid_top_size_exact_match_pct: pct(
+      accumulator.bid_top_size_exact_match_count,
+      accumulator.bid_top_size_comparable_count,
+    ),
+    ask_top_size_exact_match_pct: pct(
+      accumulator.ask_top_size_exact_match_count,
+      accumulator.ask_top_size_comparable_count,
+    ),
+    bid_top_order_count_exact_match_pct: pct(
+      accumulator.bid_top_order_count_exact_match_count,
+      accumulator.bid_top_order_count_comparable_count,
+    ),
+    ask_top_order_count_exact_match_pct: pct(
+      accumulator.ask_top_order_count_exact_match_count,
+      accumulator.ask_top_order_count_comparable_count,
+    ),
+  };
+}
+
+function selectSnapshotIndex(
+  snapshotIndex: RithmicTopOfBookSnapshotIndex,
+  targetTsNs: bigint,
+  lookupPolicy: Mbp10LookupPolicy,
+): number {
+  if (snapshotIndex.ts_ns.length === 0) {
+    return -1;
+  }
+  const previous = findPreviousSnapshotIndex(snapshotIndex.ts_ns, targetTsNs);
+  if (lookupPolicy === 'previous_or_equal') {
+    return previous;
+  }
+  const next = findNextSnapshotIndex(snapshotIndex.ts_ns, targetTsNs);
+  if (lookupPolicy === 'next_or_equal') {
+    return next;
+  }
+  if (previous < 0) {
+    return next;
+  }
+  if (next < 0) {
+    return previous;
+  }
+  const previousDelta = targetTsNs - snapshotIndex.ts_ns[previous]!;
+  const nextDelta = snapshotIndex.ts_ns[next]! - targetTsNs;
+  return previousDelta <= nextDelta ? previous : next;
+}
+
+function findPreviousSnapshotIndex(values: BigInt64Array, target: bigint): number {
+  let low = 0;
+  let high = values.length - 1;
+  let result = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (values[middle]! <= target) {
+      result = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return result;
+}
+
+function findNextSnapshotIndex(values: BigInt64Array, target: bigint): number {
+  let low = 0;
+  let high = values.length - 1;
+  let result = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (values[middle]! >= target) {
+      result = middle;
+      high = middle - 1;
+    } else {
+      low = middle + 1;
+    }
+  }
+  return result;
+}
+
+function getSnapshotPrice(
+  snapshotIndex: RithmicTopOfBookSnapshotIndex,
+  updateIndex: number,
+  side: BookSide,
+  level: number,
+): number | null {
+  const value = side === 'bid'
+    ? snapshotIndex.bid_px[snapshotArrayIndex(updateIndex, level)]!
+    : snapshotIndex.ask_px[snapshotArrayIndex(updateIndex, level)]!;
+  return Number.isNaN(value) ? null : value;
+}
+
+function getSnapshotSize(
+  snapshotIndex: RithmicTopOfBookSnapshotIndex,
+  updateIndex: number,
+  side: BookSide,
+  level: number,
+): number | null {
+  const value = side === 'bid'
+    ? snapshotIndex.bid_sz[snapshotArrayIndex(updateIndex, level)]!
+    : snapshotIndex.ask_sz[snapshotArrayIndex(updateIndex, level)]!;
+  return value < 0 ? null : value;
+}
+
+function getSnapshotOrderCount(
+  snapshotIndex: RithmicTopOfBookSnapshotIndex,
+  updateIndex: number,
+  side: BookSide,
+  level: number,
+): number | null {
+  const value = side === 'bid'
+    ? snapshotIndex.bid_order_count[snapshotArrayIndex(updateIndex, level)]!
+    : snapshotIndex.ask_order_count[snapshotArrayIndex(updateIndex, level)]!;
+  return value < 0 ? null : value;
+}
+
+function snapshotArrayIndex(updateIndex: number, level: number): number {
+  return updateIndex * (MAX_DEPTH_LEVEL + 1) + level;
+}
+
+interface MismatchClusterAccumulator {
+  price_mismatch_sample_count: number;
+  price_match_sample_count: number;
+  max_consecutive_mismatch_run: number;
+  current_cluster_start_ts_ns: string | null;
+  current_cluster_end_ts_ns: string | null;
+  current_cluster_sample_count: number;
+  readonly first_clusters: Mbp10MismatchCluster[];
+  readonly minute_buckets: Map<string, { compared_samples: number; price_mismatch_samples: number }>;
+}
+
+function createMismatchClusterAccumulator(): MismatchClusterAccumulator {
+  return {
+    price_mismatch_sample_count: 0,
+    price_match_sample_count: 0,
+    max_consecutive_mismatch_run: 0,
+    current_cluster_start_ts_ns: null,
+    current_cluster_end_ts_ns: null,
+    current_cluster_sample_count: 0,
+    first_clusters: [],
+    minute_buckets: new Map<string, { compared_samples: number; price_mismatch_samples: number }>(),
+  };
+}
+
+function updateMismatchClusters(
+  accumulator: MismatchClusterAccumulator,
+  snapshotIndex: RithmicTopOfBookSnapshotIndex,
+  databentoSample: BookSample,
+  selectedIndex: number,
+): void {
+  if (selectedIndex < 0) {
+    return;
+  }
+  const bidWithin = topPriceWithinOneTick(snapshotIndex, databentoSample, selectedIndex, 'bid');
+  const askWithin = topPriceWithinOneTick(snapshotIndex, databentoSample, selectedIndex, 'ask');
+  if (bidWithin === null || askWithin === null) {
+    return;
+  }
+  const isMismatch = !(bidWithin && askWithin);
+  const bucketKey = minuteBucketStartTsNs(databentoSample.ts_ns);
+  const bucket = accumulator.minute_buckets.get(bucketKey) ?? {
+    compared_samples: 0,
+    price_mismatch_samples: 0,
+  };
+  bucket.compared_samples += 1;
+  if (isMismatch) {
+    bucket.price_mismatch_samples += 1;
+  }
+  accumulator.minute_buckets.set(bucketKey, bucket);
+
+  if (isMismatch) {
+    accumulator.price_mismatch_sample_count += 1;
+    if (accumulator.current_cluster_start_ts_ns === null) {
+      accumulator.current_cluster_start_ts_ns = databentoSample.ts_ns;
+      accumulator.current_cluster_sample_count = 0;
+    }
+    accumulator.current_cluster_end_ts_ns = databentoSample.ts_ns;
+    accumulator.current_cluster_sample_count += 1;
+    accumulator.max_consecutive_mismatch_run = Math.max(
+      accumulator.max_consecutive_mismatch_run,
+      accumulator.current_cluster_sample_count,
+    );
+  } else {
+    accumulator.price_match_sample_count += 1;
+    closeCurrentMismatchCluster(accumulator);
+  }
+}
+
+function closeCurrentMismatchCluster(accumulator: MismatchClusterAccumulator): void {
+  if (accumulator.current_cluster_start_ts_ns === null || accumulator.current_cluster_end_ts_ns === null) {
+    return;
+  }
+  if (accumulator.first_clusters.length < 20) {
+    accumulator.first_clusters.push({
+      start_ts_ns: accumulator.current_cluster_start_ts_ns,
+      end_ts_ns: accumulator.current_cluster_end_ts_ns,
+      sample_count: accumulator.current_cluster_sample_count,
+    });
+  }
+  accumulator.current_cluster_start_ts_ns = null;
+  accumulator.current_cluster_end_ts_ns = null;
+  accumulator.current_cluster_sample_count = 0;
+}
+
+function finalizeMismatchClusters(accumulator: MismatchClusterAccumulator): Mbp10MismatchClusterReport {
+  closeCurrentMismatchCluster(accumulator);
+  return {
+    basis: 'previous_or_equal_ts_event_offset_0',
+    price_mismatch_sample_count: accumulator.price_mismatch_sample_count,
+    price_match_sample_count: accumulator.price_match_sample_count,
+    max_consecutive_mismatch_run: accumulator.max_consecutive_mismatch_run,
+    first_clusters: accumulator.first_clusters,
+    mismatch_rate_per_minute: [...accumulator.minute_buckets.entries()]
+      .sort(([left], [right]) => compareDecimalIntegerStrings(left, right))
+      .map(([bucketStartTsNs, bucket]) => ({
+        bucket_start_ts_ns: bucketStartTsNs,
+        compared_samples: bucket.compared_samples,
+        price_mismatch_samples: bucket.price_mismatch_samples,
+        mismatch_rate_pct: pct(bucket.price_mismatch_samples, bucket.compared_samples),
+      })),
+    volatile_period_correlation: {
+      status: 'not_available',
+      reason: 'No normalized trade input path is provided to this analyzer.',
+    },
+  };
+}
+
+function topPriceWithinOneTick(
+  snapshotIndex: RithmicTopOfBookSnapshotIndex,
+  databentoSample: BookSample,
+  selectedIndex: number,
+  side: BookSide,
+): boolean | null {
+  const rithmicPx = getSnapshotPrice(snapshotIndex, selectedIndex, side, 0);
+  const databentoLevel = findLevel(databentoSample, side, 0);
+  if (rithmicPx === null || databentoLevel === null) {
+    return null;
+  }
+  return Math.abs(rithmicPx - databentoLevel.px) <= MNQ_TICK_SIZE;
+}
+
+function minuteBucketStartTsNs(tsNs: string): string {
+  const minuteNs = 60_000_000_000n;
+  return ((BigInt(tsNs) / minuteNs) * minuteNs).toString();
+}
+
+function bestLookupPolicy(scores: Readonly<Record<Mbp10LookupPolicy, Mbp10TemporalPolicyScore>>): Mbp10LookupPolicy {
+  return (Object.keys(scores) as Mbp10LookupPolicy[]).sort((left, right) => {
+    const scoreComparison = compareNullablePct(
+      scores[right]!.both_sides_top_price_within_1_tick_pct,
+      scores[left]!.both_sides_top_price_within_1_tick_pct,
+    );
+    if (scoreComparison !== 0) return scoreComparison;
+    return compareStrings(left, right);
+  })[0]!;
+}
+
+function bestLagScore(scores: readonly Mbp10LagScanScore[]): Mbp10LagScanScore {
+  return [...scores].sort((left, right) => {
+    const scoreComparison = compareNullablePct(
+      right.both_sides_top_price_within_1_tick_pct,
+      left.both_sides_top_price_within_1_tick_pct,
+    );
+    if (scoreComparison !== 0) return scoreComparison;
+    return Math.abs(left.offset_ms) - Math.abs(right.offset_ms) || left.offset_ms - right.offset_ms;
+  })[0]!;
+}
+
+function bestTimestampBasisName(scores: {
+  readonly ts_event: Mbp10TemporalPolicyScore;
+  readonly ts_recv: Mbp10TemporalPolicyScore | null;
+}): Mbp10TimestampBasis {
+  if (scores.ts_recv === null) {
+    return 'ts_event';
+  }
+  return compareNullablePct(
+    scores.ts_recv.both_sides_top_price_within_1_tick_pct,
+    scores.ts_event.both_sides_top_price_within_1_tick_pct,
+  ) > 0
+    ? 'ts_recv'
+    : 'ts_event';
+}
+
+function classifyTemporalAlignment(args: {
+  readonly lookupPolicyScores: Readonly<Record<Mbp10LookupPolicy, Mbp10TemporalPolicyScore>>;
+  readonly bestPolicy: Mbp10LookupPolicy;
+  readonly bestLag: Mbp10LagScanScore;
+  readonly bestTimestampBasis: Mbp10TimestampBasis;
+  readonly timestampBasisScores: {
+    readonly ts_event: Mbp10TemporalPolicyScore;
+    readonly ts_recv: Mbp10TemporalPolicyScore | null;
+  };
+}): Mbp10TemporalAlignmentClassification {
+  const previousScore = scoreValue(args.lookupPolicyScores.previous_or_equal);
+  const bestPolicyScore = scoreValue(args.lookupPolicyScores[args.bestPolicy]);
+  const bestLagScoreValue = scoreValue(args.bestLag);
+  const tsRecvScore = args.timestampBasisScores.ts_recv === null ? null : scoreValue(args.timestampBasisScores.ts_recv);
+  if (args.bestLag.offset_ms !== 0 && bestLagScoreValue >= 99) {
+    return 'temporal_alignment_offset_required';
+  }
+  if (args.bestPolicy !== 'previous_or_equal' && bestPolicyScore >= 99 && bestPolicyScore > previousScore + 1) {
+    return 'sampling_policy_mismatch';
+  }
+  if (
+    args.bestTimestampBasis === 'ts_recv' &&
+    tsRecvScore !== null &&
+    tsRecvScore >= 99 &&
+    tsRecvScore > previousScore + 1
+  ) {
+    return 'timestamp_basis_mismatch';
+  }
+  return 'persistent_price_level_reconstruction_mismatch';
+}
+
+function recommendationForTemporalClassification(classification: Mbp10TemporalAlignmentClassification): string {
+  if (classification === 'temporal_alignment_offset_required') {
+    return 'A nonzero lag offset lifts price parity above threshold; document the offset sign and validate timestamp semantics before using Databento MBP10 parity as gate evidence.';
+  }
+  if (classification === 'sampling_policy_mismatch') {
+    return 'Nearest/next-state lookup materially improves price parity; review whether Databento samples represent post-update state while Rithmic comparison is using previous-state sampling.';
+  }
+  if (classification === 'timestamp_basis_mismatch') {
+    return 'Timestamp basis changes materially improve parity; inspect Databento ts_event vs ts_recv semantics before revising INFRA-01 policy.';
+  }
+  return 'No tested lookup policy, lag offset, or timestamp basis lifts price parity above threshold; keep DATA-01B blocked and inspect reconstruction/alignment assumptions further.';
+}
+
+function scoreValue(score: Mbp10TemporalPolicyScore): number {
+  return score.both_sides_top_price_within_1_tick_pct ?? -1;
+}
+
+function compareNullablePct(left: number | null, right: number | null): number {
+  return (left ?? -1) - (right ?? -1);
 }
 
 function updateComponentParity(
