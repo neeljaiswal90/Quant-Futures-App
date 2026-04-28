@@ -15,8 +15,8 @@ import hashlib
 import json
 import math
 import sys
-from collections import defaultdict
-from dataclasses import dataclass
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Literal
 
@@ -35,6 +35,8 @@ DEFAULT_KS_THRESHOLD = 0.15
 DEFAULT_FILL_RATE_RESIDUAL_THRESHOLD = 0.10
 DEFAULT_NO_FILL_RATE_RESIDUAL_THRESHOLD = 0.10
 DEFAULT_TIME_TO_FILL_RELATIVE_THRESHOLD = 0.25
+TIME_TO_FILL_EXACT_SAMPLE_LIMIT = 10_000
+TIME_TO_FILL_BUCKET_MS = 100.0
 
 
 @dataclass(frozen=True)
@@ -55,28 +57,6 @@ class BboSample:
     ask_px: float
 
 
-@dataclass(frozen=True)
-class MarketableObservation:
-    session_id: str
-    split: Literal["calibration", "validation"]
-    side: Literal["buy", "sell"]
-    spread_bucket: str
-    session_phase: str
-    volatility_regime: str
-    slippage_points: float
-
-
-@dataclass(frozen=True)
-class LimitObservation:
-    session_id: str
-    split: Literal["calibration", "validation"]
-    side: str
-    queue_bucket: str
-    session_phase: str
-    filled: bool
-    time_to_fill_ms: float | None
-
-
 @dataclass
 class OpenOrder:
     order_id: int
@@ -94,6 +74,146 @@ class OpenOrder:
 class LevelState:
     total_size: int = 0
     order_count: int = 0
+
+
+SplitName = Literal["calibration", "validation"]
+
+
+@dataclass
+class ValueDistribution:
+    counts: Counter[float] = field(default_factory=Counter)
+    total_count: int = 0
+    total_sum: float = 0.0
+    total_abs_sum: float = 0.0
+
+    def add(self, value: float) -> None:
+        self.counts[value] += 1
+        self.total_count += 1
+        self.total_sum += value
+        self.total_abs_sum += abs(value)
+
+    def __len__(self) -> int:
+        return self.total_count
+
+    def mean(self) -> float | None:
+        if self.total_count <= 0:
+            return None
+        return self.total_sum / self.total_count
+
+    def mean_abs(self) -> float | None:
+        if self.total_count <= 0:
+            return None
+        return self.total_abs_sum / self.total_count
+
+    def count_at_or_above(self, threshold: float) -> int:
+        return sum(count for value, count in self.counts.items() if value >= threshold)
+
+
+@dataclass
+class TimeToFillDistribution:
+    exact_values: list[float] = field(default_factory=list)
+    bucket_counts: Counter[int] = field(default_factory=Counter)
+    total_count: int = 0
+    quantized: bool = False
+
+    def add(self, value: float) -> None:
+        self.total_count += 1
+        if not self.quantized and len(self.exact_values) < TIME_TO_FILL_EXACT_SAMPLE_LIMIT:
+            self.exact_values.append(value)
+            return
+        if not self.quantized:
+            for exact_value in self.exact_values:
+                self.bucket_counts[self._bucket(exact_value)] += 1
+            self.exact_values.clear()
+            self.quantized = True
+        self.bucket_counts[self._bucket(value)] += 1
+
+    def median(self) -> float | None:
+        if self.total_count <= 0:
+            return None
+        if not self.quantized:
+            return _median(self.exact_values)
+        rank = 0.5 * (self.total_count - 1)
+        lower = math.floor(rank)
+        upper = math.ceil(rank)
+        if lower == upper:
+            return self._bucket_value_at_index(int(rank))
+        weight = rank - lower
+        lower_value = self._bucket_value_at_index(lower)
+        upper_value = self._bucket_value_at_index(upper)
+        return lower_value * (1 - weight) + upper_value * weight
+
+    @staticmethod
+    def _bucket(value: float) -> int:
+        return int(round(value / TIME_TO_FILL_BUCKET_MS))
+
+    def _bucket_value_at_index(self, index: int) -> float:
+        seen = 0
+        for bucket, count in sorted(self.bucket_counts.items()):
+            seen += count
+            if index < seen:
+                return bucket * TIME_TO_FILL_BUCKET_MS
+        raise IndexError("time-to-fill distribution index out of range")
+
+
+@dataclass
+class MarketableAggregates:
+    all_values_by_split: dict[str, ValueDistribution] = field(
+        default_factory=lambda: {"calibration": ValueDistribution(), "validation": ValueDistribution()}
+    )
+    bucket_values_by_split: dict[str, dict[str, ValueDistribution]] = field(
+        default_factory=lambda: {
+            "calibration": defaultdict(ValueDistribution),
+            "validation": defaultdict(ValueDistribution),
+        }
+    )
+    bucket_ids: set[str] = field(default_factory=set)
+    count: int = 0
+
+    def add(self, split: SplitName, bucket_id: str, slippage_points: float) -> None:
+        self.all_values_by_split[split].add(slippage_points)
+        self.bucket_values_by_split[split][bucket_id].add(slippage_points)
+        self.bucket_ids.add(bucket_id)
+        self.count += 1
+
+
+@dataclass
+class LimitBucketAggregate:
+    total_count: int = 0
+    fill_count: int = 0
+    time_to_fill_ms: TimeToFillDistribution = field(default_factory=TimeToFillDistribution)
+
+    def add(self, *, filled: bool, time_to_fill_ms: float | None) -> None:
+        self.total_count += 1
+        if filled:
+            self.fill_count += 1
+        if time_to_fill_ms is not None:
+            self.time_to_fill_ms.add(time_to_fill_ms)
+
+
+@dataclass
+class LimitAggregates:
+    all_by_split: dict[str, LimitBucketAggregate] = field(
+        default_factory=lambda: {"calibration": LimitBucketAggregate(), "validation": LimitBucketAggregate()}
+    )
+    bucket_by_split: dict[str, dict[str, LimitBucketAggregate]] = field(
+        default_factory=lambda: {"calibration": defaultdict(LimitBucketAggregate), "validation": defaultdict(LimitBucketAggregate)}
+    )
+    bucket_names: set[str] = field(default_factory=set)
+    count: int = 0
+
+    def add(
+        self,
+        *,
+        split: SplitName,
+        queue_bucket: str,
+        filled: bool,
+        time_to_fill_ms: float | None,
+    ) -> None:
+        self.all_by_split[split].add(filled=filled, time_to_fill_ms=time_to_fill_ms)
+        self.bucket_by_split[split][queue_bucket].add(filled=filled, time_to_fill_ms=time_to_fill_ms)
+        self.bucket_names.add(queue_bucket)
+        self.count += 1
 
 
 def calibrate(request: CalibrationRequest) -> dict[str, Any]:
@@ -117,13 +237,15 @@ def calibrate(request: CalibrationRequest) -> dict[str, Any]:
     calibration_sessions = [session for session in source_sessions if session.get("split") == "calibration"]
     validation_sessions = [session for session in source_sessions if session.get("split") == "validation"]
 
-    marketable_observations: list[MarketableObservation] = []
-    limit_observations: list[LimitObservation] = []
+    marketable_observations = MarketableAggregates()
+    limit_observations = LimitAggregates()
     reader_diagnostics: list[dict[str, Any]] = []
     for session in source_sessions:
-        session_marketable, session_limits, diagnostics = _read_session_observations(session)
-        marketable_observations.extend(session_marketable)
-        limit_observations.extend(session_limits)
+        diagnostics = _read_session_observations(
+            session,
+            marketable_observations=marketable_observations,
+            limit_observations=limit_observations,
+        )
         reader_diagnostics.append(diagnostics)
 
     marketable = _score_marketable(
@@ -168,8 +290,8 @@ def calibrate(request: CalibrationRequest) -> dict[str, Any]:
             "verified_sessions": len(source_sessions),
             "calibration_sessions": len(calibration_sessions),
             "validation_sessions": len(validation_sessions),
-            "marketable_observations": len(marketable_observations),
-            "limit_observations": len(limit_observations),
+            "marketable_observations": marketable_observations.count,
+            "limit_observations": limit_observations.count,
             "quality_excluded_sessions": int(
                 verified_report.get("corpus_summary", {}).get("quality_excluded_sessions", 0)
             ),
@@ -214,33 +336,34 @@ def calibrate(request: CalibrationRequest) -> dict[str, Any]:
 
 def _read_session_observations(
     session: dict[str, Any],
-) -> tuple[list[MarketableObservation], list[LimitObservation], dict[str, Any]]:
+    *,
+    marketable_observations: MarketableAggregates,
+    limit_observations: LimitAggregates,
+) -> dict[str, Any]:
     session_id = str(session["session_id"])
     split = _session_split(session)
     schemas = session.get("schemas", {})
     bbo_samples = _read_bbo_samples(Path(str(schemas["mbp-1"]["path"])))
-    marketable = _read_marketable_observations(
+    marketable_count = _read_marketable_observations(
         session=session,
         split=split,
+        aggregates=marketable_observations,
         bbo_samples=bbo_samples,
         trades_path=Path(str(schemas["trades"]["path"])),
     )
-    limits = _read_limit_observations(
+    limit_count = _read_limit_observations(
         session=session,
         split=split,
+        aggregates=limit_observations,
         mbo_path=Path(str(schemas["mbo"]["path"])),
     )
-    return (
-        marketable,
-        limits,
-        {
-            "session_id": session_id,
-            "split": split,
-            "bbo_samples": len(bbo_samples),
-            "marketable_observations": len(marketable),
-            "limit_observations": len(limits),
-        },
-    )
+    return {
+        "session_id": session_id,
+        "split": split,
+        "bbo_samples": len(bbo_samples),
+        "marketable_observations": marketable_count,
+        "limit_observations": limit_count,
+    }
 
 
 def _read_bbo_samples(path: Path) -> list[BboSample]:
@@ -259,15 +382,15 @@ def _read_bbo_samples(path: Path) -> list[BboSample]:
 def _read_marketable_observations(
     *,
     session: dict[str, Any],
-    split: Literal["calibration", "validation"],
+    split: SplitName,
+    aggregates: MarketableAggregates,
     bbo_samples: list[BboSample],
     trades_path: Path,
-) -> list[MarketableObservation]:
+) -> int:
     if not bbo_samples:
-        return []
+        return 0
     bbo_ts = [sample.ts_event_ns for sample in bbo_samples]
-    observations: list[MarketableObservation] = []
-    session_id = str(session["session_id"])
+    observation_count = 0
     start_ts_ns = int(session["rth_window"]["start_ts_ns"])
     end_ts_ns = int(session["rth_window"]["end_ts_ns"])
     for record in _iter_records(trades_path, "trades"):
@@ -287,32 +410,31 @@ def _read_marketable_observations(
         else:
             slippage = max(0.0, bbo.bid_px - price)
         spread_ticks = max(0, round((bbo.ask_px - bbo.bid_px) / TICK_SIZE_POINTS))
-        observations.append(
-            MarketableObservation(
-                session_id=session_id,
-                split=split,
+        aggregates.add(
+            split,
+            _marketable_bucket_id(
                 side=side,
                 spread_bucket=_spread_bucket(spread_ticks),
                 session_phase=_session_phase(ts, start_ts_ns, end_ts_ns),
                 volatility_regime=_volatility_regime(spread_ticks),
-                slippage_points=_round6(slippage),
-            )
+            ),
+            _round6(slippage),
         )
-    return observations
+        observation_count += 1
+    return observation_count
 
 
 def _read_limit_observations(
     *,
     session: dict[str, Any],
-    split: Literal["calibration", "validation"],
+    split: SplitName,
+    aggregates: LimitAggregates,
     mbo_path: Path,
-) -> list[LimitObservation]:
+) -> int:
     session_id = str(session["session_id"])
-    start_ts_ns = int(session["rth_window"]["start_ts_ns"])
-    end_ts_ns = int(session["rth_window"]["end_ts_ns"])
     levels: dict[tuple[str, int], LevelState] = defaultdict(LevelState)
     orders: dict[int, OpenOrder] = {}
-    observations: list[LimitObservation] = []
+    observation_count = 0
 
     for record in _iter_records(mbo_path, "mbo"):
         ts = _int_field(record, "ts_event")
@@ -346,32 +468,24 @@ def _read_limit_observations(
             continue
 
         if action == "T":
-            observations.append(
-                LimitObservation(
-                    session_id=session_id,
-                    split=split,
-                    side=order.side,
-                    queue_bucket=_queue_bucket(order.queue_ahead_size),
-                    session_phase=_session_phase(order.add_ts_ns, start_ts_ns, end_ts_ns),
-                    filled=True,
-                    time_to_fill_ms=max(0.0, (ts - order.add_ts_ns) / 1_000_000),
-                )
+            aggregates.add(
+                split=split,
+                queue_bucket=_queue_bucket(order.queue_ahead_size),
+                filled=True,
+                time_to_fill_ms=max(0.0, (ts - order.add_ts_ns) / 1_000_000),
             )
+            observation_count += 1
             _remove_order(orders, levels, order_id, min(order.size, max(1, size)))
             continue
 
         if action == "C":
-            observations.append(
-                LimitObservation(
-                    session_id=session_id,
-                    split=split,
-                    side=order.side,
-                    queue_bucket=_queue_bucket(order.queue_ahead_size),
-                    session_phase=_session_phase(order.add_ts_ns, start_ts_ns, end_ts_ns),
-                    filled=False,
-                    time_to_fill_ms=None,
-                )
+            aggregates.add(
+                split=split,
+                queue_bucket=_queue_bucket(order.queue_ahead_size),
+                filled=False,
+                time_to_fill_ms=None,
             )
+            observation_count += 1
             _remove_order(orders, levels, order_id, order.size)
             continue
 
@@ -382,18 +496,14 @@ def _read_limit_observations(
 
     for order_id in sorted(orders):
         order = orders[order_id]
-        observations.append(
-            LimitObservation(
-                session_id=session_id,
-                split=split,
-                side=order.side,
-                queue_bucket=_queue_bucket(order.queue_ahead_size),
-                session_phase=_session_phase(order.add_ts_ns, start_ts_ns, end_ts_ns),
-                filled=False,
-                time_to_fill_ms=None,
-            )
+        aggregates.add(
+            split=split,
+            queue_bucket=_queue_bucket(order.queue_ahead_size),
+            filled=False,
+            time_to_fill_ms=None,
         )
-    return observations
+        observation_count += 1
+    return observation_count
 
 
 def _remove_order(
@@ -415,23 +525,21 @@ def _remove_order(
 
 
 def _score_marketable(
-    observations: list[MarketableObservation],
+    observations: MarketableAggregates,
     *,
     min_bucket_sample: int,
 ) -> dict[str, Any]:
-    calibration = [obs for obs in observations if obs.split == "calibration"]
-    validation = [obs for obs in observations if obs.split == "validation"]
-    calibration_values = [obs.slippage_points for obs in calibration]
-    validation_values = [obs.slippage_points for obs in validation]
-    bucket_ids = sorted({_marketable_bucket_id(obs) for obs in observations})
+    calibration_values = observations.all_values_by_split["calibration"]
+    validation_values = observations.all_values_by_split["validation"]
+    bucket_ids = sorted(observations.bucket_ids)
     if not bucket_ids:
         bucket_ids = ["all"]
     bucket_residuals: list[dict[str, Any]] = []
     fitted_constants: dict[str, Any] = {}
     insufficient: list[dict[str, Any]] = []
     for bucket_id in bucket_ids:
-        cal_bucket = [obs.slippage_points for obs in calibration if _marketable_bucket_id(obs) == bucket_id]
-        val_bucket = [obs.slippage_points for obs in validation if _marketable_bucket_id(obs) == bucket_id]
+        cal_bucket = observations.bucket_values_by_split["calibration"].get(bucket_id, [])
+        val_bucket = observations.bucket_values_by_split["validation"].get(bucket_id, [])
         if len(cal_bucket) < min_bucket_sample or len(val_bucket) < min_bucket_sample:
             model_values = calibration_values
             empirical_values = validation_values
@@ -462,8 +570,8 @@ def _score_marketable(
 
 def _marketable_residual(
     bucket_id: str,
-    model_values: list[float],
-    validation_values: list[float],
+    model_values: ValueDistribution,
+    validation_values: ValueDistribution,
     min_bucket_sample: int,
     aggregation: str,
 ) -> dict[str, Any]:
@@ -522,12 +630,12 @@ def _marketable_residual(
     }
 
 
-def _marketable_constants(values: list[float]) -> dict[str, Any]:
+def _marketable_constants(values: ValueDistribution) -> dict[str, Any]:
     return {
         "base_slippage_points": _round6(_percentile(values, 50) or 0.0),
         "adverse_extra_tick_probability": _round6(
-            sum(1 for value in values if value >= TICK_SIZE_POINTS) / len(values)
-            if values
+            values.count_at_or_above(TICK_SIZE_POINTS) / len(values)
+            if len(values) > 0
             else 0.0
         ),
         "empirical_distribution_points": _distribution_summary(values),
@@ -536,21 +644,21 @@ def _marketable_constants(values: list[float]) -> dict[str, Any]:
 
 
 def _score_limit_queue(
-    observations: list[LimitObservation],
+    observations: LimitAggregates,
     *,
     min_bucket_sample: int,
 ) -> dict[str, Any]:
-    calibration = [obs for obs in observations if obs.split == "calibration"]
-    validation = [obs for obs in observations if obs.split == "validation"]
-    buckets = sorted({_queue_sort_key(obs.queue_bucket) for obs in observations})
+    calibration = observations.all_by_split["calibration"]
+    validation = observations.all_by_split["validation"]
+    buckets = sorted({_queue_sort_key(bucket) for bucket in observations.bucket_names})
     bucket_names = [_queue_bucket_name(key) for key in buckets]
     residuals: list[dict[str, Any]] = []
     fitted: dict[str, Any] = {}
     insufficient: list[dict[str, Any]] = []
     for bucket in bucket_names:
-        cal_bucket = [obs for obs in calibration if obs.queue_bucket == bucket]
-        val_bucket = [obs for obs in validation if obs.queue_bucket == bucket]
-        if len(cal_bucket) < min_bucket_sample or len(val_bucket) < min_bucket_sample:
+        cal_bucket = observations.bucket_by_split["calibration"].get(bucket, LimitBucketAggregate())
+        val_bucket = observations.bucket_by_split["validation"].get(bucket, LimitBucketAggregate())
+        if cal_bucket.total_count < min_bucket_sample or val_bucket.total_count < min_bucket_sample:
             cal_bucket = calibration
             val_bucket = validation
             aggregation = "all_queue_buckets"
@@ -576,26 +684,26 @@ def _score_limit_queue(
 
 def _limit_residual(
     bucket_id: str,
-    calibration: list[LimitObservation],
-    validation: list[LimitObservation],
+    calibration: LimitBucketAggregate,
+    validation: LimitBucketAggregate,
     min_bucket_sample: int,
     aggregation: str,
 ) -> dict[str, Any]:
-    if len(calibration) < min_bucket_sample or len(validation) < min_bucket_sample:
+    if calibration.total_count < min_bucket_sample or validation.total_count < min_bucket_sample:
         return {
             "bucket_id": bucket_id,
             "aggregation": aggregation,
             "status": "insufficient_sample",
-            "calibration_sample_count": len(calibration),
-            "validation_sample_count": len(validation),
+            "calibration_sample_count": calibration.total_count,
+            "validation_sample_count": validation.total_count,
             "failure_reasons": ["not enough queue samples after aggregation"],
         }
     cal_fill_rate = _fill_rate(calibration)
     val_fill_rate = _fill_rate(validation)
     cal_no_fill_rate = 1.0 - cal_fill_rate
     val_no_fill_rate = 1.0 - val_fill_rate
-    cal_median_ttf = _median([obs.time_to_fill_ms for obs in calibration if obs.time_to_fill_ms is not None])
-    val_median_ttf = _median([obs.time_to_fill_ms for obs in validation if obs.time_to_fill_ms is not None])
+    cal_median_ttf = calibration.time_to_fill_ms.median()
+    val_median_ttf = validation.time_to_fill_ms.median()
     fill_residual = abs(cal_fill_rate - val_fill_rate)
     no_fill_residual = abs(cal_no_fill_rate - val_no_fill_rate)
     if cal_median_ttf is None or val_median_ttf is None:
@@ -611,8 +719,8 @@ def _limit_residual(
         "bucket_id": bucket_id,
         "aggregation": aggregation,
         "status": "pass" if all(checks.values()) else "fail",
-        "calibration_sample_count": len(calibration),
-        "validation_sample_count": len(validation),
+        "calibration_sample_count": calibration.total_count,
+        "validation_sample_count": validation.total_count,
         "modeled_fill_probability": _round6(cal_fill_rate),
         "empirical_fill_probability": _round6(val_fill_rate),
         "fill_probability_residual": _round6(fill_residual),
@@ -631,11 +739,11 @@ def _limit_residual(
 
 
 def _score_strategy_cost(
-    observations: list[MarketableObservation],
+    observations: MarketableAggregates,
     min_bucket_sample: int,
 ) -> dict[str, Any]:
-    calibration = [obs.slippage_points for obs in observations if obs.split == "calibration"]
-    validation = [obs.slippage_points for obs in observations if obs.split == "validation"]
+    calibration = observations.all_values_by_split["calibration"]
+    validation = observations.all_values_by_split["validation"]
     if len(calibration) < min_bucket_sample or len(validation) < min_bucket_sample:
         residual = {
             "strategy_id": "sim03_proxy_all",
@@ -645,9 +753,9 @@ def _score_strategy_cost(
             "failure_reasons": ["not enough strategy-cost proxy samples"],
         }
     else:
-        modeled_mean = sum(calibration) / len(calibration)
-        empirical_mean = sum(validation) / len(validation)
-        empirical_mean_abs = sum(abs(value) for value in validation) / len(validation)
+        modeled_mean = calibration.mean() or 0.0
+        empirical_mean = validation.mean() or 0.0
+        empirical_mean_abs = validation.mean_abs() or 0.0
         threshold = max(TICK_SIZE_POINTS * 0.25, empirical_mean_abs * 0.15)
         diff = abs(modeled_mean - empirical_mean)
         residual = {
@@ -668,24 +776,24 @@ def _score_strategy_cost(
     }
 
 
-def _limit_constants(observations: list[LimitObservation]) -> dict[str, Any]:
+def _limit_constants(observations: LimitBucketAggregate) -> dict[str, Any]:
     fill_rate = _fill_rate(observations)
-    median_ttf = _median([obs.time_to_fill_ms for obs in observations if obs.time_to_fill_ms is not None])
+    median_ttf = observations.time_to_fill_ms.median()
     return {
         "fill_probability": _round6(fill_rate),
         "no_fill_probability": _round6(1.0 - fill_rate),
         "median_time_to_fill_ms": _round_nullable(median_ttf),
-        "sample_count": len(observations),
+        "sample_count": observations.total_count,
     }
 
 
-def _distribution_summary(values: list[float]) -> dict[str, Any]:
+def _distribution_summary(values: ValueDistribution) -> dict[str, Any]:
     return {
         "count": len(values),
         "p50": _round_nullable(_percentile(values, 50)),
         "p90": _round_nullable(_percentile(values, 90)),
         "p95": _round_nullable(_percentile(values, 95)),
-        "mean": _round_nullable(sum(values) / len(values) if values else None),
+        "mean": _round_nullable(values.mean()),
     }
 
 
@@ -743,14 +851,20 @@ def _book_side(record: dict[str, Any]) -> str | None:
     return None
 
 
-def _marketable_bucket_id(observation: MarketableObservation) -> str:
+def _marketable_bucket_id(
+    *,
+    side: Literal["buy", "sell"],
+    spread_bucket: str,
+    session_phase: str,
+    volatility_regime: str,
+) -> str:
     return "|".join(
         [
             "order_type=marketable",
-            f"side={observation.side}",
-            f"spread_bucket={observation.spread_bucket}",
-            f"session_phase={observation.session_phase}",
-            f"volatility_regime={observation.volatility_regime}",
+            f"side={side}",
+            f"spread_bucket={spread_bucket}",
+            f"session_phase={session_phase}",
+            f"volatility_regime={volatility_regime}",
         ]
     )
 
@@ -814,33 +928,44 @@ def _queue_bucket_name(key: int) -> str:
     return {0: "front", 1: "near", 2: "middle", 3: "back"}.get(key, "unknown")
 
 
-def _fill_rate(observations: list[LimitObservation]) -> float:
-    if not observations:
+def _fill_rate(observations: LimitBucketAggregate) -> float:
+    if observations.total_count <= 0:
         return 0.0
-    return sum(1 for obs in observations if obs.filled) / len(observations)
+    return observations.fill_count / observations.total_count
 
 
-def _ks_statistic(left: list[float], right: list[float]) -> float:
-    left_sorted = sorted(left)
-    right_sorted = sorted(right)
-    values = sorted(set(left_sorted + right_sorted))
-    if not values:
+def _ks_statistic(left: ValueDistribution, right: ValueDistribution) -> float:
+    values = sorted(set(left.counts) | set(right.counts))
+    if not values or left.total_count <= 0 or right.total_count <= 0:
         return 0.0
     max_delta = 0.0
-    left_index = 0
-    right_index = 0
+    left_seen = 0
+    right_seen = 0
     for value in values:
-        while left_index < len(left_sorted) and left_sorted[left_index] <= value:
-            left_index += 1
-        while right_index < len(right_sorted) and right_sorted[right_index] <= value:
-            right_index += 1
-        max_delta = max(max_delta, abs(left_index / len(left_sorted) - right_index / len(right_sorted)))
+        left_seen += left.counts.get(value, 0)
+        right_seen += right.counts.get(value, 0)
+        max_delta = max(
+            max_delta,
+            abs(left_seen / left.total_count - right_seen / right.total_count),
+        )
     return max_delta
 
 
-def _percentile(values: list[float], percentile: float) -> float | None:
+def _percentile(values: list[float] | ValueDistribution, percentile: float) -> float | None:
     if not values:
         return None
+    if isinstance(values, ValueDistribution):
+        if values.total_count == 1:
+            return _distribution_value_at_index(values, 0)
+        rank = (percentile / 100) * (values.total_count - 1)
+        lower = math.floor(rank)
+        upper = math.ceil(rank)
+        if lower == upper:
+            return _distribution_value_at_index(values, int(rank))
+        weight = rank - lower
+        lower_value = _distribution_value_at_index(values, lower)
+        upper_value = _distribution_value_at_index(values, upper)
+        return lower_value * (1 - weight) + upper_value * weight
     sorted_values = sorted(values)
     if len(sorted_values) == 1:
         return sorted_values[0]
@@ -851,6 +976,17 @@ def _percentile(values: list[float], percentile: float) -> float | None:
         return sorted_values[int(rank)]
     weight = rank - lower
     return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
+
+
+def _distribution_value_at_index(values: ValueDistribution, index: int) -> float:
+    if index < 0 or index >= values.total_count:
+        raise IndexError("distribution index out of range")
+    seen = 0
+    for value in sorted(values.counts):
+        seen += values.counts[value]
+        if index < seen:
+            return value
+    raise IndexError("distribution index out of range")
 
 
 def _median(values: list[float]) -> float | None:
