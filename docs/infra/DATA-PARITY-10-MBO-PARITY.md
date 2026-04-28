@@ -76,6 +76,34 @@ DATA-01B remains blocked for every DATA-PARITY-11 classification. If structural 
 parity looks strong with `trade`/`unknown` excluded, the next step is an ADR or INFRA policy
 decision that explicitly states which categories are hard-gated and which remain diagnostic.
 
+## INFRA-01F Policy Decision
+
+INFRA-01F accepts MBO as a provider-internal sub-scope after reviewing the DATA-PARITY-10
+and DATA-PARITY-11 evidence. This is not a claim of Rithmic-vs-Databento order-by-order
+byte identity.
+
+Accepted:
+
+- provider-internal order lifecycle tracking;
+- single-provider queue-position estimation for SIM calibration;
+- MBO-derived microstructure features that operate within one provider's replay path.
+
+Diagnostic only:
+
+- Databento `trade`/`unknown` action equivalence to Rithmic streams;
+- cross-source order ID byte identity;
+- cross-feed order-by-order replay parity.
+
+The safe decision report is generated with:
+
+```powershell
+npm run infra:01f:decision -- --out reports/infra/infra01f_mbo_policy_decision_post04d_summary.json
+```
+
+`DATA-01B` full scope still requires implementation evidence after this policy decision:
+the MBO consumer, DATA-03 authority FSM, DATA-04 feature engine, SIM calibration, and REL
+provider-internal replay evidence are separate gates.
+
 ## Classifications
 
 - `mbo_event_semantics_aligned`: action, side, price, size, and sequence evidence look
@@ -104,14 +132,15 @@ DATA-PARITY-11 taxonomy classifications:
 
 ## Gate Impact
 
-Until an explicit policy decision accepts MBO parity:
+INFRA-01F is the explicit policy decision that accepts MBO as a provider-internal
+sub-scope. After INFRA-01F:
 
-- full `DATA-01B` remains blocked;
-- MBO-derived features remain blocked;
-- queue-position and order-level features remain blocked;
-- SIM-02/SIM-03 queue-aware calibration remains blocked;
-- ML, RSRCH, REL gates depending on full L2/L3/MBO evidence remain blocked.
+- full `DATA-01B` is still not automatically passed;
+- MBO consumers and queue-position features require implementation evidence;
+- SIM-02/SIM-03 queue-aware calibration remains blocked until the MBO consumer and
+  provider-internal replay path exist;
+- ML, RSRCH, and REL gates depending on full L2/L3/MBO evidence remain blocked until their
+  own implementation and replay evidence exists.
 
-If a later policy accepts MBO parity, it should update ADR-0002 or add a new ADR and should
-write a safe INFRA decision report. Raw Rithmic probes, Databento DBN files, and normalized
-large JSONL artifacts must remain uncommitted.
+Raw Rithmic probes, Databento DBN files, and normalized large JSONL artifacts must remain
+uncommitted.

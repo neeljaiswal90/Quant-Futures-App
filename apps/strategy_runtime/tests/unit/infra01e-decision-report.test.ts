@@ -72,13 +72,13 @@ describe('INFRA-01E cross-source parity decision report', () => {
     expect(databento).toContain('data01_full_eligible = false');
   });
 
-  it('keeps MBO and full DATA-01 blocked in policy text', () => {
+  it('keeps INFRA-01E narrow and leaves full DATA-01 blocked in policy text', () => {
     const adr = readRepoFile('docs/adr/ADR-0002-cross-source-market-data-parity.md');
     const infra = readRepoFile('docs/infra/INFRA-01.md');
 
-    expect(adr).toContain('Full `DATA-01B` remains partially blocked until MBO parity');
+    expect(adr).toContain('Full `DATA-01B` is not automatically passed by the policy decision');
     expect(adr).toContain('Full `DATA-01` remains blocked');
-    expect(infra).toContain('Full DATA-01B remains partially blocked because MBO parity is not complete');
+    expect(infra).toContain('Full DATA-01B remained partially blocked at INFRA-01E');
     expect(infra).toContain('data01_full_eligible = false');
   });
 });

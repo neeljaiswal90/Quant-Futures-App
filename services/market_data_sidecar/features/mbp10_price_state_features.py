@@ -2,7 +2,8 @@
 
 This module consumes the accepted DATA-01B-PS price-state sub-scope only. It derives
 price-state features from reconstructed MBP10 prices while keeping size/order-count fields
-diagnostic and MBO/queue features blocked.
+diagnostic. INFRA-01F accepts MBO as a separate provider-internal sub-scope; this feature
+builder still does not consume MBO or queue features.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from services.market_data_sidecar.book.mbp10_price_state import (
 )
 from services.market_data_sidecar.config import (
     DATA01B_FULL_STATUS,
-    DATA01B_MBO_BLOCK_REASON,
+    DATA01B_MBO_SUBSCOPE_REASON,
     DATA01B_MBO_STATUS,
     DATA01B_MBP10_PRICE_STATE_STATUS,
     DATA01B_SIZE_ORDER_COUNT_STATUS,
@@ -245,7 +246,7 @@ def build_mbp10_price_state_feature_journal(
                     diagnostic_count,
                     diagnostic,
                 )
-                if diagnostic.reason == DATA01B_MBO_BLOCK_REASON:
+                if diagnostic.reason == DATA01B_MBO_SUBSCOPE_REASON:
                     skipped_mbo_rows += 1
                 else:
                     skipped_non_price_state_rows += 1
@@ -340,7 +341,7 @@ def _price_state_payload_from_row(
             builder.update_l1(normalized.payload)
         return None, None, diagnostic
     if stream == "MBO":
-        return None, None, NormalizationDiagnostic(line_number, stream, DATA01B_MBO_BLOCK_REASON)
+        return None, None, NormalizationDiagnostic(line_number, stream, DATA01B_MBO_SUBSCOPE_REASON)
     if stream == "MBP10":
         normalized, diagnostic = mbp10_reconstructor.normalize_row(row, line_number=line_number)
         if diagnostic is not None:

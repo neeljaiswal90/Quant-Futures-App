@@ -1,8 +1,9 @@
 # DATA-02-PS: MBP10 Price-State Feature Snapshot Builder
 
 DATA-02-PS builds feature snapshots from the ADR-0002 MBP10 price-state sub-scope. It
-does not complete full DATA-01B, does not accept MBO parity, and does not enable
-queue-position or size-authoritative features.
+does not complete full DATA-01B and does not enable queue-position or size-authoritative
+features. INFRA-01F accepts MBO as a separate provider-internal sub-scope; DATA-02-PS does
+not consume that MBO sub-scope.
 
 ## Accepted Scope
 
@@ -29,11 +30,14 @@ Diagnostic only:
 - MBP10 order-count summaries.
 - Any values named with `diagnostic`.
 
-Blocked:
+Not consumed by this price-state builder:
 
 - MBO production ingestion.
 - MBO-derived features.
 - Queue-position features.
+
+Still blocked globally:
+
 - OFI or depth imbalance as hard trading gates.
 - Full DATA-01B and full DATA-01.
 - SIM-02/SIM-03, ML/research dataset generation, and REL gate advancement.
@@ -80,7 +84,7 @@ The payload includes:
 The payload repeats the guardrail status fields:
 
 - `mbp10_price_state_status = accepted_subscope`;
-- `mbo_status = blocked`;
+- `mbo_status = accepted_subscope`;
 - `size_order_count_status = diagnostic_only`;
 - `data01b_full_status = blocked`.
 
@@ -103,5 +107,5 @@ be treated as a valid trading gate.
 
 DATA-02-PS is a narrow feature-builder unlock for MBP10 price-state only. It may support
 top-of-book and inside-price features for V1, but it does not validate size, queue, MBO, or
-full depth authority. Full DATA-01B remains blocked until MBO parity and size/order-count
-policy are separately accepted.
+full depth authority. Full DATA-01B remains blocked until MBO consumers, DATA-03/DATA-04,
+SIM calibration, and provider-internal replay evidence are implemented and verified.
