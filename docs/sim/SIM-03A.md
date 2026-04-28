@@ -186,6 +186,7 @@ SIM-03A-1 fetches the corpus and writes the manifest, but still does not fit mod
 constants.
 SIM-03A-2 verifies file integrity and writes checksums, but still does not read DBN
 records or fit model constants.
+The SIM-03 calibration/reporting CLI is documented separately in `docs/sim/SIM-03.md`.
 
 Next steps:
 
