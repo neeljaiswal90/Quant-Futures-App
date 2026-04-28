@@ -39,15 +39,16 @@ Sub-scope:
 - DATA-02-MBO provider-internal book state fields: MBO top bid/ask, spread, mid,
   active order counts, price-level aggregate sizes, order counts, and FIFO queue-position
   estimates
+- DATA-04 provider-internal derived microstructure fields: MBO size imbalance,
+  microprice offset, OFI windows, recent depth imbalance, and queue-ahead fraction
 
 Diagnostic only:
 
 - `sidecar_recv_ts_ns` and `rithmic_publish_ts_ns`
 - MBP10 size and order-count fields
-- Size-weighted microprice
-- Top-of-book size imbalance
-- Depth size imbalance
-- OFI size accumulation
+- Generic size-weighted microprice, top-of-book size imbalance, depth imbalance, and OFI
+  fields that are not explicitly produced from the accepted DATA-02-MBO provider-internal
+  sub-scope
 - Databento `trade`/`unknown` MBO action taxonomy equivalence
 
 Blocked:
@@ -56,19 +57,18 @@ Blocked:
 - Order lifetime
 - Cancel/add ratio
 - Absorption and sweep logic
-- Derived MBO microstructure features
 - SIM calibration, ML/research features, and REL replay gates
 
 ## Payload Contract
 
-DATA-01B-PS, DATA-01B-MBO, and DATA-02-PS `MICROSTRUCTURE` payloads carry:
+DATA-01B-PS, DATA-01B-MBO, DATA-02-PS, DATA-02-MBO, and DATA-04 payloads carry:
 
 ```json
 {
   "feature_availability_mask": {
     "schema_version": 1,
-    "mask_version": 2,
-    "mask_id": "feature-availability-mask-v2-adr0002-infra01e-infra01f-data02mbo",
+    "mask_version": 3,
+    "mask_id": "feature-availability-mask-v3-adr0002-infra01e-infra01f-data04",
     "mask_hash": "sha256:...",
     "lineage": {
       "adr": "ADR-0002",
@@ -80,6 +80,7 @@ DATA-01B-PS, DATA-01B-MBO, and DATA-02-PS `MICROSTRUCTURE` payloads carry:
     "field_tiers": {
       "mbp10_top_bid_px": "authoritative",
       "mbo_order_id": "subscope",
+      "mbo_ofi_short": "subscope",
       "queue_position_estimate": "subscope",
       "mbp10_size_diagnostic": "diagnostic_only",
       "queue_position": "blocked"

@@ -10,6 +10,7 @@
     "data:01b:price-state": "python -m services.market_data_sidecar.mbp10_price_state_app",
     "data:02:mbo": "python -m services.market_data_sidecar.mbo_book_state_app",
     "data:02:price-state-features": "python -m services.market_data_sidecar.mbp10_price_state_features_app",
+    "data:04:microstructure-features": "python -m services.market_data_sidecar.microstructure_features_app",
     "data:05a:retention": "python -m services.market_data_sidecar.retention_app",
     "data:06a:session-warmup": "python -m services.market_data_sidecar.session_warmup_app",
     "data:07a:gap-report": "python -m services.market_data_sidecar.gap_report_app",

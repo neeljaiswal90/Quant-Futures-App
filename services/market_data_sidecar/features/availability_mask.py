@@ -9,8 +9,8 @@ from typing import Any, Literal
 FeatureAvailabilityTier = Literal["authoritative", "diagnostic_only", "blocked", "subscope"]
 
 FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION = 1
-FEATURE_AVAILABILITY_MASK_VERSION = 2
-FEATURE_AVAILABILITY_MASK_ID = "feature-availability-mask-v2-adr0002-infra01e-infra01f-data02mbo"
+FEATURE_AVAILABILITY_MASK_VERSION = 3
+FEATURE_AVAILABILITY_MASK_ID = "feature-availability-mask-v3-adr0002-infra01e-infra01f-data04"
 
 FIELD_TIERS: dict[str, FeatureAvailabilityTier] = {
     "exchange_event_ts_ns": "authoritative",
@@ -53,6 +53,18 @@ FIELD_TIERS: dict[str, FeatureAvailabilityTier] = {
     "queue_position_estimate": "subscope",
     "queue_ahead_size_estimate": "subscope",
     "queue_ahead_order_count_estimate": "subscope",
+    "microstructure_spread_points": "authoritative",
+    "microstructure_spread_ticks": "authoritative",
+    "microstructure_mid_px": "authoritative",
+    "mbo_top_of_book_size_imbalance": "subscope",
+    "mbo_microprice_offset_ticks": "subscope",
+    "mbo_ofi_short": "subscope",
+    "mbo_ofi_medium": "subscope",
+    "mbo_ofi_blend": "subscope",
+    "trade_aggressor_imbalance": "authoritative",
+    "mbo_recent_depth_imbalance": "subscope",
+    "mbo_queue_imbalance": "subscope",
+    "queue_ahead_fraction_estimate": "subscope",
     "mbp10_size_diagnostic": "diagnostic_only",
     "mbp10_order_count_diagnostic": "diagnostic_only",
     "mbp10_size_summary_diagnostic": "diagnostic_only",
@@ -115,6 +127,18 @@ RATIONALE: dict[str, str] = {
     "queue_position_estimate": "DATA-02-MBO FIFO queue-position estimate within one provider feed.",
     "queue_ahead_size_estimate": "DATA-02-MBO provider-internal quantity ahead of the order at its price.",
     "queue_ahead_order_count_estimate": "DATA-02-MBO provider-internal order count ahead of the order.",
+    "microstructure_spread_points": "DATA-04 derived spread from authoritative MBP10 price-state.",
+    "microstructure_spread_ticks": "DATA-04 derived spread ticks from authoritative MBP10 price-state.",
+    "microstructure_mid_px": "DATA-04 derived midprice from authoritative MBP10 price-state.",
+    "mbo_top_of_book_size_imbalance": "DATA-04 provider-internal size imbalance derived from DATA-02-MBO.",
+    "mbo_microprice_offset_ticks": "DATA-04 provider-internal microprice offset derived from DATA-02-MBO size and price state.",
+    "mbo_ofi_short": "DATA-04 provider-internal short-window order-flow imbalance estimate.",
+    "mbo_ofi_medium": "DATA-04 provider-internal medium-window order-flow imbalance estimate.",
+    "mbo_ofi_blend": "DATA-04 provider-internal blended order-flow imbalance estimate.",
+    "trade_aggressor_imbalance": "DATA-04 derived from DATA-01A normalized trade side and size.",
+    "mbo_recent_depth_imbalance": "DATA-04 provider-internal recent depth imbalance derived from DATA-02-MBO levels.",
+    "mbo_queue_imbalance": "DATA-04 provider-internal queue-position estimate transformed into an imbalance-style signal.",
+    "queue_ahead_fraction_estimate": "DATA-04 provider-internal queue-ahead fraction, not a provider-neutral queue fact.",
     "mbp10_size_diagnostic": "MBP10 size parity remains diagnostic under ADR-0002.",
     "mbp10_order_count_diagnostic": "MBP10 order-count parity remains diagnostic under ADR-0002.",
     "mbp10_size_summary_diagnostic": "Aggregates diagnostic MBP10 size fields.",
@@ -130,7 +154,7 @@ RATIONALE: dict[str, str] = {
     "cancel_add_ratio": "Requires MBO book-state implementation and replay evidence.",
     "absorption": "Requires DATA-04 feature definition and replay evidence.",
     "sweep": "Requires DATA-04 feature definition and replay evidence.",
-    "mbo_derived_features": "Deferred to DATA-04 after DATA-02-MBO and DATA-03.",
+    "mbo_derived_features": "DATA-04 emits only provider-internal sub-scope features; strict cross-feed feature equivalence is still not claimed.",
     "ml_research_features": "Blocked until RSRCH gates and calibrated replay evidence.",
     "sim_fill_calibration": "Blocked until SIM-02/SIM-03 implementation and calibration.",
     "rel_replay_gate": "Blocked until provider-internal replay evidence exists.",
