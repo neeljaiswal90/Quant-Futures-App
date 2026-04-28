@@ -150,6 +150,67 @@ Classification values:
 reviewer accepts the component interpretation and the revised INFRA-01 verification report
 explicitly routes to `DATA-01`.
 
+## MBP10 Temporal Alignment Diagnostics
+
+DATA-PARITY-07 adds temporal diagnostics for the case where component price parity is below
+the reviewer threshold. This is the next step after the component report says
+`price_level_reconstruction_mismatch`: first prove whether the mismatch is caused by
+timestamp alignment or sampling policy before revisiting extractor logic.
+
+The `mbp10_temporal_alignment` section compares Databento `mbp-10` samples against compact
+Rithmic reconstructed MBP10 top-10 checkpoints under multiple policies:
+
+- `previous_or_equal`: compare against the latest Rithmic state at or before the Databento
+  timestamp.
+- `nearest`: compare against the closest Rithmic state by `exchange_event_ts_ns`.
+- `next_or_equal`: compare against the next Rithmic state at or after the Databento
+  timestamp.
+- `midpoint_bucketed`: choose the previous or next Rithmic state by midpoint distance
+  between adjacent checkpoints.
+
+The lag scan applies fixed offsets to the Databento comparison timestamp before selecting
+the Rithmic state:
+
+```text
+-500, -250, -100, -50, -25, -10, -5, 0, +5, +10, +25, +50, +100, +250, +500 ms
+```
+
+Positive offsets mean "compare the Databento sample to a later Rithmic state." If a nonzero
+offset lifts both-side top price parity above 99%, the report classifies the issue as
+`temporal_alignment_offset_required` and the offset sign must be reviewed before changing
+INFRA-01 policy.
+
+Timestamp-basis scoring compares Databento `ts_event` with `ts_recv` when the normalized
+Databento JSONL includes receive timestamps. If the normalized rows only include
+`ts_event_ns`, `ts_recv_available` is `false` and `best_timestamp_basis` remains `ts_event`.
+
+Mismatch clustering reports price-mismatch runs under the baseline
+`previous_or_equal`/`ts_event`/`0 ms` policy:
+
+- total price-mismatch and price-match sample counts,
+- max consecutive mismatch run,
+- first mismatch clusters,
+- per-minute mismatch rates.
+
+Trade-burst correlation and Databento MBP-1 BBO cross-checks are reported as
+`not_available` unless the analyzer is extended with normalized trade and MBP-1 inputs.
+The always-available cross-check is Rithmic reconstructed MBP10 top-of-book vs Databento
+`mbp-10` top-of-book.
+
+Temporal classifications:
+
+- `temporal_alignment_offset_required`: a nonzero lag scan offset lifts both-side top price
+  parity above threshold.
+- `sampling_policy_mismatch`: nearest or next-state sampling materially improves price
+  parity above threshold.
+- `timestamp_basis_mismatch`: Databento receive-time scoring materially improves parity
+  above threshold.
+- `persistent_price_level_reconstruction_mismatch`: none of the tested lookup, lag, or
+  timestamp-basis policies resolves the price mismatch.
+
+DATA-01B remains blocked for every temporal classification until a reviewer accepts the
+evidence and the revised INFRA-01 verification report explicitly routes to `DATA-01`.
+
 The analyzer is evidence tooling only. Its output uses `status: "analysis_only"` and keeps
 `data01_eligible: false`; a reviewer must still decide the final INFRA-01 policy and produce
 the revised INFRA-01 verification report before `DATA-01` can move.
