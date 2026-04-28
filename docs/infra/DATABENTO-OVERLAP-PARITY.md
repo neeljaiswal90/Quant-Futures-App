@@ -333,6 +333,23 @@ The report must keep `mbp10_price_state_status = accepted_subscope`,
 `data01b_full_status = blocked`. MBO rows are skipped by this price-state-only path with
 `mbo_accepted_subscope_not_consumed_by_price_state_path`.
 
+DATA-01B-MBO consumes the INFRA-01F MBO provider-internal policy by publishing
+source-like MBO order lifecycle `MICROSTRUCTURE` events:
+
+```powershell
+npm run data:01b:mbo -- `
+  --input data/probes/infra01/full/probe-parity-post04d.jsonl `
+  --out data/journals/data01b-mbo/mbo-order-lifecycle.jsonl `
+  --report reports/data/data01b_mbo_report.json `
+  --run-id data01b-mbo-post04d `
+  --session-id 2026-04-27-rth
+```
+
+The report must keep `mbo_status = accepted_subscope`,
+`mbo_lifecycle_status = accepted_subscope`, `mbo_feature_status = deferred_to_data02_mbo`,
+and `data01b_full_status = blocked`. The lifecycle events are source roots for later
+DATA-02-MBO and DATA-04 derived outputs.
+
 ## MBO Event/Action Parity Diagnostic
 
 DATA-PARITY-10 adds a separate MBO diagnostic because MBO is event/action/order-level data,
@@ -397,7 +414,7 @@ Diagnostic only:
 
 Still blocked:
 
-- MBO consumer implementation.
+- DATA-02-MBO book state and feature snapshot implementation.
 - DATA-03 authority FSM.
 - DATA-04 full microstructure feature engine.
 - SIM-02/SIM-03, ML/research dataset generation, and REL gates until implementation and
