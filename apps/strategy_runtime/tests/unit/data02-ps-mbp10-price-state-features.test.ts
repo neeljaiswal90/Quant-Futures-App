@@ -174,6 +174,15 @@ describe('DATA-02-PS MBP10 price-state feature snapshots', () => {
       bid_levels_px: [27526.25, 27526],
       ask_levels_px: [27526.5, 27526.75],
       freshness_status: 'fresh',
+      feature_availability_mask: {
+        mask_id: 'feature-availability-mask-v1-adr0002-infra01e-infra01f',
+        field_tiers: {
+          mbp10_spread_ticks: 'authoritative',
+          mbp10_size_diagnostic: 'diagnostic_only',
+          mbo_order_id: 'subscope',
+          queue_position: 'blocked',
+        },
+      },
       mbp10_price_state_status: 'accepted_subscope',
       mbo_status: 'accepted_subscope',
       size_order_count_status: 'diagnostic_only',
@@ -203,6 +212,7 @@ describe('DATA-02-PS MBP10 price-state feature snapshots', () => {
       has_complete_top_of_book: true,
       l1_mbp10_top_bid_within_1_tick: true,
       l1_mbp10_top_ask_within_1_tick: true,
+      feature_availability_mask_id: 'feature-availability-mask-v1-adr0002-infra01e-infra01f',
       mbo_features_available: false,
     });
   });

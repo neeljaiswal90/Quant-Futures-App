@@ -19,6 +19,10 @@ from services.market_data_sidecar.config import (
     DATA01B_MBP10_PRICE_STATE_STATUS,
     DATA01B_SIZE_ORDER_COUNT_STATUS,
 )
+from services.market_data_sidecar.features.availability_mask import (
+    FEATURE_AVAILABILITY_MASK,
+    feature_availability_values,
+)
 from services.market_data_sidecar.providers.rithmic_live import NormalizationDiagnostic
 
 BookSide = Literal["bid", "ask"]
@@ -89,6 +93,7 @@ class Mbp10PriceStateReconstructor:
             "bids": [_level_payload(level) for level in bid_levels],
             "asks": [_level_payload(level) for level in ask_levels],
             "depth": self._depth,
+            "feature_availability_mask": FEATURE_AVAILABILITY_MASK,
             "mbp10_price_state_status": DATA01B_MBP10_PRICE_STATE_STATUS,
             "mbo_status": DATA01B_MBO_STATUS,
             "size_order_count_status": DATA01B_SIZE_ORDER_COUNT_STATUS,
@@ -146,6 +151,7 @@ class Mbp10PriceStateReconstructor:
             "mbo_status": DATA01B_MBO_STATUS,
             "size_order_count_status": DATA01B_SIZE_ORDER_COUNT_STATUS,
             "data01b_full_status": DATA01B_FULL_STATUS,
+            **feature_availability_values(),
         }
         for side, levels in (("bid", bids), ("ask", asks)):
             for index, level in enumerate(levels):

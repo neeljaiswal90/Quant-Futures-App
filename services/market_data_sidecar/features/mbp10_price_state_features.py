@@ -23,6 +23,10 @@ from services.market_data_sidecar.config import (
     DATA01B_MBP10_PRICE_STATE_STATUS,
     DATA01B_SIZE_ORDER_COUNT_STATUS,
 )
+from services.market_data_sidecar.features.availability_mask import (
+    FEATURE_AVAILABILITY_MASK,
+    feature_availability_values,
+)
 from services.market_data_sidecar.providers.rithmic_live import (
     NormalizationDiagnostic,
     RithmicL1TradeNormalizer,
@@ -175,6 +179,7 @@ class Mbp10PriceStateFeatureBuilder:
             },
             "diagnostic": _diagnostic_summary(bids, asks),
             "l1_mbp10_consistency": l1_consistency,
+            "feature_availability_mask": FEATURE_AVAILABILITY_MASK,
             "values": values,
             "mbp10_price_state_status": DATA01B_MBP10_PRICE_STATE_STATUS,
             "mbo_status": DATA01B_MBO_STATUS,
@@ -395,6 +400,7 @@ def _scalar_values(
         "mbo_status": DATA01B_MBO_STATUS,
         "size_order_count_status": DATA01B_SIZE_ORDER_COUNT_STATUS,
         "data01b_full_status": DATA01B_FULL_STATUS,
+        **feature_availability_values(),
         **summary,
         **diagnostics,
         **l1_consistency,

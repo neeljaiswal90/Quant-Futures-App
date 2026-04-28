@@ -227,6 +227,7 @@ function validateMicrostructurePayload(
     'stale',
   ]);
   requireScalarMap(record.values, `${path}.values`, issues);
+  optionalFeatureAvailabilityMask(record.feature_availability_mask, `${path}.feature_availability_mask`, issues);
 }
 
 function validateBookRebuildPayload(
@@ -405,6 +406,7 @@ function validateFeaturesPayload(
   requireNonEmptyString(record.feature_snapshot_id, `${path}.feature_snapshot_id`, issues);
   optionalNonEmptyString(record.source_event_id, `${path}.source_event_id`, issues);
   requireScalarMap(record.values, `${path}.values`, issues);
+  optionalFeatureAvailabilityMask(record.feature_availability_mask, `${path}.feature_availability_mask`, issues);
 }
 
 function validateStructurePayload(
@@ -789,6 +791,43 @@ function requireScalarMap(
       continue;
     }
     addIssue(issues, `${path}.${key}`, 'invalid_field_type', 'must be scalar JSON value');
+  }
+}
+
+function optionalFeatureAvailabilityMask(
+  value: unknown,
+  path: string,
+  issues: JournalEventSchemaIssue[],
+): void {
+  if (value === undefined) {
+    return;
+  }
+  const record = requireRecord(value, path, issues);
+  if (record === undefined) return;
+  requireNumber(record.schema_version, `${path}.schema_version`, issues);
+  requireNumber(record.mask_version, `${path}.mask_version`, issues);
+  requireNonEmptyString(record.mask_id, `${path}.mask_id`, issues);
+  requireNonEmptyString(record.mask_hash, `${path}.mask_hash`, issues);
+
+  const lineage = requireRecord(record.lineage, `${path}.lineage`, issues);
+  if (lineage !== undefined) {
+    requireNonEmptyString(lineage.adr, `${path}.lineage.adr`, issues);
+    requireNonEmptyString(lineage.infra01e, `${path}.lineage.infra01e`, issues);
+    requireNonEmptyString(lineage.infra01f, `${path}.lineage.infra01f`, issues);
+    requireNonEmptyString(lineage.data01b_full_status, `${path}.lineage.data01b_full_status`, issues);
+    requireNonEmptyString(lineage.data01_full_status, `${path}.lineage.data01_full_status`, issues);
+  }
+
+  const fieldTiers = requireRecord(record.field_tiers, `${path}.field_tiers`, issues);
+  if (fieldTiers !== undefined) {
+    for (const [field, tier] of Object.entries(fieldTiers)) {
+      requireEnum(tier, `${path}.field_tiers.${field}`, issues, [
+        'authoritative',
+        'diagnostic_only',
+        'blocked',
+        'subscope',
+      ]);
+    }
   }
 }
 

@@ -79,6 +79,7 @@ The payload includes:
 - `bid_levels_px` and `ask_levels_px`;
 - `price_ladder_summary`;
 - `validity`;
+- `feature_availability_mask`;
 - `values`, a scalar map for downstream consumers.
 
 The payload repeats the guardrail status fields:
@@ -87,6 +88,10 @@ The payload repeats the guardrail status fields:
 - `mbo_status = accepted_subscope`;
 - `size_order_count_status = diagnostic_only`;
 - `data01b_full_status = blocked`.
+
+The mask is the DATA-03 feature-availability mask. It marks price-state fields as
+authoritative, MBP10 size/order-count fields as diagnostic-only, MBO lifecycle fields as
+their own sub-scope, and queue/OFI/depth features as blocked until later tickets.
 
 ## Validity Masks
 

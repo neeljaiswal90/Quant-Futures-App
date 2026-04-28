@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   createJournalEventEnvelope,
+  journalEventFromJsonLine,
+  journalEventToJsonLine,
   makeCausationId,
   makeEventId,
   makeRunId,
@@ -10,6 +12,7 @@ import {
   type JsonValue,
   type JournalEventEnvelope,
 } from '../../src/contracts/index.js';
+import { FEATURE_AVAILABILITY_MASK } from '../../src/features/availability-mask.js';
 
 const TS_NS = 1_700_000_000_000_000_000n;
 
@@ -231,5 +234,39 @@ describe('OBS-01 journal event schema validation', () => {
       code: 'invalid_field_type',
       message: 'must be a finite number',
     });
+  });
+
+  it('round-trips feature availability masks without reviving mask field IDs as timestamps', () => {
+    const event = createJournalEventEnvelope({
+      event_id: makeEventId('microstructure-mask-1'),
+      type: 'MICROSTRUCTURE',
+      ts_ns: ns(TS_NS),
+      run_id: makeRunId('run-obs-01'),
+      session_id: makeSessionId('2026-04-23-rth'),
+      causation_id: makeCausationId('price-state-source-1'),
+      payload: {
+        exchange_event_ts_ns: ns(TS_NS),
+        sidecar_recv_ts_ns: ns(TS_NS + 1_000_000n),
+        feature_snapshot_id: 'feature-mask-1',
+        l3_authority: 'authoritative',
+        values: {
+          feature_availability_mask_id: FEATURE_AVAILABILITY_MASK.mask_id,
+        },
+        feature_availability_mask: FEATURE_AVAILABILITY_MASK as unknown as JsonValue,
+      },
+    });
+
+    const roundTripped = journalEventFromJsonLine(journalEventToJsonLine(event));
+    const result = validateJournalEventEnvelope(roundTripped);
+
+    expect(result.ok).toBe(true);
+    expect(result.issues).toEqual([]);
+    expect(
+      (
+        (roundTripped.payload as Record<string, unknown>).feature_availability_mask as {
+          field_tiers: Record<string, string>;
+        }
+      ).field_tiers.exchange_event_ts_ns,
+    ).toBe('authoritative');
   });
 });

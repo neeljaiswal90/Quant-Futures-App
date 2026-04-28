@@ -81,7 +81,15 @@ export function isTimestampNsFieldName(fieldName: string): boolean {
   return TIMESTAMP_NS_FIELD_NAME_SET.has(fieldName) || fieldName.endsWith('_ts_ns');
 }
 
+function shouldSkipTimestampRevival(path: string): boolean {
+  return path.endsWith('.feature_availability_mask') || path.includes('.feature_availability_mask.');
+}
+
 export function reviveTimestampNsFields(value: unknown, path = '$'): unknown {
+  if (shouldSkipTimestampRevival(path)) {
+    return value;
+  }
+
   if (Array.isArray(value)) {
     return value.map((item, index) => reviveTimestampNsFields(item, `${path}[${index}]`));
   }
