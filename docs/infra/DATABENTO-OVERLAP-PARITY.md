@@ -104,6 +104,52 @@ The report includes:
 - depth-level parity where both sides provide comparable fields,
 - mismatches grouped by side and level.
 
+## MBP10 Component Scoring
+
+DATA-PARITY-06 splits the MBP10 comparison into component scores so reviewers can tell
+whether a failed aggregate comparison is a market-state disagreement or a vendor field
+semantics mismatch.
+
+The analyzer still emits the coarse `mbp10_parity` section for continuity, but the
+reviewer-facing section is `mbp10_component_parity`:
+
+- `top_of_book` reports bid/ask price parity within one MNQ tick, exact size parity, exact
+  order-count parity, and top-level size delta distributions.
+- `depth_by_level` reports each bid/ask level `0..9` independently with price, size,
+  order-count, and level-presence scores.
+- `mismatch_breakdown` separates price-only, size-only, order-count-only, price+size, mixed,
+  and missing-level mismatches.
+- `first_mismatches` records deterministic examples for price, size, order-count, and
+  level-presence mismatches.
+
+Price, size, and order count are intentionally separate:
+
+- Price mismatches suggest reconstruction, sampling alignment, or vendor book-state
+  disagreement.
+- Size mismatches can reflect different aggregation, implied-order, or update-timing
+  semantics even when the price ladder is aligned.
+- Order-count mismatches are especially vendor-sensitive and should not fail market-state
+  parity unless the reviewer has confirmed both feeds expose compatible count semantics.
+- Level-presence mismatches mean one source has a comparable depth level while the other
+  does not; first check sampling alignment and update application rules.
+
+Classification values:
+
+- `mbp10_parity_component_pass`: price, size, order-count, and presence components are all
+  high.
+- `size_order_count_semantics_mismatch`: price parity is high, but size or order-count
+  parity is low; review vendor semantics before failing market-state parity.
+- `price_level_reconstruction_mismatch`: price parity is low; revisit Rithmic/Databento
+  reconstruction before interpreting size/order-count.
+- `book_depth_presence_mismatch`: level presence parity is low; compare sampling windows,
+  depth availability, and update application rules.
+- `inconclusive_component_mismatch`: mixed evidence that needs manual review.
+
+`mbp10_component_parity` remains evidence only. The report status stays
+`analysis_only`, `data01_eligible` stays `false`, and `DATA-01B` stays blocked until a
+reviewer accepts the component interpretation and the revised INFRA-01 verification report
+explicitly routes to `DATA-01`.
+
 The analyzer is evidence tooling only. Its output uses `status: "analysis_only"` and keeps
 `data01_eligible: false`; a reviewer must still decide the final INFRA-01 policy and produce
 the revised INFRA-01 verification report before `DATA-01` can move.
