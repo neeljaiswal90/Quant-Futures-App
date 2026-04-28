@@ -36,15 +36,29 @@ import {
   getVenueCostConfig,
   type VenueCostTable,
 } from '../risk/venue-cost-config.js';
+import {
+  computeQueueAwareLimitFill,
+  type QueueAwareMarketState,
+} from './fill-model.js';
+import {
+  FixedSeedRandomSource,
+  sampleMarketableAdverseSlippage,
+  type DeterministicRandomSource,
+  type MarketableSlippageSample,
+} from './slippage-model.js';
 
-export const SIMULATED_EXECUTION_VERSION = 'simulated_execution_v1' as const;
+export const SIMULATED_EXECUTION_VERSION = 'simulated_execution_v2' as const;
 
 export interface SimulatedExecutionConfig {
   readonly marketable_slippage_points: number;
+  readonly marketable_adverse_extra_tick_probability: number;
+  readonly queue_default_drain_rate_contracts_per_second: number;
 }
 
 export const DEFAULT_SIMULATED_EXECUTION_CONFIG: SimulatedExecutionConfig = {
   marketable_slippage_points: 0.25,
+  marketable_adverse_extra_tick_probability: 0,
+  queue_default_drain_rate_contracts_per_second: 1,
 };
 
 export interface SimulatedExecutionMarketState {
@@ -53,6 +67,7 @@ export interface SimulatedExecutionMarketState {
   readonly bid_px: number;
   readonly ask_px: number;
   readonly last_trade_price?: number;
+  readonly queue?: QueueAwareMarketState;
 }
 
 export interface SubmitSimulatedOrderInput {
@@ -77,18 +92,22 @@ export interface SimulatedExecutionAdapter {
 export interface CreateSimulatedExecutionAdapterOptions {
   readonly venue_costs: VenueCostTable;
   readonly config?: Partial<SimulatedExecutionConfig>;
+  readonly rng?: DeterministicRandomSource;
+  readonly rng_seed?: number;
 }
 
 export class DeterministicSimulatedExecutionAdapter implements SimulatedExecutionAdapter {
   readonly adapter = 'simulated' as const;
   readonly version = SIMULATED_EXECUTION_VERSION;
   private readonly config: SimulatedExecutionConfig;
+  private readonly rng: DeterministicRandomSource;
 
   constructor(private readonly options: CreateSimulatedExecutionAdapterOptions) {
     this.config = {
       ...DEFAULT_SIMULATED_EXECUTION_CONFIG,
       ...options.config,
     };
+    this.rng = options.rng ?? new FixedSeedRandomSource(options.rng_seed);
     validateExecutionConfig(this.config);
   }
 
@@ -98,15 +117,25 @@ export class DeterministicSimulatedExecutionAdapter implements SimulatedExecutio
       return rejectOrder(input.intent, rejection);
     }
 
-    const fillPlan = computeFillPlan(input.intent, input.market, this.config);
+    const fillPlan = computeFillPlan(input.intent, input.market, this.config, this.rng);
     if (fillPlan.kind === 'no_fill') {
+      const status =
+        fillPlan.reason === 'post_only_would_cross'
+          ? 'rejected'
+          : input.intent.time_in_force === 'ioc'
+            ? 'cancelled'
+            : 'accepted';
       return {
         order_intent_id: input.intent.order_intent_id,
-        status: input.intent.time_in_force === 'ioc' ? 'cancelled' : 'accepted',
+        status,
         submitted_ts_ns: input.intent.submitted_ts_ns,
         fills: [],
         reject_reason:
-          input.intent.time_in_force === 'ioc' ? `${fillPlan.reason}:ioc_cancelled` : undefined,
+          status === 'rejected'
+            ? fillPlan.reason
+            : status === 'cancelled'
+              ? `${fillPlan.reason}:ioc_cancelled`
+              : undefined,
       };
     }
 
@@ -117,14 +146,16 @@ export class DeterministicSimulatedExecutionAdapter implements SimulatedExecutio
       contract,
       venue_cost: venueCost,
       fill_price: fillPlan.price,
+      quantity: fillPlan.quantity,
       slippage_points: fillPlan.slippage_points,
       liquidity: fillPlan.liquidity,
       filled_ts_ns: input.fill_ts_ns ?? input.market.ts_ns,
+      metadata: fillPlan.metadata,
     });
 
     return {
       order_intent_id: input.intent.order_intent_id,
-      status: 'filled',
+      status: fillPlan.quantity < input.intent.quantity ? 'partially_filled' : 'filled',
       submitted_ts_ns: input.intent.submitted_ts_ns,
       fills: [fill],
     };
@@ -242,14 +273,42 @@ export function toSimFillEventPayload(fill: SimulatedFill): SimFillEventPayload 
     slippage_points: fill.slippage_points,
     exchange_fee_usd: fill.exchange_fee_usd,
     commission_usd: fill.commission_usd,
+    execution_model_version: fill.execution_model_version,
+    fill_model: fill.fill_model,
+    input_tier: fill.input_tier,
+    fill_probability: fill.fill_probability,
+    time_to_fill_estimate_ms: fill.time_to_fill_estimate_ms,
+    queue_position_estimate: fill.queue_position_estimate,
+    queue_ahead_size_estimate: fill.queue_ahead_size_estimate,
+    queue_ahead_order_count_estimate: fill.queue_ahead_order_count_estimate,
+    queue_consumed_size: fill.queue_consumed_size,
+    partial_fill_reason: fill.partial_fill_reason,
+    adverse_tick_draw: fill.adverse_tick_draw,
+    adverse_ticks: fill.adverse_ticks,
+    calibration_status: fill.calibration_status,
   };
 }
 
 interface FillPlan {
   readonly kind: 'fill';
+  readonly quantity: number;
   readonly price: number;
   readonly slippage_points: number;
   readonly liquidity: SimulatedFill['liquidity'];
+  readonly metadata?: FillPlanMetadata;
+}
+
+interface FillPlanMetadata extends Partial<MarketableSlippageSample> {
+  readonly execution_model_version: typeof SIMULATED_EXECUTION_VERSION;
+  readonly fill_model: 'bbo_market_taker' | 'queue_aware_limit_post_only';
+  readonly input_tier: 'authoritative' | 'subscope' | 'diagnostic_only' | 'blocked';
+  readonly fill_probability?: number;
+  readonly time_to_fill_estimate_ms?: number;
+  readonly queue_position_estimate?: number;
+  readonly queue_ahead_size_estimate?: number;
+  readonly queue_ahead_order_count_estimate?: number;
+  readonly queue_consumed_size?: number;
+  readonly partial_fill_reason?: string;
 }
 
 interface NoFillPlan {
@@ -261,12 +320,13 @@ function computeFillPlan(
   intent: SimulatedOrderIntent,
   market: SimulatedExecutionMarketState,
   config: SimulatedExecutionConfig,
+  rng: DeterministicRandomSource,
 ): FillPlan | NoFillPlan {
   if (intent.type === 'market') {
-    return fillAgainstBbo(intent, market, config.marketable_slippage_points, undefined, 'taker');
+    return fillAgainstBbo(intent, market, config, rng, undefined, 'taker');
   }
 
-  if (intent.type === 'limit') {
+  if (intent.type === 'limit' || intent.type === 'limit_post_only') {
     if (intent.limit_price === undefined) {
       return { kind: 'no_fill', reason: 'missing_limit_price' };
     }
@@ -274,10 +334,16 @@ function computeFillPlan(
       intent.side === 'buy'
         ? intent.limit_price >= market.ask_px
         : intent.limit_price <= market.bid_px;
+    if (intent.type === 'limit_post_only') {
+      if (crosses) {
+        return { kind: 'no_fill', reason: 'post_only_would_cross' };
+      }
+      return fillQueueAwarePostOnly(intent, market, config);
+    }
     if (!crosses) {
       return { kind: 'no_fill', reason: 'limit_not_marketable' };
     }
-    return fillAgainstBbo(intent, market, config.marketable_slippage_points, intent.limit_price, 'taker');
+    return fillAgainstBbo(intent, market, config, rng, intent.limit_price, 'taker');
   }
 
   if (intent.stop_price === undefined) {
@@ -290,22 +356,29 @@ function computeFillPlan(
   if (!triggered) {
     return { kind: 'no_fill', reason: 'stop_not_triggered' };
   }
-  return fillAgainstBbo(intent, market, config.marketable_slippage_points, undefined, 'taker');
+  return fillAgainstBbo(intent, market, config, rng, undefined, 'taker');
 }
 
 function fillAgainstBbo(
   intent: SimulatedOrderIntent,
   market: SimulatedExecutionMarketState,
-  slippagePoints: number,
+  config: SimulatedExecutionConfig,
+  rng: DeterministicRandomSource,
   limitPrice: number | undefined,
   liquidity: SimulatedFill['liquidity'],
 ): FillPlan {
   const contract = getContractSpec(intent.instrument.root);
+  const slippage = sampleMarketableAdverseSlippage({
+    base_slippage_points: config.marketable_slippage_points,
+    extra_tick_probability: config.marketable_adverse_extra_tick_probability,
+    contract,
+    rng,
+  });
   const basePrice = intent.side === 'buy' ? market.ask_px : market.bid_px;
   const rawPrice =
     intent.side === 'buy'
-      ? basePrice + slippagePoints
-      : basePrice - slippagePoints;
+      ? basePrice + slippage.slippage_points
+      : basePrice - slippage.slippage_points;
   const adverseRoundedPrice = roundToTick(
     rawPrice,
     contract,
@@ -330,12 +403,53 @@ function fillAgainstBbo(
     intent.side === 'buy'
       ? Math.max(0, roundedPrice - basePrice)
       : Math.max(0, basePrice - roundedPrice);
+  const actualAdverseTicks = Math.round(adverseSlippage / contract.tick_size);
 
   return {
     kind: 'fill',
+    quantity: intent.quantity,
     price: roundedPrice,
     slippage_points: adverseSlippage,
     liquidity,
+    metadata: {
+      ...slippage,
+      slippage_points: adverseSlippage,
+      adverse_ticks: actualAdverseTicks,
+      execution_model_version: SIMULATED_EXECUTION_VERSION,
+      fill_model: 'bbo_market_taker',
+      input_tier: 'authoritative',
+    },
+  };
+}
+
+function fillQueueAwarePostOnly(
+  intent: SimulatedOrderIntent,
+  market: SimulatedExecutionMarketState,
+  config: SimulatedExecutionConfig,
+): FillPlan | NoFillPlan {
+  if (intent.limit_price === undefined) {
+    return { kind: 'no_fill', reason: 'missing_limit_price' };
+  }
+  const queueDecision = computeQueueAwareLimitFill({
+    side: intent.side,
+    quantity: intent.quantity,
+    limit_price: intent.limit_price,
+    queue: market.queue,
+    config: {
+      default_queue_drain_rate_contracts_per_second:
+        config.queue_default_drain_rate_contracts_per_second,
+    },
+  });
+  if (queueDecision.kind === 'no_fill') {
+    return { kind: 'no_fill', reason: queueDecision.reason ?? 'queue_not_reached' };
+  }
+  return {
+    kind: 'fill',
+    quantity: queueDecision.quantity,
+    price: roundToTick(intent.limit_price, getContractSpec(intent.instrument.root)),
+    slippage_points: 0,
+    liquidity: 'maker',
+    metadata: queueDecision.metadata,
   };
 }
 
@@ -344,11 +458,13 @@ function buildFill(input: {
   readonly contract: ContractSpec;
   readonly venue_cost: VenueCostConfig;
   readonly fill_price: number;
+  readonly quantity: number;
   readonly slippage_points: number;
   readonly liquidity: SimulatedFill['liquidity'];
   readonly filled_ts_ns: UnixNs;
+  readonly metadata?: FillPlanMetadata;
 }): SimulatedFill {
-  const quantity = input.intent.quantity;
+  const quantity = input.quantity;
   return {
     fill_id: makeFillId(`fill-${input.intent.order_intent_id}-1`),
     order_intent_id: input.intent.order_intent_id,
@@ -366,6 +482,19 @@ function buildFill(input: {
     slippage_points: input.slippage_points,
     filled_ts_ns: input.filled_ts_ns,
     config: input.intent.config,
+    execution_model_version: input.metadata?.execution_model_version,
+    fill_model: input.metadata?.fill_model,
+    input_tier: input.metadata?.input_tier,
+    fill_probability: input.metadata?.fill_probability,
+    time_to_fill_estimate_ms: input.metadata?.time_to_fill_estimate_ms,
+    queue_position_estimate: input.metadata?.queue_position_estimate,
+    queue_ahead_size_estimate: input.metadata?.queue_ahead_size_estimate,
+    queue_ahead_order_count_estimate: input.metadata?.queue_ahead_order_count_estimate,
+    queue_consumed_size: input.metadata?.queue_consumed_size,
+    partial_fill_reason: input.metadata?.partial_fill_reason,
+    adverse_tick_draw: input.metadata?.adverse_tick_draw,
+    adverse_ticks: input.metadata?.adverse_ticks,
+    calibration_status: input.metadata?.calibration_status,
   };
 }
 
@@ -385,7 +514,10 @@ function validateSubmitInput(input: SubmitSimulatedOrderInput): string | undefin
   if (input.market.bid_px > input.market.ask_px) {
     return 'bid_above_ask';
   }
-  if (input.intent.type === 'limit' && input.intent.limit_price === undefined) {
+  if (
+    (input.intent.type === 'limit' || input.intent.type === 'limit_post_only') &&
+    input.intent.limit_price === undefined
+  ) {
     return 'limit_price_required';
   }
   if (input.intent.type === 'stop_market' && input.intent.stop_price === undefined) {
@@ -410,5 +542,18 @@ function rejectOrder(
 function validateExecutionConfig(config: SimulatedExecutionConfig): void {
   if (!Number.isFinite(config.marketable_slippage_points) || config.marketable_slippage_points < 0) {
     throw new Error('marketable_slippage_points must be a non-negative finite number');
+  }
+  if (
+    !Number.isFinite(config.marketable_adverse_extra_tick_probability) ||
+    config.marketable_adverse_extra_tick_probability < 0 ||
+    config.marketable_adverse_extra_tick_probability > 1
+  ) {
+    throw new Error('marketable_adverse_extra_tick_probability must be between 0 and 1');
+  }
+  if (
+    !Number.isFinite(config.queue_default_drain_rate_contracts_per_second) ||
+    config.queue_default_drain_rate_contracts_per_second <= 0
+  ) {
+    throw new Error('queue_default_drain_rate_contracts_per_second must be positive');
   }
 }

@@ -223,7 +223,7 @@ export interface OrderIntentEventPayload {
   readonly candidate_id: CandidateId;
   readonly sizing_decision_id: SizingDecisionId;
   readonly side: OrderSide;
-  readonly order_type: 'market' | 'limit' | 'stop_market';
+  readonly order_type: 'market' | 'limit' | 'limit_post_only' | 'stop_market';
   readonly quantity: number;
   readonly limit_price?: number;
   readonly stop_price?: number;
@@ -247,6 +247,19 @@ export interface SimFillEventPayload {
   readonly slippage_points?: number;
   readonly exchange_fee_usd?: number;
   readonly commission_usd?: number;
+  readonly execution_model_version?: string;
+  readonly fill_model?: 'bbo_market_taker' | 'queue_aware_limit_post_only';
+  readonly input_tier?: 'authoritative' | 'subscope' | 'diagnostic_only' | 'blocked';
+  readonly fill_probability?: number;
+  readonly time_to_fill_estimate_ms?: number;
+  readonly queue_position_estimate?: number;
+  readonly queue_ahead_size_estimate?: number;
+  readonly queue_ahead_order_count_estimate?: number;
+  readonly queue_consumed_size?: number;
+  readonly partial_fill_reason?: string;
+  readonly adverse_tick_draw?: number;
+  readonly adverse_ticks?: number;
+  readonly calibration_status?: string;
   readonly strategy_config_hash?: string;
   readonly management_action_id?: ManagementActionId;
   readonly position_id?: PositionId;
