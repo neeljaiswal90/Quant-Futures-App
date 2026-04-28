@@ -56,6 +56,7 @@ OBS-01-compatible and carries source timestamps. The payload includes:
 - `exchange_event_ts_ns`;
 - `sidecar_recv_ts_ns`;
 - optional `rithmic_publish_ts_ns`;
+- `feature_availability_mask`;
 - `l3_authority: "unavailable"`;
 - scalar `values` containing accepted price-state fields such as `bid_px_00` and
   `ask_px_00`;
@@ -64,6 +65,11 @@ OBS-01-compatible and carries source timestamps. The payload includes:
 
 Only price fields are accepted as the sub-scope. Size and order-count fields are explicitly
 named diagnostic to prevent accidental hard-gate use.
+
+The `values` map carries `feature_availability_mask_version`,
+`feature_availability_mask_id`, and `feature_availability_mask_hash` so downstream
+consumers can reject diagnostic-only or blocked fields without parsing the full nested
+mask.
 
 ## Report Status
 

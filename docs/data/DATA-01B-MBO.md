@@ -57,12 +57,18 @@ Each payload includes:
 - `sidecar_recv_ts_ns`;
 - optional `rithmic_publish_ts_ns`;
 - optional provider `sequence`;
+- `feature_availability_mask`;
 - `l3_authority: "unavailable"`;
 - `source: "mbo_order_lifecycle"`;
 - `microstructure_kind: "mbo_order_lifecycle"`;
 - normalized `action`, `side`, `price`, `size`, and `order_id`;
 - scalar `values` with the same accepted lifecycle fields;
 - status fields for the accepted MBO sub-scope and blocked full DATA-01B gate.
+
+The mask classifies lifecycle fields such as `mbo_order_id`, `mbo_action`, and `mbo_size`
+as `subscope`, not globally authoritative. Queue position, order lifetime, cancel/add
+ratio, absorption, and sweep features remain `blocked` until their own implementation and
+replay evidence exists.
 
 ## Report Status
 

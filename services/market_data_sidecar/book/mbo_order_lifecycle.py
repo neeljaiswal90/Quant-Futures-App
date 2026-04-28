@@ -18,6 +18,10 @@ from services.market_data_sidecar.config import (
     DATA01B_MBO_STATUS,
     DATA01B_MBP10_PRICE_STATE_STATUS,
 )
+from services.market_data_sidecar.features.availability_mask import (
+    FEATURE_AVAILABILITY_MASK,
+    feature_availability_values,
+)
 from services.market_data_sidecar.providers.rithmic_live import NormalizationDiagnostic
 
 MboAction = Literal["add", "modify", "cancel"]
@@ -153,6 +157,7 @@ def _payload(
         "price": price,
         "size": size,
         "order_id": order_id,
+        "feature_availability_mask": FEATURE_AVAILABILITY_MASK,
         "mbp10_price_state_status": DATA01B_MBP10_PRICE_STATE_STATUS,
         "mbo_status": DATA01B_MBO_STATUS,
         "mbo_lifecycle_status": DATA01B_MBO_LIFECYCLE_STATUS,
@@ -184,6 +189,7 @@ def _payload(
         "mbo_lifecycle_status": DATA01B_MBO_LIFECYCLE_STATUS,
         "mbo_feature_status": DATA01B_MBO_FEATURE_STATUS,
         "data01b_full_status": DATA01B_FULL_STATUS,
+        **feature_availability_values(),
     }
     return payload
 
