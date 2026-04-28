@@ -7,6 +7,8 @@ import {
 } from '../../src/features/availability-mask.js';
 
 const PYTHON = process.env.PYTHON ?? 'python';
+const V1_MASK_HASH = 'sha256:fd7672a243fe476e28e655a0a43ec8f31faf2abedda4fabd9f3d6f43bad3cb00';
+const CURRENT_MASK_HASH = 'sha256:f9039c8a9c19bd5de72cfd8d0200e44ff1c09ad439c02bcffbe2dbe639c4c4a3';
 
 function pythonMask(): Record<string, unknown> {
   const result = spawnSync(
@@ -40,8 +42,8 @@ describe('DATA-03 feature availability mask', () => {
 
     expect(mask).toMatchObject({
       schema_version: 1,
-      mask_version: 1,
-      mask_id: 'feature-availability-mask-v1-adr0002-infra01e-infra01f',
+      mask_version: 2,
+      mask_id: 'feature-availability-mask-v2-adr0002-infra01e-infra01f-data02mbo',
       lineage: {
         adr: 'ADR-0002',
         infra01e: 'MBP10_PRICE_STATE_ACCEPTED_SUBSCOPE',
@@ -50,9 +52,12 @@ describe('DATA-03 feature availability mask', () => {
         data01_full_status: 'blocked',
       },
     });
-    expect(mask.mask_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(mask.mask_hash).toBe(CURRENT_MASK_HASH);
+    expect(mask.mask_hash).not.toBe(V1_MASK_HASH);
     expect(tierOf(mask, 'mbp10_top_bid_px')).toBe('authoritative');
     expect(tierOf(mask, 'mbo_order_id')).toBe('subscope');
+    expect(tierOf(mask, 'mbo_book_state')).toBe('subscope');
+    expect(tierOf(mask, 'queue_position_estimate')).toBe('subscope');
     expect(tierOf(mask, 'mbp10_size_diagnostic')).toBe('diagnostic_only');
     expect(tierOf(mask, 'queue_position')).toBe('blocked');
   });
@@ -66,6 +71,9 @@ describe('DATA-03 feature availability mask', () => {
     );
     expect(() => assertAuthoritative(mask, 'mbo_order_id')).toThrow(
       'Feature field mbo_order_id is subscope, not authoritative',
+    );
+    expect(() => assertAuthoritative(mask, 'queue_position_estimate')).toThrow(
+      'Feature field queue_position_estimate is subscope, not authoritative',
     );
     expect(() => assertAuthoritative(mask, 'queue_position')).toThrow(
       'Feature field queue_position is blocked, not authoritative',
