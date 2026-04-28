@@ -22,11 +22,14 @@ Diagnostic only:
 - MBP10 order-count fields.
 - Cross-source size/order-count parity.
 
-Blocked:
+Not consumed by this price-state path:
 
 - MBO production ingestion.
 - MBO-derived features.
 - Queue-position features.
+
+Still blocked globally:
+
 - Full DATA-01B.
 - Full DATA-01.
 - SIM-02/SIM-03, ML/research dataset generation, and REL gates.
@@ -67,18 +70,18 @@ named diagnostic to prevent accidental hard-gate use.
 The conversion report must include:
 
 - `mbp10_price_state_status = accepted_subscope`;
-- `mbo_status = blocked`;
+- `mbo_status = accepted_subscope`;
 - `size_order_count_status = diagnostic_only`;
 - `data01b_full_status = blocked`.
 
-MBO rows are skipped with:
+MBO rows are skipped by this MBP10 price-state-only path with:
 
 ```text
-mbo_parity_blocked_action_taxonomy_unresolved
+mbo_accepted_subscope_not_consumed_by_price_state_path
 ```
 
-That reason points back to DATA-PARITY-11: MBO action taxonomy is not accepted yet, so MBO
-features remain blocked.
+That reason points to INFRA-01F: MBO has an accepted provider-internal sub-scope, but this
+publisher is not the MBO consumer.
 
 ## Gate Impact
 
@@ -88,5 +91,6 @@ boundary:
 
 - price-state features can be built against this sub-scope;
 - size/order-count features must remain diagnostic or blocked;
-- MBO/queue features remain blocked;
-- full DATA-01B and DATA-01 stay blocked until MBO parity has an accepted policy decision.
+- MBO/queue features require their own consumer and authority implementation;
+- full DATA-01B and DATA-01 stay blocked until the MBO consumer, DATA-03/DATA-04, SIM
+  calibration, and provider-internal replay evidence are implemented and verified.

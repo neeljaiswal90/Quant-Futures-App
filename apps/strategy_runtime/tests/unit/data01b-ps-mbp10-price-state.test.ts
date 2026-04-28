@@ -104,7 +104,7 @@ describe('DATA-01B-PS MBP10 price-state ingestion', () => {
       emitted_events: 1,
       emitted_mbp10_price_state_events: 1,
       mbp10_price_state_status: 'accepted_subscope',
-      mbo_status: 'blocked',
+      mbo_status: 'accepted_subscope',
       size_order_count_status: 'diagnostic_only',
       data01b_full_status: 'blocked',
     });
@@ -118,7 +118,7 @@ describe('DATA-01B-PS MBP10 price-state ingestion', () => {
     expect(payload).toMatchObject({
       l3_authority: 'unavailable',
       mbp10_price_state_status: 'accepted_subscope',
-      mbo_status: 'blocked',
+      mbo_status: 'accepted_subscope',
       size_order_count_status: 'diagnostic_only',
       data01b_full_status: 'blocked',
       bids: [
@@ -194,7 +194,7 @@ describe('DATA-01B-PS MBP10 price-state ingestion', () => {
     expect(payload.asks.map((level) => level.px)).toEqual([27530, 27530.25, 27530.5, 27530.75, 27531, 27531.25, 27531.5, 27531.75, 27532, 27532.25]);
   });
 
-  it('blocks MBO rows with the DATA-PARITY-11 taxonomy reason and keeps full DATA-01B blocked', () => {
+  it('skips MBO rows outside the price-state path and keeps full DATA-01B blocked', () => {
     const result = runPriceState([
       {
         schema_version: 1,
@@ -212,7 +212,7 @@ describe('DATA-01B-PS MBP10 price-state ingestion', () => {
       skipped_mbo_rows: 1,
       data01b_full_status: 'blocked',
       diagnostic_counts: {
-        'MBO:mbo_parity_blocked_action_taxonomy_unresolved': 1,
+        'MBO:mbo_accepted_subscope_not_consumed_by_price_state_path': 1,
       },
     });
   });

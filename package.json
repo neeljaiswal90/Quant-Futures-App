@@ -14,6 +14,7 @@
     "format:journal": "tsx apps/strategy_runtime/src/operator/formatter.ts",
     "infra:01:evaluate": "tsx scripts/infra/evaluate-infra-01-probe.ts",
     "infra:01e:decision": "tsx scripts/infra/write-infra01e-decision-report.ts",
+    "infra:01f:decision": "tsx scripts/infra/write-infra01f-decision-report.ts",
     "infra:analyze-bbo-triangulation": "tsx scripts/infra/analyze-bbo-triangulation.ts",
     "infra:analyze-databento-parity": "tsx scripts/infra/analyze-databento-overlap-parity.ts",
     "infra:analyze-mbp10-debug": "tsx scripts/infra/analyze-mbp10-debug-dump.ts",

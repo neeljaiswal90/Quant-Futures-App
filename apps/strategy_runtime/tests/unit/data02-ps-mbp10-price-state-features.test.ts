@@ -124,7 +124,7 @@ function priceStateEventRow(offsetNs: bigint): Record<string, unknown> {
       bids: [{ px: 27526.25, size_diagnostic: 10, order_count_diagnostic: 3 }],
       asks: [{ px: 27526.5, size_diagnostic: 7, order_count_diagnostic: 4 }],
       mbp10_price_state_status: 'accepted_subscope',
-      mbo_status: 'blocked',
+      mbo_status: 'accepted_subscope',
       size_order_count_status: 'diagnostic_only',
       data01b_full_status: 'blocked',
     },
@@ -146,7 +146,7 @@ describe('DATA-02-PS MBP10 price-state feature snapshots', () => {
       emitted_feature_snapshots: 1,
       invalid_feature_snapshots: 0,
       mbp10_price_state_status: 'accepted_subscope',
-      mbo_status: 'blocked',
+      mbo_status: 'accepted_subscope',
       size_order_count_status: 'diagnostic_only',
       data01b_full_status: 'blocked',
       l2_l3_scope: 'price_state_only',
@@ -175,7 +175,7 @@ describe('DATA-02-PS MBP10 price-state feature snapshots', () => {
       ask_levels_px: [27526.5, 27526.75],
       freshness_status: 'fresh',
       mbp10_price_state_status: 'accepted_subscope',
-      mbo_status: 'blocked',
+      mbo_status: 'accepted_subscope',
       size_order_count_status: 'diagnostic_only',
       data01b_full_status: 'blocked',
     });
@@ -292,7 +292,7 @@ describe('DATA-02-PS MBP10 price-state feature snapshots', () => {
     expect(values.size_order_count_status).toBe('diagnostic_only');
   });
 
-  it('blocks MBO rows and keeps full DATA-01B blocked', () => {
+  it('skips MBO rows outside the price-state path and keeps full DATA-01B blocked', () => {
     const result = runFeatures([
       {
         schema_version: 1,
@@ -310,7 +310,7 @@ describe('DATA-02-PS MBP10 price-state feature snapshots', () => {
       skipped_mbo_rows: 1,
       data01b_full_status: 'blocked',
       diagnostic_counts: {
-        'MBO:mbo_parity_blocked_action_taxonomy_unresolved': 1,
+        'MBO:mbo_accepted_subscope_not_consumed_by_price_state_path': 1,
       },
     });
   });

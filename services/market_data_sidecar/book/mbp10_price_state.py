@@ -2,7 +2,9 @@
 
 This module is offline-safe and consumes already-captured rich Rithmic rows. It accepts
 only the ADR-0002 MBP10 price-state sub-scope: price levels are authoritative for V1,
-while size/order-count fields remain diagnostic and MBO remains blocked.
+while size/order-count fields remain diagnostic. INFRA-01F accepts MBO as its own
+provider-internal sub-scope, but this MBP10 price-state path still does not consume MBO
+rows.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from typing import Any, Literal
 
 from services.market_data_sidecar.config import (
     DATA01B_FULL_STATUS,
-    DATA01B_MBO_BLOCK_REASON,
+    DATA01B_MBO_SUBSCOPE_REASON,
     DATA01B_MBO_STATUS,
     DATA01B_MBP10_PRICE_STATE_STATUS,
     DATA01B_SIZE_ORDER_COUNT_STATUS,
@@ -57,7 +59,7 @@ class Mbp10PriceStateReconstructor:
     ) -> tuple[Mbp10PriceStateEvent | None, NormalizationDiagnostic | None]:
         stream = str(row.get("stream") or row.get("stream_id") or "")
         if stream == "MBO":
-            return None, NormalizationDiagnostic(line_number, stream, DATA01B_MBO_BLOCK_REASON)
+            return None, NormalizationDiagnostic(line_number, stream, DATA01B_MBO_SUBSCOPE_REASON)
         if stream != "MBP10":
             return None, NormalizationDiagnostic(line_number, stream or "missing", "non_mbp10_stream")
 
