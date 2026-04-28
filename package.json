@@ -15,6 +15,7 @@
     "infra:analyze-bbo-triangulation": "tsx scripts/infra/analyze-bbo-triangulation.ts",
     "infra:analyze-databento-parity": "tsx scripts/infra/analyze-databento-overlap-parity.ts",
     "infra:analyze-mbp10-debug": "tsx scripts/infra/analyze-mbp10-debug-dump.ts",
+    "infra:analyze-mbo-parity": "tsx scripts/infra/analyze-mbo-parity.ts",
     "infra:analyze-timestamp-order": "tsx scripts/infra/analyze-rithmic-timestamp-order.ts",
     "infra:audit-mbp10-l1-checkpoints": "python scripts/infra/audit_mbp10_l1_checkpoints.py",
     "infra:audit-rithmic-mbp10": "tsx scripts/infra/audit-rithmic-mbp10-extraction.ts",
