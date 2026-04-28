@@ -1,0 +1,40 @@
+{
+  "thresholds_schema_version": 1,
+  "ticket_id": "SIM-03A-2",
+  "dataset": "GLBX.MDP3",
+  "symbol": "MNQM6",
+  "min_verified_sessions": 20,
+  "lineage_note": "Byte floors are conservative 50% floors derived from observed minimum compressed DBN file sizes in the 30-session MNQ SIM-03A-1 corpus fetched on 2026-04-28.",
+  "quality_exclusions": {
+    "2026-04-10-rth": {
+      "reason": "databento_condition_degraded_warning"
+    }
+  },
+  "schemas": {
+    "definition": {
+      "min_byte_count": 166,
+      "observed_min_byte_count": 332,
+      "floor_derivation": "50_percent_of_observed_min"
+    },
+    "mbo": {
+      "min_byte_count": 144037759,
+      "observed_min_byte_count": 288075519,
+      "floor_derivation": "50_percent_of_observed_min"
+    },
+    "mbp-1": {
+      "min_byte_count": 113643414,
+      "observed_min_byte_count": 227286829,
+      "floor_derivation": "50_percent_of_observed_min"
+    },
+    "mbp-10": {
+      "min_byte_count": 190275412,
+      "observed_min_byte_count": 380550825,
+      "floor_derivation": "50_percent_of_observed_min"
+    },
+    "trades": {
+      "min_byte_count": 3196200,
+      "observed_min_byte_count": 6392401,
+      "floor_derivation": "50_percent_of_observed_min"
+    }
+  }
+}
