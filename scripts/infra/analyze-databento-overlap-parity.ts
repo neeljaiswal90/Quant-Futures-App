@@ -138,6 +138,17 @@ interface ParsedRithmicMbp10Row {
 
 type TimestampedParsedRithmicMbp10Row = ParsedRithmicMbp10Row & { readonly ts_ns: string };
 
+interface RithmicMbp10UpdateSet {
+  readonly seed_state: BookState;
+  readonly updates: readonly TimestampedParsedRithmicMbp10Row[];
+  readonly report: RithmicMbp10ReconstructionReport;
+}
+
+interface StreamingDatabentoMbp10ParityResult {
+  readonly databento_report: DatabentoMbp10NormalizationReport;
+  readonly parity_report: Mbp10ParityComparisonReport;
+}
+
 const DEFAULT_REPORT_PATH = 'reports/infra/databento_overlap_parity_report.json';
 const MAX_DEPTH_LEVEL = 9;
 const MISMATCH_LIMIT = 50;
@@ -345,11 +356,8 @@ export function analyzeDatabentoOverlapParity(options: {
 }): DatabentoOverlapParityReport {
   const rithmicPath = resolve(options.rithmic_probe_path);
   const databentoPath = resolve(options.databento_mbp10_path);
-  const rithmicRecords = readJsonl(rithmicPath, 'Rithmic probe');
-  const databentoRecords = readJsonl(databentoPath, 'Databento MBP10');
-  const rithmic = reconstructRithmicMbp10FromRecords(rithmicRecords);
-  const databento = normalizeDatabentoMbp10FromRecords(databentoRecords);
-  const parity = compareMbp10Samples(rithmic.samples, databento.samples);
+  const rithmic = readRithmicMbp10Updates(rithmicPath);
+  const databento = compareDatabentoMbp10JsonlWithRithmicUpdates(databentoPath, rithmic);
 
   return {
     schema_version: DATABENTO_OVERLAP_PARITY_SCHEMA_VERSION,
@@ -362,8 +370,8 @@ export function analyzeDatabentoOverlapParity(options: {
       databento_mbp10_path: databentoPath,
     },
     rithmic_mbp10_reconstruction: rithmic.report,
-    databento_mbp10_samples: databento.report,
-    mbp10_parity: parity,
+    databento_mbp10_samples: databento.databento_report,
+    mbp10_parity: databento.parity_report,
     recommendation: {
       summary:
         'Use reconstructed Rithmic MBP10 state for Databento MBP10 comparison; keep DATA-01 blocked until parity is reviewed and INFRA-01 verification explicitly routes to DATA-01.',
@@ -374,6 +382,194 @@ export function analyzeDatabentoOverlapParity(options: {
         'Rows with null exchange_event_ts_ns are excluded from timestamp parity and counted separately; usable book rows may seed state.',
         'This analysis is evidence only and does not modify the INFRA-01B pass/fail gate.',
       ],
+    },
+  };
+}
+
+function readRithmicMbp10Updates(path: string): RithmicMbp10UpdateSet {
+  const seedState: BookState = emptyBookState();
+  const updates: TimestampedParsedRithmicMbp10Row[] = [];
+  let rowCount = 0;
+  let mbp10RowCount = 0;
+  let nullTimestampRowsCount = 0;
+  let nullTimestampSeedRowsCount = 0;
+  let timestampedUpdateRowsCount = 0;
+  let incrementalUpdateRowsCount = 0;
+  let bidOnlyUpdateRowsCount = 0;
+  let askOnlyUpdateRowsCount = 0;
+  let bothSidesUpdateRowsCount = 0;
+  let noLevelUpdateRowsCount = 0;
+
+  forEachJsonlLine(path, (trimmed, lineNumber) => {
+    rowCount += 1;
+    let record: unknown;
+    try {
+      record = JSON.parse(trimmed);
+    } catch (error) {
+      throw new Error(
+        `Rithmic probe line ${lineNumber}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    if (!isMbp10Record(record)) {
+      return;
+    }
+
+    mbp10RowCount += 1;
+    const row = normalizeRithmicMbp10Row(record, lineNumber);
+    const hasBidLevels = row.bids.length > 0;
+    const hasAskLevels = row.asks.length > 0;
+    const hasAnyLevel = hasBidLevels || hasAskLevels;
+
+    if (row.ts_ns === null) {
+      nullTimestampRowsCount += 1;
+      if (hasAnyLevel) {
+        nullTimestampSeedRowsCount += 1;
+        applyBookUpdate(seedState, row);
+      }
+      return;
+    }
+
+    timestampedUpdateRowsCount += 1;
+    if (!hasAnyLevel) {
+      noLevelUpdateRowsCount += 1;
+      return;
+    }
+
+    incrementalUpdateRowsCount += 1;
+    if (hasBidLevels && hasAskLevels) {
+      bothSidesUpdateRowsCount += 1;
+    } else if (hasBidLevels) {
+      bidOnlyUpdateRowsCount += 1;
+    } else {
+      askOnlyUpdateRowsCount += 1;
+    }
+
+    updates.push({ ...row, ts_ns: row.ts_ns });
+  });
+
+  updates.sort(compareParsedRithmicRowsByTimestamp);
+  const firstUpdate = updates[0];
+  const lastUpdate = updates[updates.length - 1];
+
+  return {
+    seed_state: seedState,
+    updates,
+    report: {
+      row_count: rowCount,
+      mbp10_row_count: mbp10RowCount,
+      null_timestamp_rows_count: nullTimestampRowsCount,
+      null_timestamp_seed_rows_count: nullTimestampSeedRowsCount,
+      null_timestamp_non_seed_rows_count: nullTimestampRowsCount - nullTimestampSeedRowsCount,
+      timestamped_update_rows_count: timestampedUpdateRowsCount,
+      incremental_update_rows_count: incrementalUpdateRowsCount,
+      bid_only_update_rows_count: bidOnlyUpdateRowsCount,
+      ask_only_update_rows_count: askOnlyUpdateRowsCount,
+      both_sides_update_rows_count: bothSidesUpdateRowsCount,
+      no_level_update_rows_count: noLevelUpdateRowsCount,
+      reconstructed_book_sample_count: updates.length,
+      first_sample_ts_ns: firstUpdate?.ts_ns ?? null,
+      last_sample_ts_ns: lastUpdate?.ts_ns ?? null,
+    },
+  };
+}
+
+function compareDatabentoMbp10JsonlWithRithmicUpdates(
+  path: string,
+  rithmic: RithmicMbp10UpdateSet,
+): StreamingDatabentoMbp10ParityResult {
+  const rithmicState = cloneBookState(rithmic.seed_state);
+  const topOfBook = emptyFieldParitySummary();
+  const depthLevels = emptyFieldParitySummary();
+  const mismatchesBySideLevel: Record<string, number> = {};
+  const firstMismatches: BookMismatch[] = [];
+  let rithmicIndex = -1;
+  let latestRithmicTsNs: string | null = null;
+  let latestRithmicSourceRecordIndex = 0;
+  let databentoRowCount = 0;
+  let validDatabentoSampleCount = 0;
+  let missingTimestampRowsCount = 0;
+  let noLevelRowsCount = 0;
+  let comparedSampleCount = 0;
+  let unmatchedDatabentoSampleCount = 0;
+  let firstDatabentoSampleTsNs: string | null = null;
+  let lastDatabentoSampleTsNs: string | null = null;
+
+  forEachJsonlLine(path, (trimmed, lineNumber) => {
+    databentoRowCount += 1;
+    let record: unknown;
+    try {
+      record = JSON.parse(trimmed);
+    } catch (error) {
+      throw new Error(
+        `Databento MBP10 line ${lineNumber}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    if (!isRecord(record)) {
+      throw new Error(`Databento line ${lineNumber}: JSON value must be an object`);
+    }
+
+    const databentoSample = normalizeDatabentoMbp10Record(record, lineNumber);
+    if (databentoSample === null) {
+      if (optionalDecimalString(record, ['ts_event_ns', 'ts_event', 'exchange_event_ts_ns']) === null) {
+        missingTimestampRowsCount += 1;
+      } else {
+        noLevelRowsCount += 1;
+      }
+      return;
+    }
+
+    validDatabentoSampleCount += 1;
+    firstDatabentoSampleTsNs ??= databentoSample.ts_ns;
+    lastDatabentoSampleTsNs = databentoSample.ts_ns;
+
+    while (
+      rithmicIndex + 1 < rithmic.updates.length &&
+      compareDecimalIntegerStrings(rithmic.updates[rithmicIndex + 1]!.ts_ns, databentoSample.ts_ns) <= 0
+    ) {
+      rithmicIndex += 1;
+      const update = rithmic.updates[rithmicIndex]!;
+      applyBookUpdate(rithmicState, update);
+      latestRithmicTsNs = update.ts_ns;
+      latestRithmicSourceRecordIndex = update.record_index;
+    }
+
+    if (latestRithmicTsNs === null) {
+      unmatchedDatabentoSampleCount += 1;
+      return;
+    }
+
+    comparedSampleCount += 1;
+    compareSamplePair({
+      rithmicSample: stateToSample(rithmicState, latestRithmicTsNs, latestRithmicSourceRecordIndex),
+      databentoSample,
+      topOfBook,
+      depthLevels,
+      mismatchesBySideLevel,
+      firstMismatches,
+    });
+  });
+
+  return {
+    databento_report: {
+      row_count: databentoRowCount,
+      valid_sample_count: validDatabentoSampleCount,
+      missing_timestamp_rows_count: missingTimestampRowsCount,
+      no_level_rows_count: noLevelRowsCount,
+      first_sample_ts_ns: firstDatabentoSampleTsNs,
+      last_sample_ts_ns: lastDatabentoSampleTsNs,
+    },
+    parity_report: {
+      comparison_rule: 'latest_rithmic_state_at_or_before_databento_ts_event',
+      databento_sample_count: validDatabentoSampleCount,
+      compared_sample_count: comparedSampleCount,
+      unmatched_databento_sample_count: unmatchedDatabentoSampleCount,
+      top_of_book: finalizeFieldParitySummary(topOfBook),
+      depth_levels: finalizeFieldParitySummary(depthLevels),
+      mismatches_by_side_level: sortRecordByKey(mismatchesBySideLevel),
+      first_mismatches: firstMismatches,
+      mismatches_truncated: totalMismatchCount(mismatchesBySideLevel) > firstMismatches.length,
     },
   };
 }
@@ -524,6 +720,26 @@ function normalizeRithmicMbp10Row(record: Record<string, unknown>, recordIndex: 
   };
 }
 
+function normalizeDatabentoMbp10Record(record: Record<string, unknown>, recordIndex: number): BookSample | null {
+  const tsNs = optionalDecimalString(record, ['ts_event_ns', 'ts_event', 'exchange_event_ts_ns']);
+  if (tsNs === null) {
+    return null;
+  }
+
+  const bids = normalizeDatabentoSide(record, 'bid');
+  const asks = normalizeDatabentoSide(record, 'ask');
+  if (bids.length === 0 && asks.length === 0) {
+    return null;
+  }
+
+  return {
+    ts_ns: tsNs,
+    bids,
+    asks,
+    source_record_index: recordIndex,
+  };
+}
+
 function normalizeDatabentoSide(record: Record<string, unknown>, side: BookSide): readonly BookLevel[] {
   if (Array.isArray(record[`${side}s`])) {
     return normalizeLevelsArray(record[`${side}s`], 0, side);
@@ -601,6 +817,20 @@ function isMbp10Record(record: unknown): record is Record<string, unknown> {
   }
   const stream = firstField(record, ['stream', 'stream_id', 'payload_kind']);
   return stream === 'MBP10';
+}
+
+function emptyBookState(): BookState {
+  return {
+    bids: new Map<number, BookLevel>(),
+    asks: new Map<number, BookLevel>(),
+  };
+}
+
+function cloneBookState(state: BookState): BookState {
+  return {
+    bids: new Map<number, BookLevel>(state.bids),
+    asks: new Map<number, BookLevel>(state.asks),
+  };
 }
 
 function applyBookUpdate(state: BookState, row: ParsedRithmicMbp10Row): void {
