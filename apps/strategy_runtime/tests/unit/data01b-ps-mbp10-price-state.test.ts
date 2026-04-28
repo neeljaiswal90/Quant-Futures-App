@@ -118,7 +118,7 @@ describe('DATA-01B-PS MBP10 price-state ingestion', () => {
     expect(payload).toMatchObject({
       l3_authority: 'unavailable',
       feature_availability_mask: {
-        mask_id: 'feature-availability-mask-v1-adr0002-infra01e-infra01f',
+        mask_id: 'feature-availability-mask-v2-adr0002-infra01e-infra01f-data02mbo',
         field_tiers: {
           mbp10_top_bid_px: 'authoritative',
           mbp10_size_diagnostic: 'diagnostic_only',
@@ -149,7 +149,7 @@ describe('DATA-01B-PS MBP10 price-state ingestion', () => {
       ask_px_01: 27527,
       bid_size_diagnostic_00: 10,
       bid_order_count_diagnostic_00: 3,
-      feature_availability_mask_id: 'feature-availability-mask-v1-adr0002-infra01e-infra01f',
+      feature_availability_mask_id: 'feature-availability-mask-v2-adr0002-infra01e-infra01f-data02mbo',
     });
   });
 

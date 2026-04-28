@@ -36,6 +36,9 @@ Sub-scope:
 
 - MBO provider-internal lifecycle event fields: action, side, price, size, order ID,
   sequence, and priority
+- DATA-02-MBO provider-internal book state fields: MBO top bid/ask, spread, mid,
+  active order counts, price-level aggregate sizes, order counts, and FIFO queue-position
+  estimates
 
 Diagnostic only:
 
@@ -49,7 +52,7 @@ Diagnostic only:
 
 Blocked:
 
-- Queue position as a hard fact
+- Generic queue position as a hard fact
 - Order lifetime
 - Cancel/add ratio
 - Absorption and sweep logic
@@ -64,8 +67,8 @@ DATA-01B-PS, DATA-01B-MBO, and DATA-02-PS `MICROSTRUCTURE` payloads carry:
 {
   "feature_availability_mask": {
     "schema_version": 1,
-    "mask_version": 1,
-    "mask_id": "feature-availability-mask-v1-adr0002-infra01e-infra01f",
+    "mask_version": 2,
+    "mask_id": "feature-availability-mask-v2-adr0002-infra01e-infra01f-data02mbo",
     "mask_hash": "sha256:...",
     "lineage": {
       "adr": "ADR-0002",
@@ -77,6 +80,7 @@ DATA-01B-PS, DATA-01B-MBO, and DATA-02-PS `MICROSTRUCTURE` payloads carry:
     "field_tiers": {
       "mbp10_top_bid_px": "authoritative",
       "mbo_order_id": "subscope",
+      "queue_position_estimate": "subscope",
       "mbp10_size_diagnostic": "diagnostic_only",
       "queue_position": "blocked"
     }

@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { stableJsonStringify, type JsonValue } from '../contracts/index.js';
 
 export const FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION = 1 as const;
-export const FEATURE_AVAILABILITY_MASK_VERSION = 1 as const;
+export const FEATURE_AVAILABILITY_MASK_VERSION = 2 as const;
 export const FEATURE_AVAILABILITY_MASK_ID =
-  'feature-availability-mask-v1-adr0002-infra01e-infra01f' as const;
+  'feature-availability-mask-v2-adr0002-infra01e-infra01f-data02mbo' as const;
 
 export type FeatureAvailabilityTier = 'authoritative' | 'diagnostic_only' | 'blocked' | 'subscope';
 
@@ -35,6 +35,20 @@ export type FeatureFieldId =
   | 'mbo_order_id'
   | 'mbo_sequence'
   | 'mbo_priority'
+  | 'mbo_book_state'
+  | 'mbo_top_bid_px'
+  | 'mbo_top_ask_px'
+  | 'mbo_spread_points'
+  | 'mbo_spread_ticks'
+  | 'mbo_mid_px'
+  | 'mbo_active_order_count'
+  | 'mbo_bid_level_count'
+  | 'mbo_ask_level_count'
+  | 'mbo_level_aggregate_size'
+  | 'mbo_level_order_count'
+  | 'queue_position_estimate'
+  | 'queue_ahead_size_estimate'
+  | 'queue_ahead_order_count_estimate'
   | 'mbp10_size_diagnostic'
   | 'mbp10_order_count_diagnostic'
   | 'mbp10_size_summary_diagnostic'
@@ -98,6 +112,20 @@ const FIELD_TIERS = {
   mbo_order_id: 'subscope',
   mbo_sequence: 'subscope',
   mbo_priority: 'subscope',
+  mbo_book_state: 'subscope',
+  mbo_top_bid_px: 'subscope',
+  mbo_top_ask_px: 'subscope',
+  mbo_spread_points: 'subscope',
+  mbo_spread_ticks: 'subscope',
+  mbo_mid_px: 'subscope',
+  mbo_active_order_count: 'subscope',
+  mbo_bid_level_count: 'subscope',
+  mbo_ask_level_count: 'subscope',
+  mbo_level_aggregate_size: 'subscope',
+  mbo_level_order_count: 'subscope',
+  queue_position_estimate: 'subscope',
+  queue_ahead_size_estimate: 'subscope',
+  queue_ahead_order_count_estimate: 'subscope',
   mbp10_size_diagnostic: 'diagnostic_only',
   mbp10_order_count_diagnostic: 'diagnostic_only',
   mbp10_size_summary_diagnostic: 'diagnostic_only',
@@ -146,6 +174,20 @@ const RATIONALE = {
   mbo_order_id: 'INFRA-01F provider-internal MBO sub-scope.',
   mbo_sequence: 'INFRA-01F provider-internal MBO sub-scope.',
   mbo_priority: 'INFRA-01F provider-internal MBO sub-scope.',
+  mbo_book_state: 'DATA-02-MBO provider-internal book state built from accepted MBO lifecycle events.',
+  mbo_top_bid_px: 'DATA-02-MBO top bid derived from provider-internal MBO book state.',
+  mbo_top_ask_px: 'DATA-02-MBO top ask derived from provider-internal MBO book state.',
+  mbo_spread_points: 'DATA-02-MBO spread derived from provider-internal MBO book state.',
+  mbo_spread_ticks: 'DATA-02-MBO spread-tick count derived from provider-internal MBO book state.',
+  mbo_mid_px: 'DATA-02-MBO midprice derived from provider-internal MBO book state.',
+  mbo_active_order_count: 'DATA-02-MBO provider-internal active order count.',
+  mbo_bid_level_count: 'DATA-02-MBO provider-internal bid price-level count.',
+  mbo_ask_level_count: 'DATA-02-MBO provider-internal ask price-level count.',
+  mbo_level_aggregate_size: 'DATA-02-MBO provider-internal aggregate level size.',
+  mbo_level_order_count: 'DATA-02-MBO provider-internal order count by price level.',
+  queue_position_estimate: 'DATA-02-MBO FIFO queue-position estimate within one provider feed.',
+  queue_ahead_size_estimate: 'DATA-02-MBO provider-internal quantity ahead of the order at its price.',
+  queue_ahead_order_count_estimate: 'DATA-02-MBO provider-internal order count ahead of the order.',
   mbp10_size_diagnostic: 'MBP10 size parity remains diagnostic under ADR-0002.',
   mbp10_order_count_diagnostic: 'MBP10 order-count parity remains diagnostic under ADR-0002.',
   mbp10_size_summary_diagnostic: 'Aggregates diagnostic MBP10 size fields.',
@@ -155,7 +197,7 @@ const RATIONALE = {
   depth_size_imbalance: 'Depends on size/depth semantics that are not hard-gate validated.',
   ofi_size_accumulation: 'Depends on size accumulation semantics that are not hard-gate validated.',
   mbo_trade_unknown_taxonomy: 'Databento trade/unknown equivalence remains diagnostic.',
-  queue_position: 'Requires DATA-02-MBO/DATA-03/SIM calibration before use.',
+  queue_position: 'Generic queue position as a hard trading fact remains blocked; use queue_position_estimate for provider-internal diagnostics.',
   queue_position_as_fact: 'Queue position is an estimate, not a provider-neutral fact.',
   order_lifetime: 'Requires MBO book-state implementation and replay evidence.',
   cancel_add_ratio: 'Requires MBO book-state implementation and replay evidence.',
