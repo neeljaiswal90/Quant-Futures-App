@@ -31,6 +31,7 @@
     "obs:04:l1-latency": "tsx apps/strategy_runtime/src/operator/l1-trade-latency-dashboard.ts",
     "rel:00a": "tsx scripts/rel/rel-00a-offline-readiness.ts",
     "sim:03a:check-databento": "python scripts/sim/check-databento-mnq-availability.py",
+    "sim:03a:fetch-corpus": "python scripts/sim/fetch-databento-sim03-corpus.py",
     "test": "vitest run",
     "tui": "tsx apps/strategy_runtime/src/operator/tui.ts",
     "tui:fixture": "tsx apps/strategy_runtime/src/operator/tui.ts --fixture obs00"
