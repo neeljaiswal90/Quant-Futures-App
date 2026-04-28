@@ -148,7 +148,6 @@ class FixtureDatabentoFetchClient:
             "end_ts_ns": str(end_ts_ns),
             "records": int(schema_fixture.get("record_count", 100)),
         }
-        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
         return int(schema_fixture.get("record_count", 100))
 
@@ -340,6 +339,7 @@ def _fetch_schema_with_resume(
         )
     if path.exists() and path.stat().st_size == 0:
         path.unlink()
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     error: str | None = None
     attempts = 0
