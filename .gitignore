@@ -19,6 +19,7 @@ config/local*.json
 config/*.local.json
 config/secrets*.json
 config/*.secret.json
+config/sim03/session-list.yaml
 
 __pycache__/
 *.py[cod]
