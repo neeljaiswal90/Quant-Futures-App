@@ -115,6 +115,133 @@ describe('DATA-PARITY-10 MBO parity diagnostic', () => {
     expect(report.cross_source.side_distribution_delta_pct.bid).toBe(100);
   });
 
+  it('reports action taxonomy counts by provider', () => {
+    const rithmicPath = writeJsonl(
+      [
+        rithmicMboRecord(1_000_000n),
+        rithmicMboRecord(2_000_000n, { orders: [{ action: 'delete', side: 'sell', price: 101, size: 2, order_id: 'r2' }] }),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoPath = writeJsonl(
+      [
+        databentoMboRecord(1_000_000n),
+        databentoMboRecord(2_000_000n, { action: 'T', side: 'B', price: 100, size: 1, order_id: 'd-trade' }),
+        databentoMboRecord(3_000_000n, { action: 'Z', side: 'A', price: 101, size: 1, order_id: 'd-unknown' }),
+      ],
+      'databento.jsonl',
+    );
+
+    const report = analyzeMboParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbo_path: databentoPath,
+    });
+
+    expect(report.mbo_action_taxonomy.action_counts.rithmic.action_counts).toMatchObject({
+      add: 1,
+      cancel: 1,
+      trade: 0,
+      unknown: 0,
+    });
+    expect(report.mbo_action_taxonomy.action_counts.databento.action_counts).toMatchObject({
+      add: 1,
+      trade: 1,
+      unknown: 1,
+    });
+    expect(report.mbo_action_taxonomy.action_counts.databento.first_examples_by_action.trade[0]).toMatchObject({
+      raw_action: 'T',
+      action: 'trade',
+    });
+  });
+
+  it('separates alternate signature modes when trade actions are excluded', () => {
+    const rithmicPath = writeJsonl([rithmicMboRecord(1_000_000n)], 'rithmic.jsonl');
+    const databentoPath = writeJsonl(
+      [
+        databentoMboRecord(1_000_000n),
+        databentoMboRecord(2_000_000n, { action: 'T', side: 'B', price: 100, size: 1, order_id: 'trade-1' }),
+      ],
+      'databento.jsonl',
+    );
+
+    const report = analyzeMboParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbo_path: databentoPath,
+    });
+
+    expect(report.mbo_action_taxonomy.alternate_signature_modes.strict_all_actions).toMatchObject({
+      databento_count_included: 2,
+      matched_count: 1,
+      match_pct_of_databento: 50,
+    });
+    expect(report.mbo_action_taxonomy.alternate_signature_modes.exclude_trade).toMatchObject({
+      databento_count_included: 1,
+      matched_count: 1,
+      match_pct_of_databento: 100,
+    });
+    expect(report.mbo_action_taxonomy.classification).toBe('book_action_parity_pass_trade_excluded');
+  });
+
+  it('classifies unknown action taxonomy when unknowns dominate after structural parity is reviewable', () => {
+    const rithmicRows = Array.from({ length: 25 }, (_, index) => rithmicMboRecord(BigInt(index + 1) * 1_000_000n));
+    const databentoRows = [
+      ...Array.from({ length: 24 }, (_, index) => databentoMboRecord(BigInt(index + 1) * 1_000_000n)),
+      databentoMboRecord(25_000_000n, { price: 101 }),
+      ...Array.from({ length: 10 }, (_, index) => databentoMboRecord(BigInt(index + 100) * 1_000_000n, {
+        action: 'Z',
+        side: 'B',
+        price: 100,
+        size: 1,
+        order_id: `unknown-${index}`,
+      })),
+    ];
+    const rithmicPath = writeJsonl(rithmicRows, 'rithmic.jsonl');
+    const databentoPath = writeJsonl(databentoRows, 'databento.jsonl');
+
+    const report = analyzeMboParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbo_path: databentoPath,
+    });
+
+    expect(report.mbo_action_taxonomy.alternate_signature_modes.structural_book_actions_only.match_pct_of_databento).toBe(96);
+    expect(report.mbo_action_taxonomy.classification).toBe('unknown_action_mapping_required');
+    expect(report.mbo_action_taxonomy.data01b_eligible).toBe(false);
+  });
+
+  it('keeps structural-only mismatches blocked', () => {
+    const rithmicPath = writeJsonl([rithmicMboRecord(1_000_000n)], 'rithmic.jsonl');
+    const databentoPath = writeJsonl([databentoMboRecord(1_000_000n, { price: 101 })], 'databento.jsonl');
+
+    const report = analyzeMboParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbo_path: databentoPath,
+    });
+
+    expect(report.mbo_action_taxonomy.alternate_signature_modes.structural_book_actions_only.match_pct_of_databento).toBe(0);
+    expect(report.mbo_action_taxonomy.classification).toBe('structural_mbo_parity_failure');
+    expect(report.mbo_action_taxonomy.recommendation).toContain('keep DATA-01B full scope blocked');
+  });
+
+  it('reports timestamp-window sensitivity deterministically', () => {
+    const rithmicPath = writeJsonl([rithmicMboRecord(0n)], 'rithmic.jsonl');
+    const databentoPath = writeJsonl([databentoMboRecord(5_000_000n)], 'databento.jsonl');
+
+    const report = analyzeMboParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbo_path: databentoPath,
+    });
+
+    expect(report.mbo_action_taxonomy.timestamp_window_sensitivity.windows.exact).toMatchObject({
+      databento_count_included: 1,
+      candidate_match_count: 0,
+    });
+    expect(report.mbo_action_taxonomy.timestamp_window_sensitivity.windows.plus_minus_5ms).toMatchObject({
+      databento_count_included: 1,
+      candidate_match_count: 1,
+      candidate_match_pct_of_databento: 100,
+    });
+  });
+
   it('flags decreasing sequence semantics', () => {
     const rithmicPath = writeJsonl(
       [
@@ -178,6 +305,11 @@ describe('DATA-PARITY-10 MBO parity diagnostic', () => {
       ticket_id: 'DATA-PARITY-10',
       status: 'analysis_only',
       data01b_full_eligible: false,
+      mbo_action_taxonomy: {
+        ticket_id: 'DATA-PARITY-11',
+        status: 'analysis_only',
+        data01b_eligible: false,
+      },
     });
   });
 });

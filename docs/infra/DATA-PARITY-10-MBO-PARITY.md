@@ -36,6 +36,46 @@ The report remains `status: "analysis_only"` and always keeps
 `data01b_full_eligible: false`. A later policy decision must review the report before MBO
 features can be enabled.
 
+## DATA-PARITY-11 Action Taxonomy Review
+
+DATA-PARITY-11 extends the same CLI with a nested `mbo_action_taxonomy` section. This is a
+review tool for deciding whether the cross-source MBO mismatch is caused by provider action
+taxonomy rather than missing or corrupt data.
+
+The taxonomy report includes:
+
+- action counts and percentages by provider;
+- side counts by action;
+- price, size, order ID, and sequence availability by action;
+- first deterministic examples per action category;
+- the current normalized action-mapping table with rationale;
+- alternate signature modes that include or exclude `trade` and `unknown` actions;
+- event-semantics decomposition for Databento-only events;
+- timestamp-window sensitivity for structural book actions;
+- sequence and order-ID overlap diagnostics.
+
+The action-mapping table is intentionally evidence, not policy. It records whether each
+raw provider action is currently included in signature parity and feature parity, but it
+does not by itself accept MBO parity or enable MBO-derived features.
+
+Alternate signature modes:
+
+- `strict_all_actions`: include every normalized action.
+- `exclude_unknown`: exclude only `unknown`.
+- `exclude_trade`: exclude only `trade`.
+- `exclude_trade_and_unknown`: exclude both `trade` and `unknown`.
+- `structural_book_actions_only`: include only `add`, `modify`, and `cancel` actions that
+  represent resting book-state changes under the current taxonomy.
+
+`trade` and `unknown` categories are not automatic parity failures. Databento may expose
+execution or control-like events in `mbo` that Rithmic exposes through another stream or
+filters from MBO. The taxonomy review must show whether excluding those categories leaves a
+strong structural book-action match before a reviewer can write policy.
+
+DATA-01B remains blocked for every DATA-PARITY-11 classification. If structural book-action
+parity looks strong with `trade`/`unknown` excluded, the next step is an ADR or INFRA policy
+decision that explicitly states which categories are hard-gated and which remain diagnostic.
+
 ## Classifications
 
 - `mbo_event_semantics_aligned`: action, side, price, size, and sequence evidence look
@@ -47,6 +87,20 @@ features can be enabled.
 - `mbo_order_id_semantics_incompatible`: order ID coverage or compatibility is not strong
   enough for order-id-based gates.
 - `inconclusive`: evidence is insufficient or mixed.
+
+DATA-PARITY-11 taxonomy classifications:
+
+- `book_action_parity_pass_trade_excluded`: structural `add`/`modify`/`cancel` parity is
+  strong after excluding trade/unknown actions; reviewer policy is still required.
+- `action_taxonomy_mismatch`: trade/unknown action taxonomy explains a material part of the
+  mismatch, but structural parity is not yet a pass.
+- `trade_action_semantics_mismatch`: Databento `trade` actions dominate unmatched events;
+  add or document Rithmic trade-action normalization before accepting MBO parity.
+- `unknown_action_mapping_required`: Databento `unknown` actions dominate unmatched events;
+  inspect raw examples and map the category manually.
+- `structural_mbo_parity_failure`: structural book-action mismatch remains after taxonomy
+  filtering; keep DATA-01B blocked and inspect raw provider examples.
+- `inconclusive_mbo_taxonomy`: evidence is mixed or insufficient.
 
 ## Gate Impact
 

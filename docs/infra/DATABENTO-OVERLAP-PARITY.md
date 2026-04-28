@@ -327,6 +327,28 @@ The report compares action, side, price, size, sequence, order-id coverage, and 
 one-second event signatures. Order ID equality is diagnostic only unless both feeds are
 proven to expose compatible exchange-native order IDs and lifecycle semantics.
 
+DATA-PARITY-11 adds `mbo_action_taxonomy` to the same report. It separates strict MBO
+signature comparison from action-taxonomy policy by reporting:
+
+- per-provider action distributions and field availability by action;
+- first examples for `add`, `modify`, `cancel`, `trade`, `clear`, and `unknown`;
+- the normalized action-mapping table and rationale;
+- alternate signature modes: strict all-actions, exclude-unknown, exclude-trade,
+  exclude-trade-and-unknown, and structural book-actions-only;
+- timestamp-window sensitivity for structural actions;
+- order-ID and sequence diagnostics for unmatched Databento events.
+
+`trade` and `unknown` Databento MBO events are not automatic parity failures. They may
+represent execution or control semantics that Rithmic reports on another stream or filters
+from MBO. They are also not automatically accepted. A reviewer must decide whether those
+actions are excluded from the hard MBO parity gate, mapped to another Rithmic stream, or
+kept blocked pending raw-provider inspection.
+
+If structural book-action mode reaches the reviewer threshold while strict all-action mode
+does not, the likely next step is an explicit policy ADR that accepts structural MBO parity
+with trade/unknown excluded from hard gating. If structural mode still mismatches, inspect
+raw provider examples and keep DATA-01B blocked.
+
 MBO parity remains `analysis_only` until a reviewer accepts a policy decision. Full
 `DATA-01B`, MBO-derived features, queue-position features, SIM-02/SIM-03, ML/research, and
 REL gates remain blocked from MBO evidence until that decision exists.
