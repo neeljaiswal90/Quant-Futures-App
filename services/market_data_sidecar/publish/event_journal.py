@@ -17,8 +17,9 @@ def make_source_event_envelope(
     run_id: str,
     session_id: str,
     payload: dict[str, Any],
+    causation_id: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    envelope = {
         "schema_version": SCHEMA_VERSION,
         "event_id": event_id,
         "type": event_type,
@@ -27,6 +28,9 @@ def make_source_event_envelope(
         "session_id": session_id,
         "payload": payload,
     }
+    if causation_id is not None:
+        envelope["causation_id"] = causation_id
+    return envelope
 
 
 def write_jsonl(path: Path, events: Iterable[dict[str, Any]]) -> int:
