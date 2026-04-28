@@ -11,6 +11,7 @@
     "data:07a:gap-report": "python -m services.market_data_sidecar.gap_report_app",
     "format:journal": "tsx apps/strategy_runtime/src/operator/formatter.ts",
     "infra:01:evaluate": "tsx scripts/infra/evaluate-infra-01-probe.ts",
+    "infra:analyze-bbo-triangulation": "tsx scripts/infra/analyze-bbo-triangulation.ts",
     "infra:analyze-databento-parity": "tsx scripts/infra/analyze-databento-overlap-parity.ts",
     "infra:analyze-mbp10-debug": "tsx scripts/infra/analyze-mbp10-debug-dump.ts",
     "infra:analyze-timestamp-order": "tsx scripts/infra/analyze-rithmic-timestamp-order.ts",
