@@ -30,6 +30,7 @@
     "lint:forbidden-imports": "node scripts/check-forbidden-imports.mjs",
     "obs:04:l1-latency": "tsx apps/strategy_runtime/src/operator/l1-trade-latency-dashboard.ts",
     "rel:00a": "tsx scripts/rel/rel-00a-offline-readiness.ts",
+    "sim:03a:check-databento": "python scripts/sim/check-databento-mnq-availability.py",
     "test": "vitest run",
     "tui": "tsx apps/strategy_runtime/src/operator/tui.ts",
     "tui:fixture": "tsx apps/strategy_runtime/src/operator/tui.ts --fixture obs00"

@@ -9,6 +9,7 @@ coverage/
 .cache/
 .local/
 data/probes/
+reports/sim/
 
 .env
 .env.*
