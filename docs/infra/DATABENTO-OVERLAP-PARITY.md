@@ -82,6 +82,7 @@ This rule is implemented by:
 npm run infra:analyze-databento-parity -- `
   --rithmic-probe data/probes/infra01/full/probe-parity.jsonl `
   --databento-mbp10 data/probes/infra01/full/databento/MNQM6_mbp10.normalized.jsonl `
+  --databento-mbp1 data/probes/infra01/full/databento/MNQM6_mbp1.normalized.jsonl `
   --out reports/infra/databento_overlap_parity_report.json
 ```
 
@@ -214,6 +215,62 @@ evidence and the revised INFRA-01 verification report explicitly routes to `DATA
 The analyzer is evidence tooling only. Its output uses `status: "analysis_only"` and keeps
 `data01_eligible: false`; a reviewer must still decide the final INFRA-01 policy and produce
 the revised INFRA-01 verification report before `DATA-01` can move.
+
+## BBO Cross-Source Triangulation
+
+DATA-PARITY-08 adds a `bbo_triangulation` section for the case where temporal diagnostics
+prove that MBP10 disagreement is not explained by lag, timestamp basis, or lookup policy.
+The goal is to identify which surface disagrees before changing any gate:
+
+- Rithmic reconstructed `L1_QUOTE` BBO vs Databento `mbp-1`.
+- Rithmic reconstructed `MBP10` top-of-book vs Rithmic reconstructed `L1_QUOTE`.
+- Databento `mbp-10` top-of-book vs Databento `mbp-1`.
+- Rithmic reconstructed `MBP10` top-of-book vs Databento `mbp-10`.
+
+The Databento `mbp-1` input is optional for backward compatibility, but without it the two
+MBP-1 triangulation legs are reported as `not_available` and the decision tree is weaker.
+Use normalized JSONL with `ts_event_ns` and top-level fields such as `bid_px_00`,
+`bid_sz_00`, `bid_ct_00`, `ask_px_00`, `ask_sz_00`, and `ask_ct_00`.
+
+For large canonical probes, prefer the dedicated BBO triangulation CLI so the component and
+temporal MBP10 analyzer does not have to repeat all prior scoring work:
+
+```powershell
+npm run infra:analyze-bbo-triangulation -- `
+  --rithmic-probe data/probes/infra01/full/probe-parity.jsonl `
+  --databento-mbp10 data/probes/infra01/full/databento/MNQM6_mbp10.normalized.jsonl `
+  --databento-mbp1 data/probes/infra01/full/databento/MNQM6_mbp1.normalized.jsonl `
+  --out reports/infra/databento_bbo_triangulation_report.json
+```
+
+Each available comparison reports:
+
+- `compared_samples` and `unmatched_samples`,
+- bid, ask, and both-side top price within one MNQ tick,
+- bid/ask size exact-match percentages,
+- lookup-policy scores for `previous_or_equal`, `nearest`, `next_or_equal`, and
+  `midpoint_bucketed`,
+- first 20 deterministic mismatch examples,
+- mismatch rate by one-minute exchange-time bucket.
+
+Triangulation classifications:
+
+- `rithmic_mbp10_extraction_issue`: Rithmic MBP10 top-of-book disagrees with reconstructed
+  Rithmic L1. Revisit the Rithmic extractor/reconstructor before cross-vendor parity.
+- `databento_mbp10_normalization_issue`: Databento MBP-10 top-of-book disagrees with
+  Databento MBP-1. Inspect the Databento normalizer or schema semantics before judging
+  Rithmic.
+- `l1_cross_source_alignment_issue`: Rithmic L1 and Databento MBP-1 disagree. Resolve BBO
+  cross-source alignment before interpreting MBP10 depth.
+- `mbp10_depth_semantics_issue`: L1 and same-vendor internal checks are strong, but
+  cross-vendor MBP10 still disagrees. Review depth aggregation, implied-liquidity, and
+  vendor feed semantics.
+- `inconclusive`: available checks do not isolate a single source of disagreement.
+
+`bbo_triangulation` is still evidence only. It keeps `status: "analysis_only"` and
+`data01b_eligible: false`; DATA-01B remains blocked until a reviewer accepts the
+triangulation result and the revised INFRA-01 verification report explicitly routes to
+`DATA-01`.
 
 ## Report Status
 

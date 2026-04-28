@@ -47,6 +47,38 @@ function databentoRecord(offsetNs: bigint, overrides: Record<string, unknown> = 
   };
 }
 
+function l1QuoteRecord(offsetNs: bigint, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    stream: 'L1_QUOTE',
+    exchange_event_ts_ns: (START_TS_NS + offsetNs).toString(),
+    payload_kind: 'BestBidOffer',
+    ...overrides,
+  };
+}
+
+function bboFields(bidPx: number, askPx: number, bidSize = 5, askSize = 7): Record<string, unknown> {
+  return {
+    bid_px: bidPx,
+    bid_sz: bidSize,
+    bid_orders: 2,
+    ask_px: askPx,
+    ask_sz: askSize,
+    ask_orders: 3,
+  };
+}
+
+function databentoBboFields(bidPx: number, askPx: number, bidSize = 5, askSize = 7): Record<string, unknown> {
+  return {
+    bid_px_00: bidPx,
+    bid_sz_00: bidSize,
+    bid_ct_00: 2,
+    ask_px_00: askPx,
+    ask_sz_00: askSize,
+    ask_ct_00: 3,
+  };
+}
+
 function seedRow(): Record<string, unknown> {
   return mbp10Record(null, {
     bids: [{ level: 0, px: 100, sz: 5, order_count: 2 }],
@@ -724,6 +756,152 @@ describe('Databento overlap parity MBP10 reconstruction', () => {
       },
     });
     expect(report.mbp10_temporal_alignment.mismatch_clusters.mismatch_rate_per_minute).toHaveLength(2);
+  });
+
+  it('passes Rithmic L1 vs Databento MBP-1 triangulation on matching BBO fixtures', () => {
+    const rithmicPath = writeJsonl(
+      [
+        seedRow(),
+        checkpointRow(),
+        l1QuoteRecord(1_000_000n, bboFields(100, 101)),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoMbp10Path = writeJsonl(
+      [databentoRecord(2_000_000n, databentoBboFields(100, 101))],
+      'databento-mbp10.jsonl',
+    );
+    const databentoMbp1Path = writeJsonl(
+      [databentoRecord(2_000_000n, databentoBboFields(100, 101))],
+      'databento-mbp1.jsonl',
+    );
+
+    const report = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoMbp10Path,
+      databento_mbp1_path: databentoMbp1Path,
+    });
+    const comparison = report.bbo_triangulation.comparisons.rithmic_l1_quote_vs_databento_mbp1;
+
+    expect(report.bbo_triangulation).toMatchObject({
+      status: 'analysis_only',
+      data01b_eligible: false,
+      classification: 'inconclusive',
+    });
+    expect(comparison).toMatchObject({
+      status: 'available',
+      best_lookup_policy: 'previous_or_equal',
+      compared_samples: 1,
+      both_sides_within_1_tick_pct: 100,
+      bid_size_exact_match_pct: 100,
+      ask_size_exact_match_pct: 100,
+    });
+  });
+
+  it('classifies Databento MBP10 top versus MBP-1 disagreement as a Databento normalization issue', () => {
+    const rithmicPath = writeJsonl(
+      [
+        seedRow(),
+        checkpointRow(),
+        l1QuoteRecord(1_000_000n, bboFields(100, 101)),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoMbp10Path = writeJsonl(
+      [databentoRecord(2_000_000n, databentoBboFields(99, 102))],
+      'databento-mbp10.jsonl',
+    );
+    const databentoMbp1Path = writeJsonl(
+      [databentoRecord(2_000_000n, databentoBboFields(100, 101))],
+      'databento-mbp1.jsonl',
+    );
+
+    const report = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoMbp10Path,
+      databento_mbp1_path: databentoMbp1Path,
+    });
+    const comparison = report.bbo_triangulation.comparisons.databento_mbp10_top_vs_databento_mbp1;
+
+    expect(report.bbo_triangulation.classification).toBe('databento_mbp10_normalization_issue');
+    expect(comparison).toMatchObject({
+      status: 'available',
+      both_sides_within_1_tick_pct: 0,
+    });
+  });
+
+  it('classifies Rithmic MBP10 versus L1 disagreement as a Rithmic extraction issue', () => {
+    const rithmicPath = writeJsonl(
+      [
+        seedRow(),
+        checkpointRow(),
+        l1QuoteRecord(1_000_000n, bboFields(99, 102)),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoMbp10Path = writeJsonl(
+      [databentoRecord(2_000_000n, databentoBboFields(99, 102))],
+      'databento-mbp10.jsonl',
+    );
+    const databentoMbp1Path = writeJsonl(
+      [databentoRecord(2_000_000n, databentoBboFields(99, 102))],
+      'databento-mbp1.jsonl',
+    );
+
+    const report = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoMbp10Path,
+      databento_mbp1_path: databentoMbp1Path,
+    });
+    const comparison = report.bbo_triangulation.comparisons.rithmic_mbp10_top_vs_rithmic_l1_quote;
+
+    expect(report.bbo_triangulation.classification).toBe('rithmic_mbp10_extraction_issue');
+    expect(comparison).toMatchObject({
+      status: 'available',
+      both_sides_within_1_tick_pct: 0,
+    });
+  });
+
+  it('keeps the triangulation decision-tree report shape stable and DATA-01B blocked', () => {
+    const rithmicPath = writeJsonl(
+      [
+        seedRow(),
+        checkpointRow(),
+        l1QuoteRecord(1_000_000n, bboFields(100, 101)),
+      ],
+      'rithmic.jsonl',
+    );
+    const databentoMbp10Path = writeJsonl(
+      [databentoRecord(2_000_000n, databentoBboFields(100, 101))],
+      'databento-mbp10.jsonl',
+    );
+    const databentoMbp1Path = writeJsonl(
+      [databentoRecord(2_000_000n, databentoBboFields(100, 101))],
+      'databento-mbp1.jsonl',
+    );
+
+    const first = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoMbp10Path,
+      databento_mbp1_path: databentoMbp1Path,
+    });
+    const second = analyzeDatabentoOverlapParity({
+      rithmic_probe_path: rithmicPath,
+      databento_mbp10_path: databentoMbp10Path,
+      databento_mbp1_path: databentoMbp1Path,
+    });
+
+    expect(first.bbo_triangulation).toMatchObject({
+      status: 'analysis_only',
+      data01b_eligible: false,
+      comparisons: {
+        rithmic_l1_quote_vs_databento_mbp1: { status: 'available' },
+        rithmic_mbp10_top_vs_rithmic_l1_quote: { status: 'available' },
+        databento_mbp10_top_vs_databento_mbp1: { status: 'available' },
+        rithmic_mbp10_top_vs_databento_mbp10: { status: 'available' },
+      },
+    });
+    expect(JSON.stringify(first.bbo_triangulation)).toBe(JSON.stringify(second.bbo_triangulation));
   });
 
   it('writes a stable report shape', () => {
