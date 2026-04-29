@@ -10,13 +10,17 @@ The full SIM-03 calibration failed only `limit_queue:front` time-to-fill. SIM-03
 
 SIM-03I prefers the SIM-03 source manifest referenced by `fill_slippage_calibration.json.inputs.manifest_path`. From that manifest it reads only `mbo` files for sessions whose split matches `--split`.
 
-Supported source formats are decoded `.jsonl` and `.json` MBO rows with the same fields used by SIM-03:
+Supported source formats are Databento `.dbn` / `.dbn.zst` MBO files plus decoded `.jsonl` and `.json` MBO rows with the same fields used by SIM-03:
 
 ```json
 { "ts_event": 1000000000, "order_id": 1, "price": 100000000000, "size": 1, "action": "A", "side": "B" }
 ```
 
-If the source files are DBN/ZST and no decoded JSONL source is present, SIM-03I emits `requires_decoded_observation_source` instead of faking observations. The preferred follow-up is a targeted DBN decode/export path, not a full calibration rerun.
+For DBN/ZST input, SIM-03I invokes SIM-03J's decoder (`scripts/sim/decode-databento-mbo-jsonl.py`) per MBO file. The decoder reuses the calibrator's Databento `DBNStore.from_file(...).to_ndarray(schema="mbo", count=100_000)` path and writes a temporary decoded JSONL file that SIM-03I streams through the same queue-state logic as fixture JSONL.
+
+If DBN decoding fails because the `databento` Python package is unavailable, SIM-03I emits `requires_decoded_observation_source` instead of faking observations.
+
+Queue buckets intentionally match the SIM-03 calibrator: `front <= 0`, `near <= 5`, `middle <= 20`, and `back > 20` queue-ahead size. Filled observations use first-fill latency: a partial fill emits one `filled` observation at the first trade timestamp and leaves the remaining order quantity open for future queue-state updates.
 
 ## Observation Schema
 
@@ -67,6 +71,8 @@ Optional controls:
 --max-records 100000
 --generated-at-ts-ns 1777399200000000000
 --progress-log reports/sim/limit_queue_front_observations_progress.jsonl
+--python python
+--dbn-decoder scripts/sim/decode-databento-mbo-jsonl.py
 ```
 
 ## Feed SIM-03H

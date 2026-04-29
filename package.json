@@ -37,6 +37,7 @@
     "sim:03g:recalibrate-front": "tsx scripts/sim/recalibrate-limit-queue-front.ts",
     "sim:03h:refit-front": "tsx scripts/sim/refit-limit-queue-front.ts",
     "sim:03i:export-front-observations": "tsx scripts/sim/export-limit-queue-front-observations.ts",
+    "sim:03j:decode-mbo-dbn": "python scripts/sim/decode-databento-mbo-jsonl.py",
     "sim:03d:validate-calibration": "python scripts/sim/validate-fill-slippage-calibration.py",
     "sim:03a:check-databento": "python scripts/sim/check-databento-mnq-availability.py",
     "sim:03a:fetch-corpus": "python scripts/sim/fetch-databento-sim03-corpus.py",
