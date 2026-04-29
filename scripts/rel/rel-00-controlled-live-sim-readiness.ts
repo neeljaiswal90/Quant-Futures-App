@@ -42,6 +42,10 @@ const DEFAULT_OUT_MD = 'reports/rel/rel00_controlled_live_sim_readiness_report.m
 const DEFAULT_VALIDATION_DIR = 'reports/rel/rel00_controlled_live_sim_transport';
 const DEFAULT_MIN_SOURCE_EVENTS = 1;
 const DECLARED_SOURCE = 'rithmic_live_operator_supplied' as const;
+const SIMULATED_EXECUTION_ADAPTER = 'simulated' as const;
+// Policy coupling: every future real broker/order-plant event type must be added here.
+// The typed journal transport rejects unknown event types; this raw deny-list catches
+// known real-execution names before transport filtering can hide them.
 const REAL_ORDER_EVENT_TYPES = [
   'ORDER_PLANT',
   'LIVE_ORDER',
@@ -126,6 +130,8 @@ interface RawJournalScanSummary {
   readonly parse_error_count: number;
   readonly event_type_counts: Record<string, number>;
   readonly real_order_event_type_counts: Record<string, number>;
+  readonly unsafe_execution_adapter_count: number;
+  readonly blocked_sim_fill_input_tier_count: number;
 }
 
 interface FeatureSurfaceSummary {
@@ -281,7 +287,7 @@ function executionSafetyCheckGroup(
   const execRejectEvents = events.filter((event) => event.type === 'EXEC_REJECT');
   const unsafeExecRejects = execRejectEvents.filter((event) => {
     const payload = jsonObject(event.payload);
-    return payload?.execution_adapter !== 'simulated';
+    return payload?.execution_adapter !== SIMULATED_EXECUTION_ADAPTER;
   });
   const blockedTierFills = simFillEvents.filter((event) => {
     const payload = jsonObject(event.payload);
@@ -290,7 +296,9 @@ function executionSafetyCheckGroup(
   const realOrderTypeTotal = Object.values(rawScan.real_order_event_type_counts).reduce((sum, count) => sum + count, 0);
   return group([
     checkBoolean('no_real_order_event_types_in_raw_journal', realOrderTypeTotal === 0, stableJsonStringify(rawScan.real_order_event_type_counts as JsonValue)),
+    checkBoolean('raw_exec_rejects_are_simulated_adapter_only', rawScan.unsafe_execution_adapter_count === 0, `${rawScan.unsafe_execution_adapter_count}`),
     checkBoolean('execution_rejects_are_simulated_adapter_only', unsafeExecRejects.length === 0, `${unsafeExecRejects.length}`),
+    checkBoolean('raw_sim_fills_do_not_use_blocked_input_tier', rawScan.blocked_sim_fill_input_tier_count === 0, `${rawScan.blocked_sim_fill_input_tier_count}`),
     checkBoolean('sim_fills_do_not_use_blocked_input_tier', blockedTierFills.length === 0, `${blockedTierFills.length}`),
     pass('real_orders_allowed_false', 'simulated execution only'),
   ]);
@@ -430,6 +438,8 @@ async function validateJournalWithTransport(
 function scanRawJournal(path: string): RawJournalScanSummary {
   let lineCount = 0;
   let parseErrorCount = 0;
+  let unsafeExecutionAdapterCount = 0;
+  let blockedSimFillInputTierCount = 0;
   const eventTypeCounts = new Map<string, number>();
   const realOrderEventTypeCounts = new Map<string, number>();
   forEachJsonlLine(path, (line) => {
@@ -448,6 +458,13 @@ function scanRawJournal(path: string): RawJournalScanSummary {
       if (REAL_ORDER_EVENT_TYPES.includes(eventType as (typeof REAL_ORDER_EVENT_TYPES)[number])) {
         increment(realOrderEventTypeCounts, eventType);
       }
+      const payload = jsonObject(jsonObject(parsed)?.payload);
+      if (eventType === 'EXEC_REJECT' && payload?.execution_adapter !== SIMULATED_EXECUTION_ADAPTER) {
+        unsafeExecutionAdapterCount += 1;
+      }
+      if (eventType === 'SIM_FILL' && payload?.input_tier === 'blocked') {
+        blockedSimFillInputTierCount += 1;
+      }
     } catch {
       parseErrorCount += 1;
     }
@@ -457,6 +474,8 @@ function scanRawJournal(path: string): RawJournalScanSummary {
     parse_error_count: parseErrorCount,
     event_type_counts: sortedRecord(eventTypeCounts),
     real_order_event_type_counts: sortedRecord(realOrderEventTypeCounts),
+    unsafe_execution_adapter_count: unsafeExecutionAdapterCount,
+    blocked_sim_fill_input_tier_count: blockedSimFillInputTierCount,
   };
 }
 
@@ -466,6 +485,8 @@ function emptyRawScan(): RawJournalScanSummary {
     parse_error_count: 0,
     event_type_counts: {},
     real_order_event_type_counts: {},
+    unsafe_execution_adapter_count: 0,
+    blocked_sim_fill_input_tier_count: 0,
   };
 }
 

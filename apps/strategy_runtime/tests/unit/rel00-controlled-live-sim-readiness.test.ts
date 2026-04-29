@@ -76,6 +76,109 @@ describe('REL-00 controlled live-sim readiness', () => {
     expect(result.report.feature_surface_checks.status).toBe('fail');
   });
 
+  it('fails when an execution reject uses a non-simulated adapter', async () => {
+    const root = makeFixtureRoot({ mode: 'live_exec_reject' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.raw_scan_summary.unsafe_execution_adapter_count).toBe(1);
+    expect(result.report.execution_safety_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'raw_exec_rejects_are_simulated_adapter_only',
+          status: 'fail',
+        }),
+      ]),
+    );
+  });
+
+  it('fails when a simulated fill uses a blocked input tier', async () => {
+    const root = makeFixtureRoot({ mode: 'blocked_fill_tier' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.raw_scan_summary.blocked_sim_fill_input_tier_count).toBe(1);
+    expect(result.report.execution_safety_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'sim_fills_do_not_use_blocked_input_tier',
+          status: 'fail',
+        }),
+      ]),
+    );
+  });
+
+  it('fails traceability when an order intent has no simulated terminal event', async () => {
+    const root = makeFixtureRoot({ mode: 'unterminated_order' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.traceability_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'order_intents_have_simulated_terminal_event_or_no_orders_present',
+          status: 'fail',
+        }),
+      ]),
+    );
+  });
+
+  it('fails traceability when a simulated terminal event references an unknown order intent', async () => {
+    const root = makeFixtureRoot({ mode: 'unknown_terminal_ref' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.traceability_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'simulated_terminal_events_reference_known_order_intents',
+          status: 'fail',
+        }),
+      ]),
+    );
+  });
+
+  it('fails when a diagnostic-only feature field is used as a runtime feature', async () => {
+    const root = makeFixtureRoot({ mode: 'restricted_feature' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.feature_surface_summary.restricted_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'mbp10_size_diagnostic',
+          canonical_field: 'mbp10_size_diagnostic',
+          tier: 'diagnostic_only',
+        }),
+      ]),
+    );
+  });
+
+  it('fails transport checks when the journal has malformed JSONL', async () => {
+    const root = makeFixtureRoot({ mode: 'malformed' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.transport_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'journal_json_lines_parseable',
+          status: 'fail',
+        }),
+        expect.objectContaining({
+          name: 'journal_transport_no_quarantine',
+          status: 'fail',
+        }),
+      ]),
+    );
+  });
+
   it('writes deterministic reports without embedding raw journal payload values', async () => {
     const root = makeFixtureRoot({ mode: 'raw_sentinel' });
 
@@ -110,7 +213,19 @@ async function runRel00(root: string): Promise<ReturnType<typeof runRel00Control
   });
 }
 
-function makeFixtureRoot(input: { readonly mode: 'pass' | 'real_order' | 'blocked_feature' | 'raw_sentinel' }): string {
+type FixtureMode =
+  | 'pass'
+  | 'real_order'
+  | 'blocked_feature'
+  | 'live_exec_reject'
+  | 'blocked_fill_tier'
+  | 'unterminated_order'
+  | 'unknown_terminal_ref'
+  | 'restricted_feature'
+  | 'malformed'
+  | 'raw_sentinel';
+
+function makeFixtureRoot(input: { readonly mode: FixtureMode }): string {
   const root = mkdtempSync(join(tmpdir(), 'qfa-rel00-'));
   TEMP_ROOTS.push(root);
   const journal = buildJournal(input.mode);
@@ -118,7 +233,7 @@ function makeFixtureRoot(input: { readonly mode: 'pass' | 'real_order' | 'blocke
   return root;
 }
 
-function buildJournal(mode: 'pass' | 'real_order' | 'blocked_feature' | 'raw_sentinel'): string {
+function buildJournal(mode: FixtureMode): string {
   const source = readFileSync(FIXTURE_JOURNAL, 'utf8')
     .split(/\r?\n/u)
     .filter((line) => line.trim() !== '');
@@ -144,6 +259,30 @@ function buildJournal(mode: 'pass' | 'real_order' | 'blocked_feature' | 'raw_sen
         },
       };
     }
+    if (mode === 'restricted_feature' && event.type === 'FEATURES') {
+      const payload = jsonObject(event.payload);
+      event.payload = {
+        ...payload,
+        values: {
+          ...jsonObject(payload.values),
+          mbp10_size_diagnostic: 12,
+        },
+      };
+    }
+    if (mode === 'blocked_fill_tier' && event.type === 'SIM_FILL') {
+      const payload = jsonObject(event.payload);
+      event.payload = {
+        ...payload,
+        input_tier: 'blocked',
+      };
+    }
+    if (mode === 'unknown_terminal_ref' && event.type === 'SIM_FILL') {
+      const payload = jsonObject(event.payload);
+      event.payload = {
+        ...payload,
+        order_intent_id: 'missing-order-intent',
+      };
+    }
     if (mode === 'raw_sentinel' && event.type === 'FEATURES') {
       const payload = jsonObject(event.payload);
       event.payload = {
@@ -154,8 +293,11 @@ function buildJournal(mode: 'pass' | 'real_order' | 'blocked_feature' | 'raw_sen
         },
       };
     }
+    if (mode === 'unterminated_order' && event.type === 'SIM_FILL') {
+      return null;
+    }
     return `${JSON.stringify(event)}\n`;
-  });
+  }).filter((line): line is string => line !== null);
   if (mode === 'real_order') {
     lines.push(`${JSON.stringify({
       event_id: 'real-order-1',
@@ -168,6 +310,30 @@ function buildJournal(mode: 'pass' | 'real_order' | 'blocked_feature' | 'raw_sen
         raw_order_id: 'RAW_SHOULD_NOT_APPEAR',
       },
     })}\n`);
+  }
+  if (mode === 'live_exec_reject') {
+    lines.push(`${JSON.stringify({
+      causation_id: 'order-1',
+      event_id: 'reject-1',
+      payload: {
+        candidate_id: 'candidate-obs00-1',
+        execution_adapter: 'broker_xyz',
+        execution_reject_id: 'reject-obs00-1',
+        execution_version: 'broker-v1',
+        order_intent_id: 'order-obs00-1',
+        reason: 'operator test',
+        sizing_decision_id: 'sizing-obs00-1',
+        status: 'rejected',
+      },
+      run_id: 'run_obs00_fixture_v1',
+      schema_version: 1,
+      session_id: '2026-04-23-rth',
+      ts_ns: '1700000000060000000',
+      type: 'EXEC_REJECT',
+    })}\n`);
+  }
+  if (mode === 'malformed') {
+    lines.push('{"event_id": "malformed"\n');
   }
   return lines.join('');
 }
