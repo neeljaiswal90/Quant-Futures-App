@@ -179,18 +179,11 @@ export function runRel00bEvidenceIndex(options: Rel00bOptions = {}): Rel00bResul
     stringValue(rel00a?.status) === 'fail',
     simGate !== null && simGate !== undefined && !sim03Ready,
   ].some(Boolean);
-  const hasMissingCore = [
-    byId.get('rel00a_offline_readiness')?.artifact.exists !== true,
-    byId.get('sim03_front_robust_refit_gate')?.artifact.exists !== true,
-    byId.get('sim03_front_robust_refit_patch')?.artifact.exists !== true,
-  ].some(Boolean);
   const status: ReadinessStatus = anyHardFail
     ? 'blocked'
     : sim03Ready && rel00aPass
       ? 'ready_for_rel00_candidate'
-      : hasMissingCore
-        ? 'partial'
-        : 'partial';
+      : 'partial';
 
   const report: Rel00bReport = {
     schema_version: REL_00B_REPORT_SCHEMA_VERSION,
