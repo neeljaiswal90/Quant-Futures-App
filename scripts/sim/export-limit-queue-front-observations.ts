@@ -1134,7 +1134,21 @@ function sha256Text(value: string): string {
 }
 
 function sha256File(path: string): string {
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
+  const digest = createHash('sha256');
+  const fd = openSync(path, 'r');
+  const chunk = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    for (;;) {
+      const bytesRead = readSync(fd, chunk, 0, chunk.length, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      digest.update(chunk.subarray(0, bytesRead));
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return digest.digest('hex');
 }
 
 function usage(): string {
