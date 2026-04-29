@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -137,6 +137,157 @@ describe('SIM-03 fill/slippage calibration', () => {
     expect(second.exitCode).toBe(0);
     expect(readFileSync(first.reportPath, 'utf8')).toBe(readFileSync(second.reportPath, 'utf8'));
   });
+
+  it('writes progress and checkpoint artifacts and can resume from checkpoint', () => {
+    const directory = makeTempDir();
+    const checkpointPath = join(directory, 'checkpoint.json');
+    const progressLogPath = join(directory, 'progress.jsonl');
+    const sessions = [
+      sessionFixture('2026-04-27-rth', 'calibration'),
+      sessionFixture('2026-04-24-rth', 'validation'),
+    ];
+    const first = runCalibration({
+      rootDirectory: directory,
+      inputName: 'checkpointed',
+      outName: 'first.json',
+      sessions,
+      minBucketSample: 1,
+      progressLogPath,
+      progressEveryRecords: 1,
+      checkpointPath,
+    });
+    const checkpoint = JSON.parse(readFileSync(checkpointPath, 'utf8')) as Record<string, any>;
+    const progressEvents = readFileSync(progressLogPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, any>);
+
+    expect(first.exitCode).toBe(0);
+    expect(checkpoint).toMatchObject({
+      calibration_checkpoint_schema_version: 1,
+      ticket_id: 'SIM-03',
+      processed_session_ids: ['2026-04-24-rth', '2026-04-27-rth'],
+    });
+    expect(checkpoint.lineage.manifest_hash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(checkpoint.marketable_observations.count).toBeGreaterThan(0);
+    expect(checkpoint.limit_observations.count).toBeGreaterThan(0);
+    expect(progressEvents.map((event) => event.event_type)).toEqual(
+      expect.arrayContaining([
+        'run_started',
+        'session_started',
+        'records_processed',
+        'schema_completed',
+        'session_completed',
+        'checkpoint_written',
+        'run_completed',
+      ]),
+    );
+    const recordEvent = progressEvents.find((event) => event.event_type === 'records_processed');
+    expect(recordEvent).toBeDefined();
+    expect(recordEvent).toMatchObject({
+      schema_records: expect.any(Number),
+      total_records: expect.any(Number),
+    });
+    expect(recordEvent!.memory.python_traced_current_bytes).toEqual(expect.any(Number));
+    expect(progressEvents.find((event) => event.event_type === 'session_completed')).toMatchObject({
+      processed_sessions: 1,
+      total_sessions: 2,
+    });
+
+    const resumed = runCalibration({
+      rootDirectory: directory,
+      inputName: 'checkpointed',
+      outName: 'resumed.json',
+      sessions,
+      minBucketSample: 1,
+      resumeFromCheckpointPath: checkpointPath,
+    });
+
+    expect(resumed.exitCode).toBe(0);
+    expect(readFileSync(resumed.reportPath, 'utf8')).toBe(readFileSync(first.reportPath, 'utf8'));
+  });
+
+  it('resumes from a partial checkpoint after an interrupted session scan', () => {
+    const directory = makeTempDir();
+    const checkpointPath = join(directory, 'partial-checkpoint.json');
+    const sessions = [
+      sessionFixture('2026-04-27-rth', 'calibration'),
+      sessionFixture('2026-04-24-rth', 'validation'),
+      sessionFixture('2026-04-23-rth', 'calibration'),
+    ];
+    const fresh = runCalibration({
+      rootDirectory: directory,
+      inputName: 'partial',
+      outName: 'fresh.json',
+      sessions,
+      minBucketSample: 1,
+    });
+    const interrupted = runCalibration({
+      rootDirectory: directory,
+      inputName: 'partial',
+      outName: 'interrupted.json',
+      sessions,
+      minBucketSample: 1,
+      checkpointPath,
+      allowFailure: true,
+      beforeRun: ({ materializedSessions }) => {
+        unlinkSync(String(materializedSessions[1].schemas['mbp-1'].path));
+      },
+    });
+    const partialCheckpoint = JSON.parse(readFileSync(checkpointPath, 'utf8')) as Record<string, any>;
+
+    expect(interrupted.exitCode).toBe(1);
+    expect(interrupted.stderr).toContain('mbp-1');
+    expect(partialCheckpoint.processed_session_ids).toEqual(['2026-04-23-rth']);
+
+    const resumed = runCalibration({
+      rootDirectory: directory,
+      inputName: 'partial',
+      outName: 'resumed.json',
+      sessions,
+      minBucketSample: 1,
+      resumeFromCheckpointPath: checkpointPath,
+    });
+
+    expect(resumed.exitCode).toBe(0);
+    expect(readFileSync(resumed.reportPath, 'utf8')).toBe(readFileSync(fresh.reportPath, 'utf8'));
+  });
+
+  it('rejects checkpoints whose lineage does not match the current corpus inputs', () => {
+    const directory = makeTempDir();
+    const checkpointPath = join(directory, 'lineage-checkpoint.json');
+    const sessions = [
+      sessionFixture('2026-04-27-rth', 'calibration'),
+      sessionFixture('2026-04-24-rth', 'validation'),
+    ];
+    const first = runCalibration({
+      rootDirectory: directory,
+      inputName: 'lineage',
+      outName: 'first.json',
+      sessions,
+      minBucketSample: 1,
+      checkpointPath,
+    });
+    const checkpoint = JSON.parse(readFileSync(checkpointPath, 'utf8')) as Record<string, any>;
+    checkpoint.lineage.manifest_hash = '0'.repeat(64);
+    writeFileSync(checkpointPath, JSON.stringify(checkpoint, null, 2), 'utf8');
+
+    const rejected = runCalibration({
+      rootDirectory: directory,
+      inputName: 'lineage',
+      outName: 'rejected.json',
+      sessions,
+      minBucketSample: 1,
+      resumeFromCheckpointPath: checkpointPath,
+      allowFailure: true,
+    });
+
+    expect(first.exitCode).toBe(0);
+    expect(rejected.exitCode).toBe(1);
+    expect(rejected.stderr).toContain('checkpoint lineage does not match current calibration inputs');
+    expect(rejected.stderr).toContain('expected=');
+    expect(rejected.stderr).toContain('found=');
+  });
 });
 
 function runCalibration(input: {
@@ -145,11 +296,24 @@ function runCalibration(input: {
   readonly outName?: string;
   readonly sessions: readonly SessionFixture[];
   readonly minBucketSample: number;
+  readonly progressLogPath?: string;
+  readonly progressEveryRecords?: number;
+  readonly checkpointPath?: string;
+  readonly resumeFromCheckpointPath?: string;
+  readonly allowFailure?: boolean;
+  readonly beforeRun?: (context: {
+    readonly materializedSessions: readonly Record<string, any>[];
+    readonly manifestPath: string;
+    readonly thresholdsPath: string;
+    readonly verifiedPath: string;
+    readonly reportPath: string;
+  }) => void;
 }): {
   readonly exitCode: number | null;
   readonly report: Record<string, any>;
   readonly reportPath: string;
   readonly markdownPath: string;
+  readonly stderr: string;
 } {
   const directory = input.rootDirectory ?? makeTempDir();
   mkdirSync(directory, { recursive: true });
@@ -179,37 +343,55 @@ function runCalibration(input: {
     })),
   };
   writeFileSync(verifiedPath, JSON.stringify(verified, null, 2), 'utf8');
+  input.beforeRun?.({
+    materializedSessions: sessions,
+    manifestPath,
+    thresholdsPath,
+    verifiedPath,
+    reportPath,
+  });
 
-  const result = spawnSync(
-    PYTHON,
-    [
-      SCRIPT,
-      '--manifest',
-      manifestPath,
-      '--verified-report',
-      verifiedPath,
-      '--thresholds',
-      thresholdsPath,
-      '--calibrated-at-ts-ns',
-      CALIBRATED_AT_TS_NS,
-      '--min-bucket-sample',
-      String(input.minBucketSample),
-      '--out',
-      reportPath,
-      '--markdown-out',
-      markdownPath,
-    ],
-    { cwd: process.cwd(), encoding: 'utf8' },
-  );
+  const args = [
+    SCRIPT,
+    '--manifest',
+    manifestPath,
+    '--verified-report',
+    verifiedPath,
+    '--thresholds',
+    thresholdsPath,
+    '--calibrated-at-ts-ns',
+    CALIBRATED_AT_TS_NS,
+    '--min-bucket-sample',
+    String(input.minBucketSample),
+    '--out',
+    reportPath,
+    '--markdown-out',
+    markdownPath,
+  ];
+  if (input.progressLogPath !== undefined) {
+    args.push('--progress-log', input.progressLogPath);
+  }
+  if (input.progressEveryRecords !== undefined) {
+    args.push('--progress-every-records', String(input.progressEveryRecords));
+  }
+  if (input.checkpointPath !== undefined) {
+    args.push('--checkpoint', input.checkpointPath);
+  }
+  if (input.resumeFromCheckpointPath !== undefined) {
+    args.push('--resume-from-checkpoint', input.resumeFromCheckpointPath);
+  }
 
-  if (result.status !== 0 && result.status !== 2) {
+  const result = spawnSync(PYTHON, args, { cwd: process.cwd(), encoding: 'utf8' });
+
+  if (result.status !== 0 && result.status !== 2 && input.allowFailure !== true) {
     throw new Error(`calibrator failed (${result.status})\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);
   }
   return {
     exitCode: result.status,
-    report: JSON.parse(readFileSync(reportPath, 'utf8')) as Record<string, any>,
+    report: existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) as Record<string, any> : {},
     reportPath,
     markdownPath,
+    stderr: result.stderr,
   };
 }
 

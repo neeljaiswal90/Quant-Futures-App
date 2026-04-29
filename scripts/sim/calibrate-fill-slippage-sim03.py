@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import ctypes
 import hashlib
 import json
 import math
+import os
 import sys
+import time
+import tracemalloc
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +26,7 @@ from typing import Any, Iterator, Literal
 
 
 CALIBRATION_REPORT_SCHEMA_VERSION = 1
+CALIBRATION_CHECKPOINT_SCHEMA_VERSION = 1
 SUPPORTED_MANIFEST_SCHEMA_VERSION = 1
 SUPPORTED_VERIFIED_REPORT_SCHEMA_VERSION = 1
 SUPPORTED_THRESHOLDS_SCHEMA_VERSION = 1
@@ -48,6 +53,11 @@ class CalibrationRequest:
     calibrated_at_ts_ns: str
     markdown_out_path: Path | None
     min_bucket_sample: int
+    progress_log_path: Path | None
+    progress_every_records: int
+    checkpoint_path: Path | None
+    checkpoint_every_sessions: int
+    resume_from_checkpoint_path: Path | None
 
 
 @dataclass(frozen=True)
@@ -159,7 +169,10 @@ class TimeToFillDistribution:
 @dataclass
 class MarketableAggregates:
     all_values_by_split: dict[str, ValueDistribution] = field(
-        default_factory=lambda: {"calibration": ValueDistribution(), "validation": ValueDistribution()}
+        default_factory=lambda: defaultdict(
+            ValueDistribution,
+            {"calibration": ValueDistribution(), "validation": ValueDistribution()},
+        )
     )
     bucket_values_by_split: dict[str, dict[str, ValueDistribution]] = field(
         default_factory=lambda: {
@@ -194,7 +207,10 @@ class LimitBucketAggregate:
 @dataclass
 class LimitAggregates:
     all_by_split: dict[str, LimitBucketAggregate] = field(
-        default_factory=lambda: {"calibration": LimitBucketAggregate(), "validation": LimitBucketAggregate()}
+        default_factory=lambda: defaultdict(
+            LimitBucketAggregate,
+            {"calibration": LimitBucketAggregate(), "validation": LimitBucketAggregate()},
+        )
     )
     bucket_by_split: dict[str, dict[str, LimitBucketAggregate]] = field(
         default_factory=lambda: {"calibration": defaultdict(LimitBucketAggregate), "validation": defaultdict(LimitBucketAggregate)}
@@ -214,6 +230,77 @@ class LimitAggregates:
         self.bucket_by_split[split][queue_bucket].add(filled=filled, time_to_fill_ms=time_to_fill_ms)
         self.bucket_names.add(queue_bucket)
         self.count += 1
+
+
+@dataclass
+class CheckpointState:
+    processed_session_ids: set[str]
+    marketable_observations: MarketableAggregates
+    limit_observations: LimitAggregates
+    reader_diagnostics: list[dict[str, Any]]
+
+
+class ProgressReporter:
+    def __init__(self, *, path: Path | None, every_records: int, total_sessions: int) -> None:
+        self.path = path
+        self.every_records = max(1, every_records)
+        self.total_sessions = total_sessions
+        self.total_records = 0
+        self.records_by_schema: dict[str, int] = defaultdict(int)
+        self.started_monotonic = time.monotonic()
+        self.started_cpu = time.process_time()
+        self.enabled = path is not None
+        if self.enabled:
+            tracemalloc.start()
+            assert self.path is not None
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text("", encoding="utf-8")
+
+    def emit(self, event_type: str, **fields: Any) -> None:
+        if not self.enabled:
+            return
+        assert self.path is not None
+        payload = {
+            "event_type": event_type,
+            "elapsed_seconds": _round6(time.monotonic() - self.started_monotonic),
+            "cpu_seconds": _round6(time.process_time() - self.started_cpu),
+            "total_records": self.total_records,
+            "records_by_schema": dict(sorted(self.records_by_schema.items())),
+            "memory": self._memory_snapshot(),
+            **fields,
+        }
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+    def record(self, *, session_id: str, schema: str, path: Path) -> None:
+        if not self.enabled:
+            return
+        self.total_records += 1
+        self.records_by_schema[schema] += 1
+        if self.total_records % self.every_records == 0:
+            self.emit(
+                "records_processed",
+                session_id=session_id,
+                schema=schema,
+                path=str(path),
+                schema_records=self.records_by_schema[schema],
+            )
+
+    def estimated_remaining_seconds(self, completed_sessions: int) -> float | None:
+        if completed_sessions <= 0 or completed_sessions >= self.total_sessions:
+            return None
+        elapsed = time.monotonic() - self.started_monotonic
+        seconds_per_session = elapsed / completed_sessions
+        return _round6(seconds_per_session * (self.total_sessions - completed_sessions))
+
+    @staticmethod
+    def _memory_snapshot() -> dict[str, int]:
+        current, peak = tracemalloc.get_traced_memory() if tracemalloc.is_tracing() else (0, 0)
+        return {
+            "python_traced_current_bytes": current,
+            "python_traced_peak_bytes": peak,
+            **_process_memory_snapshot(),
+        }
 
 
 def calibrate(request: CalibrationRequest) -> dict[str, Any]:
@@ -236,17 +323,99 @@ def calibrate(request: CalibrationRequest) -> dict[str, Any]:
     source_sessions = _eligible_source_sessions(manifest, verified_session_ids)
     calibration_sessions = [session for session in source_sessions if session.get("split") == "calibration"]
     validation_sessions = [session for session in source_sessions if session.get("split") == "validation"]
+    lineage = {
+        "manifest_hash": manifest_hash,
+        "verified_report_hash": verified_report_hash,
+        "thresholds_config_hash": thresholds_hash,
+    }
+
+    progress = ProgressReporter(
+        path=request.progress_log_path,
+        every_records=request.progress_every_records,
+        total_sessions=len(source_sessions),
+    )
+    progress.emit(
+        "run_started",
+        source_session_count=len(source_sessions),
+        calibration_session_count=len(calibration_sessions),
+        validation_session_count=len(validation_sessions),
+        progress_every_records=request.progress_every_records,
+        checkpoint_path=str(request.checkpoint_path) if request.checkpoint_path is not None else None,
+        resume_from_checkpoint_path=(
+            str(request.resume_from_checkpoint_path) if request.resume_from_checkpoint_path is not None else None
+        ),
+    )
 
     marketable_observations = MarketableAggregates()
     limit_observations = LimitAggregates()
     reader_diagnostics: list[dict[str, Any]] = []
-    for session in source_sessions:
+
+    processed_session_ids: set[str] = set()
+    if request.resume_from_checkpoint_path is not None:
+        checkpoint = _load_checkpoint(request.resume_from_checkpoint_path, lineage=lineage)
+        processed_session_ids = checkpoint.processed_session_ids
+        marketable_observations = checkpoint.marketable_observations
+        limit_observations = checkpoint.limit_observations
+        reader_diagnostics = checkpoint.reader_diagnostics
+        progress.emit(
+            "checkpoint_loaded",
+            checkpoint_path=str(request.resume_from_checkpoint_path),
+            processed_sessions=len(processed_session_ids),
+            marketable_observations=marketable_observations.count,
+            limit_observations=limit_observations.count,
+        )
+
+    for session_index, session in enumerate(source_sessions, start=1):
+        session_id = str(session["session_id"])
+        if session_id in processed_session_ids:
+            progress.emit(
+                "session_skipped_from_checkpoint",
+                session_id=session_id,
+                session_index=session_index,
+                total_sessions=len(source_sessions),
+            )
+            continue
+        progress.emit(
+            "session_started",
+            session_id=session_id,
+            session_index=session_index,
+            total_sessions=len(source_sessions),
+            split=session.get("split"),
+        )
         diagnostics = _read_session_observations(
             session,
             marketable_observations=marketable_observations,
             limit_observations=limit_observations,
+            progress=progress,
         )
         reader_diagnostics.append(diagnostics)
+        processed_session_ids.add(session_id)
+        progress.emit(
+            "session_completed",
+            session_id=session_id,
+            session_index=session_index,
+            total_sessions=len(source_sessions),
+            split=session.get("split"),
+            diagnostics=diagnostics,
+            processed_sessions=len(processed_session_ids),
+            marketable_observations=marketable_observations.count,
+            limit_observations=limit_observations.count,
+            estimated_remaining_seconds=progress.estimated_remaining_seconds(len(processed_session_ids)),
+        )
+        if request.checkpoint_path is not None and len(processed_session_ids) % request.checkpoint_every_sessions == 0:
+            _write_checkpoint(
+                request.checkpoint_path,
+                lineage=lineage,
+                processed_session_ids=processed_session_ids,
+                marketable_observations=marketable_observations,
+                limit_observations=limit_observations,
+                reader_diagnostics=reader_diagnostics,
+            )
+            progress.emit(
+                "checkpoint_written",
+                checkpoint_path=str(request.checkpoint_path),
+                processed_sessions=len(processed_session_ids),
+            )
 
     marketable = _score_marketable(
         marketable_observations,
@@ -331,6 +500,22 @@ def calibrate(request: CalibrationRequest) -> dict[str, Any]:
     _write_json(request.out_path, report)
     if request.markdown_out_path is not None:
         _write_markdown(request.markdown_out_path, report)
+    if request.checkpoint_path is not None:
+        _write_checkpoint(
+            request.checkpoint_path,
+            lineage=lineage,
+            processed_session_ids=processed_session_ids,
+            marketable_observations=marketable_observations,
+            limit_observations=limit_observations,
+            reader_diagnostics=reader_diagnostics,
+        )
+    progress.emit(
+        "run_completed",
+        status=status,
+        failure_reason_count=len(failure_reasons),
+        out_path=str(request.out_path),
+        markdown_out_path=str(request.markdown_out_path) if request.markdown_out_path is not None else None,
+    )
     return report
 
 
@@ -339,23 +524,53 @@ def _read_session_observations(
     *,
     marketable_observations: MarketableAggregates,
     limit_observations: LimitAggregates,
+    progress: ProgressReporter,
 ) -> dict[str, Any]:
     session_id = str(session["session_id"])
     split = _session_split(session)
     schemas = session.get("schemas", {})
-    bbo_samples = _read_bbo_samples(Path(str(schemas["mbp-1"]["path"])))
+    bbo_path = Path(str(schemas["mbp-1"]["path"]))
+    trades_path = Path(str(schemas["trades"]["path"]))
+    mbo_path = Path(str(schemas["mbo"]["path"]))
+    progress.emit("schema_started", session_id=session_id, schema="mbp-1", path=str(bbo_path))
+    bbo_samples = _read_bbo_samples(bbo_path, progress=progress, session_id=session_id)
+    progress.emit(
+        "schema_completed",
+        session_id=session_id,
+        schema="mbp-1",
+        path=str(bbo_path),
+        output_count=len(bbo_samples),
+    )
+    progress.emit("schema_started", session_id=session_id, schema="trades", path=str(trades_path))
     marketable_count = _read_marketable_observations(
         session=session,
         split=split,
         aggregates=marketable_observations,
         bbo_samples=bbo_samples,
-        trades_path=Path(str(schemas["trades"]["path"])),
+        trades_path=trades_path,
+        progress=progress,
     )
+    progress.emit(
+        "schema_completed",
+        session_id=session_id,
+        schema="trades",
+        path=str(trades_path),
+        output_count=marketable_count,
+    )
+    progress.emit("schema_started", session_id=session_id, schema="mbo", path=str(mbo_path))
     limit_count = _read_limit_observations(
         session=session,
         split=split,
         aggregates=limit_observations,
-        mbo_path=Path(str(schemas["mbo"]["path"])),
+        mbo_path=mbo_path,
+        progress=progress,
+    )
+    progress.emit(
+        "schema_completed",
+        session_id=session_id,
+        schema="mbo",
+        path=str(mbo_path),
+        output_count=limit_count,
     )
     return {
         "session_id": session_id,
@@ -366,9 +581,9 @@ def _read_session_observations(
     }
 
 
-def _read_bbo_samples(path: Path) -> list[BboSample]:
+def _read_bbo_samples(path: Path, *, progress: ProgressReporter, session_id: str) -> list[BboSample]:
     samples: list[BboSample] = []
-    for record in _iter_records(path, "mbp-1"):
+    for record in _iter_records(path, "mbp-1", progress=progress, session_id=session_id):
         ts = _int_field(record, "ts_event")
         bid = _price_field(record, "bid_px_00")
         ask = _price_field(record, "ask_px_00")
@@ -386,6 +601,7 @@ def _read_marketable_observations(
     aggregates: MarketableAggregates,
     bbo_samples: list[BboSample],
     trades_path: Path,
+    progress: ProgressReporter,
 ) -> int:
     if not bbo_samples:
         return 0
@@ -393,7 +609,8 @@ def _read_marketable_observations(
     observation_count = 0
     start_ts_ns = int(session["rth_window"]["start_ts_ns"])
     end_ts_ns = int(session["rth_window"]["end_ts_ns"])
-    for record in _iter_records(trades_path, "trades"):
+    session_id = str(session["session_id"])
+    for record in _iter_records(trades_path, "trades", progress=progress, session_id=session_id):
         ts = _int_field(record, "ts_event")
         price = _price_field(record, "price")
         if ts is None or price is None or price <= 0:
@@ -430,13 +647,14 @@ def _read_limit_observations(
     split: SplitName,
     aggregates: LimitAggregates,
     mbo_path: Path,
+    progress: ProgressReporter,
 ) -> int:
     session_id = str(session["session_id"])
     levels: dict[tuple[str, int], LevelState] = defaultdict(LevelState)
     orders: dict[int, OpenOrder] = {}
     observation_count = 0
 
-    for record in _iter_records(mbo_path, "mbo"):
+    for record in _iter_records(mbo_path, "mbo", progress=progress, session_id=session_id):
         ts = _int_field(record, "ts_event")
         order_id = _int_field(record, "order_id")
         price = _fixed_price_int(record.get("price"))
@@ -797,7 +1015,310 @@ def _distribution_summary(values: ValueDistribution) -> dict[str, Any]:
     }
 
 
-def _iter_records(path: Path, schema: str) -> Iterator[dict[str, Any]]:
+def _process_memory_snapshot() -> dict[str, int]:
+    if sys.platform == "win32":
+        return _windows_process_memory_snapshot()
+    return _posix_process_memory_snapshot()
+
+
+def _windows_process_memory_snapshot() -> dict[str, int]:
+    class ProcessMemoryCountersEx(ctypes.Structure):
+        _fields_ = [
+            ("cb", ctypes.c_ulong),
+            ("PageFaultCount", ctypes.c_ulong),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+            ("PrivateUsage", ctypes.c_size_t),
+        ]
+
+    try:
+        kernel32 = ctypes.WinDLL("kernel32.dll")
+        psapi = ctypes.WinDLL("psapi.dll")
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        psapi.GetProcessMemoryInfo.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ProcessMemoryCountersEx),
+            ctypes.c_ulong,
+        ]
+        psapi.GetProcessMemoryInfo.restype = ctypes.c_int
+        counters = ProcessMemoryCountersEx()
+        counters.cb = ctypes.sizeof(counters)
+        if not psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
+            return {}
+        return {
+            "process_rss_bytes": int(counters.WorkingSetSize),
+            "process_peak_rss_bytes": int(counters.PeakWorkingSetSize),
+            "process_private_usage_bytes": int(counters.PrivateUsage),
+        }
+    except Exception:  # noqa: BLE001 - memory telemetry is best-effort progress metadata.
+        return {}
+
+
+def _posix_process_memory_snapshot() -> dict[str, int]:
+    snapshot: dict[str, int] = {}
+    statm_path = Path("/proc/self/statm")
+    try:
+        if statm_path.exists():
+            rss_pages = int(statm_path.read_text(encoding="utf-8").split()[1])
+            snapshot["process_rss_bytes"] = rss_pages * int(os.sysconf("SC_PAGE_SIZE"))
+    except (IndexError, OSError, ValueError):
+        pass
+    try:
+        import resource
+
+        peak_rss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        snapshot["process_peak_rss_bytes"] = peak_rss if sys.platform == "darwin" else peak_rss * 1024
+    except (ImportError, OSError, ValueError):
+        pass
+    return snapshot
+
+
+def _json_object(value: Any, field_name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object")
+    return value
+
+
+def _checkpoint_split_names(*payloads: dict[str, Any]) -> list[str]:
+    split_names = {"calibration", "validation"}
+    for payload in payloads:
+        split_names.update(str(split_name) for split_name in payload)
+    return sorted(split_names)
+
+
+def _write_checkpoint(
+    path: Path,
+    *,
+    lineage: dict[str, str],
+    processed_session_ids: set[str],
+    marketable_observations: MarketableAggregates,
+    limit_observations: LimitAggregates,
+    reader_diagnostics: list[dict[str, Any]],
+) -> None:
+    payload = {
+        "calibration_checkpoint_schema_version": CALIBRATION_CHECKPOINT_SCHEMA_VERSION,
+        "ticket_id": TICKET_ID,
+        "simulated_execution_fitter_version": SIMULATED_EXECUTION_FITTER_VERSION,
+        "lineage": lineage,
+        "processed_session_ids": sorted(processed_session_ids),
+        "marketable_observations": _marketable_aggregates_to_json(marketable_observations),
+        "limit_observations": _limit_aggregates_to_json(limit_observations),
+        "reader_diagnostics": reader_diagnostics,
+        "scope_note": (
+            "SIM-03C checkpoint stores partial aggregate state after completed sessions. "
+            "It is only valid when manifest, verified-report, and thresholds hashes match."
+        ),
+    }
+    _write_json(path, payload)
+
+
+def _load_checkpoint(path: Path, *, lineage: dict[str, str]) -> CheckpointState:
+    payload = _read_json(path)
+    found_version = payload.get("calibration_checkpoint_schema_version")
+    if found_version != CALIBRATION_CHECKPOINT_SCHEMA_VERSION:
+        raise ValueError(
+            "unsupported calibration_checkpoint_schema_version "
+            f"expected={CALIBRATION_CHECKPOINT_SCHEMA_VERSION} found={found_version!r}"
+        )
+    checkpoint_lineage = payload.get("lineage")
+    if checkpoint_lineage != lineage:
+        raise ValueError(
+            "checkpoint lineage does not match current calibration inputs "
+            f"expected={lineage!r} found={checkpoint_lineage!r}"
+        )
+    processed = payload.get("processed_session_ids")
+    if not isinstance(processed, list):
+        raise ValueError("checkpoint processed_session_ids must be a list")
+    diagnostics = payload.get("reader_diagnostics")
+    if not isinstance(diagnostics, list):
+        raise ValueError("checkpoint reader_diagnostics must be a list")
+    return CheckpointState(
+        processed_session_ids={str(session_id) for session_id in processed},
+        marketable_observations=_marketable_aggregates_from_json(payload.get("marketable_observations", {})),
+        limit_observations=_limit_aggregates_from_json(payload.get("limit_observations", {})),
+        reader_diagnostics=[item for item in diagnostics if isinstance(item, dict)],
+    )
+
+
+def _marketable_aggregates_to_json(aggregates: MarketableAggregates) -> dict[str, Any]:
+    return {
+        "count": aggregates.count,
+        "bucket_ids": sorted(aggregates.bucket_ids),
+        "all_values_by_split": {
+            split: _value_distribution_to_json(values)
+            for split, values in sorted(aggregates.all_values_by_split.items())
+        },
+        "bucket_values_by_split": {
+            split: {
+                bucket: _value_distribution_to_json(values)
+                for bucket, values in sorted(bucket_values.items())
+            }
+            for split, bucket_values in sorted(aggregates.bucket_values_by_split.items())
+        },
+    }
+
+
+def _marketable_aggregates_from_json(payload: Any) -> MarketableAggregates:
+    if not isinstance(payload, dict):
+        raise ValueError("checkpoint marketable_observations must be an object")
+    aggregates = MarketableAggregates()
+    aggregates.count = int(payload.get("count", 0))
+    aggregates.bucket_ids = {str(bucket_id) for bucket_id in payload.get("bucket_ids", [])}
+    all_values = _json_object(payload.get("all_values_by_split", {}), "checkpoint marketable all_values_by_split")
+    bucket_values = _json_object(payload.get("bucket_values_by_split", {}), "checkpoint marketable bucket_values_by_split")
+    split_names = _checkpoint_split_names(all_values, bucket_values)
+    aggregates.all_values_by_split = defaultdict(
+        ValueDistribution,
+        {
+            split: _value_distribution_from_json(all_values.get(split, {}))
+            for split in split_names
+        },
+    )
+    aggregates.bucket_values_by_split = defaultdict(
+        lambda: defaultdict(ValueDistribution),
+        {
+            split: defaultdict(
+                ValueDistribution,
+                {
+                    str(bucket): _value_distribution_from_json(values)
+                    for bucket, values in _json_object(
+                        bucket_values.get(split, {}),
+                        f"checkpoint marketable bucket_values_by_split[{split}]",
+                    ).items()
+                },
+            )
+            for split in split_names
+        },
+    )
+    return aggregates
+
+
+def _limit_aggregates_to_json(aggregates: LimitAggregates) -> dict[str, Any]:
+    return {
+        "count": aggregates.count,
+        "bucket_names": sorted(aggregates.bucket_names),
+        "all_by_split": {
+            split: _limit_bucket_to_json(bucket)
+            for split, bucket in sorted(aggregates.all_by_split.items())
+        },
+        "bucket_by_split": {
+            split: {
+                bucket_name: _limit_bucket_to_json(bucket)
+                for bucket_name, bucket in sorted(bucket_values.items())
+            }
+            for split, bucket_values in sorted(aggregates.bucket_by_split.items())
+        },
+    }
+
+
+def _limit_aggregates_from_json(payload: Any) -> LimitAggregates:
+    if not isinstance(payload, dict):
+        raise ValueError("checkpoint limit_observations must be an object")
+    aggregates = LimitAggregates()
+    aggregates.count = int(payload.get("count", 0))
+    aggregates.bucket_names = {str(bucket_name) for bucket_name in payload.get("bucket_names", [])}
+    all_by_split = _json_object(payload.get("all_by_split", {}), "checkpoint limit all_by_split")
+    bucket_by_split = _json_object(payload.get("bucket_by_split", {}), "checkpoint limit bucket_by_split")
+    split_names = _checkpoint_split_names(all_by_split, bucket_by_split)
+    aggregates.all_by_split = defaultdict(
+        LimitBucketAggregate,
+        {
+            split: _limit_bucket_from_json(all_by_split.get(split, {}))
+            for split in split_names
+        },
+    )
+    aggregates.bucket_by_split = defaultdict(
+        lambda: defaultdict(LimitBucketAggregate),
+        {
+            split: defaultdict(
+                LimitBucketAggregate,
+                {
+                    str(bucket): _limit_bucket_from_json(values)
+                    for bucket, values in _json_object(
+                        bucket_by_split.get(split, {}),
+                        f"checkpoint limit bucket_by_split[{split}]",
+                    ).items()
+                },
+            )
+            for split in split_names
+        },
+    )
+    return aggregates
+
+
+def _limit_bucket_to_json(bucket: LimitBucketAggregate) -> dict[str, Any]:
+    return {
+        "total_count": bucket.total_count,
+        "fill_count": bucket.fill_count,
+        "time_to_fill_ms": _time_to_fill_distribution_to_json(bucket.time_to_fill_ms),
+    }
+
+
+def _limit_bucket_from_json(payload: Any) -> LimitBucketAggregate:
+    if not isinstance(payload, dict):
+        raise ValueError("checkpoint limit bucket must be an object")
+    return LimitBucketAggregate(
+        total_count=int(payload.get("total_count") or 0),
+        fill_count=int(payload.get("fill_count") or 0),
+        time_to_fill_ms=_time_to_fill_distribution_from_json(payload.get("time_to_fill_ms", {})),
+    )
+
+
+def _value_distribution_to_json(distribution: ValueDistribution) -> dict[str, Any]:
+    return {
+        "counts": [[value, count] for value, count in sorted(distribution.counts.items())],
+        "total_count": distribution.total_count,
+        "total_sum": distribution.total_sum,
+        "total_abs_sum": distribution.total_abs_sum,
+    }
+
+
+def _value_distribution_from_json(payload: Any) -> ValueDistribution:
+    if not isinstance(payload, dict):
+        raise ValueError("checkpoint value distribution must be an object")
+    distribution = ValueDistribution(
+        total_count=int(payload.get("total_count") or 0),
+        total_sum=float(payload.get("total_sum") or 0.0),
+        total_abs_sum=float(payload.get("total_abs_sum") or 0.0),
+    )
+    distribution.counts = Counter({float(value): int(count) for value, count in payload.get("counts", [])})
+    return distribution
+
+
+def _time_to_fill_distribution_to_json(distribution: TimeToFillDistribution) -> dict[str, Any]:
+    return {
+        "exact_values": distribution.exact_values,
+        "bucket_counts": [[bucket, count] for bucket, count in sorted(distribution.bucket_counts.items())],
+        "total_count": distribution.total_count,
+        "quantized": distribution.quantized,
+    }
+
+
+def _time_to_fill_distribution_from_json(payload: Any) -> TimeToFillDistribution:
+    if not isinstance(payload, dict):
+        raise ValueError("checkpoint time-to-fill distribution must be an object")
+    distribution = TimeToFillDistribution(
+        exact_values=[float(value) for value in payload.get("exact_values", [])],
+        total_count=int(payload.get("total_count") or 0),
+        quantized=bool(payload.get("quantized")),
+    )
+    distribution.bucket_counts = Counter({int(bucket): int(count) for bucket, count in payload.get("bucket_counts", [])})
+    return distribution
+
+
+def _iter_records(
+    path: Path,
+    schema: str,
+    *,
+    progress: ProgressReporter | None = None,
+    session_id: str | None = None,
+) -> Iterator[dict[str, Any]]:
     if path.suffix == ".jsonl":
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
@@ -805,6 +1326,8 @@ def _iter_records(path: Path, schema: str) -> Iterator[dict[str, Any]]:
                 if line:
                     record = json.loads(line)
                     if isinstance(record, dict):
+                        if progress is not None and session_id is not None:
+                            progress.record(session_id=session_id, schema=schema, path=path)
                         yield record
         return
     if path.suffix == ".json":
@@ -812,6 +1335,8 @@ def _iter_records(path: Path, schema: str) -> Iterator[dict[str, Any]]:
         records = raw if isinstance(raw, list) else raw.get("records", []) if isinstance(raw, dict) else []
         for record in records:
             if isinstance(record, dict):
+                if progress is not None and session_id is not None:
+                    progress.record(session_id=session_id, schema=schema, path=path)
                 yield record
         return
 
@@ -821,6 +1346,8 @@ def _iter_records(path: Path, schema: str) -> Iterator[dict[str, Any]]:
     for chunk in store.to_ndarray(schema=schema, count=DBN_CHUNK_RECORDS):
         names = chunk.dtype.names or ()
         for row in chunk:
+            if progress is not None and session_id is not None:
+                progress.record(session_id=session_id, schema=schema, path=path)
             yield {name: row[name].item() if hasattr(row[name], "item") else row[name] for name in names}
 
 
@@ -1187,12 +1714,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--calibrated-at-ts-ns", required=True)
     parser.add_argument("--markdown-out", type=Path)
     parser.add_argument("--min-bucket-sample", type=int, default=DEFAULT_MIN_BUCKET_SAMPLE)
+    parser.add_argument("--progress-log", type=Path)
+    parser.add_argument("--progress-every-records", type=int, default=1_000_000)
+    parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--checkpoint-every-sessions", type=int, default=1)
+    parser.add_argument("--resume-from-checkpoint", type=Path)
     return parser.parse_args(argv)
 
 
 def request_from_args(args: argparse.Namespace) -> CalibrationRequest:
     if args.min_bucket_sample <= 0:
         raise ValueError("--min-bucket-sample must be positive")
+    if args.progress_every_records <= 0:
+        raise ValueError("--progress-every-records must be positive")
+    if args.checkpoint_every_sessions <= 0:
+        raise ValueError("--checkpoint-every-sessions must be positive")
     return CalibrationRequest(
         manifest_path=args.manifest,
         verified_report_path=args.verified_report,
@@ -1201,6 +1737,11 @@ def request_from_args(args: argparse.Namespace) -> CalibrationRequest:
         calibrated_at_ts_ns=_validate_timestamp_ns(str(args.calibrated_at_ts_ns)),
         markdown_out_path=args.markdown_out,
         min_bucket_sample=int(args.min_bucket_sample),
+        progress_log_path=args.progress_log,
+        progress_every_records=int(args.progress_every_records),
+        checkpoint_path=args.checkpoint,
+        checkpoint_every_sessions=int(args.checkpoint_every_sessions),
+        resume_from_checkpoint_path=args.resume_from_checkpoint,
     )
 
 
