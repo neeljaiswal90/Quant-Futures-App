@@ -586,7 +586,10 @@ function eventsForPanel(definition: TuiPanelDefinition, eventMap: EventMap): rea
   }
   const events: JournalEventEnvelope[] = [];
   for (const type of channelTypes) {
-    events.push(...(eventMap[type] ?? []));
+    const typedEvents = eventMap[type] ?? [];
+    for (const event of typedEvents) {
+      events.push(event);
+    }
   }
   return events.sort(compareEventsByTimestampThenInputOrder);
 }
@@ -594,8 +597,12 @@ function eventsForPanel(definition: TuiPanelDefinition, eventMap: EventMap): rea
 function groupByType(events: readonly JournalEventEnvelope[]): EventMap {
   const eventMap: EventMap = {};
   for (const event of events) {
-    const existing = eventMap[event.type] ?? [];
-    eventMap[event.type] = [...existing, event];
+    const existing = eventMap[event.type];
+    if (existing === undefined) {
+      eventMap[event.type] = [event];
+    } else {
+      existing.push(event);
+    }
   }
   return eventMap;
 }
