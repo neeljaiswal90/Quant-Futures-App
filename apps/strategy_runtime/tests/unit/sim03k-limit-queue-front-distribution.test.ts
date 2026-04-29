@@ -107,17 +107,47 @@ describe('SIM-03K limit_queue:front distribution analysis', () => {
   it('detects heavy-tail shape without mutating REL status', () => {
     const fixture = writeFixture({ refitMetric: 0.3 });
     writeObservations(fixture, [
-      ...repeat(100, filled('calibration', 100, 'bid')),
-      ...repeat(10, filled('calibration', 1000, 'bid')),
-      ...repeat(100, filled('validation', 100, 'bid')),
-      ...repeat(10, filled('validation', 1000, 'bid')),
+      ...repeat(28, filled('calibration', 100, 'bid')),
+      ...repeat(22, filled('calibration', 1000, 'bid')),
+      ...repeat(5, filled('calibration', 10000, 'bid')),
+      ...repeat(28, filled('calibration', 100, 'ask')),
+      ...repeat(22, filled('calibration', 1000, 'ask')),
+      ...repeat(5, filled('calibration', 10000, 'ask')),
+      ...repeat(22, filled('validation', 100, 'bid')),
+      ...repeat(28, filled('validation', 1000, 'bid')),
+      ...repeat(5, filled('validation', 10000, 'bid')),
+      ...repeat(22, filled('validation', 100, 'ask')),
+      ...repeat(28, filled('validation', 1000, 'ask')),
+      ...repeat(5, filled('validation', 10000, 'ask')),
     ]);
 
     const report = analyzeLimitQueueFrontDistribution(fixture.options);
 
+    expect(report.classification).toBe('heavy_tail_metric_sensitivity');
     expect(report.distribution_comparison.shape_diagnostics.calibration.heavy_tail).toBe(true);
     expect(report.distribution_comparison.shape_diagnostics.validation.heavy_tail).toBe(true);
     expect(report.rel01_status).toBe('blocked');
+  });
+
+  it('buckets deterministic CME equity-index RTH time boundaries', () => {
+    const fixture = writeFixture({ refitMetric: 0.3 });
+    writeObservations(fixture, [
+      filled('calibration', 100, 'bid', { eventTsNs: nsForUtcSecond(13 * 3600 + 29 * 60 + 59) }),
+      filled('calibration', 100, 'bid', { eventTsNs: nsForUtcSecond(13 * 3600 + 30 * 60) }),
+      filled('calibration', 100, 'bid', { eventTsNs: nsForUtcSecond(14 * 3600 + 30 * 60) }),
+      filled('calibration', 100, 'bid', { eventTsNs: nsForUtcSecond(16 * 3600 + 30 * 60) }),
+      filled('calibration', 100, 'bid', { eventTsNs: nsForUtcSecond(18 * 3600 + 30 * 60) }),
+      filled('validation', 100, 'bid', { eventTsNs: nsForUtcSecond(13 * 3600 + 29 * 60 + 59) }),
+      filled('validation', 100, 'bid', { eventTsNs: nsForUtcSecond(13 * 3600 + 30 * 60) }),
+      filled('validation', 100, 'bid', { eventTsNs: nsForUtcSecond(14 * 3600 + 30 * 60) }),
+      filled('validation', 100, 'bid', { eventTsNs: nsForUtcSecond(16 * 3600 + 30 * 60) }),
+      filled('validation', 100, 'bid', { eventTsNs: nsForUtcSecond(18 * 3600 + 30 * 60) }),
+    ]);
+
+    const report = analyzeLimitQueueFrontDistribution(fixture.options);
+    const ids = report.regime_slices.by_time_of_day.map((slice) => slice.id).sort();
+
+    expect(ids).toEqual(['outside_rth', 'rth_close', 'rth_midday', 'rth_morning', 'rth_open']);
   });
 
   it('writes a deterministic report shape', () => {
@@ -182,6 +212,7 @@ interface ObservationSpec {
   readonly observed_time_to_fill_ms: number | null;
   readonly order_side: 'bid' | 'ask';
   readonly queueAheadSize: number;
+  readonly eventTsNs?: string;
 }
 
 function writeFixture(input: { readonly refitMetric?: number } = {}): Fixture {
@@ -255,7 +286,7 @@ function writeObservations(fixture: Fixture, specs: readonly ObservationSpec[]):
         order_size: 1,
         price: 100,
       },
-      event_ts_ns: '1773840600000000000',
+      event_ts_ns: spec.eventTsNs ?? '1773840600000000000',
       session_id: spec.split === 'calibration' ? '2026-03-18-rth' : '2026-04-27-rth',
       instrument: 'MNQM6',
       source_report_hash: fixture.sourceHash,
@@ -273,7 +304,7 @@ function filled(
   split: 'calibration' | 'validation',
   timeMs: number,
   side: 'bid' | 'ask',
-  options: { readonly queueAheadSize?: number } = {},
+  options: { readonly queueAheadSize?: number; readonly eventTsNs?: string } = {},
 ): ObservationSpec {
   return {
     split,
@@ -281,6 +312,7 @@ function filled(
     observed_time_to_fill_ms: timeMs,
     order_side: side,
     queueAheadSize: options.queueAheadSize ?? 0,
+    eventTsNs: options.eventTsNs,
   };
 }
 
@@ -308,4 +340,8 @@ function readJson(path: string): any {
 
 function sha(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+function nsForUtcSecond(secondsOfDay: number): string {
+  return String(BigInt(secondsOfDay) * 1_000_000_000n);
 }

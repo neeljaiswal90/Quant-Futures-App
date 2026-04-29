@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { closeSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import {
   argv as processArgv,
@@ -7,7 +7,6 @@ import {
   stderr as processStderr,
   stdout as processStdout,
 } from 'node:process';
-import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import {
   LIMIT_QUEUE_FRONT_BUCKET,
@@ -17,11 +16,11 @@ import {
   isJsonObject,
   validateLimitQueueFrontObservation,
 } from './limit-queue-front-observation-schema.js';
+import { forEachJsonlLine } from './streaming-jsonl.js';
 
 export const SIM_03K_ANALYSIS_REPORT_SCHEMA_VERSION = 1 as const;
 export const SIM_03K_TICKET_ID = 'SIM-03K' as const;
 const DEFAULT_OUT_PATH = 'reports/sim/limit_queue_front_distribution_analysis.json';
-const STREAM_CHUNK_BYTES = 1024 * 1024;
 const DEFAULT_THRESHOLD = 0.25;
 
 const TIME_BUCKETS = [
@@ -439,53 +438,24 @@ function streamObservations(
 ): string {
   const digest = createHash('sha256');
   let lineNumber = 0;
-  forEachJsonlLine(observationsPath, (line) => {
-    lineNumber += 1;
-    if (line.trim() === '') {
-      return;
-    }
-    const parsed = JSON.parse(line) as unknown;
-    const observation = validateLimitQueueFrontObservation(parsed, {
-      lineNumber,
-      expectedSourceReportHash,
-      sourceLabel: observationsPath,
-    });
-    accumulateObservation(accumulator, observation);
-  }, digest);
+  forEachJsonlLine(
+    observationsPath,
+    (line) => {
+      lineNumber += 1;
+      if (line.trim() === '') {
+        return;
+      }
+      const parsed = JSON.parse(line) as unknown;
+      const observation = validateLimitQueueFrontObservation(parsed, {
+        lineNumber,
+        expectedSourceReportHash,
+        sourceLabel: observationsPath,
+      });
+      accumulateObservation(accumulator, observation);
+    },
+    { digest },
+  );
   return digest.digest('hex');
-}
-
-function forEachJsonlLine(
-  path: string,
-  callback: (line: string) => void,
-  digest: ReturnType<typeof createHash>,
-): void {
-  const fd = openSync(path, 'r');
-  const chunk = Buffer.allocUnsafe(STREAM_CHUNK_BYTES);
-  const decoder = new StringDecoder('utf8');
-  let remainder = '';
-  try {
-    for (;;) {
-      const bytesRead = readSync(fd, chunk, 0, chunk.length, null);
-      if (bytesRead === 0) {
-        break;
-      }
-      const bytes = chunk.subarray(0, bytesRead);
-      digest.update(bytes);
-      const text = remainder + decoder.write(bytes);
-      const lines = text.split(/\r?\n/u);
-      remainder = lines.pop() ?? '';
-      for (const line of lines) {
-        callback(line);
-      }
-    }
-    const finalText = remainder + decoder.end();
-    if (finalText !== '') {
-      callback(finalText);
-    }
-  } finally {
-    closeSync(fd);
-  }
 }
 
 function accumulateObservation(accumulator: ObservationAccumulator, observation: LimitQueueFrontObservation): void {
@@ -851,6 +821,7 @@ function modelCandidatesFrom(input: {
     ['session_median_refit', sessionMetric],
     ['order_size_piecewise_refit', orderSizeMetric],
   ]);
+  const bestAvailableDetails = piecewiseCandidateDetails(bestAvailable.name, input.regimeSlices);
   return {
     single_median_refit: candidateReport({
       strategy: 'single median refit',
@@ -896,16 +867,36 @@ function modelCandidatesFrom(input: {
     best_available_piecewise_model: candidateReport({
       strategy: `best available piecewise split (${bestAvailable.name})`,
       metric: bestAvailable.metric,
-      parameterCount: bestAvailable.name === 'none' ? 0 : 2,
+      parameterCount: bestAvailableDetails.parameterCount,
       threshold: input.threshold,
-      minValidationFilled: Math.max(
-        0,
-        minValidationFilled(input.regimeSlices.by_order_side),
-        minValidationFilled(input.regimeSlices.by_time_of_day),
-        minValidationFilled(input.regimeSlices.by_session_id),
-      ),
+      minValidationFilled: bestAvailableDetails.minValidationFilled,
       notes: ['Compares side, session, time-of-day, and order-size splits available in the exported observations.'],
     }),
+  };
+}
+
+function piecewiseCandidateDetails(
+  candidateName: string,
+  regimeSlices: RegimeSlicesReport,
+): { readonly parameterCount: number; readonly minValidationFilled: number } {
+  switch (candidateName) {
+    case 'side_specific_median_refit':
+      return piecewiseDetailsFrom(regimeSlices.by_order_side);
+    case 'time_of_day_median_refit':
+      return piecewiseDetailsFrom(regimeSlices.by_time_of_day);
+    case 'session_median_refit':
+      return piecewiseDetailsFrom(regimeSlices.by_session_id);
+    case 'order_size_piecewise_refit':
+      return piecewiseDetailsFrom(regimeSlices.by_order_size_bucket);
+    default:
+      return { parameterCount: 0, minValidationFilled: 0 };
+  }
+}
+
+function piecewiseDetailsFrom(slices: readonly SliceReport[]): { readonly parameterCount: number; readonly minValidationFilled: number } {
+  return {
+    parameterCount: slices.filter((slice) => slice.validation_filled_count > 0).length,
+    minValidationFilled: minValidationFilled(slices),
   };
 }
 
@@ -1160,6 +1151,7 @@ function timeOfDayBucket(eventTsNs: string): string {
   try {
     const seconds = BigInt(eventTsNs) / 1_000_000_000n;
     const secondsOfDay = Number(seconds % 86_400n);
+    // CME equity-index futures RTH is 13:30-20:00 UTC during this MNQ corpus window.
     if (secondsOfDay >= 13 * 3600 + 30 * 60 && secondsOfDay < 14 * 3600 + 30 * 60) {
       return 'rth_open';
     }

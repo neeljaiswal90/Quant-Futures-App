@@ -1,12 +1,9 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import {
-  closeSync,
   existsSync,
   mkdirSync,
-  openSync,
   readFileSync,
-  readSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
@@ -28,6 +25,7 @@ import {
   observationSchemaExample,
   validateLimitQueueFrontObservation,
 } from './limit-queue-front-observation-schema.js';
+import { forEachJsonlLine } from './streaming-jsonl.js';
 
 export const SIM_03H_REFIT_REPORT_SCHEMA_VERSION = 1 as const;
 export const SIM_03H_TICKET_ID = 'SIM-03H' as const;
@@ -353,31 +351,35 @@ function summarizeObservationFile(
   let validationRecords = 0;
   let lineNumber = 0;
 
-  forEachJsonlLine(path, (line) => {
-    lineNumber += 1;
-    if (line.trim() === '') {
-      return;
-    }
-    const value = JSON.parse(line) as unknown;
-    const observation = validateLimitQueueFrontObservation(value, {
-      lineNumber,
-      expectedSourceReportHash: context.sourceReportHash,
-      sourceLabel: context.observationsPath,
-    });
-    totalRecords += 1;
-    if (observation.split === 'calibration') {
-      calibrationRecords += 1;
-    } else {
-      validationRecords += 1;
-    }
-    if (observation.fill_outcome === 'filled' && observation.observed_time_to_fill_ms !== null) {
-      if (observation.split === 'calibration') {
-        calibrationFilled.push(observation.observed_time_to_fill_ms as number);
-      } else {
-        validationFilled.push(observation.observed_time_to_fill_ms as number);
+  forEachJsonlLine(
+    path,
+    (line) => {
+      lineNumber += 1;
+      if (line.trim() === '') {
+        return;
       }
-    }
-  }, digest);
+      const value = JSON.parse(line) as unknown;
+      const observation = validateLimitQueueFrontObservation(value, {
+        lineNumber,
+        expectedSourceReportHash: context.sourceReportHash,
+        sourceLabel: context.observationsPath,
+      });
+      totalRecords += 1;
+      if (observation.split === 'calibration') {
+        calibrationRecords += 1;
+      } else {
+        validationRecords += 1;
+      }
+      if (observation.fill_outcome === 'filled' && observation.observed_time_to_fill_ms !== null) {
+        if (observation.split === 'calibration') {
+          calibrationFilled.push(observation.observed_time_to_fill_ms as number);
+        } else {
+          validationFilled.push(observation.observed_time_to_fill_ms as number);
+        }
+      }
+    },
+    { digest },
+  );
 
   const observationsHash = digest.digest('hex');
   const calibrationMedian = median(calibrationFilled);
@@ -400,37 +402,6 @@ function summarizeObservationFile(
       refit_time_to_fill_relative_error: round6(relativeError),
     },
   };
-}
-
-function forEachJsonlLine(
-  path: string,
-  callback: (line: string) => void,
-  digest: ReturnType<typeof createHash>,
-): void {
-  const fd = openSync(path, 'r');
-  const chunk = Buffer.allocUnsafe(1024 * 1024);
-  let remainder = '';
-  try {
-    for (;;) {
-      const bytesRead = readSync(fd, chunk, 0, chunk.length, null);
-      if (bytesRead === 0) {
-        break;
-      }
-      const bytes = chunk.subarray(0, bytesRead);
-      digest.update(bytes);
-      const text = remainder + bytes.toString('utf8');
-      const lines = text.split(/\r?\n/u);
-      remainder = lines.pop() ?? '';
-      for (const line of lines) {
-        callback(line);
-      }
-    }
-    if (remainder !== '') {
-      callback(remainder);
-    }
-  } finally {
-    closeSync(fd);
-  }
 }
 
 function patchReport(input: {

@@ -29,6 +29,8 @@ The JSON report includes:
 - Candidate model-form estimates for single-median, side-specific, time-of-day, spread-bucket, robust trimmed statistic, and best available piecewise refits.
 - A dominant failure classification and a SIM-03L recommendation.
 
+Candidate `likely_passes_threshold` values are evidence projections over the already-observed validation split. They are not acceptance results. SIM-03D remains the authoritative gate after any SIM-03L model change.
+
 ## Safety Boundary
 
 SIM-03K is deliberately read-only evidence. It keeps:
