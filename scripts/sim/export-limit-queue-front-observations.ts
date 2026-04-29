@@ -1,13 +1,12 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import {
-  existsSync,
   closeSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
-  readSync,
   readdirSync,
   rmSync,
   statSync,
@@ -35,6 +34,7 @@ import {
   observationSchemaExample,
   validateLimitQueueFrontObservation,
 } from './limit-queue-front-observation-schema.js';
+import { forEachJsonlLine, sha256File } from './streaming-jsonl.js';
 
 export const SIM_03I_OBSERVATION_EXPORT_MANIFEST_SCHEMA_VERSION = 1 as const;
 export const SIM_03I_TICKET_ID = 'SIM-03I' as const;
@@ -807,37 +807,19 @@ function forEachRecord(path: string, callback: (record: JsonObject) => void): vo
 }
 
 function forEachJsonlRecord(path: string, callback: (record: JsonObject) => void): void {
-  const fd = openSync(path, 'r');
-  const chunk = Buffer.allocUnsafe(64 * 1024);
-  let remainder = '';
-  try {
-    for (;;) {
-      const bytesRead = readSync(fd, chunk, 0, chunk.length, null);
-      if (bytesRead === 0) {
-        break;
+  forEachJsonlLine(
+    path,
+    (line) => {
+      if (line.trim() === '') {
+        return;
       }
-      const text = remainder + chunk.subarray(0, bytesRead).toString('utf8');
-      const lines = text.split(/\r?\n/u);
-      remainder = lines.pop() ?? '';
-      for (const line of lines) {
-        if (line.trim() === '') {
-          continue;
-        }
-        const value = JSON.parse(line) as unknown;
-        if (isJsonObject(value)) {
-          callback(value);
-        }
-      }
-    }
-    if (remainder.trim() !== '') {
-      const value = JSON.parse(remainder) as unknown;
+      const value = JSON.parse(line) as unknown;
       if (isJsonObject(value)) {
         callback(value);
       }
-    }
-  } finally {
-    closeSync(fd);
-  }
+    },
+    { chunkBytes: 64 * 1024 },
+  );
 }
 
 function validateDiagnosis(diagnosis: JsonObject): void {
@@ -1131,24 +1113,6 @@ function splitFilter(value: string): SplitFilter {
 
 function sha256Text(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-function sha256File(path: string): string {
-  const digest = createHash('sha256');
-  const fd = openSync(path, 'r');
-  const chunk = Buffer.allocUnsafe(1024 * 1024);
-  try {
-    for (;;) {
-      const bytesRead = readSync(fd, chunk, 0, chunk.length, null);
-      if (bytesRead === 0) {
-        break;
-      }
-      digest.update(chunk.subarray(0, bytesRead));
-    }
-  } finally {
-    closeSync(fd);
-  }
-  return digest.digest('hex');
 }
 
 function usage(): string {

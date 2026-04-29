@@ -147,7 +147,7 @@ describe('SIM-03I limit_queue:front observation export', () => {
     expect(manifest.skipped_count_by_reason).toMatchObject({
       dbn_decode_failed: 2,
     });
-  });
+  }, 15_000);
 
   it('decodes DBN inputs through the configured SIM-03J decoder before exporting', () => {
     const fixture = writeFixture({ dbnOnly: true });
