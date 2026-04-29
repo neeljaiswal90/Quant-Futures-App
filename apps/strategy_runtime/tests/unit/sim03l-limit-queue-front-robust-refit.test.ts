@@ -62,6 +62,7 @@ describe('SIM-03L robust limit_queue:front refit', () => {
       unchanged_bucket_count: 5,
       tail_audit: {
         status: 'pass',
+        validation_tail_share_above_calibration_p95_threshold: 0.1,
         failure_reasons: [],
       },
       sim03d_gate: {
@@ -145,6 +146,48 @@ describe('SIM-03L robust limit_queue:front refit', () => {
     expect(outputReport.ready_for_rel01_execution_simulation).toBe(false);
   });
 
+  it('keeps SIM-03 failed when the robust refit still breaches the threshold', () => {
+    const fixture = writeFixture();
+    writeObservationJsonl(fixture.observationsPath, fixture.sourceHash, {
+      calibrationTimes: [...repeat(10, 100), ...repeat(8, 1000), ...repeat(2, 10000)],
+      validationTimes: [...repeat(10, 200), ...repeat(8, 2000), ...repeat(2, 9000)],
+    });
+
+    const result = refitLimitQueueFrontRobust({
+      calibration_report: fixture.calibrationPath,
+      diagnosis_report: fixture.diagnosisPath,
+      analysis_report: fixture.analysisPath,
+      observations: fixture.observationsPath,
+      out: fixture.outPath,
+      patch_report: fixture.patchPath,
+      checked_at_ts_ns: CHECKED_AT_TS_NS,
+      python: PYTHON,
+    });
+
+    const outputReport = readJson(fixture.outPath);
+    const patchReport = readJson(fixture.patchPath);
+
+    expect(result.exit_code).toBe(2);
+    expect(patchReport.status).toBe('robust_refit_failed');
+    expect(patchReport.new_metric_value).toBe(0.5);
+    expect(patchReport.tail_audit.status).toBe('pass');
+    expect(patchReport.tail_audit.failure_reasons).toEqual([]);
+    expect(patchReport.sim03d_gate.status).toBe('fail');
+    expect(outputReport.residuals.limit_queue[0]).toMatchObject({
+      bucket_id: 'front',
+      status: 'fail',
+      modeled_time_to_fill_statistic_ms: 550,
+      empirical_time_to_fill_statistic_ms: 1100,
+      time_to_fill_relative_error: 0.5,
+      checks: {
+        time_to_fill_pass: false,
+      },
+      failure_reasons: ['time_to_fill_pass'],
+    });
+    expect(outputReport.status).toBe('fail');
+    expect(outputReport.ready_for_rel01_execution_simulation).toBe(false);
+  });
+
   it('preserves limit thresholds while changing only target time-to-fill fields', () => {
     const fixture = writeFixture();
     writeObservationJsonl(fixture.observationsPath, fixture.sourceHash, {
@@ -192,6 +235,30 @@ describe('SIM-03L robust limit_queue:front refit', () => {
         python: PYTHON,
       }),
     ).toThrow(/heavy_tail_metric_sensitivity/u);
+  });
+
+  it('rejects analysis reports that are bound to a different calibration hash', () => {
+    const fixture = writeFixture();
+    const analysisReport = readJson(fixture.analysisPath);
+    analysisReport.source_inputs.calibration_report_hash = sha('different-calibration-report');
+    writeFileSync(fixture.analysisPath, JSON.stringify(analysisReport, null, 2), 'utf8');
+    writeObservationJsonl(fixture.observationsPath, fixture.sourceHash, {
+      calibrationTimes: [100, 100],
+      validationTimes: [100, 100],
+    });
+
+    expect(() =>
+      refitLimitQueueFrontRobust({
+        calibration_report: fixture.calibrationPath,
+        diagnosis_report: fixture.diagnosisPath,
+        analysis_report: fixture.analysisPath,
+        observations: fixture.observationsPath,
+        out: fixture.outPath,
+        patch_report: fixture.patchPath,
+        checked_at_ts_ns: CHECKED_AT_TS_NS,
+        python: PYTHON,
+      }),
+    ).toThrow(/source calibration hash/u);
   });
 
   it('is deterministic for identical inputs and caller-provided timestamp', () => {

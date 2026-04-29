@@ -35,6 +35,7 @@ const TIME_TO_FILL_FAILURE_REASON = 'time_to_fill_pass';
 const LOWER_TRIM_FRACTION = 0.10;
 const UPPER_TRIM_FRACTION = 0.90;
 const DEFAULT_TAIL_RATIO_TOLERANCE = 1.25;
+const MAX_VALIDATION_TAIL_SHARE_ABOVE_CALIBRATION_P95 = 0.10;
 
 export interface RobustLimitQueueFrontOptions {
   readonly cwd?: string;
@@ -110,6 +111,7 @@ export interface RobustObservationSummary {
 export interface TailAuditReport {
   readonly status: 'pass' | 'fail';
   readonly tail_ratio_tolerance: number;
+  readonly validation_tail_share_above_calibration_p95_threshold: number;
   readonly calibration: TailStats;
   readonly validation: TailStats;
   readonly validation_calibration_p95_ratio: number | null;
@@ -386,12 +388,16 @@ function auditTailRisk(calibrationFilled: readonly number[], validationFilled: r
   if (p99Ratio !== null && p99Ratio > DEFAULT_TAIL_RATIO_TOLERANCE) {
     failures.push('validation_p99_tail_exceeds_calibration_tolerance');
   }
-  if (validationShareAboveCalibrationP95 !== null && validationShareAboveCalibrationP95 > 0.10) {
+  if (
+    validationShareAboveCalibrationP95 !== null &&
+    validationShareAboveCalibrationP95 > MAX_VALIDATION_TAIL_SHARE_ABOVE_CALIBRATION_P95
+  ) {
     failures.push('validation_tail_share_above_calibration_p95_exceeds_10_percent');
   }
   return {
     status: failures.length === 0 ? 'pass' : 'fail',
     tail_ratio_tolerance: DEFAULT_TAIL_RATIO_TOLERANCE,
+    validation_tail_share_above_calibration_p95_threshold: MAX_VALIDATION_TAIL_SHARE_ABOVE_CALIBRATION_P95,
     calibration,
     validation,
     validation_calibration_p95_ratio: nullableRound6(p95Ratio),

@@ -19,6 +19,8 @@ Before SIM-03L applies the robust statistic, it checks:
 - Validation share at or above calibration p95 must not exceed `10%`.
 - Trimmed low/high counts and tail ratios are written to the patch report.
 
+The `1.25x` tail-ratio tolerance allows ordinary sampling variance between calibration and validation while rejecting materially worse validation tails. The `10%` share check is the operational proxy for classifying what was trimmed: if validation tails come from a different event class than calibration tails, they should appear as worse p95/p99 ratios or excessive validation share above calibration p95.
+
 If the tail audit fails, SIM-03L writes an unchanged calibration output with `status: "tail_audit_failed"` and SIM-03D remains failed.
 
 ## Run
