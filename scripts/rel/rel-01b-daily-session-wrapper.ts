@@ -5,6 +5,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -838,8 +839,13 @@ function appendManifestSession(manifest: Rel01bManifest, session: Rel01bManifest
 function writeManifest(path: string, manifest: Rel01bManifest): void {
   mkdirSync(dirname(path), { recursive: true });
   const tmpPath = `${path}.tmp`;
-  writeFileSync(tmpPath, `${stableJsonStringify(manifest as unknown as JsonValue)}\n`, 'utf8');
-  renameSync(tmpPath, path);
+  try {
+    writeFileSync(tmpPath, `${stableJsonStringify(manifest as unknown as JsonValue)}\n`, 'utf8');
+    renameSync(tmpPath, path);
+  } catch (error) {
+    cleanupTmpFile(tmpPath);
+    throw error;
+  }
 }
 
 function writeReport(path: string, report: Rel01bReport): void {
@@ -896,7 +902,7 @@ function displayCommand(command: string): string {
   return command.endsWith('.cmd') ? command.slice(0, -4) : command;
 }
 
-function redactArgs(args: readonly string[], cwd: string): readonly string[] {
+export function redactArgs(args: readonly string[], cwd: string): readonly string[] {
   const redacted: string[] = [];
   let redactNext = false;
   for (const arg of args) {
@@ -917,6 +923,15 @@ function redactArgs(args: readonly string[], cwd: string): readonly string[] {
     redacted.push(toPortableArg(arg, cwd));
   }
   return redacted;
+}
+
+function cleanupTmpFile(path: string): void {
+  if (!existsSync(path)) return;
+  try {
+    unlinkSync(path);
+  } catch {
+    // Preserve the original manifest-write failure; stale tmp cleanup is best-effort.
+  }
 }
 
 function toPortableArg(arg: string, cwd: string): string {

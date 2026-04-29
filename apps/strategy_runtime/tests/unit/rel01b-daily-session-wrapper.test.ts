@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  redactArgs,
   runRel01bDailySessionWrapper,
   type Rel01bCommand,
   type Rel01bCommandRunner,
@@ -198,6 +199,28 @@ describe('REL-01B daily controlled live-sim wrapper', () => {
     expect(source).not.toMatch(/\bDate\.now\b/u);
     expect(source).not.toMatch(/\bnew Date\b/u);
     expect(source).not.toMatch(/\bMath\.random\b/u);
+  });
+
+  it('redacts command credential arguments before they reach reports', () => {
+    const root = makeRoot();
+
+    expect(redactArgs([
+      '--user',
+      'operator',
+      '--password',
+      'secret-password',
+      '--token=secret-token',
+      '--api-key',
+      'secret-key',
+    ], root)).toEqual([
+      '--user',
+      'operator',
+      '--password',
+      '<redacted>',
+      '--token=<redacted>',
+      '--api-key',
+      '<redacted>',
+    ]);
   });
 
   it('wires the npm script', () => {
