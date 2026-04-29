@@ -30,6 +30,9 @@ npm run sim:03 -- `
   --verified-report reports/sim/sim03_calibration_corpus_verified_report.json `
   --thresholds config/sim03/corpus-integrity-thresholds.json `
   --calibrated-at-ts-ns 1777395600000000000 `
+  --progress-log reports/sim/fill_slippage_calibration.progress.jsonl `
+  --progress-every-records 1000000 `
+  --checkpoint reports/sim/fill_slippage_calibration.checkpoint.json `
   --out reports/sim/fill_slippage_calibration.json `
   --markdown-out reports/sim/fill_slippage_calibration.md
 ```
@@ -40,6 +43,36 @@ same report bytes.
 
 Generated reports under `reports/sim/` are operational evidence and should not
 be committed.
+
+## Progress And Checkpointing
+
+Long production DBN scans can run for hours. SIM-03C adds optional progress and
+checkpoint artifacts for future runs:
+
+- `--progress-log <path>` writes JSONL progress events.
+- `--progress-every-records <N>` emits record-count progress every `N` decoded
+  DBN/fixture records.
+- `--checkpoint <path>` writes partial aggregate state after completed sessions.
+- `--checkpoint-every-sessions <N>` controls checkpoint cadence.
+- `--resume-from-checkpoint <path>` resumes from a checkpoint when manifest,
+  verified-report, and threshold hashes match the current inputs.
+
+Progress events include the current session, schema/file path, processed record
+counts, completed-session counts, CPU/elapsed seconds, estimated remaining
+seconds when session progress allows it, Python heap memory snapshots, and
+best-effort process RSS/peak RSS memory snapshots when the platform exposes
+them.
+
+Progress logs are operational and intentionally snapshot-like. They are not
+byte-stable evidence because elapsed time and memory snapshots vary by run. The
+final calibration report remains deterministic for the same corpus, thresholds,
+fitter version, and caller-provided timestamp.
+
+The safe default is `--checkpoint-every-sessions 1`, which writes a checkpoint
+after each completed session. That is intentionally conservative for long
+multi-GB DBN runs, but checkpoint cost grows with aggregate bucket cardinality.
+Operators can raise the cadence, for example `--checkpoint-every-sessions 5`,
+when the corpus is large and losing several completed sessions is acceptable.
 
 ## Output
 
