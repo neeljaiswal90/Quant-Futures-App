@@ -9,15 +9,20 @@ import {
   stdout as processStdout,
 } from 'node:process';
 import { fileURLToPath } from 'node:url';
+import {
+  LIMIT_QUEUE_FRONT_BUCKET as TARGET_BUCKET,
+  LIMIT_QUEUE_FRONT_BUCKET_ID as TARGET_BUCKET_ID,
+  LIMIT_QUEUE_FRONT_OBSERVATION_SCHEMA_VERSION as OBSERVATION_SCHEMA_VERSION,
+  LIMIT_QUEUE_FRONT_TARGET_METRIC as TARGET_METRIC,
+  type JsonObject,
+  type LimitQueueFrontObservation,
+  TARGETED_FRONT_REFIT_METHOD as REFIT_METHOD,
+  observationSchemaExample,
+  validateLimitQueueFrontObservation,
+} from './limit-queue-front-observation-schema.js';
 
 export const SIM_03H_REFIT_REPORT_SCHEMA_VERSION = 1 as const;
 export const SIM_03H_TICKET_ID = 'SIM-03H' as const;
-export const OBSERVATION_SCHEMA_VERSION = 1 as const;
-
-const TARGET_BUCKET = 'limit_queue:front';
-const TARGET_BUCKET_ID = 'front';
-const TARGET_METRIC = 'time_to_fill_relative_error_within_time_to_fill_relative_threshold';
-const REFIT_METHOD = 'targeted_bucket_refit_from_calibration_observations';
 const TIME_TO_FILL_FAILURE_REASON = 'time_to_fill_pass';
 const VALIDATOR_SCRIPT = 'scripts/sim/validate-fill-slippage-calibration.py';
 const DEFAULT_OUT_PATH = 'reports/sim/fill_slippage_calibration_refit_limit_queue_front.json';
@@ -88,21 +93,6 @@ export interface Sim03dGateResult {
   readonly error?: string;
 }
 
-export interface LimitQueueFrontObservation {
-  readonly schema_version: typeof OBSERVATION_SCHEMA_VERSION;
-  readonly bucket: typeof TARGET_BUCKET;
-  readonly split: 'calibration' | 'validation';
-  readonly observed_time_to_fill_ms?: number | null;
-  readonly modeled_time_to_fill_ms?: number | null;
-  readonly fill_outcome: 'filled' | 'no_fill' | 'cancelled';
-  readonly queue_position_features: JsonObject;
-  readonly event_ts_ns: string;
-  readonly session_id: string;
-  readonly instrument: string;
-  readonly source_report_hash: string;
-}
-
-type JsonObject = Record<string, unknown>;
 type MutableRefitOptions = {
   -readonly [Key in keyof RefitLimitQueueFrontOptions]?: RefitLimitQueueFrontOptions[Key];
 };
@@ -351,58 +341,12 @@ function parseObservations(
   const lines = text.split(/\r?\n/u).filter((line) => line.trim() !== '');
   return lines.map((line, index) => {
     const value = JSON.parse(line) as unknown;
-    if (!isJsonObject(value)) {
-      throw new Error(`observation line ${index + 1} must be a JSON object`);
-    }
-    const observation = validateObservation(value, index + 1);
-    if (observation.source_report_hash !== context.sourceReportHash) {
-      throw new Error(`observation line ${index + 1} source_report_hash does not match ${context.observationsPath}`);
-    }
-    return observation;
+    return validateLimitQueueFrontObservation(value, {
+      lineNumber: index + 1,
+      expectedSourceReportHash: context.sourceReportHash,
+      sourceLabel: context.observationsPath,
+    });
   });
-}
-
-function validateObservation(value: JsonObject, lineNumber: number): LimitQueueFrontObservation {
-  if (value.schema_version !== OBSERVATION_SCHEMA_VERSION) {
-    throw new Error(`observation line ${lineNumber} has unsupported schema_version`);
-  }
-  if (value.bucket !== TARGET_BUCKET) {
-    throw new Error(`observation line ${lineNumber} does not target ${TARGET_BUCKET}`);
-  }
-  const split = value.split;
-  if (split !== 'calibration' && split !== 'validation') {
-    throw new Error(`observation line ${lineNumber} split must be calibration or validation`);
-  }
-  const fillOutcome = value.fill_outcome;
-  if (fillOutcome !== 'filled' && fillOutcome !== 'no_fill' && fillOutcome !== 'cancelled') {
-    throw new Error(`observation line ${lineNumber} fill_outcome is invalid`);
-  }
-  const queuePositionFeatures = value.queue_position_features;
-  if (!isJsonObject(queuePositionFeatures)) {
-    throw new Error(`observation line ${lineNumber} queue_position_features must be an object`);
-  }
-  const eventTsNs = requireString(value.event_ts_ns, `observation line ${lineNumber} event_ts_ns`);
-  const sessionId = requireString(value.session_id, `observation line ${lineNumber} session_id`);
-  const instrument = requireString(value.instrument, `observation line ${lineNumber} instrument`);
-  const sourceReportHash = requireString(value.source_report_hash, `observation line ${lineNumber} source_report_hash`);
-  const observedTimeToFill = numberOrNull(value.observed_time_to_fill_ms);
-  const modeledTimeToFill = numberOrNull(value.modeled_time_to_fill_ms);
-  if (fillOutcome === 'filled' && observedTimeToFill === null) {
-    throw new Error(`observation line ${lineNumber} filled observations require observed_time_to_fill_ms`);
-  }
-  return {
-    schema_version: OBSERVATION_SCHEMA_VERSION,
-    bucket: TARGET_BUCKET,
-    split,
-    observed_time_to_fill_ms: observedTimeToFill,
-    modeled_time_to_fill_ms: modeledTimeToFill,
-    fill_outcome: fillOutcome,
-    queue_position_features: queuePositionFeatures,
-    event_ts_ns: eventTsNs,
-    session_id: sessionId,
-    instrument,
-    source_report_hash: sourceReportHash,
-  };
 }
 
 function summarizeObservations(
@@ -639,24 +583,6 @@ function defaultGatePath(outPath: string): string {
   return join(dirname(outPath), `${base}_gate${extension || '.json'}`);
 }
 
-function observationSchemaExample(): JsonObject {
-  return {
-    schema_version: OBSERVATION_SCHEMA_VERSION,
-    bucket: TARGET_BUCKET,
-    split: 'calibration',
-    observed_time_to_fill_ms: 3900,
-    modeled_time_to_fill_ms: null,
-    fill_outcome: 'filled',
-    queue_position_features: {
-      queue_bucket: 'front',
-    },
-    event_ts_ns: '1777296600000000000',
-    session_id: '2026-04-27-rth',
-    instrument: 'MNQM6',
-    source_report_hash: '<sha256 of fill_slippage_calibration.json>',
-  };
-}
-
 function setIfChanged(target: JsonObject, key: string, next: unknown, path: string, changedFields: string[]): void {
   if (JSON.stringify(target[key]) !== JSON.stringify(next)) {
     target[key] = next;
@@ -717,20 +643,6 @@ function requireArgValue(flag: string, value: string | undefined): string {
     throw new Error(`${flag} requires a value`);
   }
   return value;
-}
-
-function requireString(value: unknown, label: string): string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(`${label} must be a non-empty string`);
-  }
-  return value;
-}
-
-function numberOrNull(value: unknown): number | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  return numberValue(value);
 }
 
 function numberValue(value: unknown): number | null {
