@@ -45,7 +45,7 @@ DEFAULT_OFI_MEDIUM_WINDOW = 10
 DEFAULT_TRADE_WINDOW = 20
 MAX_RECORDED_DIAGNOSTICS = 100
 
-FeatureTier = Literal["authoritative", "diagnostic_only", "blocked", "subscope"]
+FeatureTier = Literal["authoritative", "diagnostic_only", "shadow_only", "blocked", "subscope"]
 
 BLOCKED_FEATURES = (
     "queue_position",

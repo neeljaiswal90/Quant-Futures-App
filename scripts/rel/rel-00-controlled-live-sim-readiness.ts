@@ -137,16 +137,22 @@ interface RawJournalScanSummary {
 interface FeatureSurfaceSummary {
   readonly checked_event_count: number;
   readonly authoritative_fields: readonly string[];
+  readonly diagnostic_fields: readonly FeatureFieldUse[];
+  readonly shadow_fields: readonly FeatureFieldUse[];
   readonly restricted_fields: readonly FeatureFieldUse[];
   readonly blocked_fields: readonly FeatureFieldUse[];
+  readonly invalid_diagnostic_fields: readonly FeatureFieldUse[];
+  readonly invalid_shadow_fields: readonly FeatureFieldUse[];
+  readonly unsafe_shadow_or_diagnostic_decision_use_event_count: number;
   readonly unknown_strategy_fields: readonly string[];
 }
 
 interface FeatureFieldUse {
   readonly event_type: string;
+  readonly context: 'values' | 'diagnostic_values' | 'shadow_values';
   readonly field: string;
   readonly canonical_field: string;
-  readonly tier: FeatureAvailabilityTier;
+  readonly tier: FeatureAvailabilityTier | 'unknown';
 }
 
 interface TransportValidation {
@@ -308,6 +314,9 @@ function featureSurfaceCheckGroup(summary: FeatureSurfaceSummary): Rel00CheckGro
   return group([
     checkBoolean('no_blocked_feature_fields_used', summary.blocked_fields.length === 0, fieldUsesDetail(summary.blocked_fields)),
     checkBoolean('no_diagnostic_or_mbo_subscope_fields_used_as_runtime_features', summary.restricted_fields.length === 0, fieldUsesDetail(summary.restricted_fields)),
+    checkBoolean('diagnostic_payload_fields_are_diagnostic_only', summary.invalid_diagnostic_fields.length === 0, fieldUsesDetail(summary.invalid_diagnostic_fields)),
+    checkBoolean('shadow_payload_fields_are_shadow_only', summary.invalid_shadow_fields.length === 0, fieldUsesDetail(summary.invalid_shadow_fields)),
+    checkBoolean('shadow_or_diagnostic_payloads_have_decision_use_false', summary.unsafe_shadow_or_diagnostic_decision_use_event_count === 0, `${summary.unsafe_shadow_or_diagnostic_decision_use_event_count}`),
     pass('unknown_strategy_fields_treated_as_internal_indicators', `${summary.unknown_strategy_fields.length}`),
   ]);
 }
@@ -343,9 +352,14 @@ function traceabilityCheckGroup(events: readonly JournalEventEnvelope[]): Rel00C
 function featureSurface(events: readonly JournalEventEnvelope[]): FeatureSurfaceSummary {
   const mask = buildFeatureAvailabilityMask();
   const authoritative = new Set<string>();
+  const diagnostic = new Map<string, FeatureFieldUse>();
+  const shadow = new Map<string, FeatureFieldUse>();
   const restricted = new Map<string, FeatureFieldUse>();
   const blocked = new Map<string, FeatureFieldUse>();
+  const invalidDiagnostic = new Map<string, FeatureFieldUse>();
+  const invalidShadow = new Map<string, FeatureFieldUse>();
   const unknown = new Set<string>();
+  let unsafeShadowOrDiagnosticDecisionUseEventCount = 0;
   let checkedEventCount = 0;
 
   for (const event of events) {
@@ -358,29 +372,52 @@ function featureSurface(events: readonly JournalEventEnvelope[]): FeatureSurface
       continue;
     }
     checkedEventCount += 1;
+
     for (const key of Object.keys(values).sort()) {
-      const canonical = canonicalFeatureField(key);
-      const tier = canonical in mask.field_tiers
-        ? mask.field_tiers[canonical as keyof typeof mask.field_tiers]
-        : null;
-      if (tier === null) {
+      const use = classifyFeatureUse(event.type, 'values', key, mask);
+      if (use.tier === 'unknown') {
         unknown.add(key);
-        continue;
-      }
-      if (tier === 'authoritative') {
-        authoritative.add(canonical);
-        continue;
-      }
-      const use: FeatureFieldUse = {
-        event_type: event.type,
-        field: key,
-        canonical_field: canonical,
-        tier,
-      };
-      if (tier === 'blocked') {
-        blocked.set(`${event.type}:${key}:${canonical}`, use);
+      } else if (use.tier === 'authoritative') {
+        authoritative.add(use.canonical_field);
+      } else if (use.tier === 'blocked') {
+        blocked.set(featureUseKey(use), use);
       } else {
-        restricted.set(`${event.type}:${key}:${canonical}`, use);
+        restricted.set(featureUseKey(use), use);
+      }
+    }
+
+    const diagnosticValues = jsonObject(payload?.diagnostic_values);
+    const shadowValues = jsonObject(payload?.shadow_values);
+    const hasDiagnosticOrShadow =
+      (diagnosticValues !== null && Object.keys(diagnosticValues).length > 0) ||
+      (shadowValues !== null && Object.keys(shadowValues).length > 0);
+    if (hasDiagnosticOrShadow && payload?.decision_use !== false) {
+      unsafeShadowOrDiagnosticDecisionUseEventCount += 1;
+    }
+
+    if (diagnosticValues !== null) {
+      for (const key of Object.keys(diagnosticValues).sort()) {
+        const use = classifyFeatureUse(event.type, 'diagnostic_values', key, mask);
+        if (use.tier === 'diagnostic_only') {
+          diagnostic.set(featureUseKey(use), use);
+        } else if (use.tier === 'blocked') {
+          blocked.set(featureUseKey(use), use);
+        } else {
+          invalidDiagnostic.set(featureUseKey(use), use);
+        }
+      }
+    }
+
+    if (shadowValues !== null) {
+      for (const key of Object.keys(shadowValues).sort()) {
+        const use = classifyFeatureUse(event.type, 'shadow_values', key, mask);
+        if (use.tier === 'shadow_only') {
+          shadow.set(featureUseKey(use), use);
+        } else if (use.tier === 'blocked') {
+          blocked.set(featureUseKey(use), use);
+        } else {
+          invalidShadow.set(featureUseKey(use), use);
+        }
       }
     }
   }
@@ -388,10 +425,38 @@ function featureSurface(events: readonly JournalEventEnvelope[]): FeatureSurface
   return {
     checked_event_count: checkedEventCount,
     authoritative_fields: [...authoritative].sort(),
+    diagnostic_fields: [...diagnostic.values()].sort(compareFeatureUses),
+    shadow_fields: [...shadow.values()].sort(compareFeatureUses),
     restricted_fields: [...restricted.values()].sort(compareFeatureUses),
     blocked_fields: [...blocked.values()].sort(compareFeatureUses),
+    invalid_diagnostic_fields: [...invalidDiagnostic.values()].sort(compareFeatureUses),
+    invalid_shadow_fields: [...invalidShadow.values()].sort(compareFeatureUses),
+    unsafe_shadow_or_diagnostic_decision_use_event_count: unsafeShadowOrDiagnosticDecisionUseEventCount,
     unknown_strategy_fields: [...unknown].sort(),
   };
+}
+
+function classifyFeatureUse(
+  eventType: string,
+  context: FeatureFieldUse['context'],
+  key: string,
+  mask: ReturnType<typeof buildFeatureAvailabilityMask>,
+): FeatureFieldUse {
+  const canonical = canonicalFeatureField(key);
+  const tier = canonical in mask.field_tiers
+    ? mask.field_tiers[canonical as keyof typeof mask.field_tiers]
+    : 'unknown';
+  return {
+    event_type: eventType,
+    context,
+    field: key,
+    canonical_field: canonical,
+    tier,
+  };
+}
+
+function featureUseKey(use: FeatureFieldUse): string {
+  return `${use.event_type}:${use.context}:${use.field}:${use.canonical_field}`;
 }
 
 function canonicalFeatureField(field: string): string {
@@ -537,12 +602,12 @@ function checkBoolean(name: string, ok: boolean, detail?: string): Rel00Check {
 function fieldUsesDetail(uses: readonly FeatureFieldUse[]): string {
   return uses.length === 0
     ? 'none'
-    : uses.map((use) => `${use.event_type}.${use.field}->${use.canonical_field}:${use.tier}`).join(',');
+    : uses.map((use) => `${use.event_type}.${use.context}.${use.field}->${use.canonical_field}:${use.tier}`).join(',');
 }
 
 function compareFeatureUses(left: FeatureFieldUse, right: FeatureFieldUse): number {
-  return `${left.event_type}:${left.field}:${left.canonical_field}`.localeCompare(
-    `${right.event_type}:${right.field}:${right.canonical_field}`,
+  return `${left.event_type}:${left.context}:${left.field}:${left.canonical_field}`.localeCompare(
+    `${right.event_type}:${right.context}:${right.field}:${right.canonical_field}`,
   );
 }
 

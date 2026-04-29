@@ -6,11 +6,13 @@ import hashlib
 import json
 from typing import Any, Literal
 
-FeatureAvailabilityTier = Literal["authoritative", "diagnostic_only", "blocked", "subscope"]
+FeatureAvailabilityTier = Literal[
+    "authoritative", "diagnostic_only", "shadow_only", "blocked", "subscope"
+]
 
 FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION = 1
-FEATURE_AVAILABILITY_MASK_VERSION = 3
-FEATURE_AVAILABILITY_MASK_ID = "feature-availability-mask-v3-adr0002-infra01e-infra01f-data04"
+FEATURE_AVAILABILITY_MASK_VERSION = 4
+FEATURE_AVAILABILITY_MASK_ID = "feature-availability-mask-v4-adr0002-data03ps-mbo-shadow"
 
 FIELD_TIERS: dict[str, FeatureAvailabilityTier] = {
     "exchange_event_ts_ns": "authoritative",
@@ -74,6 +76,21 @@ FIELD_TIERS: dict[str, FeatureAvailabilityTier] = {
     "depth_size_imbalance": "diagnostic_only",
     "ofi_size_accumulation": "diagnostic_only",
     "mbo_trade_unknown_taxonomy": "diagnostic_only",
+    "mbo_record_count": "diagnostic_only",
+    "mbo_action_counts": "diagnostic_only",
+    "mbo_side_counts": "diagnostic_only",
+    "mbo_order_id_coverage": "diagnostic_only",
+    "mbo_sequence_monotonic": "diagnostic_only",
+    "mbo_sequence_gap_count": "diagnostic_only",
+    "mbo_price_tick_alignment": "diagnostic_only",
+    "mbo_timestamp_coverage": "diagnostic_only",
+    "mbo_trade_unknown_action_count": "diagnostic_only",
+    "mbo_taxonomy_status": "diagnostic_only",
+    "cancel_add_ratio_shadow": "shadow_only",
+    "order_lifetime_shadow": "shadow_only",
+    "absorption_score_shadow": "shadow_only",
+    "sweep_score_shadow": "shadow_only",
+    "mbo_action_imbalance_shadow": "shadow_only",
     "queue_position": "blocked",
     "queue_position_as_fact": "blocked",
     "order_lifetime": "blocked",
@@ -148,6 +165,21 @@ RATIONALE: dict[str, str] = {
     "depth_size_imbalance": "Depends on size/depth semantics that are not hard-gate validated.",
     "ofi_size_accumulation": "Depends on size accumulation semantics that are not hard-gate validated.",
     "mbo_trade_unknown_taxonomy": "Databento trade/unknown equivalence remains diagnostic.",
+    "mbo_record_count": "MBO health telemetry only; may be reported but never used for decisions.",
+    "mbo_action_counts": "MBO action taxonomy telemetry only while taxonomy remains unresolved.",
+    "mbo_side_counts": "MBO side-distribution telemetry only.",
+    "mbo_order_id_coverage": "MBO order-ID coverage telemetry only.",
+    "mbo_sequence_monotonic": "MBO sequence integrity telemetry only.",
+    "mbo_sequence_gap_count": "MBO sequence-gap telemetry only.",
+    "mbo_price_tick_alignment": "MBO price/tick alignment telemetry only.",
+    "mbo_timestamp_coverage": "MBO timestamp coverage telemetry only.",
+    "mbo_trade_unknown_action_count": "MBO trade/unknown action telemetry only.",
+    "mbo_taxonomy_status": "MBO taxonomy status telemetry only; unresolved taxonomy cannot drive decisions.",
+    "cancel_add_ratio_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
+    "order_lifetime_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
+    "absorption_score_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
+    "sweep_score_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
+    "mbo_action_imbalance_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
     "queue_position": "Generic queue position as a hard trading fact remains blocked; use queue_position_estimate for provider-internal diagnostics.",
     "queue_position_as_fact": "Queue position is an estimate, not a provider-neutral fact.",
     "order_lifetime": "Requires MBO book-state implementation and replay evidence.",
