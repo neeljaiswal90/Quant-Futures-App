@@ -227,6 +227,9 @@ function validateMicrostructurePayload(
     'stale',
   ]);
   requireScalarMap(record.values, `${path}.values`, issues);
+  optionalScalarMap(record.diagnostic_values, `${path}.diagnostic_values`, issues);
+  optionalScalarMap(record.shadow_values, `${path}.shadow_values`, issues);
+  optionalBoolean(record.decision_use, `${path}.decision_use`, issues);
   optionalFeatureAvailabilityMask(record.feature_availability_mask, `${path}.feature_availability_mask`, issues);
 }
 
@@ -406,6 +409,9 @@ function validateFeaturesPayload(
   requireNonEmptyString(record.feature_snapshot_id, `${path}.feature_snapshot_id`, issues);
   optionalNonEmptyString(record.source_event_id, `${path}.source_event_id`, issues);
   requireScalarMap(record.values, `${path}.values`, issues);
+  optionalScalarMap(record.diagnostic_values, `${path}.diagnostic_values`, issues);
+  optionalScalarMap(record.shadow_values, `${path}.shadow_values`, issues);
+  optionalBoolean(record.decision_use, `${path}.decision_use`, issues);
   optionalFeatureAvailabilityMask(record.feature_availability_mask, `${path}.feature_availability_mask`, issues);
 }
 
@@ -820,6 +826,16 @@ function requireScalarMap(
   }
 }
 
+function optionalScalarMap(
+  value: unknown,
+  path: string,
+  issues: JournalEventSchemaIssue[],
+): void {
+  if (value !== undefined) {
+    requireScalarMap(value, path, issues);
+  }
+}
+
 function optionalFeatureAvailabilityMask(
   value: unknown,
   path: string,
@@ -850,6 +866,7 @@ function optionalFeatureAvailabilityMask(
       requireEnum(tier, `${path}.field_tiers.${field}`, issues, [
         'authoritative',
         'diagnostic_only',
+        'shadow_only',
         'blocked',
         'subscope',
       ]);

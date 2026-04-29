@@ -141,7 +141,7 @@ describe('DATA-01B-MBO provider-internal order lifecycle ingestion', () => {
       sequence: '9001',
       priority: '17',
       feature_availability_mask: {
-        mask_id: 'feature-availability-mask-v3-adr0002-infra01e-infra01f-data04',
+        mask_id: 'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow',
         field_tiers: {
           mbo_order_id: 'subscope',
           mbo_size: 'subscope',
@@ -164,7 +164,7 @@ describe('DATA-01B-MBO provider-internal order lifecycle ingestion', () => {
       size: 3,
       has_order_id: true,
       has_sequence: true,
-      feature_availability_mask_id: 'feature-availability-mask-v3-adr0002-infra01e-infra01f-data04',
+      feature_availability_mask_id: 'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow',
       mbo_feature_status: 'deferred_to_data02_mbo',
       data01b_full_status: 'blocked',
     });

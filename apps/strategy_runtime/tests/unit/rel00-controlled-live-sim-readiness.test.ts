@@ -159,6 +159,86 @@ describe('REL-00 controlled live-sim readiness', () => {
     );
   });
 
+  it('allows MBO diagnostic and shadow fields only in non-decision payloads', async () => {
+    const root = makeFixtureRoot({ mode: 'shadow_allowed' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(0);
+    expect(result.report.status).toBe('pass');
+    expect(result.report.feature_surface_summary.diagnostic_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'mbo_record_count',
+          canonical_field: 'mbo_record_count',
+          context: 'diagnostic_values',
+          tier: 'diagnostic_only',
+        }),
+      ]),
+    );
+    expect(result.report.feature_surface_summary.shadow_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'cancel_add_ratio_shadow',
+          canonical_field: 'cancel_add_ratio_shadow',
+          context: 'shadow_values',
+          tier: 'shadow_only',
+        }),
+      ]),
+    );
+  });
+
+  it('fails when a shadow-only field is used as a runtime decision feature', async () => {
+    const root = makeFixtureRoot({ mode: 'shadow_decision_feature' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.feature_surface_summary.restricted_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'cancel_add_ratio_shadow',
+          context: 'values',
+          tier: 'shadow_only',
+        }),
+      ]),
+    );
+  });
+
+  it('fails when shadow fields are emitted without decision_use=false', async () => {
+    const root = makeFixtureRoot({ mode: 'shadow_missing_decision_use_false' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.feature_surface_summary.unsafe_shadow_or_diagnostic_decision_use_event_count).toBe(1);
+    expect(result.report.feature_surface_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'shadow_or_diagnostic_payloads_have_decision_use_false',
+          status: 'fail',
+        }),
+      ]),
+    );
+  });
+
+  it('fails when blocked fields appear in shadow payloads', async () => {
+    const root = makeFixtureRoot({ mode: 'blocked_shadow_field' });
+
+    const result = await runRel00(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.feature_surface_summary.blocked_fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'queue_position',
+          context: 'shadow_values',
+          tier: 'blocked',
+        }),
+      ]),
+    );
+  });
+
   it('fails transport checks when the journal has malformed JSONL', async () => {
     const root = makeFixtureRoot({ mode: 'malformed' });
 
@@ -222,6 +302,10 @@ type FixtureMode =
   | 'unterminated_order'
   | 'unknown_terminal_ref'
   | 'restricted_feature'
+  | 'shadow_allowed'
+  | 'shadow_decision_feature'
+  | 'shadow_missing_decision_use_false'
+  | 'blocked_shadow_field'
   | 'malformed'
   | 'raw_sentinel';
 
@@ -266,6 +350,50 @@ function buildJournal(mode: FixtureMode): string {
         values: {
           ...jsonObject(payload.values),
           mbp10_size_diagnostic: 12,
+        },
+      };
+    }
+    if (mode === 'shadow_allowed' && event.type === 'MICROSTRUCTURE') {
+      const payload = jsonObject(event.payload);
+      event.payload = {
+        ...payload,
+        decision_use: false,
+        diagnostic_values: {
+          mbo_record_count: 12,
+          mbo_taxonomy_status: 'action_taxonomy_unresolved',
+        },
+        shadow_values: {
+          cancel_add_ratio_shadow: 0.25,
+          order_lifetime_shadow: 1250,
+        },
+      };
+    }
+    if (mode === 'shadow_decision_feature' && event.type === 'FEATURES') {
+      const payload = jsonObject(event.payload);
+      event.payload = {
+        ...payload,
+        values: {
+          ...jsonObject(payload.values),
+          cancel_add_ratio_shadow: 0.25,
+        },
+      };
+    }
+    if (mode === 'shadow_missing_decision_use_false' && event.type === 'MICROSTRUCTURE') {
+      const payload = jsonObject(event.payload);
+      event.payload = {
+        ...payload,
+        shadow_values: {
+          cancel_add_ratio_shadow: 0.25,
+        },
+      };
+    }
+    if (mode === 'blocked_shadow_field' && event.type === 'MICROSTRUCTURE') {
+      const payload = jsonObject(event.payload);
+      event.payload = {
+        ...payload,
+        decision_use: false,
+        shadow_values: {
+          queue_position: 1,
         },
       };
     }

@@ -27,6 +27,9 @@ import type { StrategyId } from '../strategy-ids.js';
 import type { UnixNs } from '../time.js';
 import type { RuntimeEventType } from './event-types.js';
 
+export type FeatureScalarValue = number | string | boolean | null;
+export type FeatureScalarMap = Readonly<Record<string, FeatureScalarValue>>;
+
 export interface SourceTimestampPayload {
   readonly exchange_event_ts_ns: UnixNs;
   readonly sidecar_recv_ts_ns: UnixNs;
@@ -63,7 +66,10 @@ export interface BarCloseEventPayload extends SourceTimestampPayload {
 export interface MicrostructureEventPayload extends SourceTimestampPayload {
   readonly feature_snapshot_id: FeatureSnapshotId;
   readonly l3_authority: L3AuthorityState;
-  readonly values: Readonly<Record<string, number | string | boolean | null>>;
+  readonly values: FeatureScalarMap;
+  readonly diagnostic_values?: FeatureScalarMap;
+  readonly shadow_values?: FeatureScalarMap;
+  readonly decision_use?: boolean;
 }
 
 export interface BookRebuildEventPayload extends SourceTimestampPayload {
@@ -131,13 +137,16 @@ export interface ConfigEventPayload {
 export interface FeaturesEventPayload {
   readonly feature_snapshot_id: FeatureSnapshotId;
   readonly source_event_id?: EventId;
-  readonly values: Readonly<Record<string, number | string | boolean | null>>;
+  readonly values: FeatureScalarMap;
+  readonly diagnostic_values?: FeatureScalarMap;
+  readonly shadow_values?: FeatureScalarMap;
+  readonly decision_use?: boolean;
 }
 
 export interface StructureEventPayload {
   readonly feature_snapshot_id: FeatureSnapshotId;
   readonly trend: 'up' | 'down' | 'range' | 'unknown';
-  readonly values: Readonly<Record<string, number | string | boolean | null>>;
+  readonly values: FeatureScalarMap;
 }
 
 export interface StrategyEvaluationEventPayload {

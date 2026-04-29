@@ -11,7 +11,7 @@ import {
 
 const PYTHON = process.env.PYTHON ?? 'python';
 const START_TS_NS = 1_777_301_421_588_943_700n;
-const MASK_ID = 'feature-availability-mask-v3-adr0002-infra01e-infra01f-data04';
+const MASK_ID = 'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow';
 const tempDirectories: string[] = [];
 
 afterEach(() => {

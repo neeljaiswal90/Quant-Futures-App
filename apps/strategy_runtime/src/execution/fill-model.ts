@@ -1,7 +1,7 @@
 import type { OrderSide } from '../contracts/market.js';
 import type { FeatureAvailabilityTier } from '../features/availability-mask.js';
 
-export type SimFillInputTier = FeatureAvailabilityTier;
+export type SimFillInputTier = Exclude<FeatureAvailabilityTier, 'shadow_only'>;
 
 export interface QueueAwareMarketState {
   readonly queue_position_estimate?: number;
