@@ -35,6 +35,7 @@
     "sim:03": "python scripts/sim/calibrate-fill-slippage-sim03.py",
     "sim:03f:diagnose-limit-front": "tsx scripts/sim/diagnose-limit-queue-front.ts",
     "sim:03g:recalibrate-front": "tsx scripts/sim/recalibrate-limit-queue-front.ts",
+    "sim:03h:refit-front": "tsx scripts/sim/refit-limit-queue-front.ts",
     "sim:03d:validate-calibration": "python scripts/sim/validate-fill-slippage-calibration.py",
     "sim:03a:check-databento": "python scripts/sim/check-databento-mnq-availability.py",
     "sim:03a:fetch-corpus": "python scripts/sim/fetch-databento-sim03-corpus.py",
