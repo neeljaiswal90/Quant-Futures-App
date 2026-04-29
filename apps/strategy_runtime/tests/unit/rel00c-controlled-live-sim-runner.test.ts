@@ -6,6 +6,7 @@ import {
   runRel00ControlledLiveSimReadiness,
 } from '../../../../scripts/rel/rel-00-controlled-live-sim-readiness.js';
 import {
+  assertRel00cWritableEventType,
   runRel00cControlledLiveSim,
 } from '../../../../scripts/rel/rel-00c-run-controlled-live-sim.js';
 import {
@@ -72,6 +73,13 @@ describe('REL-00C controlled live-sim runtime journal generator', () => {
     expect(generated.report.real_order_event_types_emitted).toBe(0);
     expect(events.some((event) => event.type === 'ORDER_PLANT' || event.type === 'LIVE_ORDER')).toBe(false);
     expect(events.filter((event) => event.type === 'SIM_FILL').every((event) => event.payload?.input_tier !== 'blocked')).toBe(true);
+  });
+
+  it('refuses to write blocked real-order event types', () => {
+    expect(() => assertRel00cWritableEventType('ORDER_PLANT')).toThrow(
+      'REL-00C refused to write blocked real-order event type: ORDER_PLANT',
+    );
+    expect(() => assertRel00cWritableEventType('SIM_FILL')).not.toThrow();
   });
 
   it('keeps traceability for every emitted order intent', async () => {
@@ -151,6 +159,14 @@ describe('REL-00C controlled live-sim runtime journal generator', () => {
 
     expect(reportText).not.toContain('RAW_SHOULD_NOT_APPEAR');
     expect(reportText).not.toContain('100.25');
+  });
+
+  it('does not use wall-clock or random APIs in deterministic output code', () => {
+    const source = readFileSync('scripts/rel/rel-00c-run-controlled-live-sim.ts', 'utf8');
+
+    expect(source).not.toMatch(/\bDate\.now\b/u);
+    expect(source).not.toMatch(/\bnew Date\b/u);
+    expect(source).not.toMatch(/\bMath\.random\b/u);
   });
 
   it('exposes the npm script in package.json', () => {

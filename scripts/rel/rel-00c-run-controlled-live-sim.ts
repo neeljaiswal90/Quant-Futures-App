@@ -83,6 +83,12 @@ const BLOCKED_EVENT_TYPES = new Set<string>([
   'LIVE_FILL',
 ]);
 
+export function assertRel00cWritableEventType(eventType: string): void {
+  if (BLOCKED_EVENT_TYPES.has(eventType)) {
+    throw new Error(`REL-00C refused to write blocked real-order event type: ${eventType}`);
+  }
+}
+
 type Rel00cStatus = 'generated' | 'requires_source_journals' | 'failed';
 export type Rel00cExitCode = 0 | 2 | 3;
 
@@ -283,6 +289,7 @@ export async function runRel00cControlledLiveSim(
   const counters = emptyRuntimeCounters();
   container.eventBus.subscribe({}, (delivery) => {
     const event = delivery.event as AnyJournalEventEnvelope;
+    assertRel00cWritableEventType(event.type);
     recordRuntimeEvent(counters, event);
     writer.write(event);
   });
@@ -668,6 +675,7 @@ function recordFeatureFields(counters: RuntimeCounters, values: Readonly<Record<
 }
 
 function canonicalFeatureField(field: string): string {
+  // REL-00C only emits L1/trade accepted fields. REL-00 remains the broader validator for MBO/restricted aliases.
   const aliases: Record<string, string> = {
     bid_px: 'l1_quote_bid_px',
     ask_px: 'l1_quote_ask_px',
