@@ -145,8 +145,49 @@ describe('SIM-03I limit_queue:front observation export', () => {
     expect(result.exit_code).toBe(2);
     expect(manifest.status).toBe('requires_decoded_observation_source');
     expect(manifest.skipped_count_by_reason).toMatchObject({
-      unsupported_source_format_requires_decoded_jsonl: 2,
+      dbn_decode_failed: 2,
     });
+  });
+
+  it('decodes DBN inputs through the configured SIM-03J decoder before exporting', () => {
+    const fixture = writeFixture({ dbnOnly: true });
+    const fakeDecoderPath = writeFakeDbnDecoder(fixture.directory);
+
+    const result = exportLimitQueueFrontObservations({
+      calibration_report: fixture.calibrationPath,
+      diagnosis_report: fixture.diagnosisPath,
+      corpus_root: fixture.corpusRoot,
+      out: fixture.outPath,
+      manifest_out: fixture.manifestOutPath,
+      dbn_decoder: fakeDecoderPath,
+      python: PYTHON,
+    });
+    const rows = readJsonl(fixture.outPath);
+    const manifest = readJson(fixture.manifestOutPath);
+
+    expect(result.exit_code).toBe(0);
+    expect(manifest.status).toBe('exported');
+    expect(manifest.dbn_decoded_files_count).toBe(2);
+    expect(manifest.skipped_count_by_reason).toEqual({});
+    expect(rows).toHaveLength(6);
+    expect(rows.every((row) => row.bucket === 'limit_queue:front')).toBe(true);
+  });
+
+  it('fails closed when the source manifest leaks a session into both splits', () => {
+    const fixture = writeFixture({ splitLeakage: true });
+
+    const result = exportLimitQueueFrontObservations({
+      calibration_report: fixture.calibrationPath,
+      diagnosis_report: fixture.diagnosisPath,
+      corpus_root: fixture.corpusRoot,
+      out: fixture.outPath,
+      manifest_out: fixture.manifestOutPath,
+    });
+    const manifest = readJson(fixture.manifestOutPath);
+
+    expect(result.exit_code).toBe(2);
+    expect(manifest.status).toBe('split_leakage_detected');
+    expect(manifest.leakage_checks.overlapping_session_ids).toEqual(['2026-04-27-rth']);
   });
 
   it('produces observations accepted by the SIM-03H synthetic refit path', () => {
@@ -195,10 +236,16 @@ describe('SIM-03I limit_queue:front observation export', () => {
     expect(packageJson.scripts['sim:03i:export-front-observations']).toBe(
       'tsx scripts/sim/export-limit-queue-front-observations.ts',
     );
+    expect(packageJson.scripts['sim:03j:decode-mbo-dbn']).toBe(
+      'python scripts/sim/decode-databento-mbo-jsonl.py',
+    );
   });
 });
 
-function writeFixture(options: { readonly dbnOnly?: boolean } = {}): {
+function writeFixture(options: {
+  readonly dbnOnly?: boolean;
+  readonly splitLeakage?: boolean;
+} = {}): {
   readonly directory: string;
   readonly corpusRoot: string;
   readonly calibrationPath: string;
@@ -213,10 +260,15 @@ function writeFixture(options: { readonly dbnOnly?: boolean } = {}): {
   const directory = makeTempDir();
   const corpusRoot = join(directory, 'corpus');
   mkdirSync(corpusRoot, { recursive: true });
-  const sessions = [
-    materializeSession(corpusRoot, '2026-04-27-rth', 'calibration', 3900, options.dbnOnly === true),
-    materializeSession(corpusRoot, '2026-04-24-rth', 'validation', 3950, options.dbnOnly === true),
-  ];
+  const sessions = options.splitLeakage === true
+    ? [
+        materializeSession(corpusRoot, '2026-04-27-rth', 'calibration', 3900, options.dbnOnly === true, 'calibration-copy'),
+        materializeSession(corpusRoot, '2026-04-27-rth', 'validation', 3950, options.dbnOnly === true, 'validation-copy'),
+      ]
+    : [
+        materializeSession(corpusRoot, '2026-04-27-rth', 'calibration', 3900, options.dbnOnly === true),
+        materializeSession(corpusRoot, '2026-04-24-rth', 'validation', 3950, options.dbnOnly === true),
+      ];
   const sourceManifestPath = join(directory, 'sim03_calibration_corpus_manifest.json');
   writeFileSync(sourceManifestPath, JSON.stringify(baseSourceManifest(sessions), null, 2), 'utf8');
 
@@ -247,12 +299,14 @@ function materializeSession(
   split: 'calibration' | 'validation',
   fillTimeMs: number,
   dbnOnly: boolean,
+  directoryName = sessionId,
 ): Record<string, any> {
-  const sessionDir = join(corpusRoot, sessionId);
+  const sessionDir = join(corpusRoot, directoryName);
   mkdirSync(sessionDir, { recursive: true });
   const mboPath = join(sessionDir, dbnOnly ? 'mbo.dbn.zst' : 'mbo.jsonl');
   if (dbnOnly) {
     writeFileSync(mboPath, 'synthetic dbn placeholder', 'utf8');
+    writeJsonl(`${mboPath}.fixture.jsonl`, mboRecords(fillTimeMs));
   } else {
     writeJsonl(mboPath, mboRecords(fillTimeMs));
   }
@@ -282,6 +336,27 @@ function mboRecords(fillTimeMs: number): readonly Record<string, any>[] {
     { ts_event: start + 400, order_id: 11, price, size: 1, action: 'A', side: 'B' },
     { ts_event: start + 500, order_id: 11, price, size: 1, action: 'T', side: 'B' },
   ];
+}
+
+function writeFakeDbnDecoder(directory: string): string {
+  const decoderPath = join(directory, 'fake-dbn-decoder.py');
+  writeFileSync(
+    decoderPath,
+    [
+      'import argparse',
+      'from pathlib import Path',
+      '',
+      'parser = argparse.ArgumentParser()',
+      'parser.add_argument("--input", required=True)',
+      'parser.add_argument("--out", required=True)',
+      'parser.add_argument("--schema", default="mbo")',
+      'args = parser.parse_args()',
+      'Path(args.out).parent.mkdir(parents=True, exist_ok=True)',
+      'Path(args.out).write_text(Path(args.input + ".fixture.jsonl").read_text(encoding="utf-8"), encoding="utf-8")',
+    ].join('\n'),
+    'utf8',
+  );
+  return decoderPath;
 }
 
 function baseSourceManifest(sessions: readonly Record<string, any>[]): Record<string, any> {

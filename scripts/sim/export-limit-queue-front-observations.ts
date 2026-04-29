@@ -1,18 +1,24 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   closeSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readFileSync,
   readSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import {
   argv as processArgv,
+  env as processEnv,
   exit as processExit,
   stderr as processStderr,
   stdout as processStdout,
@@ -35,6 +41,7 @@ export const SIM_03I_TICKET_ID = 'SIM-03I' as const;
 
 const DEFAULT_OUT_PATH = 'reports/sim/limit_queue_front_observations.jsonl';
 const DEFAULT_MANIFEST_OUT_PATH = 'reports/sim/limit_queue_front_observations_manifest.json';
+const DEFAULT_DBN_DECODER_PATH = 'scripts/sim/decode-databento-mbo-jsonl.py';
 const DEFAULT_PROGRESS_EVERY_RECORDS = 1_000_000;
 const MAX_HASH_FILE_BYTES = 64 * 1024 * 1024;
 
@@ -58,6 +65,8 @@ export interface ExportLimitQueueFrontObservationsOptions {
   readonly generated_at_ts_ns?: string;
   readonly progress_log?: string;
   readonly progress_every_records?: number;
+  readonly python?: string;
+  readonly dbn_decoder?: string;
 }
 
 export interface ExportLimitQueueFrontObservationsResult {
@@ -102,6 +111,7 @@ interface ExportCounters {
   }>;
   calibrationSessionIds: Set<string>;
   validationSessionIds: Set<string>;
+  dbnDecodedFiles: number;
 }
 
 export function exportLimitQueueFrontObservations(
@@ -116,6 +126,8 @@ export function exportLimitQueueFrontObservations(
   const split = options.split ?? 'both';
   const progressEveryRecords = options.progress_every_records ?? DEFAULT_PROGRESS_EVERY_RECORDS;
   const progressLogPath = options.progress_log === undefined ? null : resolve(cwd, options.progress_log);
+  const python = options.python ?? processEnv.PYTHON ?? 'python';
+  const dbnDecoderPath = resolve(cwd, options.dbn_decoder ?? DEFAULT_DBN_DECODER_PATH);
 
   const sourceText = readFileSync(calibrationReportPath, 'utf8');
   const diagnosisText = readFileSync(diagnosisReportPath, 'utf8');
@@ -158,10 +170,11 @@ export function exportLimitQueueFrontObservations(
     inputFiles: [],
     calibrationSessionIds: new Set(),
     validationSessionIds: new Set(),
+    dbnDecodedFiles: 0,
   };
   const progress = new ProgressWriter(progressLogPath, progressEveryRecords);
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, '', 'utf8');
+  const observationWriter = new ObservationWriter(outPath);
 
   progress.emit('export_started', {
     corpus_root: corpusRoot,
@@ -169,70 +182,71 @@ export function exportLimitQueueFrontObservations(
     source_manifest_path: manifestPath,
   });
 
-  for (const source of sources) {
-    if (options.max_records !== undefined && counters.observationsEmitted >= options.max_records) {
-      break;
-    }
-    progress.emit('file_started', {
-      path: source.path,
-      session_id: source.session_id,
-      split: source.split,
-    });
-    const extension = lowerExtension(source.path);
-    const stats = statSync(source.path);
-    counters.inputFiles.push({
-      path: source.path,
-      byte_count: stats.size,
-      ...hashFileIfFeasible(source.path, stats.size),
-    });
-    if (extension !== '.jsonl' && extension !== '.json') {
-      increment(counters.skippedCountByReason, 'unsupported_source_format_requires_decoded_jsonl');
-      progress.emit('file_skipped', {
-        path: source.path,
-        reason: 'unsupported_source_format_requires_decoded_jsonl',
-      });
-      continue;
-    }
-
-    const fileState = new MboFileState(source, sourceReportHash);
-    forEachRecord(source.path, (record) => {
-      counters.recordsScanned += 1;
-      progress.record({
-        records_scanned: counters.recordsScanned,
-        observations_emitted: counters.observationsEmitted,
-        current_file: source.path,
-        current_session: source.session_id,
-      });
-      if (options.max_records !== undefined && counters.observationsEmitted >= options.max_records) {
-        return;
-      }
-      const observation = observationFromRecord(record, source, fileState, sourceReportHash);
-      if (observation === null) {
-        return;
-      }
-      emitObservation({
-        observation,
-        outPath,
-        counters,
-      });
-    });
-    for (const observation of fileState.closeOpenOrdersAtEnd()) {
+  try {
+    for (const source of sources) {
       if (options.max_records !== undefined && counters.observationsEmitted >= options.max_records) {
         break;
       }
-      emitObservation({
-        observation,
-        outPath,
-        counters,
+      progress.emit('file_started', {
+        path: source.path,
+        session_id: source.session_id,
+        split: source.split,
+      });
+      const stats = statSync(source.path);
+      counters.inputFiles.push({
+        path: source.path,
+        byte_count: stats.size,
+        ...hashFileIfFeasible(source.path, stats.size),
+      });
+      const kind = sourceFileKind(source.path);
+      if (kind === 'unsupported') {
+        increment(counters.skippedCountByReason, 'unsupported_source_format_requires_decoded_jsonl');
+        progress.emit('file_skipped', {
+          path: source.path,
+          reason: 'unsupported_source_format_requires_decoded_jsonl',
+        });
+        continue;
+      }
+
+      const decodedPath = kind === 'dbn'
+        ? decodeDbnSource({
+            source,
+            cwd,
+            python,
+            dbnDecoderPath,
+            progress,
+            counters,
+          })
+        : source.path;
+      if (decodedPath === null) {
+        continue;
+      }
+
+      try {
+        processDecodedSource({
+          decodedPath,
+          source,
+          sourceReportHash,
+          observationWriter,
+          counters,
+          progress,
+          maxRecords: options.max_records,
+        });
+      } finally {
+        if (decodedPath !== source.path) {
+          rmSync(dirname(decodedPath), { recursive: true, force: true });
+        }
+      }
+      progress.emit('file_completed', {
+        path: source.path,
+        session_id: source.session_id,
+        split: source.split,
+        records_scanned: counters.recordsScanned,
+        observations_emitted: counters.observationsEmitted,
       });
     }
-    progress.emit('file_completed', {
-      path: source.path,
-      session_id: source.session_id,
-      split: source.split,
-      records_scanned: counters.recordsScanned,
-      observations_emitted: counters.observationsEmitted,
-    });
+  } finally {
+    observationWriter.close();
   }
 
   const overlap = sortedIntersection(counters.calibrationSessionIds, counters.validationSessionIds);
@@ -240,7 +254,10 @@ export function exportLimitQueueFrontObservations(
   if (overlap.length > 0) {
     status = 'split_leakage_detected';
   } else if (counters.observationsEmitted === 0) {
-    status = counters.skippedCountByReason.unsupported_source_format_requires_decoded_jsonl === sources.length
+    const decodedSourceBlockers =
+      (counters.skippedCountByReason.unsupported_source_format_requires_decoded_jsonl ?? 0) +
+      (counters.skippedCountByReason.dbn_decode_failed ?? 0);
+    status = sources.length > 0 && decodedSourceBlockers === sources.length
       ? 'requires_decoded_observation_source'
       : 'no_matching_observations';
   }
@@ -267,6 +284,8 @@ export function exportLimitQueueFrontObservations(
     input_file_hashes: counters.inputFiles,
     output_hash: outputHash,
     skipped_count_by_reason: sortObject(counters.skippedCountByReason),
+    dbn_decoder_path: dbnDecoderPath,
+    dbn_decoded_files_count: counters.dbnDecodedFiles,
     source_manifest_path: manifestPath,
     source_manifest_hash: manifestPath === null ? null : sha256File(manifestPath),
     leakage_checks: {
@@ -333,6 +352,14 @@ export function parseExportLimitQueueFrontObservationsArgs(
         index += 1;
         options.progress_every_records = positiveInt(flag, args[index]);
         break;
+      case '--python':
+        index += 1;
+        options.python = requireArgValue(flag, args[index]);
+        break;
+      case '--dbn-decoder':
+        index += 1;
+        options.dbn_decoder = requireArgValue(flag, args[index]);
+        break;
       case '--help':
         processStdout.write(usage());
         processExit(0);
@@ -383,6 +410,23 @@ class ProgressWriter {
     }
     this.recordsSinceLastEmit = 0;
     this.emit('records_scanned', fields);
+  }
+}
+
+class ObservationWriter {
+  private readonly fd: number;
+
+  constructor(path: string) {
+    mkdirSync(dirname(path), { recursive: true });
+    this.fd = openSync(path, 'w');
+  }
+
+  write(observation: LimitQueueFrontObservation): void {
+    writeSync(this.fd, `${JSON.stringify(observation)}\n`, null, 'utf8');
+  }
+
+  close(): void {
+    closeSync(this.fd);
   }
 }
 
@@ -584,15 +628,116 @@ function observationFromRecord(
   return null;
 }
 
+function processDecodedSource(input: {
+  readonly decodedPath: string;
+  readonly source: SourceFile;
+  readonly sourceReportHash: string;
+  readonly observationWriter: ObservationWriter;
+  readonly counters: ExportCounters;
+  readonly progress: ProgressWriter;
+  readonly maxRecords: number | undefined;
+}): void {
+  const fileState = new MboFileState(input.source, input.sourceReportHash);
+  forEachRecord(input.decodedPath, (record) => {
+    input.counters.recordsScanned += 1;
+    input.progress.record({
+      records_scanned: input.counters.recordsScanned,
+      observations_emitted: input.counters.observationsEmitted,
+      current_file: input.source.path,
+      current_session: input.source.session_id,
+    });
+    if (input.maxRecords !== undefined && input.counters.observationsEmitted >= input.maxRecords) {
+      return;
+    }
+    const observation = observationFromRecord(
+      record,
+      input.source,
+      fileState,
+      input.sourceReportHash,
+    );
+    if (observation === null) {
+      return;
+    }
+    emitObservation({
+      observation,
+      observationWriter: input.observationWriter,
+      counters: input.counters,
+    });
+  });
+  for (const observation of fileState.closeOpenOrdersAtEnd()) {
+    if (input.maxRecords !== undefined && input.counters.observationsEmitted >= input.maxRecords) {
+      break;
+    }
+    emitObservation({
+      observation,
+      observationWriter: input.observationWriter,
+      counters: input.counters,
+    });
+  }
+}
+
+function decodeDbnSource(input: {
+  readonly source: SourceFile;
+  readonly cwd: string;
+  readonly python: string;
+  readonly dbnDecoderPath: string;
+  readonly progress: ProgressWriter;
+  readonly counters: ExportCounters;
+}): string | null {
+  const tempDirectory = mkdtempSync(join(tmpdir(), 'qfa-sim03j-dbn-'));
+  const outPath = join(tempDirectory, 'mbo.jsonl');
+  input.progress.emit('dbn_decode_started', {
+    path: input.source.path,
+    session_id: input.source.session_id,
+    split: input.source.split,
+    dbn_decoder_path: input.dbnDecoderPath,
+  });
+  const result = spawnSync(
+    input.python,
+    [
+      input.dbnDecoderPath,
+      '--input',
+      input.source.path,
+      '--out',
+      outPath,
+      '--schema',
+      'mbo',
+    ],
+    {
+      cwd: input.cwd,
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    },
+  );
+  if (result.status !== 0) {
+    rmSync(tempDirectory, { recursive: true, force: true });
+    increment(input.counters.skippedCountByReason, 'dbn_decode_failed');
+    input.progress.emit('dbn_decode_failed', {
+      path: input.source.path,
+      session_id: input.source.session_id,
+      split: input.source.split,
+      exit_code: result.status,
+      stderr: shortText(result.stderr),
+      stdout: shortText(result.stdout),
+    });
+    return null;
+  }
+  input.counters.dbnDecodedFiles += 1;
+  input.progress.emit('dbn_decode_completed', {
+    path: input.source.path,
+    session_id: input.source.session_id,
+    split: input.source.split,
+    decoded_path: outPath,
+  });
+  return outPath;
+}
+
 function emitObservation(input: {
   readonly observation: LimitQueueFrontObservation;
-  readonly outPath: string;
+  readonly observationWriter: ObservationWriter;
   readonly counters: ExportCounters;
 }): void {
-  writeFileSync(input.outPath, `${JSON.stringify(input.observation)}\n`, {
-    encoding: 'utf8',
-    flag: 'a',
-  });
+  input.observationWriter.write(input.observation);
   input.counters.observationsEmitted += 1;
   if (input.observation.split === 'calibration') {
     input.counters.calibrationCount += 1;
@@ -637,7 +782,7 @@ function sourceFilesFromManifest(
 }
 
 function discoverSourceFiles(corpusRoot: string, split: SplitFilter): readonly SourceFile[] {
-  const paths = recursiveFiles(corpusRoot).filter((path) => ['.jsonl', '.json'].includes(lowerExtension(path)));
+  const paths = recursiveFiles(corpusRoot).filter((path) => sourceFileKind(path) !== 'unsupported');
   return paths.map((path) => ({
     session_id: sessionIdFromPath(path),
     split: split === 'validation' ? 'validation' : 'calibration',
@@ -805,6 +950,17 @@ function splitAllowed(split: 'calibration' | 'validation', filter: SplitFilter):
   return filter === 'both' || filter === split;
 }
 
+function sourceFileKind(path: string): 'decoded' | 'dbn' | 'unsupported' {
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.jsonl') || lower.endsWith('.json')) {
+    return 'decoded';
+  }
+  if (lower.endsWith('.dbn') || lower.endsWith('.dbn.zst')) {
+    return 'dbn';
+  }
+  return 'unsupported';
+}
+
 function queueBucketFor(queueAheadSize: number): 'front' | 'near' | 'middle' | 'back' {
   if (queueAheadSize <= 0) {
     return 'front';
@@ -877,6 +1033,10 @@ function hashFileIfFeasible(path: string, byteCount: number): {
     return { hash_status: 'skipped_large_file' };
   }
   return { sha256: sha256File(path), hash_status: 'hashed' };
+}
+
+function shortText(value: string | null | undefined): string {
+  return (value ?? '').replace(/\s+/gu, ' ').trim().slice(0, 500);
 }
 
 function lowerExtension(path: string): string {
@@ -982,6 +1142,7 @@ function usage(): string {
     'Usage: npm run sim:03i:export-front-observations -- --calibration-report path --diagnosis-report path --corpus-root path [--out path] [--manifest-out path]',
     '',
     'Exports targeted limit_queue:front observations for SIM-03H without changing SIM-03 or REL gates.',
+    'DBN/ZST MBO files are decoded through scripts/sim/decode-databento-mbo-jsonl.py by default.',
     '',
   ].join('\n');
 }
