@@ -44,6 +44,21 @@ $env:RITHMIC_USER
 
 If the capture script cannot infer credentials or connection details, pass `--connect-point`, `--system-name`, `--user`, and `--password` explicitly.
 
+## Optional Wrapper
+
+REL-01B can run the daily capture-normalize-generate-validate-append sequence for one trading date:
+
+```powershell
+npm run rel:01b:daily-session -- `
+  --trade-date 2026-04-30 `
+  --manifest reports/rel/rel01_manifest.json `
+  --min-source-events 10000
+```
+
+Use the wrapper after the manifest skeleton exists. It appends the manifest only when REL-00 passes. If the wrapper fails, do not add that session to `rel01_manifest.json`.
+
+The manual steps below remain the source procedure and are useful for diagnosis or one-off reruns.
+
 ## Choose A Trading Date
 
 Use one distinct RTH trading date per accepted REL-01 session.

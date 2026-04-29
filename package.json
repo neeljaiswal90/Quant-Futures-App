@@ -36,6 +36,7 @@
     "rel:00b:evidence-index": "tsx scripts/rel/rel-00b-evidence-index.ts",
     "rel:00c:run-controlled-live-sim": "tsx scripts/rel/rel-00c-run-controlled-live-sim.ts",
     "rel:01a:aggregate": "tsx scripts/rel/rel-01a-aggregate-validator.ts",
+    "rel:01b:daily-session": "tsx scripts/rel/rel-01b-daily-session-wrapper.ts",
     "sim:03": "python scripts/sim/calibrate-fill-slippage-sim03.py",
     "sim:03f:diagnose-limit-front": "tsx scripts/sim/diagnose-limit-queue-front.ts",
     "sim:03g:recalibrate-front": "tsx scripts/sim/recalibrate-limit-queue-front.ts",
