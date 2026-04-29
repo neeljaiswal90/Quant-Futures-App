@@ -40,6 +40,23 @@ If the source SIM-03 report contains only point residuals, SIM-03G emits `requir
 
 Aggregate-only recalibration is allowed only when the report includes explicit targeted refit evidence under `targeted_recalibration_inputs.limit_queue_front_time_to_fill` with method `targeted_bucket_refit_from_calibration_observations`.
 
+Expected evidence shape:
+
+```json
+{
+  "targeted_recalibration_inputs": {
+    "limit_queue_front_time_to_fill": {
+      "method": "targeted_bucket_refit_from_calibration_observations",
+      "modeled_time_to_fill_median_ms": 3900.0,
+      "time_to_fill_relative_error": 0.072154,
+      "evidence": "calibration-only front bucket refit artifact path or hash"
+    }
+  }
+}
+```
+
+The method value is policy, not a casual implementation detail. SIM-03G rejects validation-median patches or any other method string so the recalibrated report cannot be produced from validation leakage.
+
 ## REL-01 Evidence
 
 REL-01 remains blocked until:

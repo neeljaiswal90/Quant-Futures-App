@@ -15,6 +15,10 @@ export const SIM_03G_TICKET_ID = 'SIM-03G' as const;
 
 const TARGET_BUCKET_ID = 'front';
 const TARGET_METRIC = 'time_to_fill_relative_error_within_time_to_fill_relative_threshold';
+// This method string is policy: SIM-03G may only accept calibration-only front-bucket refits.
+const TARGETED_REFIT_METHOD = 'targeted_bucket_refit_from_calibration_observations';
+// Mirrors scripts/sim/calibrate-fill-slippage-sim03.py _limit_residual failure reason names.
+const TIME_TO_FILL_FAILURE_REASON = 'time_to_fill_pass';
 const VALIDATOR_SCRIPT = 'scripts/sim/validate-fill-slippage-calibration.py';
 const DEFAULT_OUT_PATH = 'reports/sim/fill_slippage_calibration_recalibrated.json';
 const DEFAULT_PATCH_REPORT_PATH = 'reports/sim/limit_queue_front_recalibration_patch.json';
@@ -282,7 +286,7 @@ function targetedRecalibrationInput(report: JsonObject): RecalibrationInput | nu
   if (method === null || modeled === null || error === null || evidence === null) {
     return null;
   }
-  if (method !== 'targeted_bucket_refit_from_calibration_observations') {
+  if (method !== TARGETED_REFIT_METHOD) {
     return null;
   }
   return {
@@ -307,7 +311,9 @@ function applyTargetedRecalibration(report: JsonObject, input: RecalibrationInpu
   const checks = objectAt(target, ['checks']);
   setIfChanged(checks, 'time_to_fill_pass', passed, 'residuals.limit_queue.front.checks.time_to_fill_pass', changedFields);
   const currentReasons = stringArray(target.failure_reasons);
-  const nextReasons = passed ? currentReasons.filter((reason) => reason !== 'time_to_fill_pass') : sortedUnique([...currentReasons, 'time_to_fill_pass']);
+  const nextReasons = passed
+    ? currentReasons.filter((reason) => reason !== TIME_TO_FILL_FAILURE_REASON)
+    : sortedUnique([...currentReasons, TIME_TO_FILL_FAILURE_REASON]);
   setIfChanged(target, 'failure_reasons', nextReasons, 'residuals.limit_queue.front.failure_reasons', changedFields);
   setIfChanged(target, 'status', nextReasons.length === 0 ? 'pass' : 'fail', 'residuals.limit_queue.front.status', changedFields);
 
@@ -444,6 +450,7 @@ function requireTargetResidual(report: JsonObject): JsonObject {
 
 function countUnchangedBuckets(report: JsonObject): number {
   const residuals = objectAt(report, ['residuals']);
+  // Counts all residual buckets except the single front bucket that SIM-03G is allowed to touch.
   return [
     ...arrayOfObjects(residuals.marketable_slippage, 'residuals.marketable_slippage'),
     ...arrayOfObjects(residuals.limit_queue, 'residuals.limit_queue'),

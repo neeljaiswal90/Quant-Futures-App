@@ -92,6 +92,7 @@ describe('SIM-03G limit_queue:front recalibration', () => {
     expect(result.outputReport.residuals.limit_queue[1]).toEqual(source.residuals.limit_queue[1]);
     expect(result.outputReport.residuals.limit_queue[2]).toEqual(source.residuals.limit_queue[2]);
     expect(result.outputReport.residuals.limit_queue[3]).toEqual(source.residuals.limit_queue[3]);
+    expect(result.patchReport.unchanged_bucket_count).toBe(5);
   });
 
   it('preserves thresholds and reports stable lineage hashes', () => {
@@ -130,6 +131,73 @@ describe('SIM-03G limit_queue:front recalibration', () => {
       ready_for_rel01_execution_simulation: true,
       failure_reasons: [],
     });
+  });
+
+  it('keeps SIM-03 failed when targeted evidence still breaches the threshold', () => {
+    const result = runRecalibration({
+      calibrationReport: baseCalibrationReport({
+        targetedRefit: {
+          modeled_time_to_fill_median_ms: 4800,
+          time_to_fill_relative_error: 0.3,
+        },
+      }),
+      diagnosisReport: baseDiagnosisReport(),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.patchReport.status).toBe('recalibrated');
+    expect(result.outputReport.residuals.limit_queue[0]).toMatchObject({
+      status: 'fail',
+      time_to_fill_relative_error: 0.3,
+      checks: {
+        time_to_fill_pass: false,
+      },
+      failure_reasons: ['time_to_fill_pass'],
+    });
+    expect(result.outputReport.status).toBe('fail');
+    expect(result.outputReport.ready_for_rel01_execution_simulation).toBe(false);
+  });
+
+  it('rejects targeted evidence whose method is not the calibration-only refit policy', () => {
+    const result = runRecalibration({
+      calibrationReport: baseCalibrationReport({
+        targetedRefit: {
+          method: 'validation_median_patch',
+          modeled_time_to_fill_median_ms: 3637.527295,
+          time_to_fill_relative_error: 0,
+        },
+      }),
+      diagnosisReport: baseDiagnosisReport(),
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.patchReport.status).toBe('requires_targeted_bucket_rerun');
+    expect(result.patchReport.aggregate_only_recalibration_possible).toBe(false);
+    expect(result.outputReport.status).toBe('fail');
+  });
+
+  it('rejects diagnosis reports that do not identify the front time-to-fill failure', () => {
+    const directory = makeTempDir();
+    const calibrationPath = join(directory, 'fill_slippage_calibration.json');
+    const diagnosisPath = join(directory, 'bad_diagnosis.json');
+    writeFileSync(calibrationPath, JSON.stringify(baseCalibrationReport(), null, 2), 'utf8');
+    writeFileSync(
+      diagnosisPath,
+      JSON.stringify({
+        ...baseDiagnosisReport(),
+        target_bucket: {
+          group: 'limit_queue',
+          bucket_id: 'near',
+          exact_failed_criteria: [],
+        },
+      }, null, 2),
+      'utf8',
+    );
+
+    expect(() => recalibrateLimitQueueFront({
+      calibration_report: calibrationPath,
+      diagnosis_report: diagnosisPath,
+    })).toThrow('diagnosis report does not target limit_queue:front');
   });
 
   it('is deterministic for the same input reports and caller-provided timestamp', () => {
@@ -204,6 +272,7 @@ function runRecalibration(input: {
 
 function baseCalibrationReport(options: {
   readonly targetedRefit?: {
+    readonly method?: string;
     readonly modeled_time_to_fill_median_ms: number;
     readonly time_to_fill_relative_error: number;
   };
@@ -222,7 +291,7 @@ function baseCalibrationReport(options: {
     ...(options.targetedRefit === undefined ? {} : {
       targeted_recalibration_inputs: {
         limit_queue_front_time_to_fill: {
-          method: 'targeted_bucket_refit_from_calibration_observations',
+          method: options.targetedRefit.method ?? 'targeted_bucket_refit_from_calibration_observations',
           modeled_time_to_fill_median_ms: options.targetedRefit.modeled_time_to_fill_median_ms,
           time_to_fill_relative_error: options.targetedRefit.time_to_fill_relative_error,
           evidence: 'synthetic calibration-only front bucket refit',
