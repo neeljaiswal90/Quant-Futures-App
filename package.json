@@ -31,6 +31,7 @@
     "ml:gpu:check": "python scripts/ml/gpu_environment_check.py",
     "ml:gpu:synthetic-benchmark": "python scripts/ml/train_synthetic_gpu_benchmark.py",
     "obs:04:l1-latency": "tsx apps/strategy_runtime/src/operator/l1-trade-latency-dashboard.ts",
+    "rel:00:controlled-live-sim": "tsx scripts/rel/rel-00-controlled-live-sim-readiness.ts",
     "rel:00a": "tsx scripts/rel/rel-00a-offline-readiness.ts",
     "rel:00b:evidence-index": "tsx scripts/rel/rel-00b-evidence-index.ts",
     "sim:03": "python scripts/sim/calibrate-fill-slippage-sim03.py",
