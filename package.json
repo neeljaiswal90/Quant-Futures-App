@@ -39,6 +39,7 @@
     "rel:01b:daily-session": "tsx scripts/rel/rel-01b-daily-session-wrapper.ts",
     "rel:01d:feature-surface-audit": "tsx scripts/rel/rel-01d-feature-surface-audit.ts",
     "rel:01e:mbo-shadow-lineage": "tsx scripts/rel/rel-01e-mbo-shadow-lineage.ts",
+    "orch:mbo:01:shadow-producer": "tsx scripts/orch/orch-mbo-01-shadow-producer.ts",
     "sim:03": "python scripts/sim/calibrate-fill-slippage-sim03.py",
     "sim:03f:diagnose-limit-front": "tsx scripts/sim/diagnose-limit-queue-front.ts",
     "sim:03g:recalibrate-front": "tsx scripts/sim/recalibrate-limit-queue-front.ts",
