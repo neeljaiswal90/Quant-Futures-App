@@ -41,6 +41,7 @@
     "rel:01d:feature-surface-audit": "tsx scripts/rel/rel-01d-feature-surface-audit.ts",
     "rel:01e:mbo-shadow-lineage": "tsx scripts/rel/rel-01e-mbo-shadow-lineage.ts",
     "mbo:shadow:evidence": "tsx scripts/rel/mbo-shadow-evidence-01.ts",
+    "mbo:shadow:evidence:02": "tsx scripts/rel/mbo-shadow-evidence-02.ts",
     "orch:mbo:01:shadow-producer": "tsx scripts/orch/orch-mbo-01-shadow-producer.ts",
     "sim:03": "python scripts/sim/calibrate-fill-slippage-sim03.py",
     "sim:03f:diagnose-limit-front": "tsx scripts/sim/diagnose-limit-queue-front.ts",

@@ -88,6 +88,8 @@ The aggregate status is `pass` only when:
 
 Passing MBO-SHADOW-EVIDENCE-01 means MBO shadow telemetry is repeatable enough for diagnostic collection.
 
+For promotion-path evidence, run MBO-SHADOW-EVIDENCE-02 after collecting at least three diagnostic sessions. MBO-SHADOW-EVIDENCE-02 consumes this report, enforces the multi-session minimum, and keeps the next step as DATA-MBO-ADR-01 rather than decision-use.
+
 The JSON report stamps this posture explicitly:
 
 ```json
