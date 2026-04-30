@@ -10,6 +10,7 @@ import {
   buildTuiDashboardSnapshot,
   parseTuiArgs,
   renderTuiJsonl,
+  renderTuiJsonlLines,
 } from '../../src/operator/tui.js';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
@@ -73,6 +74,18 @@ describe('TUI-03 read-only operator dashboard', () => {
     expect(first.stdout).toContain('feed=live stream=ALL');
     expect(first.stdout).toContain('risk=pass sizing_qty=1 risk_usd=12');
     expect(first.stdout).toContain('mutation_controls=disabled facts=authoritative recomputation=false');
+  });
+
+  it('renders the same dashboard from line input without requiring one giant journal string', () => {
+    const options = parseTuiArgs(['--no-color']);
+    const input = readFixtureJournal();
+    const stringResult = renderTuiJsonl(input, options);
+    const lineResult = renderTuiJsonlLines(input.split(/\n/), options);
+
+    expect(lineResult.exit_code).toBe(0);
+    expect(lineResult.events_seen).toBe(stringResult.events_seen);
+    expect(lineResult.snapshot).toEqual(stringResult.snapshot);
+    expect(lineResult.stdout).toBe(stringResult.stdout);
   });
 
   it('shows warmup and missing states for early fixture slices without recomputing facts', () => {
