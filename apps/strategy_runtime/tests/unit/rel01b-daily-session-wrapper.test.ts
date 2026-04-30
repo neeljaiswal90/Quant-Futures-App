@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  defaultCommandRunner,
   redactArgs,
   runRel01bDailySessionWrapper,
   type Rel01bCommand,
@@ -221,6 +222,22 @@ describe('REL-01B daily controlled live-sim wrapper', () => {
       '--api-key',
       '<redacted>',
     ]);
+  });
+
+  it('runs npm.cmd through the default command runner on Windows', async () => {
+    if (process.platform !== 'win32') {
+      expect(true).toBe(true);
+      return;
+    }
+
+    const result = await defaultCommandRunner({
+      name: 'npm_version',
+      command: 'npm.cmd',
+      args: ['--version'],
+      cwd: process.cwd(),
+    });
+
+    expect(result.exit_code).toBe(0);
   });
 
   it('wires the npm script', () => {

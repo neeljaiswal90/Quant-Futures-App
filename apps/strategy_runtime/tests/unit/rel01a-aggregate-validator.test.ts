@@ -11,7 +11,11 @@ import {
 } from '../../../../scripts/rel/rel-01a-aggregate-validator.js';
 
 const FIXTURE_JOURNAL = 'apps/strategy_runtime/tests/fixtures/obs00/mini-journal.jsonl';
-const CONFIG_HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const APP_CONFIG_HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const STRATEGY_CONFIG_HASH = sha('strategy-config');
+const RISK_CONFIG_HASH = sha('risk-config');
+const MANAGEMENT_CONFIG_HASH = sha('management-config');
+const MANAGEMENT_PROFILE_HASH = sha('management-profile');
 const TEMP_ROOTS: string[] = [];
 
 afterEach(() => {
@@ -100,17 +104,65 @@ describe('REL-01A aggregate controlled live-sim validator', () => {
     expect(result.report.check_groups.execution_safety_checks.status).toBe('fail');
   });
 
-  it('fails unstable config hashes between manifest and session journal', async () => {
-    const root = await makePacketRoot({ sessionCount: 1, unstableConfigHashSession: 1 });
+  it('does not fail when app config hashes differ but behavioral hashes match', async () => {
+    const root = await makePacketRoot({ sessionCount: 1, unstableAppConfigHashSession: 1 });
+
+    const result = await runRel01(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.status).toBe('incomplete');
+    expect(result.report.reasons).toEqual([]);
+    expect(result.report.sessions[0]?.journal_config_hashes).not.toContain(APP_CONFIG_HASH);
+    expect(result.report.check_groups.packet_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'journal_app_config_hashes_reported', status: 'pass' }),
+        expect.objectContaining({ name: 'journal_strategy_config_hashes_match_manifest', status: 'pass' }),
+        expect.objectContaining({ name: 'journal_risk_config_hashes_match_manifest', status: 'pass' }),
+      ]),
+    );
+  });
+
+  it('fails unstable strategy config hashes between manifest and session journal', async () => {
+    const root = await makePacketRoot({ sessionCount: 1, strategyConfigHashMismatchSession: 1 });
 
     const result = await runRel01(root);
 
     expect(result.exit_code).toBe(2);
     expect(result.report.status).toBe('fail');
-    expect(result.report.sessions[0]?.reasons).toContain('journal_config_hash_missing_or_unstable');
+    expect(result.report.sessions[0]?.reasons).toContain('journal_strategy_config_hash_missing_or_unstable');
     expect(result.report.check_groups.packet_checks.checks).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'journal_config_hashes_match_manifest', status: 'fail' }),
+        expect.objectContaining({ name: 'journal_strategy_config_hashes_match_manifest', status: 'fail' }),
+      ]),
+    );
+  });
+
+  it('fails unstable risk config hashes between manifest and session journal', async () => {
+    const root = await makePacketRoot({ sessionCount: 1, riskConfigHashMismatchSession: 1 });
+
+    const result = await runRel01(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.status).toBe('fail');
+    expect(result.report.sessions[0]?.reasons).toContain('journal_risk_config_hash_missing_or_unstable');
+    expect(result.report.check_groups.packet_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'journal_risk_config_hashes_match_manifest', status: 'fail' }),
+      ]),
+    );
+  });
+
+  it('fails management config mismatches when journals emit management config hashes', async () => {
+    const root = await makePacketRoot({ sessionCount: 1, managementConfigHashMismatchSession: 1 });
+
+    const result = await runRel01(root);
+
+    expect(result.exit_code).toBe(2);
+    expect(result.report.status).toBe('fail');
+    expect(result.report.sessions[0]?.reasons).toContain('journal_management_config_hash_mismatch');
+    expect(result.report.check_groups.packet_checks.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'journal_management_config_hashes_match_manifest_when_present', status: 'fail' }),
       ]),
     );
   });
@@ -175,7 +227,10 @@ async function makePacketRoot(input: {
   readonly missingJournalSession?: number;
   readonly blockedFeatureSession?: number;
   readonly realOrderSession?: number;
-  readonly unstableConfigHashSession?: number;
+  readonly unstableAppConfigHashSession?: number;
+  readonly strategyConfigHashMismatchSession?: number;
+  readonly riskConfigHashMismatchSession?: number;
+  readonly managementConfigHashMismatchSession?: number;
   readonly malformedJournalSession?: number;
   readonly rawSentinel?: boolean;
 } = {}): Promise<string> {
@@ -200,7 +255,11 @@ async function makePacketRoot(input: {
         runId,
         blockedFeature: input.blockedFeatureSession === oneBased,
         realOrder: input.realOrderSession === oneBased,
-        configHash: input.unstableConfigHashSession === oneBased ? sha('different-config') : CONFIG_HASH,
+        appConfigHash: input.unstableAppConfigHashSession === oneBased ? sha('different-app-config') : APP_CONFIG_HASH,
+        strategyConfigHash: input.strategyConfigHashMismatchSession === oneBased ? sha('different-strategy-config') : STRATEGY_CONFIG_HASH,
+        riskConfigHash: input.riskConfigHashMismatchSession === oneBased ? sha('different-risk-config') : RISK_CONFIG_HASH,
+        managementConfigHash: input.managementConfigHashMismatchSession === oneBased ? sha('different-management-config') : undefined,
+        managementProfileHash: MANAGEMENT_PROFILE_HASH,
         malformed: input.malformedJournalSession === oneBased,
         rawSentinel: input.rawSentinel === true && oneBased === 1,
       }));
@@ -238,10 +297,10 @@ async function makePacketRoot(input: {
     schema_version: 1,
     rel01_run_id: 'rel01-fixture-run',
     runtime_commit: 'fixture-commit',
-    config_hash: CONFIG_HASH,
-    strategy_config_hash: sha('strategy-config'),
-    risk_config_hash: sha('risk-config'),
-    management_config_hash: sha('management-config'),
+    config_hash: APP_CONFIG_HASH,
+    strategy_config_hash: STRATEGY_CONFIG_HASH,
+    risk_config_hash: RISK_CONFIG_HASH,
+    management_config_hash: MANAGEMENT_CONFIG_HASH,
     sim03_report: 'reports/sim/fill_slippage_calibration_robust_limit_queue_front.json',
     sim03_gate: 'reports/sim/fill_slippage_calibration_robust_limit_queue_front_gate.json',
     sessions,
@@ -252,7 +311,11 @@ async function makePacketRoot(input: {
 function buildJournal(input: {
   readonly sessionId: string;
   readonly runId: string;
-  readonly configHash: string;
+  readonly appConfigHash: string;
+  readonly strategyConfigHash: string;
+  readonly riskConfigHash: string;
+  readonly managementConfigHash?: string;
+  readonly managementProfileHash: string;
   readonly blockedFeature?: boolean;
   readonly realOrder?: boolean;
   readonly malformed?: boolean;
@@ -269,13 +332,14 @@ function buildJournal(input: {
         const payload = jsonObject(event.payload);
         event.payload = {
           ...payload,
-          config_hash: input.configHash,
+          config_hash: input.appConfigHash,
         };
       }
       if (event.type === 'FEATURES') {
         const payload = jsonObject(event.payload);
         event.payload = {
           ...payload,
+          strategy_config_hash: input.strategyConfigHash,
           values: {
             l1_quote_bid_px: 18500.25,
             l1_quote_ask_px: 18500.5,
@@ -292,10 +356,35 @@ function buildJournal(input: {
         const payload = jsonObject(event.payload);
         event.payload = {
           ...payload,
+          strategy_config_hash: input.strategyConfigHash,
           values: {
             mid_px: 18500.5,
             spread_ticks: 1,
           },
+        };
+      }
+      if (event.type === 'STRAT_EVAL' || event.type === 'CANDIDATE' || event.type === 'ORDER_INTENT' || event.type === 'SIM_FILL') {
+        const payload = jsonObject(event.payload);
+        event.payload = {
+          ...payload,
+          strategy_config_hash: input.strategyConfigHash,
+        };
+      }
+      if (event.type === 'RISK_GATE' || event.type === 'SIZING') {
+        const payload = jsonObject(event.payload);
+        event.payload = {
+          ...payload,
+          risk_config_hash: input.riskConfigHash,
+          strategy_config_hash: input.strategyConfigHash,
+        };
+      }
+      if (event.type === 'POSITION' || event.type === 'MGMT_TICK' || event.type === 'MGMT_ACTION') {
+        const payload = jsonObject(event.payload);
+        event.payload = {
+          ...payload,
+          ...(input.managementConfigHash === undefined ? {} : { management_config_hash: input.managementConfigHash }),
+          management_profile_hash: input.managementProfileHash,
+          strategy_config_hash: input.strategyConfigHash,
         };
       }
       return JSON.stringify(event);

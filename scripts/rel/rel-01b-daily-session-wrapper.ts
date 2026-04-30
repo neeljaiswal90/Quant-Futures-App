@@ -878,12 +878,19 @@ function toSystemPath(path: string): string {
   return path;
 }
 
-function defaultCommandRunner(command: Rel01bCommand): Promise<Rel01bCommandResult> {
-  const result = spawnSync(command.command, [...command.args], {
-    cwd: command.cwd,
-    encoding: 'utf8',
-    maxBuffer: 16 * 1024 * 1024,
-  });
+export function defaultCommandRunner(command: Rel01bCommand): Promise<Rel01bCommandResult> {
+  const result = isWindowsCmd(command.command)
+    ? spawnSync(windowsShellCommandLine(command.command, command.args), {
+        cwd: command.cwd,
+        encoding: 'utf8',
+        maxBuffer: 16 * 1024 * 1024,
+        shell: true,
+      })
+    : spawnSync(command.command, [...command.args], {
+        cwd: command.cwd,
+        encoding: 'utf8',
+        maxBuffer: 16 * 1024 * 1024,
+      });
   if (result.error !== undefined) {
     return Promise.resolve({ exit_code: 1 });
   }
@@ -896,6 +903,21 @@ function pythonCommand(): string {
 
 function npmCommand(): string {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm';
+}
+
+function isWindowsCmd(command: string): boolean {
+  return process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
+}
+
+function windowsShellCommandLine(command: string, args: readonly string[]): string {
+  return [command, ...args].map(windowsShellQuote).join(' ');
+}
+
+function windowsShellQuote(value: string): string {
+  if (value !== '' && !/[\s"&|<>^]/u.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/(["&|<>^])/gu, '^$1')}"`;
 }
 
 function displayCommand(command: string): string {
