@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import {
   stderr as processStderr,
   stdin as processStdin,
   stdout as processStdout,
 } from 'node:process';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import {
   channelsForEventType,
@@ -83,7 +84,21 @@ interface TuiCliOptions extends TuiRenderOptions {
   readonly fixture?: 'obs00';
 }
 
-type EventMap = Partial<Record<RuntimeEventType, JournalEventEnvelope[]>>;
+interface EventTypeState {
+  latest: JournalEventEnvelope;
+  count: number;
+}
+
+type EventMap = Partial<Record<RuntimeEventType, EventTypeState>>;
+
+interface TuiScanState {
+  eventMap: EventMap;
+  events_seen: number;
+  tui_events_seen: number;
+  diagnostics: TuiDiagnostic[];
+  latest_tui_event?: JournalEventEnvelope;
+  max_tui_ts_ns?: UnixNs;
+}
 
 const RESET = '\u001b[0m';
 const DIM = '\u001b[2m';
@@ -215,17 +230,34 @@ export function renderTuiJsonl(
   input: string,
   options: TuiRenderOptions = DEFAULT_TUI_RENDER_OPTIONS,
 ): RenderTuiJsonlResult {
-  const parsed = parseValidJournalEvents(input);
-  const snapshot = buildTuiDashboardSnapshot(parsed.events, options);
+  const parsed = scanValidJournalLines(input.split(/\n/));
+  const snapshot = buildTuiDashboardSnapshotFromScan(parsed, options);
   const stdout = renderTuiDashboard(snapshot, options);
-  const stderr = parsed.diagnostics
-    .map((diagnostic) => `line ${diagnostic.line_number}: ${diagnostic.message}`)
-    .join('\n');
+  const stderr = renderDiagnostics(parsed.diagnostics);
 
   return {
     stdout,
     stderr: stderr === '' ? '' : `${stderr}\n`,
-    events_seen: parsed.events.length,
+    events_seen: parsed.events_seen,
+    diagnostics: parsed.diagnostics,
+    snapshot,
+    exit_code: parsed.diagnostics.length === 0 ? 0 : 1,
+  };
+}
+
+export function renderTuiJsonlLines(
+  lines: Iterable<string>,
+  options: TuiRenderOptions = DEFAULT_TUI_RENDER_OPTIONS,
+): RenderTuiJsonlResult {
+  const parsed = scanValidJournalLines(lines);
+  const snapshot = buildTuiDashboardSnapshotFromScan(parsed, options);
+  const stdout = renderTuiDashboard(snapshot, options);
+  const stderr = renderDiagnostics(parsed.diagnostics);
+
+  return {
+    stdout,
+    stderr: stderr === '' ? '' : `${stderr}\n`,
+    events_seen: parsed.events_seen,
     diagnostics: parsed.diagnostics,
     snapshot,
     exit_code: parsed.diagnostics.length === 0 ? 0 : 1,
@@ -236,18 +268,27 @@ export function buildTuiDashboardSnapshot(
   events: readonly JournalEventEnvelope[],
   options: Pick<TuiRenderOptions, 'render_at_ts_ns'> = {},
 ): TuiDashboardSnapshot {
-  const tuiEvents = events.filter(isDefaultTuiEvent);
-  const eventMap = groupByType(tuiEvents);
-  const renderAt = options.render_at_ts_ns ?? maxEventTimestamp(tuiEvents);
-  const latestEvent = tuiEvents.at(-1);
+  const state = emptyTuiScanState();
+  for (const event of events) {
+    recordValidEvent(state, event);
+  }
+
+  return buildTuiDashboardSnapshotFromScan(state, options);
+}
+
+function buildTuiDashboardSnapshotFromScan(
+  state: TuiScanState,
+  options: Pick<TuiRenderOptions, 'render_at_ts_ns'> = {},
+): TuiDashboardSnapshot {
+  const renderAt = options.render_at_ts_ns ?? state.max_tui_ts_ns;
 
   return {
     render_at_ts_ns: renderAt,
-    run_id: latestEvent?.run_id,
-    session_id: latestEvent?.session_id,
-    tui_events_seen: tuiEvents.length,
+    run_id: state.latest_tui_event?.run_id,
+    session_id: state.latest_tui_event?.session_id,
+    tui_events_seen: state.tui_events_seen,
     panels: TUI_PANEL_DEFINITIONS.map((definition) =>
-      buildPanelSnapshot(definition, eventMap, renderAt),
+      buildPanelSnapshot(definition, state.eventMap, renderAt),
     ),
   };
 }
@@ -289,41 +330,93 @@ export function tuiUsage(): string {
   ].join('\n');
 }
 
-function parseValidJournalEvents(input: string): {
-  readonly events: readonly JournalEventEnvelope[];
-  readonly diagnostics: readonly TuiDiagnostic[];
-} {
-  const events: JournalEventEnvelope[] = [];
-  const diagnostics: TuiDiagnostic[] = [];
-  const lines = input.split(/\n/);
+function emptyTuiScanState(): TuiScanState {
+  return {
+    eventMap: {},
+    events_seen: 0,
+    tui_events_seen: 0,
+    diagnostics: [],
+  };
+}
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const rawLine = stripTrailingCarriageReturn(lines[index]!);
-    if (rawLine.trim() === '') {
-      continue;
-    }
+function scanValidJournalLines(lines: Iterable<string>): TuiScanState {
+  const state = emptyTuiScanState();
+  let lineNumber = 0;
 
-    const lineNumber = index + 1;
-    try {
-      const event = journalEventFromJsonLine(rawLine);
-      const validation = validateJournalEventEnvelope(event);
-      if (!validation.ok) {
-        diagnostics.push({
-          line_number: lineNumber,
-          message: formatJournalEventSchemaValidationErrors(validation.issues),
-        });
-        continue;
-      }
-      events.push(event);
-    } catch (error) {
-      diagnostics.push({
-        line_number: lineNumber,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
+  for (const line of lines) {
+    lineNumber += 1;
+    scanJournalLine(state, line, lineNumber);
   }
 
-  return { events, diagnostics };
+  return state;
+}
+
+async function scanValidJournalAsyncLines(lines: AsyncIterable<string>): Promise<TuiScanState> {
+  const state = emptyTuiScanState();
+  let lineNumber = 0;
+
+  for await (const line of lines) {
+    lineNumber += 1;
+    scanJournalLine(state, line, lineNumber);
+  }
+
+  return state;
+}
+
+function scanJournalLine(state: TuiScanState, rawLineInput: string, lineNumber: number): void {
+  const rawLine = stripTrailingCarriageReturn(rawLineInput);
+  if (rawLine.trim() === '') {
+    return;
+  }
+
+  try {
+    const event = journalEventFromJsonLine(rawLine);
+    const validation = validateJournalEventEnvelope(event);
+    if (!validation.ok) {
+      state.diagnostics.push({
+        line_number: lineNumber,
+        message: formatJournalEventSchemaValidationErrors(validation.issues),
+      });
+      return;
+    }
+    recordValidEvent(state, event);
+  } catch (error) {
+    state.diagnostics.push({
+      line_number: lineNumber,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function recordValidEvent(state: TuiScanState, event: JournalEventEnvelope): void {
+  state.events_seen += 1;
+  if (!isDefaultTuiEvent(event)) {
+    return;
+  }
+
+  state.tui_events_seen += 1;
+  state.latest_tui_event = event;
+  if (state.max_tui_ts_ns === undefined || BigInt(event.ts_ns) > BigInt(state.max_tui_ts_ns)) {
+    state.max_tui_ts_ns = event.ts_ns;
+  }
+
+  const existing = state.eventMap[event.type];
+  if (existing === undefined) {
+    state.eventMap[event.type] = {
+      latest: event,
+      count: 1,
+    };
+    return;
+  }
+
+  existing.latest = event;
+  existing.count += 1;
+}
+
+function renderDiagnostics(diagnostics: readonly TuiDiagnostic[]): string {
+  return diagnostics
+    .map((diagnostic) => `line ${diagnostic.line_number}: ${diagnostic.message}`)
+    .join('\n');
 }
 
 function buildPanelSnapshot(
@@ -434,13 +527,12 @@ function connectionLines(eventMap: EventMap): readonly string[] {
   const conn = latestOf(eventMap, 'CONN');
   const feed = latestOf(eventMap, 'FEED');
   const rebuild = latestOf(eventMap, 'BOOK_REBUILD');
-  const gaps = eventMap.GAP ?? [];
 
   return [
     `gateway=${stringPayloadField(conn, 'state') ?? '--'} detail=${stringPayloadField(conn, 'detail') ?? '--'}`,
     `feed=${stringPayloadField(feed, 'state') ?? '--'} stream=${stringPayloadField(feed, 'stream') ?? '--'}`,
     `feed_latency_ms p50=-- p99=--`,
-    `gaps_this_session=${gaps.length}`,
+    `gaps_this_session=${eventCount(eventMap, 'GAP')}`,
     `book_rebuild=${stringPayloadField(rebuild, 'authority') ?? '--'} warmup=${boolString(booleanPayloadField(rebuild, 'warmup_complete'))} reason=${stringPayloadField(rebuild, 'reason') ?? '--'}`,
   ];
 }
@@ -586,47 +678,23 @@ function eventsForPanel(definition: TuiPanelDefinition, eventMap: EventMap): rea
   }
   const events: JournalEventEnvelope[] = [];
   for (const type of channelTypes) {
-    const typedEvents = eventMap[type] ?? [];
-    for (const event of typedEvents) {
-      events.push(event);
+    const typedState = eventMap[type];
+    if (typedState !== undefined) {
+      events.push(typedState.latest);
     }
   }
   return events.sort(compareEventsByTimestampThenInputOrder);
-}
-
-function groupByType(events: readonly JournalEventEnvelope[]): EventMap {
-  const eventMap: EventMap = {};
-  for (const event of events) {
-    const existing = eventMap[event.type];
-    if (existing === undefined) {
-      eventMap[event.type] = [event];
-    } else {
-      existing.push(event);
-    }
-  }
-  return eventMap;
 }
 
 function latestOf<TType extends RuntimeEventType>(
   eventMap: EventMap,
   type: TType,
 ): JournalEventEnvelope<TType> | undefined {
-  const events = eventMap[type];
-  return events?.at(-1) as JournalEventEnvelope<TType> | undefined;
+  return eventMap[type]?.latest as JournalEventEnvelope<TType> | undefined;
 }
 
 function eventCount(eventMap: EventMap, type: RuntimeEventType): number {
-  return eventMap[type]?.length ?? 0;
-}
-
-function maxEventTimestamp(events: readonly JournalEventEnvelope[]): UnixNs | undefined {
-  let latest: UnixNs | undefined;
-  for (const event of events) {
-    if (latest === undefined || BigInt(event.ts_ns) > BigInt(latest)) {
-      latest = event.ts_ns;
-    }
-  }
-  return latest;
+  return eventMap[type]?.count ?? 0;
 }
 
 function isDefaultTuiEvent(event: JournalEventEnvelope): boolean {
@@ -775,22 +843,45 @@ class TuiHelpRequested extends Error {
   }
 }
 
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of processStdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
-async function inputForCli(options: TuiCliOptions): Promise<string> {
+async function renderForCli(options: TuiCliOptions): Promise<RenderTuiJsonlResult> {
   if (options.fixture !== undefined) {
-    return readFileSync(fixturePath(options.fixture), 'utf8');
+    return renderTuiJsonl(readFileSync(fixturePath(options.fixture), 'utf8'), options);
   }
   if (options.journal_path !== undefined) {
-    return readFileSync(resolve(options.journal_path), 'utf8');
+    const lineReader = createInterface({
+      input: createReadStream(resolve(options.journal_path), { encoding: 'utf8' }),
+      crlfDelay: Infinity,
+    });
+    const parsed = await scanValidJournalAsyncLines(lineReader);
+    const snapshot = buildTuiDashboardSnapshotFromScan(parsed, options);
+    const stdout = renderTuiDashboard(snapshot, options);
+    const stderr = renderDiagnostics(parsed.diagnostics);
+    return {
+      stdout,
+      stderr: stderr === '' ? '' : `${stderr}\n`,
+      events_seen: parsed.events_seen,
+      diagnostics: parsed.diagnostics,
+      snapshot,
+      exit_code: parsed.diagnostics.length === 0 ? 0 : 1,
+    };
   }
-  return readStdin();
+
+  const lineReader = createInterface({
+    input: processStdin,
+    crlfDelay: Infinity,
+  });
+  const parsed = await scanValidJournalAsyncLines(lineReader);
+  const snapshot = buildTuiDashboardSnapshotFromScan(parsed, options);
+  const stdout = renderTuiDashboard(snapshot, options);
+  const stderr = renderDiagnostics(parsed.diagnostics);
+  return {
+    stdout,
+    stderr: stderr === '' ? '' : `${stderr}\n`,
+    events_seen: parsed.events_seen,
+    diagnostics: parsed.diagnostics,
+    snapshot,
+    exit_code: parsed.diagnostics.length === 0 ? 0 : 1,
+  };
 }
 
 async function main(): Promise<void> {
@@ -808,8 +899,7 @@ async function main(): Promise<void> {
   }
 
   try {
-    const input = await inputForCli(options);
-    const result = renderTuiJsonl(input, options);
+    const result = await renderForCli(options);
     processStdout.write(result.stdout);
     processStderr.write(result.stderr);
     process.exitCode = result.exit_code;
