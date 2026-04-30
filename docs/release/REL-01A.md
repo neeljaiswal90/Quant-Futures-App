@@ -79,7 +79,13 @@ Manifest checks:
 - every session is an RTH session
 - every referenced journal/report exists
 - manifest runtime/config hashes are present
-- journal config hashes match the manifest `config_hash`
+- journal app-level `config_hash` values are reported for forensic review
+- journal `strategy_config_hash` values match the manifest
+- journal `risk_config_hash` values match the manifest
+- journal `management_config_hash` values match the manifest when runtime journals emit them
+- journal `management_profile_hash` values are reported when present
+
+The app-level `config_hash` can include environment path inputs such as the journal output directory. REL-01A therefore reports it, but packet comparability gates on the stable behavioral hashes for strategy, risk, and management lineage.
 
 Per-session checks:
 

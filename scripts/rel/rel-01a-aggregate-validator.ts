@@ -145,6 +145,10 @@ interface Rel01aSessionSummary {
     readonly rel00c_report: boolean | null;
   };
   readonly journal_config_hashes: readonly string[];
+  readonly journal_strategy_config_hashes: readonly string[];
+  readonly journal_risk_config_hashes: readonly string[];
+  readonly journal_management_config_hashes: readonly string[];
+  readonly journal_management_profile_hashes: readonly string[];
   readonly journal_run_ids: readonly string[];
   readonly source_events: number;
   readonly total_events: number;
@@ -250,6 +254,10 @@ interface SessionRuntimeCandidate {
 
 interface JournalLocalSummary {
   readonly config_hashes: readonly string[];
+  readonly strategy_config_hashes: readonly string[];
+  readonly risk_config_hashes: readonly string[];
+  readonly management_config_hashes: readonly string[];
+  readonly management_profile_hashes: readonly string[];
   readonly run_ids: readonly string[];
   readonly candidates: number;
   readonly feature_snapshots: number;
@@ -291,7 +299,9 @@ export async function runRel01aAggregateValidator(
         session,
         index,
         minSourceEvents,
-        expectedConfigHash: manifest.config_hash,
+        expectedStrategyConfigHash: manifest.strategy_config_hash,
+        expectedRiskConfigHash: manifest.risk_config_hash,
+        expectedManagementConfigHash: manifest.management_config_hash,
         spotCandidates,
       });
       sessionSummaries.push(summary);
@@ -367,7 +377,9 @@ async function validateSession(input: {
   readonly session: Rel01aSessionInput;
   readonly index: number;
   readonly minSourceEvents: number;
-  readonly expectedConfigHash: string;
+  readonly expectedStrategyConfigHash: string;
+  readonly expectedRiskConfigHash: string;
+  readonly expectedManagementConfigHash: string;
   readonly spotCandidates: SessionRuntimeCandidate[];
 }): Promise<Rel01aSessionSummary> {
   const journalPath = resolve(input.cwd, input.session.journal);
@@ -441,8 +453,17 @@ async function validateSession(input: {
   const localJournal = existsSync(journalPath)
     ? scanJournalLocalSummary(journalPath)
     : emptyJournalLocalSummary();
-  if (!localJournal.config_hashes.includes(input.expectedConfigHash)) {
-    reasons.push('journal_config_hash_missing_or_unstable');
+  if (!localJournal.strategy_config_hashes.includes(input.expectedStrategyConfigHash)) {
+    reasons.push('journal_strategy_config_hash_missing_or_unstable');
+  }
+  if (!localJournal.risk_config_hashes.includes(input.expectedRiskConfigHash)) {
+    reasons.push('journal_risk_config_hash_missing_or_unstable');
+  }
+  if (
+    localJournal.management_config_hashes.length > 0 &&
+    !localJournal.management_config_hashes.includes(input.expectedManagementConfigHash)
+  ) {
+    reasons.push('journal_management_config_hash_mismatch');
   }
   if (localJournal.run_ids.length !== 1 || localJournal.run_ids[0] !== input.session.run_id) {
     reasons.push('journal_run_id_mismatch');
@@ -472,6 +493,10 @@ async function validateSession(input: {
       rel00c_report: rel00cReportPath === undefined ? null : existsSync(rel00cReportPath),
     },
     journal_config_hashes: localJournal.config_hashes,
+    journal_strategy_config_hashes: localJournal.strategy_config_hashes,
+    journal_risk_config_hashes: localJournal.risk_config_hashes,
+    journal_management_config_hashes: localJournal.management_config_hashes,
+    journal_management_profile_hashes: localJournal.management_profile_hashes,
     journal_run_ids: localJournal.run_ids,
     source_events: sumRecordValues(report?.source_event_counts),
     total_events: sumRecordValues(report?.event_counts),
@@ -536,6 +561,10 @@ function collectSpotCandidates(sessionId: string, journalPath: string): readonly
 
 function scanJournalLocalSummary(journalPath: string): JournalLocalSummary {
   const configHashes = new Set<string>();
+  const strategyConfigHashes = new Set<string>();
+  const riskConfigHashes = new Set<string>();
+  const managementConfigHashes = new Set<string>();
+  const managementProfileHashes = new Set<string>();
   const runIds = new Set<string>();
   let candidates = 0;
   let featureSnapshots = 0;
@@ -560,6 +589,10 @@ function scanJournalLocalSummary(journalPath: string): JournalLocalSummary {
     if (event.type === 'CONFIG' && typeof payload.config_hash === 'string') {
       configHashes.add(payload.config_hash);
     }
+    addStringField(strategyConfigHashes, payload.strategy_config_hash);
+    addStringField(riskConfigHashes, payload.risk_config_hash);
+    addStringField(managementConfigHashes, payload.management_config_hash);
+    addStringField(managementProfileHashes, payload.management_profile_hash);
     if (event.type === 'FEATURES') {
       featureSnapshots += 1;
     }
@@ -577,6 +610,10 @@ function scanJournalLocalSummary(journalPath: string): JournalLocalSummary {
   });
   return {
     config_hashes: [...configHashes].sort(),
+    strategy_config_hashes: [...strategyConfigHashes].sort(),
+    risk_config_hashes: [...riskConfigHashes].sort(),
+    management_config_hashes: [...managementConfigHashes].sort(),
+    management_profile_hashes: [...managementProfileHashes].sort(),
     run_ids: [...runIds].sort(),
     candidates,
     feature_snapshots: featureSnapshots,
@@ -588,6 +625,10 @@ function scanJournalLocalSummary(journalPath: string): JournalLocalSummary {
 function emptyJournalLocalSummary(): JournalLocalSummary {
   return {
     config_hashes: [],
+    strategy_config_hashes: [],
+    risk_config_hashes: [],
+    management_config_hashes: [],
+    management_profile_hashes: [],
     run_ids: [],
     candidates: 0,
     feature_snapshots: 0,
@@ -674,9 +715,19 @@ function buildCheckGroups(input: {
         !session.file_existence.rel00_report ||
         session.file_existence.rel00c_report === false,
       )),
-      checkBoolean('journal_config_hashes_match_manifest', input.sessions.every((session) =>
-        session.journal_config_hashes.includes(input.manifest.config_hash),
-      ), mismatchSessionDetail(input.sessions, (session) => !session.journal_config_hashes.includes(input.manifest.config_hash))),
+      checkBoolean('journal_app_config_hashes_reported', input.sessions.every((session) =>
+        session.journal_config_hashes.length > 0,
+      ), mismatchSessionDetail(input.sessions, (session) => session.journal_config_hashes.length === 0)),
+      checkBoolean('journal_strategy_config_hashes_match_manifest', input.sessions.every((session) =>
+        session.journal_strategy_config_hashes.includes(input.manifest.strategy_config_hash),
+      ), mismatchSessionDetail(input.sessions, (session) => !session.journal_strategy_config_hashes.includes(input.manifest.strategy_config_hash))),
+      checkBoolean('journal_risk_config_hashes_match_manifest', input.sessions.every((session) =>
+        session.journal_risk_config_hashes.includes(input.manifest.risk_config_hash),
+      ), mismatchSessionDetail(input.sessions, (session) => !session.journal_risk_config_hashes.includes(input.manifest.risk_config_hash))),
+      checkBoolean('journal_management_config_hashes_match_manifest_when_present', input.sessions.every((session) =>
+        managementConfigMatchesWhenPresent(session, input.manifest.management_config_hash),
+      ), mismatchSessionDetail(input.sessions, (session) => !managementConfigMatchesWhenPresent(session, input.manifest.management_config_hash))),
+      checkBoolean('journal_management_profile_hashes_reported_when_present', true, managementProfileHashReportDetail(input.sessions)),
     ]),
     sim03_checks: group([
       checkBoolean('sim03_report_present', input.sim03Report.present, input.sim03Report.path ?? 'missing'),
@@ -985,6 +1036,12 @@ function uniqueSorted(values: readonly string[]): readonly string[] {
   return [...new Set(values)].sort();
 }
 
+function addStringField(target: Set<string>, value: unknown): void {
+  if (typeof value === 'string' && value.trim() !== '') {
+    target.add(value);
+  }
+}
+
 function duplicateValues(values: readonly string[]): readonly string[] {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
@@ -1002,6 +1059,16 @@ function mismatchSessionDetail(
   predicate: (session: Rel01aSessionSummary) => boolean,
 ): string {
   return sessions.filter(predicate).map((session) => session.session_id).join(',');
+}
+
+function managementConfigMatchesWhenPresent(session: Rel01aSessionSummary, expectedHash: string): boolean {
+  return session.journal_management_config_hashes.length === 0 ||
+    session.journal_management_config_hashes.includes(expectedHash);
+}
+
+function managementProfileHashReportDetail(sessions: readonly Rel01aSessionSummary[]): string {
+  const observed = uniqueSorted(sessions.flatMap((session) => session.journal_management_profile_hashes));
+  return observed.length === 0 ? 'none' : `${observed.length} unique profile hash(es) observed`;
 }
 
 function stringOrNull(value: unknown): string | null {

@@ -43,6 +43,8 @@ npm run rel:01b:daily-session -- `
 
 The wrapper refuses duplicate `session_id` or `run_id` before running capture, so a repeated command cannot silently recapture and mutate a previously accepted session.
 
+On Windows, REL-01B invokes nested `npm.cmd` commands through a shell-safe command line. This avoids the `spawnSync npm.cmd EINVAL` failure mode observed in the Codex desktop PowerShell environment while preserving the same command sequence operators can run by hand.
+
 ## Daily Command
 
 Run from the accepted release branch:
