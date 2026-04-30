@@ -448,7 +448,9 @@ async function validateSession(input: {
     reasons.push('journal_run_id_mismatch');
   }
   if (report !== undefined) {
-    input.spotCandidates.push(...collectSpotCandidates(input.session.session_id, journalPath));
+    for (const candidate of collectSpotCandidates(input.session.session_id, journalPath)) {
+      input.spotCandidates.push(candidate);
+    }
   }
 
   return {
@@ -525,7 +527,11 @@ function collectSpotCandidates(sessionId: string, journalPath: string): readonly
       sources.push(candidate);
     }
   });
-  return [...terminals, ...intents, ...sources];
+  const candidates: SessionRuntimeCandidate[] = [];
+  for (const candidate of terminals) candidates.push(candidate);
+  for (const candidate of intents) candidates.push(candidate);
+  for (const candidate of sources) candidates.push(candidate);
+  return candidates;
 }
 
 function scanJournalLocalSummary(journalPath: string): JournalLocalSummary {
