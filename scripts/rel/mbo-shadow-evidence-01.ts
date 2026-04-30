@@ -22,6 +22,15 @@ type MboShadowEvidenceStatus = 'pass' | 'fail' | 'no_sessions';
 type CheckStatus = 'pass' | 'fail';
 type JsonObject = { readonly [key: string]: JsonValue };
 
+const SAFETY_POSTURE = {
+  mbo_decision_use_allowed: false,
+  mbo_derived_features_status: 'shadow_only',
+  data01b_full_status: 'blocked',
+  runtime_trading_behavior_changed: false,
+  decision_surface_changed: false,
+  execution_mode: 'unchanged_simulated_only',
+} as const;
+
 interface MboShadowEvidenceManifest {
   readonly schema_version: 1;
   readonly evidence_run_id: string;
@@ -108,11 +117,22 @@ interface SessionEvidenceSummary {
   readonly action_counts: Record<string, number>;
   readonly side_counts: Record<string, number>;
   readonly distributions_by_field: Record<string, DistributionSummary>;
+  readonly mask_binding: {
+    readonly mask_versions: readonly number[];
+    readonly mask_ids: readonly string[];
+    readonly mask_hashes: readonly string[];
+  };
+  readonly cross_validator: {
+    readonly local_shadow_field_occurrences: number;
+    readonly rel01d_shadow_field_occurrences: number;
+    readonly rel01e_shadow_field_occurrences: number;
+  };
   readonly safety: {
     readonly real_order_event_types: number;
     readonly restricted_uses: number;
     readonly blocked_uses: number;
     readonly unsafe_decision_use_event_count: number;
+    readonly unsafe_decision_use_validator_count_sum: number;
   };
   readonly lineage: {
     readonly missing_source_event_count: number;
@@ -134,6 +154,7 @@ interface MboShadowEvidenceReport {
     readonly runtime_commit: string | null;
     readonly session_count: number;
   };
+  readonly safety_posture: typeof SAFETY_POSTURE;
   readonly aggregate: {
     readonly session_count: number;
     readonly generated_sessions: number;
@@ -149,12 +170,21 @@ interface MboShadowEvidenceReport {
       readonly sessions_with_source_hash: number;
       readonly unique_source_hashes: readonly string[];
     };
+    readonly mask_binding: {
+      readonly mask_versions: readonly number[];
+      readonly mask_ids: readonly string[];
+      readonly mask_hashes: readonly string[];
+    };
+    readonly cross_validator: {
+      readonly shadow_field_occurrence_mismatch_sessions: readonly string[];
+    };
     readonly distributions_by_field: Record<string, DistributionSummary>;
     readonly safety: {
       readonly real_order_event_types: number;
       readonly restricted_uses: number;
       readonly blocked_uses: number;
       readonly unsafe_decision_use_event_count: number;
+      readonly unsafe_decision_use_validator_count_sum: number;
     };
     readonly lineage: {
       readonly missing_source_event_count: number;
@@ -557,17 +587,56 @@ function validateSession(
     + numberValue(rel01dPartitionCounts?.invalid_diagnostic)
     + numberValue(rel01dPartitionCounts?.invalid_shadow);
   const blockedUses = numberValue(rel01dPartitionCounts?.blocked);
-  const unsafeDecisionUseEventCount = shadowScan.unsafe_decision_use_event_count
-    + numberAt(reports.rel01d, ['aggregate', 'unsafe_shadow_or_diagnostic_decision_use_event_count'])
-    + numberAt(reports.rel01e, ['aggregate', 'unsafe_decision_use_event_count']);
+  const localUnsafeDecisionUseCount = shadowScan.unsafe_decision_use_event_count;
+  const rel01dUnsafeDecisionUseCount = numberAt(
+    reports.rel01d,
+    ['aggregate', 'unsafe_shadow_or_diagnostic_decision_use_event_count'],
+  );
+  const rel01eUnsafeDecisionUseCount = numberAt(reports.rel01e, ['aggregate', 'unsafe_decision_use_event_count']);
+  const unsafeDecisionUseEventCount = Math.max(
+    localUnsafeDecisionUseCount,
+    rel01dUnsafeDecisionUseCount,
+    rel01eUnsafeDecisionUseCount,
+  );
+  const unsafeDecisionUseValidatorCountSum = localUnsafeDecisionUseCount
+    + rel01dUnsafeDecisionUseCount
+    + rel01eUnsafeDecisionUseCount;
   const missingSourceEventCount = numberAt(reports.rel01e, ['aggregate', 'missing_source_event_count']);
   const lookaheadSourceEventCount = numberAt(reports.rel01e, ['aggregate', 'lookahead_source_event_count']);
   const recomputeMismatchCount = numberAt(reports.rel01e, ['aggregate', 'recompute_mismatch_count']);
   const sourceHashMismatchCount = numberAt(reports.rel01e, ['aggregate', 'source_hash_mismatch_count']);
+  const rel01dShadowFieldOccurrences = numberValue(rel01dPartitionCounts?.shadow);
+  const rel01eShadowFieldOccurrences = numberAt(reports.rel01e, ['aggregate', 'shadow_field_occurrences']);
+  const maskVersions = uniqueSortedNumbers([
+    optionalNumberAt(reports.rel01d, ['audit_mask', 'mask_version']),
+    optionalNumberAt(reports.rel01e, ['audit_mask', 'mask_version']),
+  ]);
+  const maskIds = uniqueSorted([
+    stringAt(reports.rel01d, ['audit_mask', 'mask_id']),
+    stringAt(reports.rel01e, ['audit_mask', 'mask_id']),
+  ]);
+  const maskHashes = uniqueSorted([
+    stringAt(reports.rel01d, ['audit_mask', 'mask_hash']),
+    stringAt(reports.rel01e, ['audit_mask', 'mask_hash']),
+  ]);
 
   if (sourceScan.parse_errors > 0) reasons.push(`source_journal_parse_errors:${sourceScan.parse_errors}`);
   if (shadowScan.parse_errors > 0) reasons.push(`shadow_journal_parse_errors:${shadowScan.parse_errors}`);
   if (shadowScan.shadow_field_occurrences <= 0) reasons.push('shadow_field_occurrences_zero');
+  if (
+    shadowScan.shadow_field_occurrences !== rel01dShadowFieldOccurrences ||
+    shadowScan.shadow_field_occurrences !== rel01eShadowFieldOccurrences
+  ) {
+    reasons.push(
+      `shadow_field_occurrence_mismatch:local=${shadowScan.shadow_field_occurrences},rel01d=${rel01dShadowFieldOccurrences},rel01e=${rel01eShadowFieldOccurrences}`,
+    );
+  }
+  if (maskVersions.length === 0) reasons.push('mask_version_missing');
+  if (maskVersions.length > 1) reasons.push(`mask_version_mismatch:${maskVersions.join(',')}`);
+  if (maskIds.length === 0) reasons.push('mask_id_missing');
+  if (maskIds.length > 1) reasons.push(`mask_id_mismatch:${maskIds.join(',')}`);
+  if (maskHashes.length === 0) reasons.push('mask_hash_missing');
+  if (maskHashes.length > 1) reasons.push(`mask_hash_mismatch:${maskHashes.join(',')}`);
   if (realOrderEventTypes > 0) reasons.push(`real_order_event_types:${realOrderEventTypes}`);
   if (restrictedUses > 0) reasons.push(`restricted_uses:${restrictedUses}`);
   if (blockedUses > 0) reasons.push(`blocked_uses:${blockedUses}`);
@@ -611,11 +680,22 @@ function validateSession(
     action_counts: actionCounts,
     side_counts: sourceScan.side_counts,
     distributions_by_field: distributionsByField(shadowScan.values_by_field),
+    mask_binding: {
+      mask_versions: maskVersions,
+      mask_ids: maskIds,
+      mask_hashes: maskHashes,
+    },
+    cross_validator: {
+      local_shadow_field_occurrences: shadowScan.shadow_field_occurrences,
+      rel01d_shadow_field_occurrences: rel01dShadowFieldOccurrences,
+      rel01e_shadow_field_occurrences: rel01eShadowFieldOccurrences,
+    },
     safety: {
       real_order_event_types: realOrderEventTypes,
       restricted_uses: restrictedUses,
       blocked_uses: blockedUses,
       unsafe_decision_use_event_count: unsafeDecisionUseEventCount,
+      unsafe_decision_use_validator_count_sum: unsafeDecisionUseValidatorCountSum,
     },
     lineage: {
       missing_source_event_count: missingSourceEventCount,
@@ -657,6 +737,11 @@ function stringAt(object: JsonObject | null, pathParts: readonly string[]): stri
 
 function numberAt(object: JsonObject | null, pathParts: readonly string[]): number {
   return numberValue(valueAt(object, pathParts));
+}
+
+function optionalNumberAt(object: JsonObject | null, pathParts: readonly string[]): number | null {
+  const value = valueAt(object, pathParts);
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function objectAt(object: JsonObject | null, pathParts: readonly string[]): JsonObject | null {
@@ -716,10 +801,29 @@ function uniqueSorted(values: readonly (string | null | undefined)[]): readonly 
   ).sort();
 }
 
+function uniqueSortedNumbers(values: readonly (number | null | undefined)[]): readonly number[] {
+  return Array.from(
+    new Set(values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))),
+  ).sort((left, right) => left - right);
+}
+
 function buildAggregate(sessionWork: readonly SessionEvidenceWork[]): MboShadowEvidenceReport['aggregate'] {
   const sessions = sessionWork.map((work) => work.summary);
   const valuesByField = mergeValueRecords(...sessionWork.map((work) => work.values_by_field));
   const allSourceHashes = uniqueSorted(sessions.map((session) => session.source_hash));
+  const maskVersions = uniqueSortedNumbers(sessions.flatMap((session) => session.mask_binding.mask_versions));
+  const maskIds = uniqueSorted(sessions.flatMap((session) => session.mask_binding.mask_ids));
+  const maskHashes = uniqueSorted(sessions.flatMap((session) => session.mask_binding.mask_hashes));
+  const shadowFieldOccurrenceMismatchSessions = sessions
+    .filter(
+      (session) =>
+        session.cross_validator.local_shadow_field_occurrences !==
+          session.cross_validator.rel01d_shadow_field_occurrences ||
+        session.cross_validator.local_shadow_field_occurrences !==
+          session.cross_validator.rel01e_shadow_field_occurrences,
+    )
+    .map((session) => session.session_id)
+    .sort();
   return {
     session_count: sessions.length,
     generated_sessions: sessions.filter((session) => session.orch_status === 'generated').length,
@@ -735,13 +839,25 @@ function buildAggregate(sessionWork: readonly SessionEvidenceWork[]): MboShadowE
       sessions_with_source_hash: sessions.filter((session) => session.source_hash !== null).length,
       unique_source_hashes: allSourceHashes,
     },
+    mask_binding: {
+      mask_versions: maskVersions,
+      mask_ids: maskIds,
+      mask_hashes: maskHashes,
+    },
+    cross_validator: {
+      shadow_field_occurrence_mismatch_sessions: shadowFieldOccurrenceMismatchSessions,
+    },
     distributions_by_field: distributionsByField(valuesByField),
     safety: {
       real_order_event_types: sessions.reduce((total, session) => total + session.safety.real_order_event_types, 0),
       restricted_uses: sessions.reduce((total, session) => total + session.safety.restricted_uses, 0),
       blocked_uses: sessions.reduce((total, session) => total + session.safety.blocked_uses, 0),
       unsafe_decision_use_event_count: sessions.reduce(
-        (total, session) => total + session.safety.unsafe_decision_use_event_count,
+        (max, session) => Math.max(max, session.safety.unsafe_decision_use_event_count),
+        0,
+      ),
+      unsafe_decision_use_validator_count_sum: sessions.reduce(
+        (total, session) => total + session.safety.unsafe_decision_use_validator_count_sum,
         0,
       ),
     },
@@ -872,6 +988,42 @@ function buildCheckGroups(
         `${aggregate.lineage.source_hash_mismatch_count} source hash mismatch(es)`,
       ),
     ]),
+    group('mask_binding_checks', [
+      checkBoolean(
+        'mask_versions_present',
+        aggregate.mask_binding.mask_versions.length > 0,
+        `${aggregate.mask_binding.mask_versions.length} mask version(s)`,
+      ),
+      checkBoolean(
+        'mask_versions_consistent',
+        aggregate.mask_binding.mask_versions.length === 1,
+        aggregate.mask_binding.mask_versions.join(',') || 'none',
+      ),
+      checkBoolean(
+        'mask_ids_present',
+        aggregate.mask_binding.mask_ids.length > 0,
+        `${aggregate.mask_binding.mask_ids.length} mask id(s)`,
+      ),
+      checkBoolean(
+        'mask_ids_consistent',
+        aggregate.mask_binding.mask_ids.length === 1,
+        aggregate.mask_binding.mask_ids.join(',') || 'none',
+      ),
+      checkBoolean(
+        'mask_hashes_consistent',
+        aggregate.mask_binding.mask_hashes.length === 1,
+        aggregate.mask_binding.mask_hashes.join(',') || 'none',
+      ),
+    ]),
+    group('cross_validator_checks', [
+      checkBoolean(
+        'shadow_field_occurrences_agree',
+        aggregate.cross_validator.shadow_field_occurrence_mismatch_sessions.length === 0,
+        aggregate.cross_validator.shadow_field_occurrence_mismatch_sessions.length === 0
+          ? 'local scan, REL-01D, and REL-01E agree'
+          : `mismatch sessions: ${aggregate.cross_validator.shadow_field_occurrence_mismatch_sessions.join(',')}`,
+      ),
+    ]),
     group('distribution_checks', [
       checkBoolean(
         'shadow_field_occurrences_present',
@@ -924,6 +1076,10 @@ function buildMarkdown(report: MboShadowEvidenceReport): string {
     `Status: ${report.status}`,
     '',
     'This report aggregates MBO shadow telemetry evidence only. It does not promote MBO fields to decision-use.',
+    '',
+    `MBO decision-use allowed: ${report.safety_posture.mbo_decision_use_allowed}`,
+    `MBO derived feature status: ${report.safety_posture.mbo_derived_features_status}`,
+    `Full DATA-01B status: ${report.safety_posture.data01b_full_status}`,
     '',
     '## Validator Chain',
     '',
@@ -1009,6 +1165,7 @@ export function runMboShadowEvidence01(options: MboShadowEvidenceOptions): MboSh
       runtime_commit: manifest.runtime_commit ?? null,
       session_count: manifest.sessions.length,
     },
+    safety_posture: SAFETY_POSTURE,
     aggregate,
     sessions,
     check_groups: checkGroups,
@@ -1040,12 +1197,21 @@ function invalidReport(cwd: string, manifestPath: string, reason: string): MboSh
       sessions_with_source_hash: 0,
       unique_source_hashes: [],
     },
+    mask_binding: {
+      mask_versions: [],
+      mask_ids: [],
+      mask_hashes: [],
+    },
+    cross_validator: {
+      shadow_field_occurrence_mismatch_sessions: [],
+    },
     distributions_by_field: {},
     safety: {
       real_order_event_types: 0,
       restricted_uses: 0,
       blocked_uses: 0,
       unsafe_decision_use_event_count: 0,
+      unsafe_decision_use_validator_count_sum: 0,
     },
     lineage: {
       missing_source_event_count: 0,
@@ -1070,6 +1236,7 @@ function invalidReport(cwd: string, manifestPath: string, reason: string): MboSh
       runtime_commit: null,
       session_count: 0,
     },
+    safety_posture: SAFETY_POSTURE,
     aggregate,
     sessions: [],
     check_groups: checkGroups,

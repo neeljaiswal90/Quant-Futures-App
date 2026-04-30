@@ -57,8 +57,10 @@ The report summarizes:
 - Source MBO event count.
 - MBO action counts.
 - MBO side counts.
+- Mask version, mask id, and mask hash consistency across REL-01D and REL-01E reports.
 - Shadow event count.
 - Shadow field occurrence count.
+- Cross-validator agreement between the local shadow-journal scan, REL-01D shadow partition count, and REL-01E lineage count.
 - Per-field distribution statistics for `cancel_add_ratio_shadow`, `mbo_action_imbalance_shadow`, and `order_lifetime_shadow`.
 - Source hash coverage.
 - REL-00 / REL-01D / REL-01E pass coverage.
@@ -75,6 +77,8 @@ The aggregate status is `pass` only when:
 - ORCH-MBO-01 generated every session.
 - REL-00, REL-01D, and REL-01E passed every session.
 - Shadow telemetry is present.
+- REL-01D and REL-01E agree on the same mask binding.
+- The local shadow-journal scan, REL-01D, and REL-01E agree on shadow field occurrence counts.
 - Real-order event types are absent.
 - Restricted and blocked feature uses are absent.
 - `decision_use` violations are absent.
@@ -83,6 +87,21 @@ The aggregate status is `pass` only when:
 ## Safety Boundary
 
 Passing MBO-SHADOW-EVIDENCE-01 means MBO shadow telemetry is repeatable enough for diagnostic collection.
+
+The JSON report stamps this posture explicitly:
+
+```json
+{
+  "safety_posture": {
+    "mbo_decision_use_allowed": false,
+    "mbo_derived_features_status": "shadow_only",
+    "data01b_full_status": "blocked",
+    "runtime_trading_behavior_changed": false,
+    "decision_surface_changed": false,
+    "execution_mode": "unchanged_simulated_only"
+  }
+}
+```
 
 It does not approve:
 
@@ -93,4 +112,3 @@ It does not approve:
 - MBO in simulated queue-position modeling.
 - Cancel/add, order-lifetime, absorption, or sweep fields as decision signals.
 - Real-money execution.
-

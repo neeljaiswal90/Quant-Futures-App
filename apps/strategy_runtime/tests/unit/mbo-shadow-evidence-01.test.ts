@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runMboShadowEvidence01 } from '../../../../scripts/rel/mbo-shadow-evidence-01.js';
 
 const START_TS_NS = 1_777_301_421_588_943_700n;
+const MASK_ID = 'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow';
+const MASK_HASH = 'sha256:test-mask-hash';
 const tempDirectories: string[] = [];
 
 afterEach(() => {
@@ -99,8 +101,15 @@ function makeSession(
     readonly restrictedUses?: number;
     readonly blockedUses?: number;
     readonly unsafeDecisionUse?: number;
+    readonly rel01eUnsafeDecisionUse?: number;
     readonly sourceHashOverride?: string;
     readonly malformedShadow?: boolean;
+    readonly rel01dShadowCount?: number;
+    readonly rel01eShadowCount?: number;
+    readonly rel01dMaskId?: string;
+    readonly rel01eMaskId?: string;
+    readonly rel01dMaskVersion?: number;
+    readonly rel01eMaskVersion?: number;
   } = {},
 ): Record<string, unknown> {
   const sessionId = `2026-04-${28 + index}-shadow-smoke`;
@@ -168,8 +177,14 @@ function makeSession(
   });
   writeJson(rel01dReport, {
     status: 'pass',
+    audit_mask: {
+      mask_version: overrides.rel01dMaskVersion ?? 4,
+      mask_id: overrides.rel01dMaskId ?? MASK_ID,
+      mask_hash: MASK_HASH,
+    },
     aggregate: {
       partition_counts: {
+        shadow: overrides.rel01dShadowCount ?? 9,
         restricted: overrides.restrictedUses ?? 0,
         blocked: overrides.blockedUses ?? 0,
         invalid_diagnostic: 0,
@@ -180,13 +195,19 @@ function makeSession(
   });
   writeJson(rel01eReport, {
     status: overrides.rel01eStatus ?? 'pass',
+    audit_mask: {
+      mask_version: overrides.rel01eMaskVersion ?? 4,
+      mask_id: overrides.rel01eMaskId ?? MASK_ID,
+      mask_hash: MASK_HASH,
+    },
     aggregate: {
       source_journal_sha256: reportedSourceHash,
+      shadow_field_occurrences: overrides.rel01eShadowCount ?? 9,
       missing_source_event_count: 0,
       lookahead_source_event_count: 0,
       recompute_mismatch_count: 0,
       source_hash_mismatch_count: 0,
-      unsafe_decision_use_event_count: 0,
+      unsafe_decision_use_event_count: overrides.rel01eUnsafeDecisionUse ?? 0,
     },
   });
 
@@ -245,6 +266,14 @@ describe('MBO-SHADOW-EVIDENCE-01 aggregate evidence', () => {
     expect(report.aggregate.side_counts).toEqual({ ask: 4, bid: 4 });
     expect(report.aggregate.safety.restricted_uses).toBe(0);
     expect(report.aggregate.safety.blocked_uses).toBe(0);
+    expect(report.safety_posture).toMatchObject({
+      mbo_decision_use_allowed: false,
+      mbo_derived_features_status: 'shadow_only',
+      data01b_full_status: 'blocked',
+      decision_surface_changed: false,
+    });
+    expect(report.aggregate.mask_binding.mask_ids).toEqual([MASK_ID]);
+    expect(report.aggregate.cross_validator.shadow_field_occurrence_mismatch_sessions).toEqual([]);
     expect(report.aggregate.lineage.recompute_mismatch_count).toBe(0);
     expect(report.aggregate.distributions_by_field.cancel_add_ratio_shadow).toMatchObject({
       count: 6,
@@ -272,6 +301,7 @@ describe('MBO-SHADOW-EVIDENCE-01 aggregate evidence', () => {
       restrictedUses: 1,
       blockedUses: 2,
       unsafeDecisionUse: 3,
+      rel01eUnsafeDecisionUse: 3,
     });
 
     const { report } = runEvidence(cwd, [session]);
@@ -280,6 +310,34 @@ describe('MBO-SHADOW-EVIDENCE-01 aggregate evidence', () => {
     expect(report.aggregate.safety.restricted_uses).toBe(1);
     expect(report.aggregate.safety.blocked_uses).toBe(2);
     expect(report.aggregate.safety.unsafe_decision_use_event_count).toBe(3);
+    expect(report.aggregate.safety.unsafe_decision_use_validator_count_sum).toBe(6);
+  });
+
+  it('fails when mask bindings differ across validators', () => {
+    const cwd = makeTempDir();
+    const session = makeSession(cwd, 1, { rel01eMaskId: 'feature-availability-mask-v5-test' });
+
+    const { report } = runEvidence(cwd, [session]);
+
+    expect(report.status).toBe('fail');
+    expect(report.aggregate.mask_binding.mask_ids).toEqual([
+      MASK_ID,
+      'feature-availability-mask-v5-test',
+    ]);
+    expect(report.reasons.some((reason) => reason.includes('mask_id_mismatch'))).toBe(true);
+  });
+
+  it('fails when REL-01D and REL-01E disagree on shadow occurrence counts', () => {
+    const cwd = makeTempDir();
+    const session = makeSession(cwd, 1, { rel01eShadowCount: 8 });
+
+    const { report } = runEvidence(cwd, [session]);
+
+    expect(report.status).toBe('fail');
+    expect(report.aggregate.cross_validator.shadow_field_occurrence_mismatch_sessions).toEqual([
+      '2026-04-29-shadow-smoke',
+    ]);
+    expect(report.reasons.some((reason) => reason.includes('shadow_field_occurrence_mismatch'))).toBe(true);
   });
 
   it('fails when source hashes do not bind to current source bytes', () => {
