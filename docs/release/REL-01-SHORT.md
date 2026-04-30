@@ -16,6 +16,12 @@ Primary decision artifact:
 reports/rel/rel01_short_packet_current/rel01_short_aggregate_report.json
 ```
 
+Final packet guardrail artifact:
+
+```text
+reports/rel/rel01_short_packet_current/rel01_short_final_packet_report.json
+```
+
 The packet manifest is:
 
 ```text
@@ -49,6 +55,23 @@ status = no_shadow_telemetry
 ```
 
 `no_shadow_telemetry` is expected for this packet. MBO shadow telemetry was not enabled for the comparable two-session run, so REL-01E did not have lineage-rich shadow fields to validate. This is not a failure and does not promote MBO-derived decision features.
+
+## Finalizer
+
+Run the final packet guardrail after REL-01A, REL-01D, and REL-01E reports exist:
+
+```powershell
+npm run rel:01:short:final -- `
+  --manifest reports/rel/rel01_short_packet_current/rel01_manifest.json `
+  --rel01a-report reports/rel/rel01_short_packet_current/rel01_short_aggregate_report.json `
+  --rel01d-report reports/rel/rel01_short_packet_current/rel01d_feature_surface_audit_report.json `
+  --rel01e-report reports/rel/rel01_short_packet_current/rel01e_mbo_shadow_lineage_report.json `
+  --policy-note reports/rel/rel01_short_policy_note.md `
+  --out-json reports/rel/rel01_short_packet_current/rel01_short_final_packet_report.json `
+  --out-md reports/rel/rel01_short_packet_current/rel01_short_final_packet_report.md
+```
+
+The finalizer is read-only with respect to trading/runtime behavior. It fails unless the short packet has exactly two distinct RTH sessions, REL-01A is `pass`, REL-01D is `pass`, REL-01E is `no_shadow_telemetry`, and the accepted feature surface has zero restricted, blocked, invalid, or shadow uses.
 
 ## Scope
 
