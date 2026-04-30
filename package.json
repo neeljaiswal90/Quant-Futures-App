@@ -37,6 +37,7 @@
     "rel:00c:run-controlled-live-sim": "tsx scripts/rel/rel-00c-run-controlled-live-sim.ts",
     "rel:01a:aggregate": "tsx scripts/rel/rel-01a-aggregate-validator.ts",
     "rel:01b:daily-session": "tsx scripts/rel/rel-01b-daily-session-wrapper.ts",
+    "rel:01:short:final": "tsx scripts/rel/rel-01-short-final-packet.ts",
     "rel:01d:feature-surface-audit": "tsx scripts/rel/rel-01d-feature-surface-audit.ts",
     "rel:01e:mbo-shadow-lineage": "tsx scripts/rel/rel-01e-mbo-shadow-lineage.ts",
     "mbo:shadow:evidence": "tsx scripts/rel/mbo-shadow-evidence-01.ts",
