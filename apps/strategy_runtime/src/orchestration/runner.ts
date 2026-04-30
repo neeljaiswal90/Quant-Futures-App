@@ -69,6 +69,7 @@ import {
   toRankEventPayload,
   type StrategyFeatureSnapshot,
 } from '../strategies/index.js';
+import { buildFeatureAvailabilityMask } from '../features/availability-mask.js';
 import type { StrategyId } from '../contracts/strategy-ids.js';
 import type { StrategyRuntimeEngineContainer } from './engine-container.js';
 import {
@@ -85,6 +86,24 @@ import {
 } from '../session/index.js';
 
 export const STRATEGY_RUNNER_VERSION = 'strategy_runner_loop_v1' as const;
+
+const RUNTIME_DECISION_FORBIDDEN_PAYLOAD_KEYS = new Set([
+  'diagnostic_values',
+  'shadow_values',
+  'mbo_shadow_lineage',
+  'decision_use',
+]);
+
+const RUNTIME_DECISION_FORBIDDEN_FEATURE_FIELDS = new Set(
+  Object.entries(buildFeatureAvailabilityMask().field_tiers)
+    .filter(([, tier]) => tier !== 'authoritative')
+    .map(([field]) => field),
+);
+
+export interface RuntimeShadowReadGuardViolation {
+  readonly path: string;
+  readonly reason: 'payload_section_not_exposed_to_strategy' | 'non_authoritative_feature_field';
+}
 
 export interface StrategyRuntimeRunnerOptions {
   readonly container: StrategyRuntimeEngineContainer;
@@ -227,6 +246,7 @@ export class StrategyRuntimeRunner {
   async processFeatureSnapshot(
     snapshot: StrategyFeatureSnapshot,
   ): Promise<StrategyEvaluationCycleResult> {
+    assertRuntimeShadowReadGuard(snapshot);
     const sessionRisk = this.ensureSessionRisk(snapshot);
     const eligibility = evaluateMnqSessionEligibility({
       sessionCalendar: this.mnqSessionCalendar,
@@ -1220,6 +1240,65 @@ function evaluateStrategySafely(
         config: snapshot.config,
       },
     };
+  }
+}
+
+export function assertRuntimeShadowReadGuard(snapshot: StrategyFeatureSnapshot): void {
+  const violations = collectRuntimeShadowReadGuardViolations(snapshot);
+  if (violations.length === 0) {
+    return;
+  }
+  const first = violations[0]!;
+  throw new Error(
+    `Runtime shadow-read guard refused strategy snapshot field ${first.path}: ${first.reason}`,
+  );
+}
+
+export function collectRuntimeShadowReadGuardViolations(
+  snapshot: StrategyFeatureSnapshot,
+): readonly RuntimeShadowReadGuardViolation[] {
+  const violations: RuntimeShadowReadGuardViolation[] = [];
+  const seen = new WeakSet<object>();
+  walkRuntimeSnapshotForShadowFields(snapshot, '$', violations, seen);
+  return violations;
+}
+
+function walkRuntimeSnapshotForShadowFields(
+  value: unknown,
+  path: string,
+  violations: RuntimeShadowReadGuardViolation[],
+  seen: WeakSet<object>,
+): void {
+  if (typeof value !== 'object' || value === null) {
+    return;
+  }
+  if (seen.has(value)) {
+    return;
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      walkRuntimeSnapshotForShadowFields(value[index], `${path}[${index}]`, violations, seen);
+    }
+    return;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    const childPath = `${path}.${key}`;
+    if (RUNTIME_DECISION_FORBIDDEN_PAYLOAD_KEYS.has(key)) {
+      violations.push({
+        path: childPath,
+        reason: 'payload_section_not_exposed_to_strategy',
+      });
+    }
+    if (RUNTIME_DECISION_FORBIDDEN_FEATURE_FIELDS.has(key)) {
+      violations.push({
+        path: childPath,
+        reason: 'non_authoritative_feature_field',
+      });
+    }
+    walkRuntimeSnapshotForShadowFields(child, childPath, violations, seen);
   }
 }
 

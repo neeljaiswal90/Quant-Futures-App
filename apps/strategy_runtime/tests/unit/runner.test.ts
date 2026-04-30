@@ -22,6 +22,7 @@ import {
   type SimulatedExecutionAdapter,
 } from '../../src/execution/simulated-execution.js';
 import {
+  collectRuntimeShadowReadGuardViolations,
   createStrategyRuntimeEngineContainer,
   StrategyRuntimeRunner,
 } from '../../src/orchestration/index.js';
@@ -297,6 +298,60 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.position_events[0]!.payload.management_profile_hash).toBe(
       container.config.managementProfiles?.profiles.trend_pullback_long.profile_hash,
     );
+  });
+
+  it('refuses shadow payload sections before strategy evaluation', async () => {
+    const { container, runner } = createRunner();
+    const published: JournalEventEnvelope[] = [];
+    container.eventBus.subscribe({}, (delivery) => {
+      published.push(delivery.event);
+    });
+    const base = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = {
+      ...base,
+      microstructure: {
+        ...base.microstructure,
+        shadow_values: {
+          cancel_add_ratio_shadow: 1,
+        },
+      },
+    } as unknown as StrategyFeatureSnapshot;
+
+    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
+
+    await expect(runner.processFeatureSnapshot(snapshot)).rejects.toThrow(
+      'Runtime shadow-read guard refused strategy snapshot field $.microstructure.shadow_values',
+    );
+    expect(published.map((event) => event.type)).toEqual(['QUOTE']);
+  });
+
+  it('refuses non-authoritative MBO or shadow fields laundered into decision maps', () => {
+    const base = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = {
+      ...base,
+      indicators: {
+        ...base.indicators,
+        cancel_add_ratio_shadow: 1,
+      },
+      microstructure: {
+        ...base.microstructure,
+        values: {
+          ...base.microstructure.values,
+          mbo_microprice_offset_ticks: 0.25,
+        },
+      },
+    } as unknown as StrategyFeatureSnapshot;
+
+    expect(collectRuntimeShadowReadGuardViolations(snapshot)).toEqual([
+      {
+        path: '$.indicators.cancel_add_ratio_shadow',
+        reason: 'non_authoritative_feature_field',
+      },
+      {
+        path: '$.microstructure.values.mbo_microprice_offset_ticks',
+        reason: 'non_authoritative_feature_field',
+      },
+    ]);
   });
 
   it('blocks candidates outside RTH with stable STRAT_EVAL reasons', async () => {
