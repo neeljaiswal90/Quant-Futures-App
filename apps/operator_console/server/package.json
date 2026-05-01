@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/main.ts",
-    "test": "vitest run --root ../../.. apps/operator_console/server/tests/bootstrap-auth.test.ts apps/operator_console/server/tests/event-normalizer.test.ts apps/operator_console/server/tests/journal-discovery.test.ts apps/operator_console/server/tests/journal-poller.test.ts apps/operator_console/server/tests/journal-tail.test.ts apps/operator_console/server/tests/live-state-aggregator.test.ts apps/operator_console/server/tests/read-only-import-guard.test.ts apps/operator_console/server/tests/snapshot-delta-contract.test.ts",
+    "test": "vitest run --root ../../.. apps/operator_console/server/tests/bootstrap-auth.test.ts apps/operator_console/server/tests/event-normalizer.test.ts apps/operator_console/server/tests/journal-discovery.test.ts apps/operator_console/server/tests/journal-poller.test.ts apps/operator_console/server/tests/journal-tail.test.ts apps/operator_console/server/tests/live-state-aggregator.test.ts apps/operator_console/server/tests/read-only-import-guard.test.ts apps/operator_console/server/tests/rest-api.test.ts apps/operator_console/server/tests/snapshot-delta-contract.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

@@ -4,7 +4,7 @@ Read-only operator console for live-sim journal state.
 
 Current implementation status:
 
-- `server`: foundation, security bootstrap, read-only import guard, and JSON-safe contracts.
+- `server`: foundation, security bootstrap, read-only import guard, JSON-safe contracts, journal ingestion, aggregation, and REST snapshot/history endpoints.
 - `web`: package scaffold only. React/Vite UI work is deferred to the web MVP tickets.
 
 The console must never mutate runtime state, publish journal events, route orders, expose raw journal downloads, or create `JournalEventEnvelope` records.
@@ -18,6 +18,7 @@ npm run console:test
 ```
 
 Server defaults to loopback-only behavior. Remote mode requires `OPERATOR_CONSOLE_ALLOW_REMOTE=true`, `OPERATOR_CONSOLE_AUTH_TOKEN`, and `OPERATOR_CONSOLE_ORIGIN_ALLOWLIST`.
+Set `QFA_CONSOLE_PORT` to choose the HTTP port. The default is `3217`.
 
 Journal source precedence:
 
@@ -26,3 +27,13 @@ Journal source precedence:
 3. startup fails clearly
 
 Console checkpoints and malformed-line quarantine are written below `--checkpoint-dir` / `QFA_CONSOLE_CHECKPOINT_DIR`, defaulting to `.operator-console`.
+
+## REST API
+
+The server exposes read-only aggregate endpoints:
+
+- `GET /healthz`
+- `GET /snapshot`
+- `GET /history?panel=<name>&limit=<n>&range=<iso8601-duration>`
+
+History responses contain panel-level aggregate state only. They do not return raw journal lines, raw event envelopes, or payload dumps. Supported `range` values use ISO-8601 durations such as `PT5M`, `PT1H`, and `P1D`; malformed ranges return `400`. The default history limit is `100`, and requests above `1000` are capped to `1000`.

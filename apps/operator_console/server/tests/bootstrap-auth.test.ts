@@ -10,6 +10,7 @@ describe('operator console bootstrap auth', () => {
     const config = resolveServerConfigFromEnv({});
 
     expect(config.bind_address).toBe('127.0.0.1');
+    expect(config.port).toBe(3217);
     expect(config.remote.enabled).toBe(false);
     expect(config.remote.auth_required).toBe(false);
     expect(config.remote.token_rotation).toBe('restart_required');
@@ -41,12 +42,15 @@ describe('operator console bootstrap auth', () => {
   it('normalizes remote allowlist', () => {
     const config = resolveServerConfigFromEnv({
       QFA_CONSOLE_BIND: '0.0.0.0',
+      QFA_CONSOLE_PORT: '0',
       OPERATOR_CONSOLE_ALLOW_REMOTE: 'true',
       OPERATOR_CONSOLE_AUTH_TOKEN: 'secret',
       OPERATOR_CONSOLE_ORIGIN_ALLOWLIST: 'https://ops.example, http://localhost:5173 ',
     });
 
+    expect(config.port).toBe(0);
     expect(config.remote.enabled).toBe(true);
+    expect(config.remote.auth_token).toBe('secret');
     expect(config.remote.origin_allowlist).toEqual([
       'https://ops.example',
       'http://localhost:5173',

@@ -3,11 +3,13 @@ export interface OperatorConsoleEnv {
   readonly OPERATOR_CONSOLE_AUTH_TOKEN?: string;
   readonly OPERATOR_CONSOLE_ORIGIN_ALLOWLIST?: string;
   readonly QFA_CONSOLE_BIND?: string;
+  readonly QFA_CONSOLE_PORT?: string;
 }
 
 export interface RemoteAccessConfig {
   readonly enabled: boolean;
   readonly auth_required: boolean;
+  readonly auth_token: string;
   readonly origin_allowlist: readonly string[];
   readonly token_rotation: 'restart_required';
   readonly transport_security: 'loopback_or_tls_terminating_proxy_required';
@@ -15,6 +17,7 @@ export interface RemoteAccessConfig {
 
 export interface OperatorConsoleServerConfig {
   readonly bind_address: string;
+  readonly port: number;
   readonly remote: RemoteAccessConfig;
 }
 
@@ -37,6 +40,7 @@ export function parseOriginAllowlist(value: string | undefined): readonly string
 
 export function resolveServerConfigFromEnv(env: OperatorConsoleEnv): OperatorConsoleServerConfig {
   const bindAddress = env.QFA_CONSOLE_BIND?.trim() || '127.0.0.1';
+  const port = parsePort(env.QFA_CONSOLE_PORT);
   const remoteBind = !isLoopbackBindAddress(bindAddress);
   const allowRemote = env.OPERATOR_CONSOLE_ALLOW_REMOTE === 'true';
 
@@ -58,12 +62,25 @@ export function resolveServerConfigFromEnv(env: OperatorConsoleEnv): OperatorCon
 
   return {
     bind_address: bindAddress,
+    port,
     remote: {
       enabled: allowRemote,
       auth_required: allowRemote,
+      auth_token: authToken,
       origin_allowlist: originAllowlist,
       token_rotation: 'restart_required',
       transport_security: 'loopback_or_tls_terminating_proxy_required',
     },
   };
+}
+
+function parsePort(value: string | undefined): number {
+  if (value === undefined || value.trim().length === 0) {
+    return 3217;
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 65_535) {
+    throw new Error('QFA_CONSOLE_PORT must be an integer from 0 to 65535');
+  }
+  return parsed;
 }
