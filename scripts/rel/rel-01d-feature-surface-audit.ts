@@ -32,8 +32,8 @@ export const REL_01D_TICKET_ID = 'REL-01D' as const;
 
 const DEFAULT_OUT_JSON = 'reports/rel/rel01d_feature_surface_audit.json';
 const DEFAULT_OUT_MD = 'reports/rel/rel01d_feature_surface_audit.md';
-const EXPECTED_MASK_VERSION = 4;
-const EXPECTED_MASK_ID = 'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow';
+const EXPECTED_MASK_VERSION = 5;
+const EXPECTED_MASK_ID = 'feature-availability-mask-v5-adr0003-data-mbo03-advisory-policy';
 const NO_RAW_DATA_STATEMENT =
   'REL-01D indexes journal paths, SHA-256 hashes, event counts, field names, feature tiers, contexts, and usage counts only. It does not embed raw market-data rows, payload values, order payload values, DBN files, or runtime journal payloads.';
 
@@ -528,8 +528,8 @@ function buildCheckGroups(input: {
       checkBoolean('all_journals_exist', input.sessions.every((session) => session.journal_exists), mismatchSessionDetail(input.sessions, (session) => !session.journal_exists)),
     ]),
     mask_binding_checks: group([
-      checkBoolean('audit_mask_version_is_v4', input.mask.mask_version === EXPECTED_MASK_VERSION, `${input.mask.mask_version}`),
-      checkBoolean('audit_mask_id_is_data03ps_shadow', input.mask.mask_id === EXPECTED_MASK_ID, input.mask.mask_id),
+      checkBoolean('audit_mask_version_is_v5', input.mask.mask_version === EXPECTED_MASK_VERSION, `${input.mask.mask_version}`),
+      checkBoolean('audit_mask_id_is_data_mbo03_advisory_policy', input.mask.mask_id === EXPECTED_MASK_ID, input.mask.mask_id),
       checkBoolean('embedded_masks_match_audit_mask_when_present', input.aggregate.embedded_mask_mismatch_count === 0, `${input.aggregate.embedded_mask_mismatch_count}`),
     ]),
     decision_surface_checks: group([

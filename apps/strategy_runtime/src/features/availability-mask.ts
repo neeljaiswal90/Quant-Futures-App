@@ -2,16 +2,42 @@ import { createHash } from 'node:crypto';
 import { stableJsonStringify, type JsonValue } from '../contracts/index.js';
 
 export const FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION = 1 as const;
-export const FEATURE_AVAILABILITY_MASK_VERSION = 4 as const;
+export const FEATURE_AVAILABILITY_MASK_VERSION = 5 as const;
 export const FEATURE_AVAILABILITY_MASK_ID =
-  'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow' as const;
+  'feature-availability-mask-v5-adr0003-data-mbo03-advisory-policy' as const;
 
 export type FeatureAvailabilityTier =
   | 'authoritative'
   | 'diagnostic_only'
   | 'shadow_only'
+  | 'advisory_only'
   | 'blocked'
-  | 'subscope';
+  | 'subscope'
+  | 'available';
+
+export type MboFeatureUseContext =
+  | 'diagnostic'
+  | 'shadow'
+  | 'advisory_display'
+  | 'strategy_gate'
+  | 'candidate_confidence'
+  | 'rank'
+  | 'risk_gate'
+  | 'sizing'
+  | 'sim_fill'
+  | 'position_management'
+  | 'ml_training'
+  | 'blocked_diagnostic_count';
+
+export type NormalizedMboAction = 'add' | 'modify' | 'cancel' | 'trade' | 'unknown';
+
+export const ACCEPTED_NORMALIZED_MBO_ACTIONS = [
+  'add',
+  'modify',
+  'cancel',
+  'trade',
+  'unknown',
+] as const satisfies readonly NormalizedMboAction[];
 
 export type FeatureFieldId =
   | 'exchange_event_ts_ns'
@@ -85,17 +111,24 @@ export type FeatureFieldId =
   | 'mbo_timestamp_coverage'
   | 'mbo_trade_unknown_action_count'
   | 'mbo_taxonomy_status'
+  | 'mbo_action_counts_advisory'
+  | 'mbo_side_counts_advisory'
+  | 'mbo_action_imbalance_advisory'
+  | 'cancel_add_ratio_advisory'
   | 'cancel_add_ratio_shadow'
   | 'order_lifetime_shadow'
   | 'absorption_score_shadow'
   | 'sweep_score_shadow'
   | 'mbo_action_imbalance_shadow'
   | 'queue_position'
+  | 'queue_ahead'
   | 'queue_position_as_fact'
   | 'order_lifetime'
   | 'cancel_add_ratio'
   | 'absorption'
   | 'sweep'
+  | 'mbo_sim_fill_inputs'
+  | 'mbo_ml_labels'
   | 'mbo_derived_features'
   | 'ml_research_features'
   | 'sim_fill_calibration'
@@ -107,14 +140,55 @@ export interface FeatureAvailabilityMask {
   readonly mask_id: typeof FEATURE_AVAILABILITY_MASK_ID;
   readonly mask_hash: string;
   readonly lineage: {
-    readonly adr: 'ADR-0002';
+    readonly adr: 'ADR-0003';
+    readonly prior_adr: 'ADR-0002';
+    readonly data_mbo_03: 'MBO_FEATURE_USE_CONTEXT_POLICY';
     readonly infra01e: 'MBP10_PRICE_STATE_ACCEPTED_SUBSCOPE';
     readonly infra01f: 'MBO_PROVIDER_INTERNAL_ACCEPTED_SUBSCOPE';
     readonly data01b_full_status: 'blocked';
     readonly data01_full_status: 'blocked';
+    readonly mbo_decision_use_status: 'blocked';
   };
   readonly field_tiers: Readonly<Record<FeatureFieldId, FeatureAvailabilityTier>>;
   readonly rationale: Readonly<Record<FeatureFieldId, string>>;
+  readonly mbo_policy: {
+    readonly accepted_normalized_action_literals: readonly NormalizedMboAction[];
+    readonly feature_use_tiers: Readonly<Record<MboPolicyFeatureId, FeatureAvailabilityTier>>;
+    readonly allowed_contexts_by_tier: Readonly<Record<MboPolicyTier, readonly MboFeatureUseContext[]>>;
+    readonly decision_contexts: readonly MboFeatureUseContext[];
+  };
+}
+
+export type MboPolicyFeatureId =
+  | 'mbo_action_counts'
+  | 'mbo_side_counts'
+  | 'mbo_action_counts_advisory'
+  | 'mbo_side_counts_advisory'
+  | 'mbo_action_imbalance_advisory'
+  | 'cancel_add_ratio_advisory'
+  | 'mbo_action_imbalance_shadow'
+  | 'cancel_add_ratio_shadow'
+  | 'order_lifetime_shadow'
+  | 'absorption_score_shadow'
+  | 'sweep_score_shadow'
+  | 'queue_position'
+  | 'queue_ahead'
+  | 'mbo_sim_fill_inputs'
+  | 'mbo_ml_labels';
+
+type MboPolicyTier =
+  | 'diagnostic_only'
+  | 'shadow_only'
+  | 'advisory_only'
+  | 'blocked'
+  | 'available';
+
+export interface MboFeatureUseDecision {
+  readonly allowed: boolean;
+  readonly feature_name: string;
+  readonly use_context: MboFeatureUseContext;
+  readonly tier: MboPolicyTier | 'unmapped';
+  readonly reason: string;
 }
 
 const FIELD_TIERS = {
@@ -189,22 +263,78 @@ const FIELD_TIERS = {
   mbo_timestamp_coverage: 'diagnostic_only',
   mbo_trade_unknown_action_count: 'diagnostic_only',
   mbo_taxonomy_status: 'diagnostic_only',
+  mbo_action_counts_advisory: 'advisory_only',
+  mbo_side_counts_advisory: 'advisory_only',
+  mbo_action_imbalance_advisory: 'advisory_only',
+  cancel_add_ratio_advisory: 'advisory_only',
   cancel_add_ratio_shadow: 'shadow_only',
   order_lifetime_shadow: 'shadow_only',
   absorption_score_shadow: 'shadow_only',
   sweep_score_shadow: 'shadow_only',
   mbo_action_imbalance_shadow: 'shadow_only',
   queue_position: 'blocked',
+  queue_ahead: 'blocked',
   queue_position_as_fact: 'blocked',
   order_lifetime: 'blocked',
   cancel_add_ratio: 'blocked',
   absorption: 'blocked',
   sweep: 'blocked',
+  mbo_sim_fill_inputs: 'blocked',
+  mbo_ml_labels: 'blocked',
   mbo_derived_features: 'blocked',
   ml_research_features: 'blocked',
   sim_fill_calibration: 'blocked',
   rel_replay_gate: 'blocked',
 } as const satisfies Readonly<Record<FeatureFieldId, FeatureAvailabilityTier>>;
+
+export const MBO_FEATURE_USE_TIERS = {
+  mbo_action_counts: 'diagnostic_only',
+  mbo_side_counts: 'diagnostic_only',
+  mbo_action_counts_advisory: 'advisory_only',
+  mbo_side_counts_advisory: 'advisory_only',
+  mbo_action_imbalance_advisory: 'advisory_only',
+  cancel_add_ratio_advisory: 'advisory_only',
+  mbo_action_imbalance_shadow: 'shadow_only',
+  cancel_add_ratio_shadow: 'shadow_only',
+  order_lifetime_shadow: 'shadow_only',
+  absorption_score_shadow: 'shadow_only',
+  sweep_score_shadow: 'shadow_only',
+  queue_position: 'blocked',
+  queue_ahead: 'blocked',
+  mbo_sim_fill_inputs: 'blocked',
+  mbo_ml_labels: 'blocked',
+} as const satisfies Readonly<Record<MboPolicyFeatureId, MboPolicyTier>>;
+
+export const MBO_DECISION_USE_CONTEXTS = [
+  'strategy_gate',
+  'candidate_confidence',
+  'rank',
+  'risk_gate',
+  'sizing',
+  'sim_fill',
+  'position_management',
+  'ml_training',
+] as const satisfies readonly MboFeatureUseContext[];
+
+export const MBO_ALLOWED_CONTEXTS_BY_TIER = {
+  diagnostic_only: ['diagnostic', 'shadow', 'advisory_display'],
+  shadow_only: ['shadow', 'advisory_display'],
+  advisory_only: ['advisory_display'],
+  blocked: ['blocked_diagnostic_count'],
+  available: [
+    'diagnostic',
+    'shadow',
+    'advisory_display',
+    'strategy_gate',
+    'candidate_confidence',
+    'rank',
+    'risk_gate',
+    'sizing',
+    'sim_fill',
+    'position_management',
+    'ml_training',
+  ],
+} as const satisfies Readonly<Record<MboPolicyTier, readonly MboFeatureUseContext[]>>;
 
 const RATIONALE = {
   exchange_event_ts_ns: 'ADR-0001 canonical event time.',
@@ -278,17 +408,24 @@ const RATIONALE = {
   mbo_timestamp_coverage: 'MBO timestamp coverage telemetry only.',
   mbo_trade_unknown_action_count: 'MBO trade/unknown action telemetry only.',
   mbo_taxonomy_status: 'MBO taxonomy status telemetry only; unresolved taxonomy cannot drive decisions.',
+  mbo_action_counts_advisory: 'Reserved advisory-only action-count display field; must not affect ordering, scoring, risk, sizing, fills, management, or ML labels.',
+  mbo_side_counts_advisory: 'Reserved advisory-only side-count display field; must not affect ordering, scoring, risk, sizing, fills, management, or ML labels.',
+  mbo_action_imbalance_advisory: 'Reserved advisory-only action-imbalance display field; must not affect ordering, scoring, risk, sizing, fills, management, or ML labels.',
+  cancel_add_ratio_advisory: 'Reserved advisory-only cancel/add display field; must not affect ordering, scoring, risk, sizing, fills, management, or ML labels.',
   cancel_add_ratio_shadow: 'Shadow-only MBO candidate; may be emitted only with decision_use=false.',
   order_lifetime_shadow: 'Shadow-only MBO candidate; may be emitted only with decision_use=false.',
   absorption_score_shadow: 'Shadow-only MBO candidate; may be emitted only with decision_use=false.',
   sweep_score_shadow: 'Shadow-only MBO candidate; may be emitted only with decision_use=false.',
   mbo_action_imbalance_shadow: 'Shadow-only MBO candidate; may be emitted only with decision_use=false.',
   queue_position: 'Generic queue position as a hard trading fact remains blocked; use queue_position_estimate for provider-internal diagnostics.',
+  queue_ahead: 'Generic queue-ahead as a hard trading fact remains blocked until separate queue/fill calibration exists.',
   queue_position_as_fact: 'Queue position is an estimate, not a provider-neutral fact.',
   order_lifetime: 'Requires MBO book-state implementation and replay evidence.',
   cancel_add_ratio: 'Requires MBO book-state implementation and replay evidence.',
   absorption: 'Requires DATA-04 feature definition and replay evidence.',
   sweep: 'Requires DATA-04 feature definition and replay evidence.',
+  mbo_sim_fill_inputs: 'MBO-derived simulated-fill inputs remain blocked until SIM-MBO calibration.',
+  mbo_ml_labels: 'MBO-derived ML labels remain blocked until a research-label ADR and leakage controls exist.',
   mbo_derived_features: 'DATA-04 emits only provider-internal sub-scope features; strict cross-feed feature equivalence is still not claimed.',
   ml_research_features: 'Blocked until RSRCH gates and calibrated replay evidence.',
   sim_fill_calibration: 'Blocked until SIM-02/SIM-03 implementation and calibration.',
@@ -301,14 +438,23 @@ export function buildFeatureAvailabilityMask(): FeatureAvailabilityMask {
     mask_version: FEATURE_AVAILABILITY_MASK_VERSION,
     mask_id: FEATURE_AVAILABILITY_MASK_ID,
     lineage: {
-      adr: 'ADR-0002',
+      adr: 'ADR-0003',
+      prior_adr: 'ADR-0002',
+      data_mbo_03: 'MBO_FEATURE_USE_CONTEXT_POLICY',
       infra01e: 'MBP10_PRICE_STATE_ACCEPTED_SUBSCOPE',
       infra01f: 'MBO_PROVIDER_INTERNAL_ACCEPTED_SUBSCOPE',
       data01b_full_status: 'blocked',
       data01_full_status: 'blocked',
+      mbo_decision_use_status: 'blocked',
     },
     field_tiers: FIELD_TIERS,
     rationale: RATIONALE,
+    mbo_policy: {
+      accepted_normalized_action_literals: ACCEPTED_NORMALIZED_MBO_ACTIONS,
+      feature_use_tiers: MBO_FEATURE_USE_TIERS,
+      allowed_contexts_by_tier: MBO_ALLOWED_CONTEXTS_BY_TIER,
+      decision_contexts: MBO_DECISION_USE_CONTEXTS,
+    },
   } as const;
   return {
     ...core,
@@ -330,6 +476,48 @@ export function assertAuthoritative(mask: FeatureAvailabilityMask, field: Featur
   if (tier !== 'authoritative') {
     throw new Error(`Feature field ${field} is ${tier}, not authoritative`);
   }
+}
+
+export function isFeatureUseAllowed(
+  featureName: string,
+  useContext: MboFeatureUseContext,
+): MboFeatureUseDecision {
+  if (!isMboPolicyFeatureId(featureName)) {
+    return {
+      allowed: false,
+      feature_name: featureName,
+      use_context: useContext,
+      tier: 'unmapped',
+      reason: 'unmapped_mbo_feature_fails_closed',
+    };
+  }
+
+  const tier = MBO_FEATURE_USE_TIERS[featureName];
+  const allowed = (MBO_ALLOWED_CONTEXTS_BY_TIER[tier] as readonly MboFeatureUseContext[])
+    .includes(useContext);
+  return {
+    allowed,
+    feature_name: featureName,
+    use_context: useContext,
+    tier,
+    reason: allowed ? 'allowed_by_data_mbo_03_policy' : 'context_not_allowed_for_mbo_feature_tier',
+  };
+}
+
+export function assertFeatureUseAllowed(
+  featureName: string,
+  useContext: MboFeatureUseContext,
+): void {
+  const decision = isFeatureUseAllowed(featureName, useContext);
+  if (!decision.allowed) {
+    throw new Error(
+      `MBO feature ${featureName} is ${decision.tier} and is not allowed in ${useContext}: ${decision.reason}`,
+    );
+  }
+}
+
+function isMboPolicyFeatureId(value: string): value is MboPolicyFeatureId {
+  return Object.prototype.hasOwnProperty.call(MBO_FEATURE_USE_TIERS, value);
 }
 
 function hashMaskCore(core: Omit<FeatureAvailabilityMask, 'mask_hash'>): string {

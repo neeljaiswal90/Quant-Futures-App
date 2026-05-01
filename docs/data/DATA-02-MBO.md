@@ -69,7 +69,8 @@ Each payload includes:
 
 ## Feature Availability
 
-DATA-02-MBO bumps the DATA-03 mask to version 2:
+DATA-02-MBO originally bumped the DATA-03 mask to version 2. The active shared mask may
+advance in later DATA tickets, but these DATA-02-MBO assignments remain:
 
 - `mbo_book_state`, `mbo_top_bid_px`, `mbo_top_ask_px`, MBO spread/mid, active order
   counts, price-level aggregate sizes, order counts, and queue estimates are `subscope`.

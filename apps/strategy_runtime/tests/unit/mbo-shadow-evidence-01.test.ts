@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runMboShadowEvidence01 } from '../../../../scripts/rel/mbo-shadow-evidence-01.js';
 
 const START_TS_NS = 1_777_301_421_588_943_700n;
-const MASK_ID = 'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow';
+const MASK_ID = 'feature-availability-mask-v5-adr0003-data-mbo03-advisory-policy';
 const MASK_HASH = 'sha256:test-mask-hash';
 const tempDirectories: string[] = [];
 
@@ -178,7 +178,7 @@ function makeSession(
   writeJson(rel01dReport, {
     status: 'pass',
     audit_mask: {
-      mask_version: overrides.rel01dMaskVersion ?? 4,
+      mask_version: overrides.rel01dMaskVersion ?? 5,
       mask_id: overrides.rel01dMaskId ?? MASK_ID,
       mask_hash: MASK_HASH,
     },
@@ -196,7 +196,7 @@ function makeSession(
   writeJson(rel01eReport, {
     status: overrides.rel01eStatus ?? 'pass',
     audit_mask: {
-      mask_version: overrides.rel01eMaskVersion ?? 4,
+      mask_version: overrides.rel01eMaskVersion ?? 5,
       mask_id: overrides.rel01eMaskId ?? MASK_ID,
       mask_hash: MASK_HASH,
     },

@@ -29,10 +29,10 @@ reports for field usage.
 
 ## Audit Mask
 
-The audit binds to DATA-03-PS:
+The audit binds to DATA-MBO-03:
 
-- `mask_version = 4`
-- `mask_id = feature-availability-mask-v4-adr0002-data03ps-mbo-shadow`
+- `mask_version = 5`
+- `mask_id = feature-availability-mask-v5-adr0003-data-mbo03-advisory-policy`
 
 If a journal event embeds a `feature_availability_mask`, REL-01D fails on any mismatch
 against the audit mask. Older journals that do not embed a mask object can still be audited;
@@ -79,7 +79,7 @@ REL-01D fails if:
 
 - any referenced journal is missing;
 - any journal has malformed JSONL lines;
-- an embedded feature mask disagrees with the v4 audit mask;
+- an embedded feature mask disagrees with the v5 audit mask;
 - a blocked field appears anywhere;
 - a `subscope`, `diagnostic_only`, or `shadow_only` field appears in `values` or a decision
   payload;
