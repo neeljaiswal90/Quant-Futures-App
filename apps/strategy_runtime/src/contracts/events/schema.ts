@@ -867,8 +867,10 @@ function optionalFeatureAvailabilityMask(
         'authoritative',
         'diagnostic_only',
         'shadow_only',
+        'advisory_only',
         'blocked',
         'subscope',
+        'available',
       ]);
     }
   }

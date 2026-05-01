@@ -7,12 +7,71 @@ import json
 from typing import Any, Literal
 
 FeatureAvailabilityTier = Literal[
-    "authoritative", "diagnostic_only", "shadow_only", "blocked", "subscope"
+    "authoritative",
+    "diagnostic_only",
+    "shadow_only",
+    "advisory_only",
+    "blocked",
+    "subscope",
+    "available",
 ]
 
 FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION = 1
-FEATURE_AVAILABILITY_MASK_VERSION = 4
-FEATURE_AVAILABILITY_MASK_ID = "feature-availability-mask-v4-adr0002-data03ps-mbo-shadow"
+FEATURE_AVAILABILITY_MASK_VERSION = 5
+FEATURE_AVAILABILITY_MASK_ID = (
+    "feature-availability-mask-v5-adr0003-data-mbo03-advisory-policy"
+)
+
+ACCEPTED_NORMALIZED_MBO_ACTIONS = ["add", "modify", "cancel", "trade", "unknown"]
+
+MBO_FEATURE_USE_TIERS: dict[str, FeatureAvailabilityTier] = {
+    "mbo_action_counts": "diagnostic_only",
+    "mbo_side_counts": "diagnostic_only",
+    "mbo_action_counts_advisory": "advisory_only",
+    "mbo_side_counts_advisory": "advisory_only",
+    "mbo_action_imbalance_advisory": "advisory_only",
+    "cancel_add_ratio_advisory": "advisory_only",
+    "mbo_action_imbalance_shadow": "shadow_only",
+    "cancel_add_ratio_shadow": "shadow_only",
+    "order_lifetime_shadow": "shadow_only",
+    "absorption_score_shadow": "shadow_only",
+    "sweep_score_shadow": "shadow_only",
+    "queue_position": "blocked",
+    "queue_ahead": "blocked",
+    "mbo_sim_fill_inputs": "blocked",
+    "mbo_ml_labels": "blocked",
+}
+
+MBO_DECISION_USE_CONTEXTS = [
+    "strategy_gate",
+    "candidate_confidence",
+    "rank",
+    "risk_gate",
+    "sizing",
+    "sim_fill",
+    "position_management",
+    "ml_training",
+]
+
+MBO_ALLOWED_CONTEXTS_BY_TIER = {
+    "diagnostic_only": ["diagnostic", "shadow", "advisory_display"],
+    "shadow_only": ["shadow", "advisory_display"],
+    "advisory_only": ["advisory_display"],
+    "blocked": ["blocked_diagnostic_count"],
+    "available": [
+        "diagnostic",
+        "shadow",
+        "advisory_display",
+        "strategy_gate",
+        "candidate_confidence",
+        "rank",
+        "risk_gate",
+        "sizing",
+        "sim_fill",
+        "position_management",
+        "ml_training",
+    ],
+}
 
 FIELD_TIERS: dict[str, FeatureAvailabilityTier] = {
     "exchange_event_ts_ns": "authoritative",
@@ -86,17 +145,24 @@ FIELD_TIERS: dict[str, FeatureAvailabilityTier] = {
     "mbo_timestamp_coverage": "diagnostic_only",
     "mbo_trade_unknown_action_count": "diagnostic_only",
     "mbo_taxonomy_status": "diagnostic_only",
+    "mbo_action_counts_advisory": "advisory_only",
+    "mbo_side_counts_advisory": "advisory_only",
+    "mbo_action_imbalance_advisory": "advisory_only",
+    "cancel_add_ratio_advisory": "advisory_only",
     "cancel_add_ratio_shadow": "shadow_only",
     "order_lifetime_shadow": "shadow_only",
     "absorption_score_shadow": "shadow_only",
     "sweep_score_shadow": "shadow_only",
     "mbo_action_imbalance_shadow": "shadow_only",
     "queue_position": "blocked",
+    "queue_ahead": "blocked",
     "queue_position_as_fact": "blocked",
     "order_lifetime": "blocked",
     "cancel_add_ratio": "blocked",
     "absorption": "blocked",
     "sweep": "blocked",
+    "mbo_sim_fill_inputs": "blocked",
+    "mbo_ml_labels": "blocked",
     "mbo_derived_features": "blocked",
     "ml_research_features": "blocked",
     "sim_fill_calibration": "blocked",
@@ -175,17 +241,24 @@ RATIONALE: dict[str, str] = {
     "mbo_timestamp_coverage": "MBO timestamp coverage telemetry only.",
     "mbo_trade_unknown_action_count": "MBO trade/unknown action telemetry only.",
     "mbo_taxonomy_status": "MBO taxonomy status telemetry only; unresolved taxonomy cannot drive decisions.",
+    "mbo_action_counts_advisory": "Reserved advisory-only action-count display field; must not affect ordering, scoring, risk, sizing, fills, management, or ML labels.",
+    "mbo_side_counts_advisory": "Reserved advisory-only side-count display field; must not affect ordering, scoring, risk, sizing, fills, management, or ML labels.",
+    "mbo_action_imbalance_advisory": "Reserved advisory-only action-imbalance display field; must not affect ordering, scoring, risk, sizing, fills, management, or ML labels.",
+    "cancel_add_ratio_advisory": "Reserved advisory-only cancel/add display field; must not affect ordering, scoring, risk, sizing, fills, management, or ML labels.",
     "cancel_add_ratio_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
     "order_lifetime_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
     "absorption_score_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
     "sweep_score_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
     "mbo_action_imbalance_shadow": "Shadow-only MBO candidate; may be emitted only with decision_use=false.",
     "queue_position": "Generic queue position as a hard trading fact remains blocked; use queue_position_estimate for provider-internal diagnostics.",
+    "queue_ahead": "Generic queue-ahead as a hard trading fact remains blocked until separate queue/fill calibration exists.",
     "queue_position_as_fact": "Queue position is an estimate, not a provider-neutral fact.",
     "order_lifetime": "Requires MBO book-state implementation and replay evidence.",
     "cancel_add_ratio": "Requires MBO book-state implementation and replay evidence.",
     "absorption": "Requires DATA-04 feature definition and replay evidence.",
     "sweep": "Requires DATA-04 feature definition and replay evidence.",
+    "mbo_sim_fill_inputs": "MBO-derived simulated-fill inputs remain blocked until SIM-MBO calibration.",
+    "mbo_ml_labels": "MBO-derived ML labels remain blocked until a research-label ADR and leakage controls exist.",
     "mbo_derived_features": "DATA-04 emits only provider-internal sub-scope features; strict cross-feed feature equivalence is still not claimed.",
     "ml_research_features": "Blocked until RSRCH gates and calibrated replay evidence.",
     "sim_fill_calibration": "Blocked until SIM-02/SIM-03 implementation and calibration.",
@@ -199,14 +272,23 @@ def build_feature_availability_mask() -> dict[str, Any]:
         "mask_version": FEATURE_AVAILABILITY_MASK_VERSION,
         "mask_id": FEATURE_AVAILABILITY_MASK_ID,
         "lineage": {
-            "adr": "ADR-0002",
+            "adr": "ADR-0003",
+            "prior_adr": "ADR-0002",
+            "data_mbo_03": "MBO_FEATURE_USE_CONTEXT_POLICY",
             "infra01e": "MBP10_PRICE_STATE_ACCEPTED_SUBSCOPE",
             "infra01f": "MBO_PROVIDER_INTERNAL_ACCEPTED_SUBSCOPE",
             "data01b_full_status": "blocked",
             "data01_full_status": "blocked",
+            "mbo_decision_use_status": "blocked",
         },
         "field_tiers": FIELD_TIERS,
         "rationale": RATIONALE,
+        "mbo_policy": {
+            "accepted_normalized_action_literals": ACCEPTED_NORMALIZED_MBO_ACTIONS,
+            "feature_use_tiers": MBO_FEATURE_USE_TIERS,
+            "allowed_contexts_by_tier": MBO_ALLOWED_CONTEXTS_BY_TIER,
+            "decision_contexts": MBO_DECISION_USE_CONTEXTS,
+        },
     }
     return {**core, "mask_hash": _hash_mask_core(core)}
 

@@ -31,8 +31,8 @@ export const REL_01E_TICKET_ID = 'REL-01E' as const;
 
 const DEFAULT_OUT_JSON = 'reports/rel/rel01e_mbo_shadow_lineage_report.json';
 const DEFAULT_OUT_MD = 'reports/rel/rel01e_mbo_shadow_lineage_report.md';
-const EXPECTED_MASK_VERSION = 4;
-const EXPECTED_MASK_ID = 'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow';
+const EXPECTED_MASK_VERSION = 5;
+const EXPECTED_MASK_ID = 'feature-availability-mask-v5-adr0003-data-mbo03-advisory-policy';
 const DEFAULT_NUMERIC_TOLERANCE = 1e-9;
 const NO_RAW_DATA_STATEMENT =
   'REL-01E indexes journal paths, SHA-256 hashes, event identifiers, shadow field names, derivation methods, counts, and pass/fail reasons only. It does not embed raw MBO records, market-data payload values, shadow payload values, DBN files, or runtime journal payloads.';
@@ -755,8 +755,8 @@ function buildCheckGroups(input: {
       check('all_shadow_fields_have_lineage', input.aggregate.missing_lineage_count === 0, `missing=${input.aggregate.missing_lineage_count}`),
     ]),
     source_binding_checks: group([
-      check('audit_mask_version_is_v4', input.mask.mask_version === EXPECTED_MASK_VERSION, `mask_version=${input.mask.mask_version}`),
-      check('audit_mask_id_is_data03ps_shadow', input.mask.mask_id === EXPECTED_MASK_ID, input.mask.mask_id),
+      check('audit_mask_version_is_v5', input.mask.mask_version === EXPECTED_MASK_VERSION, `mask_version=${input.mask.mask_version}`),
+      check('audit_mask_id_is_data_mbo03_advisory_policy', input.mask.mask_id === EXPECTED_MASK_ID, input.mask.mask_id),
       check('mbo_source_journals_exist_when_shadow_present', input.sessions.every((session) => session.shadow_field_occurrences === 0 || session.mbo_source_journal_exists === true), missingSessions(input.sessions, (session) => session.shadow_field_occurrences > 0 && session.mbo_source_journal_exists !== true)),
       check('source_journal_hashes_match_manifest_and_lineage', input.aggregate.source_hash_mismatch_count === 0, `mismatches=${input.aggregate.source_hash_mismatch_count}`),
       check('all_lineage_source_events_exist', input.aggregate.missing_source_event_count === 0, `missing=${input.aggregate.missing_source_event_count}`),

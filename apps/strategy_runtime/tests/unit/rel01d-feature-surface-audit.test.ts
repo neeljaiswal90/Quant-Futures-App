@@ -24,8 +24,8 @@ describe('REL-01D feature-surface audit', () => {
     expect(result.exit_code).toBe(0);
     expect(result.report.status).toBe('pass');
     expect(result.report.audit_mask).toMatchObject({
-      mask_version: 4,
-      mask_id: 'feature-availability-mask-v4-adr0002-data03ps-mbo-shadow',
+      mask_version: 5,
+      mask_id: 'feature-availability-mask-v5-adr0003-data-mbo03-advisory-policy',
     });
     expect(result.report.aggregate.partition_counts.authoritative).toBe(14);
     expect(result.report.aggregate.partition_counts.diagnostic).toBe(4);
@@ -121,7 +121,7 @@ describe('REL-01D feature-surface audit', () => {
     );
   });
 
-  it('fails when embedded feature masks disagree with the v4 audit mask', async () => {
+  it('fails when embedded feature masks disagree with the v5 audit mask', async () => {
     const root = makePacketRoot({ sessionCount: 1, mode: 'mask_mismatch' });
 
     const result = await runRel01d(root);

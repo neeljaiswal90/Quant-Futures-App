@@ -76,7 +76,7 @@ npm run rel:01e:mbo-shadow-lineage -- `
 Expected validator posture:
 
 - REL-00 passes because shadow data is non-decision-use and no blocked fields are emitted.
-- REL-01D reports shadow field frequency by session and mask v4 binding.
+- REL-01D reports shadow field frequency by session and current feature-mask binding.
 - REL-01E passes only when every shadow field is hash-bound, causal, in-window, and recomputable from source MBO events.
 
 ## Manifest Patch
