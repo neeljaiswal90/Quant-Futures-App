@@ -225,7 +225,10 @@ describe('operator console live-state aggregator', () => {
     expect(snapshot.risk.circuit_breaker_state).toEqual({ status: 'available', value: 'inactive' });
     expect(snapshot.risk.open_trade_count).toEqual({ status: 'available', value: 2 });
     expect(snapshot.risk.rejected_trade_count).toEqual({ status: 'available', value: 3 });
-    expect(snapshot.risk.daily_loss_usage).toEqual({ status: 'available', value: 99 });
+    expect(snapshot.risk.daily_loss_usage).toEqual({
+      status: 'unavailable',
+      reason: 'no daily_loss_usage fact in RISK_GATE.session_risk',
+    });
     expect(snapshot.pnl.realized_pnl_usd.status).toBe('unavailable');
     expect(snapshot.pnl.source).toBe('unavailable');
   });
@@ -257,5 +260,51 @@ describe('operator console live-state aggregator', () => {
     expect(snapshot.feature_surface.partition_counts.blocked).toBeGreaterThan(0);
     expect(snapshot.feature_surface.recent_violations).toHaveLength(1);
     expect(snapshot.alerts[0]?.message).toContain('excluded from decision-grade state');
+  });
+
+  it('alerts and falls back when embedded feature mask schema or version drifts', () => {
+    const schemaMismatch = buildConsoleSnapshotFromEvents(
+      normalizeJournalTailResult(
+        tailResult([
+          ingested(envelope('FEATURES', {
+            feature_snapshot_id: 'feature-schema',
+            values: {},
+            feature_availability_mask: {
+              ...FEATURE_AVAILABILITY_MASK,
+              schema_version: 2,
+            },
+          })),
+        ]),
+        { check_missing_terminal_order_intents: false },
+      ),
+      { journal_path: 'journal.jsonl' },
+    );
+    const versionMismatch = buildConsoleSnapshotFromEvents(
+      normalizeJournalTailResult(
+        tailResult([
+          ingested(envelope('FEATURES', {
+            feature_snapshot_id: 'feature-version',
+            values: {},
+            feature_availability_mask: {
+              ...FEATURE_AVAILABILITY_MASK,
+              mask_version: 6,
+            },
+          }, 'features-v6')),
+        ]),
+        { check_missing_terminal_order_intents: false },
+      ),
+      { journal_path: 'journal.jsonl' },
+    );
+
+    expect(schemaMismatch.feature_surface.mask_source).toBe('fallback');
+    expect(schemaMismatch.alerts).toContainEqual(expect.objectContaining({
+      id: 'feature-policy-mask-schema-mismatch:features-1',
+      severity: 'critical',
+    }));
+    expect(versionMismatch.feature_surface.mask_source).toBe('fallback');
+    expect(versionMismatch.alerts).toContainEqual(expect.objectContaining({
+      id: 'feature-policy-mask-version-mismatch:features-v6',
+      severity: 'critical',
+    }));
   });
 });

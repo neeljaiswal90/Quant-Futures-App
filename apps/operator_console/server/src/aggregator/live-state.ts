@@ -91,8 +91,14 @@ export function buildConsoleSnapshotFromEvents(
   const unrealizedPnl = sumAvailable(
     positions.map((position) => position.unrealized_pnl_usd),
   );
-  const alerts = aggregateAlerts(normalized, decisionEvents, options.max_alerts ?? 100);
-  const featureSurface = aggregateFeatureSurface(allEvents, alerts);
+  const maskBinding = selectEmbeddedFeatureMask(allEvents);
+  const alerts = aggregateAlerts(
+    normalized,
+    decisionEvents,
+    options.max_alerts ?? 100,
+    maskBinding.alerts,
+  );
+  const featureSurface = aggregateFeatureSurface(maskBinding.mask, alerts);
 
   return {
     schema_version: CONSOLE_SNAPSHOT_SCHEMA_VERSION,
@@ -249,10 +255,7 @@ function aggregateRisk(events: readonly NormalizedJournalEvent[]): LatestRiskSta
         sessionRisk.circuit_breaker_state,
         'RISK_GATE.session_risk.circuit_breaker_state unavailable',
       ),
-      daily_loss_usage: maybeNumber(
-        sessionRisk.realized_pnl_usd,
-        'RISK_GATE.session_risk.realized_pnl_usd unavailable',
-      ),
+      daily_loss_usage: unavailable('no daily_loss_usage fact in RISK_GATE.session_risk'),
       open_trade_count: maybeNumber(
         sessionRisk.open_trade_count,
         'RISK_GATE.session_risk.open_trade_count unavailable',
@@ -294,6 +297,7 @@ function aggregateAlerts(
   normalized: EventNormalizerResult,
   events: readonly NormalizedJournalEvent[],
   maxAlerts: number,
+  extraAlerts: readonly AlertState[] = [],
 ): readonly AlertState[] {
   const alerts: AlertState[] = normalized.alerts.map((alert) => ({
     id: alert.id,
@@ -343,14 +347,14 @@ function aggregateAlerts(
     }
   }
 
+  alerts.push(...extraAlerts);
   return alerts.slice(Math.max(0, alerts.length - maxAlerts));
 }
 
 function aggregateFeatureSurface(
-  events: readonly NormalizedJournalEvent[],
+  embeddedMask: FeatureAvailabilityMask | undefined,
   alerts: readonly AlertState[],
 ): FeatureSurfaceState {
-  const embeddedMask = latestEmbeddedMask(events);
   const mask = embeddedMask ?? FEATURE_AVAILABILITY_MASK;
   const fieldTiers = { ...mask.field_tiers };
   return {
@@ -390,17 +394,86 @@ function aggregateMboShadow(events: readonly NormalizedJournalEvent[]): MboShado
   };
 }
 
-function latestEmbeddedMask(events: readonly NormalizedJournalEvent[]): FeatureAvailabilityMask | undefined {
+interface EmbeddedFeatureMaskSelection {
+  readonly mask?: FeatureAvailabilityMask;
+  readonly alerts: readonly AlertState[];
+}
+
+function selectEmbeddedFeatureMask(events: readonly NormalizedJournalEvent[]): EmbeddedFeatureMaskSelection {
   for (const { event } of [...events].reverse()) {
     if (!FEATURE_SURFACE_EVENT_TYPES.has(event.type)) {
       continue;
     }
-    const mask = jsonObject(payloadRecord(event).feature_availability_mask);
-    if (isFeatureAvailabilityMask(mask)) {
-      return mask;
+    const rawMask = payloadRecord(event).feature_availability_mask;
+    if (rawMask === undefined) {
+      continue;
     }
+    const mask = jsonObject(rawMask);
+    if (isFeatureAvailabilityMask(mask)) {
+      return { mask, alerts: [] };
+    }
+    return { alerts: embeddedMaskAlerts(mask, event) };
   }
-  return undefined;
+  return { alerts: [] };
+}
+
+function embeddedMaskAlerts(
+  mask: Record<string, unknown> | null,
+  event: JournalEventEnvelope,
+): readonly AlertState[] {
+  if (mask === null) {
+    return [{
+      id: `feature-policy-mask-invalid:${event.event_id}`,
+      severity: 'critical',
+      message: 'Embedded feature_availability_mask is not a JSON object; using fallback v5 mask',
+      event_id: event.event_id,
+    }];
+  }
+
+  if (mask.schema_version !== FEATURE_AVAILABILITY_MASK.schema_version) {
+    return [{
+      id: `feature-policy-mask-schema-mismatch:${event.event_id}`,
+      severity: 'critical',
+      message: `Embedded feature mask schema_version ${String(mask.schema_version)} does not match expected ${FEATURE_AVAILABILITY_MASK.schema_version}; using fallback v5 mask`,
+      event_id: event.event_id,
+    }];
+  }
+
+  if (mask.mask_version !== FEATURE_AVAILABILITY_MASK.mask_version) {
+    return [{
+      id: `feature-policy-mask-version-mismatch:${event.event_id}`,
+      severity: 'critical',
+      message: `Embedded feature mask version ${String(mask.mask_version)} does not match expected ${FEATURE_AVAILABILITY_MASK.mask_version}; using fallback v5 mask`,
+      event_id: event.event_id,
+    }];
+  }
+
+  if (
+    typeof mask.mask_id !== 'string' ||
+    typeof mask.mask_hash !== 'string' ||
+    jsonObject(mask.field_tiers) === null
+  ) {
+    return [{
+      id: `feature-policy-mask-invalid:${event.event_id}`,
+      severity: 'critical',
+      message: 'Embedded feature mask is missing mask_id, mask_hash, or field_tiers; using fallback v5 mask',
+      event_id: event.event_id,
+    }];
+  }
+
+  if (
+    mask.mask_id !== FEATURE_AVAILABILITY_MASK.mask_id ||
+    mask.mask_hash !== FEATURE_AVAILABILITY_MASK.mask_hash
+  ) {
+    return [{
+      id: `feature-policy-mask-identity-mismatch:${event.event_id}`,
+      severity: 'warning',
+      message: 'Embedded feature mask identity does not match the fallback v5 audit mask; using fallback v5 mask',
+      event_id: event.event_id,
+    }];
+  }
+
+  return [];
 }
 
 function countMaskTiers(

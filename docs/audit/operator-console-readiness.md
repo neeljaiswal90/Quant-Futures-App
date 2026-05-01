@@ -25,8 +25,11 @@ Console rule:
 - Per-position realized P&L may be reconstructed only by summing explicit `MGMT_ACTION.realized_pnl_usd` values keyed by `position_id`.
 - Closed-position terminal P&L remains `unavailable` unless a dedicated lifecycle fact exists.
 - Missing realized P&L is displayed as `unavailable`, never `0`.
+- `RISK_GATE.session_risk.realized_pnl_usd` is not a daily-loss-usage fact and must not populate `risk.daily_loss_usage`.
 
 Follow-up observability candidate: add an additive runtime event such as `POSITION_CLOSED` or `POSITION_PNL` if operators need guaranteed terminal position P&L in the console.
+
+Risk fact gap: `RISK_GATE.session_risk` currently has no explicit `daily_loss_usage` or `daily_loss_usd` field, so the console risk panel must render daily-loss usage as `unavailable` until such a fact exists.
 
 ## Feature Surface
 
@@ -49,6 +52,8 @@ available
 ```
 
 Decision-grade state must never accept blocked, diagnostic, shadow, advisory, or subscope fields.
+
+If an embedded mask is present but its schema version, mask version, or identity does not match the runtime v5 audit mask, the console must emit an alert and use the v5 fallback mask.
 
 ## Read-Only Boundary
 
