@@ -1,0 +1,10 @@
+{
+  "name": "@quant-futures/operator-console-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/App.ts",
+    "test": "vitest run --root ../../.. apps/operator_console/web/tests/shell.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

@@ -16,6 +16,10 @@
     "types": ["node"]
   },
   "include": [
+    "apps/operator_console/server/src/**/*.ts",
+    "apps/operator_console/server/tests/**/*.ts",
+    "apps/operator_console/web/src/**/*.ts",
+    "apps/operator_console/web/tests/**/*.ts",
     "apps/strategy_runtime/src/**/*.ts",
     "apps/strategy_runtime/tests/**/*.ts",
     "scripts/**/*.ts",

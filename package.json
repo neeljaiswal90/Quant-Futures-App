@@ -1,10 +1,17 @@
 {
   "name": "quant-futures-app",
   "private": true,
+  "workspaces": [
+    "apps/operator_console/server",
+    "apps/operator_console/web"
+  ],
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check:python": "node scripts/check-python-syntax.mjs",
+    "console:server": "npm --workspace apps/operator_console/server run start --",
+    "console:test": "npm --workspace apps/operator_console/server test && npm --workspace apps/operator_console/web test",
+    "console:web": "npm --workspace apps/operator_console/web run dev",
     "data:01a:l1-trade": "python -m services.market_data_sidecar.app",
     "data:01b:mbo": "python -m services.market_data_sidecar.mbo_order_lifecycle_app",
     "data:01b:price-state": "python -m services.market_data_sidecar.mbp10_price_state_app",
