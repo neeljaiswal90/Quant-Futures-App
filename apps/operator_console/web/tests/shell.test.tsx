@@ -48,7 +48,7 @@ describe('operator console web shell', () => {
     expect(screen.queryByText(/raw envelope/i)).not.toBeInTheDocument();
   });
 
-  it('renders all MVP panels from aggregate snapshot state', () => {
+  it('renders all MVP and deferred panels from aggregate snapshot state', () => {
     render(
       <OperatorConsoleApp
         snapshot={createFixtureSnapshot()}
@@ -64,6 +64,10 @@ describe('operator console web shell', () => {
     expect(screen.getByLabelText('Risk')).toBeVisible();
     expect(screen.getByLabelText('Alerts')).toBeVisible();
     expect(screen.getByLabelText('System Health')).toBeVisible();
+    expect(screen.getByLabelText('Strategy Detail')).toBeVisible();
+    expect(screen.getByLabelText('Latency')).toBeVisible();
+    expect(screen.getByLabelText('MBO Shadow')).toBeVisible();
+    expect(screen.getByLabelText('Performance')).toBeVisible();
 
     expect(screen.getByText('3 blocked / 2 advisory')).toBeVisible();
     expect(screen.getByText('SIM_FILL lifecycle pos-1 fill')).toBeVisible();
@@ -71,6 +75,8 @@ describe('operator console web shell', () => {
     expect(screen.getAllByText('$16.00')).toHaveLength(2);
     expect(screen.getAllByText('$42.25')).toHaveLength(2);
     expect(screen.getByText('feature-policy-mask-version-mismatch')).toBeVisible();
+    expect(screen.getByText(/telemetry-only/i)).toBeVisible();
+    expect(screen.getByText(/Throughput trend/i)).toBeVisible();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.queryByText(/raw envelope/i)).not.toBeInTheDocument();
   });
@@ -161,6 +167,20 @@ function createFixtureSnapshot(): ConsoleSnapshot {
       last_event_lag_ms: { status: 'available', value: 85 },
       telemetry_only: true,
     },
+    strategies: [
+      {
+        strategy_id: 'strat-alpha-01',
+        status: 'available',
+        last_event_id: 'strategy-event-alpha',
+        last_event_ts_ns: '1700000000000000000',
+      },
+      {
+        strategy_id: 'strat-beta-01',
+        status: 'unavailable',
+        last_event_id: null,
+        last_event_ts_ns: '1700000000000000001',
+      },
+    ],
     alerts: [
       {
         id: 'feature-policy-mask-version-mismatch',

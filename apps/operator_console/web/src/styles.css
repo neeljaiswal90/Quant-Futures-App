@@ -189,6 +189,10 @@ textarea {
   margin-top: 12px;
 }
 
+.margin-top-sm {
+  margin-top: 8px;
+}
+
 .metric-row {
   display: flex;
   min-height: 30px;
@@ -230,6 +234,11 @@ textarea {
 
 .metric-value-bad {
   color: #9d2424;
+}
+
+.compact-metric span,
+.compact-metric strong {
+  font-size: 0.72rem;
 }
 
 .event-type-list {
@@ -421,6 +430,26 @@ textarea {
 
 .status-dot-bad span {
   background: #ca3a3a;
+}
+
+.sparkline {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+  gap: 4px;
+  align-items: end;
+  min-height: 90px;
+}
+
+.sparkline-bar {
+  --sparkline-height: 12%;
+  justify-self: stretch;
+  align-self: end;
+  border-radius: 4px 4px 0 0;
+  min-height: 6px;
+  max-height: 100%;
+  background: linear-gradient(180deg, #3b8de0, #6fb0ee);
+  height: var(--sparkline-height);
 }
 
 @media (max-width: 920px) {

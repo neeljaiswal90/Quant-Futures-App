@@ -7,7 +7,11 @@ import { PnlPanel } from './panels/PnlPanel.js';
 import { PositionsPanel } from './panels/PositionsPanel.js';
 import { RiskPanel } from './panels/RiskPanel.js';
 import { SystemHealthPanel } from './panels/SystemHealthPanel.js';
+import { LatencyPanel } from './panels/LatencyPanel.js';
 import { TradeBlotterPanel } from './panels/TradeBlotterPanel.js';
+import { MboShadowPanel } from './panels/MboShadowPanel.js';
+import { PerformancePanel } from './panels/PerformancePanel.js';
+import { StrategyPanel } from './panels/StrategyPanel.js';
 import type { ConsoleSnapshot } from '../../server/src/types/snapshot.js';
 
 export const OPERATOR_CONSOLE_APP_NAME = 'Live-Sim Operator Console';
@@ -84,14 +88,18 @@ export function OperatorConsoleApp({
         </div>
       </section>
 
-      <section className="dashboard-grid" aria-label="MVP panels">
+      <section className="dashboard-grid" aria-label="Console panels">
         <DataPipelinePanel data={snapshot.data_pipeline} />
         <PnlPanel pnl={snapshot.pnl} />
         <RiskPanel risk={snapshot.risk} />
         <SystemHealthPanel snapshot={snapshot} snapshotStatus={snapshot_status} deltaState={delta_state} />
+        <StrategyPanel strategies={snapshot.strategies} />
         <TradeBlotterPanel trades={snapshot.trades} />
         <PositionsPanel positions={snapshot.positions} />
+        <LatencyPanel latency={snapshot.latency} data_pipeline={snapshot.data_pipeline} />
         <AlertsPanel alerts={snapshot.alerts} />
+        <MboShadowPanel mbo_shadow={snapshot.mbo_shadow} />
+        <PerformancePanel snapshot={snapshot} />
       </section>
     </main>
   );
