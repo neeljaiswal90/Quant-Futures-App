@@ -1,12 +1,21 @@
 import { createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { basename, dirname, join, resolve } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import {
   createConsoleLiveStateAccumulator,
   createConsoleLiveStateAccumulatorFromSnapshot,
   type ConsoleLiveStateAccumulator,
+  isFeatureAvailabilityMask,
 } from '../aggregator/live-state.js';
+import type { FeatureAvailabilityMask } from '../../../../strategy_runtime/src/features/availability-mask.js';
 import { normalizeJournalTailResult } from '../ingest/event-normalizer.js';
 import { ConsoleJournalPoller } from '../ingest/journal-poller.js';
 import { selectJournalPath } from '../ingest/journal-discovery.js';
@@ -69,11 +78,13 @@ export function createJournalBackedRestDataSource(
   });
   const resolvedJournalPath = options.journal_path ?? selectJournalPath(options.ingest_options).journal_path;
   const snapshotCachePath = checkpointSnapshotPath(options.ingest_options.checkpoint_dir);
+  const featureMaskCachePath = checkpointFeatureMaskPath(options.ingest_options.checkpoint_dir);
   const resolvedJournalPathRedacted = options.redact_journal_path
     ? redactedJournalPath(resolvedJournalPath)
     : resolvedJournalPath;
   const resolvedJournalPathRedactedFlag = options.redact_journal_path ?? false;
   const restoredSnapshot = readCachedSnapshot(snapshotCachePath);
+  const restoredFeatureMask = readCachedFeatureMask(featureMaskCachePath);
   const snapshotBuilder: ConsoleLiveStateAccumulator = restoredSnapshot === null
     ? createConsoleLiveStateAccumulator({
       journal_path: resolvedJournalPathRedacted,
@@ -82,6 +93,7 @@ export function createJournalBackedRestDataSource(
     : createConsoleLiveStateAccumulatorFromSnapshot(restoredSnapshot, {
       journal_path: resolvedJournalPathRedacted,
       journal_path_redacted: resolvedJournalPathRedactedFlag,
+      feature_mask: restoredFeatureMask ?? undefined,
     });
   let latestSnapshot: ConsoleSnapshot | null = restoredSnapshot;
   let lastPersistedSnapshot: ConsoleSnapshot | null = latestSnapshot;
@@ -102,6 +114,16 @@ export function createJournalBackedRestDataSource(
     history.recordSnapshot(nextSnapshot);
     if (shouldPersistSnapshot(lastPersistedSnapshot, nextSnapshot)) {
       writeCachedSnapshot(snapshotCachePath, nextSnapshot);
+      if (nextSnapshot.feature_surface.mask_source === 'embedded') {
+        const mask = snapshotBuilder.featureMask();
+        if (mask !== undefined) {
+          writeCachedFeatureMask(featureMaskCachePath, mask);
+        } else {
+          removeCachedFeatureMask(featureMaskCachePath);
+        }
+      } else {
+        removeCachedFeatureMask(featureMaskCachePath);
+      }
       lastPersistedSnapshot = nextSnapshot;
     }
     return nextSnapshot;
@@ -229,6 +251,10 @@ function checkpointSnapshotPath(checkpointDir: string): string {
   return join(resolve(checkpointDir), 'checkpoints', 'console-snapshot.json');
 }
 
+function checkpointFeatureMaskPath(checkpointDir: string): string {
+  return join(resolve(checkpointDir), 'checkpoints', 'console-feature-mask.json');
+}
+
 function readCachedSnapshot(path: string): ConsoleSnapshot | null {
   if (!existsSync(path)) {
     return null;
@@ -244,11 +270,46 @@ function readCachedSnapshot(path: string): ConsoleSnapshot | null {
   }
 }
 
+function readCachedFeatureMask(path: string): FeatureAvailabilityMask | null {
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+    if (!isFeatureAvailabilityMask(raw)) {
+      removeCachedFeatureMask(path);
+      return null;
+    }
+    return raw;
+  } catch {
+    removeCachedFeatureMask(path);
+    return null;
+  }
+}
+
 function writeCachedSnapshot(path: string, snapshot: ConsoleSnapshot): void {
   mkdirSync(dirname(path), { recursive: true });
   const tmpPath = `${path}.tmp`;
   writeFileSync(tmpPath, `${stableJsonStringify(snapshot)}\n`, 'utf8');
   renameSync(tmpPath, path);
+}
+
+function writeCachedFeatureMask(path: string, mask: FeatureAvailabilityMask): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmpPath = `${path}.tmp`;
+  writeFileSync(tmpPath, `${stableJsonStringify(mask)}\n`, 'utf8');
+  renameSync(tmpPath, path);
+}
+
+function removeCachedFeatureMask(path: string): void {
+  if (!existsSync(path)) {
+    return;
+  }
+  try {
+    unlinkSync(path);
+  } catch {
+    // best effort cleanup
+  }
 }
 
 function shouldPersistSnapshot(
@@ -260,10 +321,7 @@ function shouldPersistSnapshot(
   }
   return (
     previous.generated_from.last_event_id !== next.generated_from.last_event_id ||
-    previous.generated_from.event_count !== next.generated_from.event_count ||
-    previous.system_health.ws_client_count !== next.system_health.ws_client_count ||
-    previous.system_health.ws_backpressure !== next.system_health.ws_backpressure ||
-    previous.system_health.dropped_critical_frame_count !== next.system_health.dropped_critical_frame_count
+    previous.generated_from.event_count !== next.generated_from.event_count
   );
 }
 
