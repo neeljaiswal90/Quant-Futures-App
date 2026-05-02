@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../../",
+    "composite": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "../../dist/tsbuild/strategy-runtime",
+    "declarationDir": "../../dist/tsbuild/strategy-runtime",
+    "tsBuildInfoFile": "../../dist/tsbuild/strategy-runtime/tsconfig.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "../../scripts/**/*.ts" // scripts are intentionally co-typechecked here for shared runtime/script APIs; split tsconfig.scripts.json only if scripts need operator_console imports
+  ]
+}
