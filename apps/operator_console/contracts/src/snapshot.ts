@@ -1,8 +1,4 @@
 import type { RuntimeEventType } from '../../../strategy_runtime/src/contracts/events/index.js';
-import {
-  FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION,
-  FEATURE_AVAILABILITY_MASK_VERSION,
-} from '../../../strategy_runtime/src/features/availability-mask.js';
 import type {
   FeatureAvailabilityMask,
   FeatureAvailabilityTier,
@@ -13,6 +9,8 @@ export type {
 } from '../../../strategy_runtime/src/features/availability-mask.js';
 
 export const CONSOLE_SNAPSHOT_SCHEMA_VERSION = 1 as const;
+const FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION = 1;
+const FEATURE_AVAILABILITY_MASK_VERSION = 5;
 
 export type DecimalString = string;
 export type UnixNsString = string;
