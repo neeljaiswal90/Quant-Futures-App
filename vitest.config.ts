@@ -6,6 +6,7 @@ export default defineConfig({
     include: [
       'apps/strategy_runtime/tests/unit/**/*.test.ts',
       'apps/operator_console/**/tests/**/*.test.ts',
+      'apps/operator_console/**/tests/**/*.test.tsx',
     ],
   },
 });

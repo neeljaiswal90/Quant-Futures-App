@@ -3,7 +3,7 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -13,13 +13,16 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node"],
+    "jsx": "react-jsx"
   },
   "include": [
     "apps/operator_console/server/src/**/*.ts",
     "apps/operator_console/server/tests/**/*.ts",
     "apps/operator_console/web/src/**/*.ts",
+    "apps/operator_console/web/src/**/*.tsx",
     "apps/operator_console/web/tests/**/*.ts",
+    "apps/operator_console/web/tests/**/*.tsx",
     "apps/strategy_runtime/src/**/*.ts",
     "apps/strategy_runtime/tests/**/*.ts",
     "scripts/**/*.ts",

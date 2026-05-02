@@ -3,8 +3,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/App.ts",
-    "test": "vitest run --root ../../.. apps/operator_console/web/tests/shell.test.ts",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test": "vitest run --root ../../.. apps/operator_console/web/tests/shell.test.tsx apps/operator_console/web/tests/hooks.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "jsdom": "^29.1.1",
+    "vite": "^8.0.10"
   }
 }

@@ -5,7 +5,7 @@ Read-only operator console for live-sim journal state.
 Current implementation status:
 
 - `server`: foundation, security bootstrap, read-only import guard, JSON-safe contracts, journal ingestion, aggregation, and REST snapshot/history endpoints.
-- `web`: package scaffold only. React/Vite UI work is deferred to the web MVP tickets.
+- `web`: React/Vite shell with live snapshot and WebSocket delta hooks. Detailed MVP panels are deferred to `CONSOLE-03-MVP`.
 
 The console must never mutate runtime state, publish journal events, route orders, expose raw journal downloads, or create `JournalEventEnvelope` records.
 
@@ -42,3 +42,7 @@ History responses contain panel-level aggregate state only. They do not return r
 `/healthz` is an unauthenticated process-liveness endpoint and does not tail or rebuild journal state. Remote `/snapshot` and `/history` requests require bearer auth and an allowed `Origin`; CORS preflight is answered for allowed origins.
 
 `/stream` sends a full snapshot on connect, then sequence-aware aggregate deltas. High-rate telemetry deltas are coalesced at `250ms` by default; override with `--ws-coalesce-ms` or `QFA_CONSOLE_WS_COALESCE_MS`. Remote WebSocket upgrades require the same bearer token and allowed `Origin` as remote REST state endpoints.
+
+## Web Shell
+
+The Vite app defaults API calls to its own origin. During local development against the loopback server, set `VITE_OPERATOR_CONSOLE_API_BASE=http://127.0.0.1:3217` and optionally `VITE_OPERATOR_CONSOLE_WS_URL=ws://127.0.0.1:3217/stream`.
