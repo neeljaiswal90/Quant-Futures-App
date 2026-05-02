@@ -17,6 +17,9 @@ export const CONSOLE_HISTORY_PANELS = [
 ] as const;
 
 export type ConsoleHistoryPanel = (typeof CONSOLE_HISTORY_PANELS)[number];
+export interface ConsoleHistoryStoreOptions {
+  readonly max_rows_per_panel?: number;
+}
 
 export interface ConsoleHistoryEntry {
   readonly panel: ConsoleHistoryPanel;
@@ -47,10 +50,21 @@ export interface ParseHistoryQueryOptions {
 export const DEFAULT_HISTORY_LIMIT = 100;
 export const MAX_HISTORY_LIMIT = 1000;
 export const DEFAULT_MAX_HISTORY_RANGE_MS = 86_400_000;
+export const DEFAULT_MAX_HISTORY_ROWS_PER_PANEL = 1000;
 
 export class ConsoleHistoryStore {
-  private readonly rows: ConsoleHistoryEntry[] = [];
+  private readonly rowsByPanel = new Map<ConsoleHistoryPanel, ConsoleHistoryEntry[]>(
+    CONSOLE_HISTORY_PANELS.map((panel) => [panel, []]),
+  );
+  private readonly maxRowsPerPanel: number;
   private lastSnapshotKey: string | null = null;
+
+  public constructor(options: ConsoleHistoryStoreOptions = {}) {
+    this.maxRowsPerPanel = options.max_rows_per_panel ?? DEFAULT_MAX_HISTORY_ROWS_PER_PANEL;
+    if (!Number.isSafeInteger(this.maxRowsPerPanel) || this.maxRowsPerPanel <= 0) {
+      throw new Error('max_rows_per_panel must be a positive safe integer');
+    }
+  }
 
   recordSnapshot(snapshot: ConsoleSnapshot): void {
     const key = `${snapshot.generated_from.last_event_id ?? 'none'}:${snapshot.generated_from.event_count}`;
@@ -63,30 +77,42 @@ export class ConsoleHistoryStore {
     for (const panel of CONSOLE_HISTORY_PANELS) {
       const state = panelState(snapshot, panel);
       assertJsonSafe(state);
-      this.rows.push({
+      const rows = this.rowsByPanel.get(panel);
+      if (rows === undefined) {
+        throw new Error(`unknown panel in history store: ${panel}`);
+      }
+      rows.push({
         panel,
         ts_ns: tsNs,
         last_event_id: snapshot.generated_from.last_event_id,
         state,
       });
+      const overflow = rows.length - this.maxRowsPerPanel;
+      if (overflow > 0) {
+        rows.splice(0, overflow);
+      }
     }
   }
 
   query(query: ConsoleHistoryQuery): ConsoleHistoryResponse {
-    const nowNs = latestTimestampNs(this.rows, query.panel);
+    const panelRows = this.rowsByPanel.get(query.panel);
+    if (panelRows === undefined) {
+      throw new Error(`unsupported panel: ${query.panel}`);
+    }
+
+    const nowNs = latestTimestampNs(panelRows, query.panel);
     const minimumNs = query.range_ms === undefined
       ? undefined
       : nowNs - (BigInt(query.range_ms) * 1_000_000n);
-    const panelRows = this.rows
-      .filter((row) => row.panel === query.panel)
-      .filter((row) => minimumNs === undefined || BigInt(row.ts_ns) >= minimumNs)
-      .slice(-query.limit);
+    const filteredRows = minimumNs === undefined
+      ? panelRows
+      : panelRows.filter((row) => BigInt(row.ts_ns) >= minimumNs);
 
     return {
       panel: query.panel,
       limit: query.limit,
       range_ms: query.range_ms ?? null,
-      rows: panelRows,
+      rows: filteredRows.slice(-query.limit),
     };
   }
 }
@@ -186,8 +212,11 @@ function panelState(snapshot: ConsoleSnapshot, panel: ConsoleHistoryPanel): Json
   }
 }
 
-function latestTimestampNs(rows: readonly ConsoleHistoryEntry[], panel: ConsoleHistoryPanel): bigint {
-  const latest = [...rows].reverse().find((row) => row.panel === panel);
+function latestTimestampNs(
+  rows: readonly ConsoleHistoryEntry[],
+  panel: ConsoleHistoryPanel,
+): bigint {
+  const latest = rows[rows.length - 1];
   return latest === undefined ? BigInt(nowNsString()) : BigInt(latest.ts_ns);
 }
 

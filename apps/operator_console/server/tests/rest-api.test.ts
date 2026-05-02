@@ -1,4 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -16,6 +23,36 @@ const tempDirs: string[] = [];
 const servers: Server[] = [];
 const repoRoot = findRepoRoot(process.cwd());
 const fixturePath = resolve(repoRoot, 'apps/strategy_runtime/tests/fixtures/obs00/mini-journal.jsonl');
+
+type MinimalJournalEvent = {
+  readonly schema_version: 1;
+  readonly event_id: string;
+  readonly type: string;
+  readonly ts_ns: string;
+  readonly run_id: string;
+  readonly session_id: string;
+  readonly causation_id?: string;
+  readonly payload: Record<string, unknown>;
+};
+
+function makeJournalLine(event: Omit<MinimalJournalEvent, 'schema_version'>): string {
+  return JSON.stringify({
+    schema_version: 1,
+    ...event,
+  });
+}
+
+function appendJournalLines(journal: string, lines: readonly string[]): void {
+  if (lines.length === 0) {
+    return;
+  }
+  appendFileSync(journal, `${lines.join('\n')}\n`, { encoding: 'utf8', flag: 'a' });
+}
+
+function findFixture(relativePath: string): string | null {
+  const absolute = resolve(repoRoot, relativePath);
+  return existsSync(absolute) ? absolute : null;
+}
 
 function findRepoRoot(start: string): string {
   let current = resolve(start);
@@ -248,4 +285,199 @@ describe('operator console REST API', () => {
     });
     expect(denied.status).toBe(403);
   });
+
+  it('bounds panel history rows to prevent unbounded in-process growth', () => {
+    const root = tempRoot();
+    const journal = join(root, 'bounded-growth-journal.jsonl');
+    writeFileSync(journal, '', 'utf8');
+    const dataSource = createJournalBackedRestDataSource({
+      journal_path: journal,
+      ingest_options: ingestOptions(root, journal),
+      max_history_rows_per_panel: 40,
+    });
+
+    for (let index = 0; index < 120; index += 1) {
+    appendJournalLines(journal, [
+      makeJournalLine({
+        event_id: `position-${index}`,
+        type: 'POSITION',
+        ts_ns: (1_700_000_000_000_000_000n + BigInt(index)).toString(10),
+        run_id: 'run-console-04a',
+        session_id: 'session-console-04a',
+        causation_id: `cause-position-${index}`,
+        payload: {
+          position_id: `position-${index}`,
+          candidate_id: 'candidate-1',
+          side: 'long',
+          status: 'open',
+          quantity_open: 1,
+          avg_entry_price: 100 + index,
+          updated_ts_ns: (1_700_000_000_000_000_001n + BigInt(index)).toString(10),
+        },
+      }),
+      ]);
+      dataSource.refresh();
+    }
+
+    const history = dataSource.history(new URLSearchParams('panel=trades&limit=1000'));
+    expect(history.panel).toBe('trades');
+    expect(history.rows).toHaveLength(40);
+  });
+
+  it('surfaces malformed rows while keeping /snapshot available', async () => {
+    const root = tempRoot();
+    const journal = join(root, 'malformed-journal.jsonl');
+    appendJournalLines(journal, [
+      makeJournalLine({
+        event_id: 'session-phase-1',
+        type: 'SESSION_PHASE',
+        ts_ns: '1700000000000000000',
+        run_id: 'run-console-04a',
+        session_id: 'session-console-04a',
+        causation_id: 'cause-session-phase-1',
+        payload: {
+          phase: 'rth',
+          trading_date: '2026-04-23',
+        },
+      }),
+      '{malformed-json',
+      JSON.stringify({
+        schema_version: 1,
+        event_id: 'position-bad-schema',
+        type: 'POSITION',
+        ts_ns: '1700000000000000001',
+        run_id: 'run-console-04a',
+        session_id: 'session-console-04a',
+        causation_id: 'cause-position-bad-schema',
+        payload: { status: 'open' },
+      }),
+    ]);
+    const baseUrl = await startServer(resolveServerConfigFromEnv({}), root, journal);
+
+    const snapshot = await readJson(await fetch(`${baseUrl}/snapshot`));
+    const dataPipeline = snapshot.data_pipeline as {
+      malformed_or_schema_invalid_count: number;
+    };
+    const alerts = snapshot.alerts as ReadonlyArray<{ readonly id: string }>;
+
+    expect(dataPipeline.malformed_or_schema_invalid_count).toBe(2);
+    expect(alerts.some((alert) => alert.id.startsWith('malformed-or-schema-invalid:'))).toBe(true);
+  });
+
+  it('includes feature-surface violations in alert stream and panel state', async () => {
+    const root = tempRoot();
+    const journal = join(root, 'feature-violation-journal.jsonl');
+    appendJournalLines(journal, [
+      makeJournalLine({
+        event_id: 'features-violation-1',
+        type: 'FEATURES',
+        ts_ns: '1700000001000000000',
+        run_id: 'run-console-04a',
+        session_id: 'session-console-04a',
+        causation_id: 'cause-features-violation-1',
+        payload: {
+          feature_snapshot_id: 'snapshot-04a',
+          values: {
+            queue_position: 1,
+          },
+        },
+      }),
+    ]);
+    const baseUrl = await startServer(resolveServerConfigFromEnv({}), root, journal);
+
+    const snapshot = await readJson(await fetch(`${baseUrl}/snapshot`));
+    const featureSurface = snapshot.feature_surface as {
+      recent_violations: readonly { readonly id: string; readonly severity: string }[];
+    };
+    const alerts = snapshot.alerts as ReadonlyArray<{ readonly id: string }>;
+
+    expect(featureSurface.recent_violations.length).toBeGreaterThan(0);
+    expect(alerts.some((alert) => alert.id.startsWith('feature-policy-'))).toBe(true);
+  });
+
+  it('keeps realized P&L unavailable when no explicit lifecycle fact is present', async () => {
+    const root = tempRoot();
+    const journal = join(root, 'no-realized-pnl-fact-journal.jsonl');
+    appendJournalLines(journal, [
+      makeJournalLine({
+        event_id: 'position-closed-1',
+        type: 'POSITION',
+        ts_ns: '1700000002000000000',
+        run_id: 'run-console-04a',
+        session_id: 'session-console-04a',
+        causation_id: 'cause-position-closed-1',
+        payload: {
+          position_id: 'position-1',
+          candidate_id: 'candidate-1',
+          side: 'long',
+          status: 'closed',
+          quantity_open: 0,
+          avg_entry_price: 99,
+          updated_ts_ns: '1700000002000000000',
+        },
+      }),
+    ]);
+    const baseUrl = await startServer(resolveServerConfigFromEnv({}), root, journal);
+
+    const snapshot = await readJson(await fetch(`${baseUrl}/snapshot`));
+    const pnl = snapshot.pnl as {
+      realized_pnl_usd: { readonly status: string; readonly value?: number };
+      source: string;
+    };
+    const positions = snapshot.positions as ReadonlyArray<{
+      position_id: string;
+      realized_pnl_usd: { readonly status: string };
+    }>;
+
+    expect(pnl.realized_pnl_usd.status).toBe('unavailable');
+    expect(pnl.source).toBe('unavailable');
+    expect(positions[0]?.position_id).toBe('position-1');
+    expect(positions[0]?.realized_pnl_usd.status).toBe('unavailable');
+  });
+
+  const optionalFixtures = [
+    {
+      label: 'REL-00A transport mini-journal',
+      path: 'reports/rel/rel00a/fixture-transport/mini-journal.jsonl',
+    },
+    {
+      label: 'REL-01 short packet controlled live-sim journal',
+      path: 'reports/rel/rel01_short_packet_current/rel00_controlled_live_sim_journal.jsonl',
+    },
+    {
+      label: 'MBO shadow diagnostic journal',
+      path: 'reports/rel/orch_mbo01_smoke_20260429_211947/diagnostic_current_main/rel00_controlled_live_sim_shadow_journal.jsonl',
+    },
+  ] as const;
+
+  for (const entry of optionalFixtures) {
+    const fixture = findFixture(entry.path);
+    if (fixture === null) {
+      it.todo(`fixture unavailable locally: ${entry.label} (${entry.path})`);
+      continue;
+    }
+
+    it(`reads ${entry.label} without raw journal exposure`, async () => {
+      const baseUrl = await startServer(resolveServerConfigFromEnv({}), tempRoot(), fixture);
+      const snapshot = await readJson(await fetch(`${baseUrl}/snapshot`));
+      const history = await readJson(await fetch(`${baseUrl}/history?panel=trades&limit=3`));
+      expect(snapshot.schema_version).toBe(1);
+      expect(Array.isArray(history.rows)).toBe(true);
+    });
+  }
+
+  const largeFixture = process.env.OPERATOR_CONSOLE_VERIFY_600K_FIXTURE?.trim();
+  if (largeFixture !== undefined && largeFixture.length > 0 && existsSync(largeFixture)) {
+    it('reads a local 600k+ REL journal fixture and remains bounded', async () => {
+      const baseUrl = await startServer(resolveServerConfigFromEnv({}), tempRoot(), resolve(largeFixture));
+      const snapshot = await readJson(await fetch(`${baseUrl}/snapshot`));
+      expect((snapshot.generated_from as Record<string, unknown>).event_count).toBeGreaterThanOrEqual(
+        600_000,
+      );
+    });
+  } else {
+    it.todo(
+      'set OPERATOR_CONSOLE_VERIFY_600K_FIXTURE to a 600k+ journal file to run the long-session verification',
+    );
+  }
 });

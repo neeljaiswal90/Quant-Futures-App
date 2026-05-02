@@ -11,6 +11,7 @@ import { allowedCorsOrigin, authenticateRestRequest } from './auth.js';
 import {
   ConsoleHistoryStore,
   DEFAULT_MAX_HISTORY_RANGE_MS,
+  DEFAULT_MAX_HISTORY_ROWS_PER_PANEL,
   parseHistoryQuery,
   type ConsoleHistoryResponse,
 } from './history.js';
@@ -34,6 +35,7 @@ export interface JournalBackedDataSourceOptions {
   readonly ingest_options: JournalIngestOptions;
   readonly redact_journal_path?: boolean;
   readonly max_history_range_ms?: number;
+  readonly max_history_rows_per_panel?: number;
   readonly transport_health?: () => {
     readonly ws_client_count: number;
     readonly ws_backpressure: boolean;
@@ -59,7 +61,9 @@ export function createOperatorConsoleRestServer(
 export function createJournalBackedRestDataSource(
   options: JournalBackedDataSourceOptions,
 ): ConsoleRestDataSource {
-  const history = new ConsoleHistoryStore();
+  const history = new ConsoleHistoryStore({
+    max_rows_per_panel: options.max_history_rows_per_panel ?? DEFAULT_MAX_HISTORY_ROWS_PER_PANEL,
+  });
   const snapshotBuilder: ConsoleLiveStateAccumulator = createConsoleLiveStateAccumulator({
     journal_path: options.redact_journal_path
       ? redactedJournalPath(options.journal_path)
