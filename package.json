@@ -10,6 +10,7 @@
   "scripts": {
     "build": "npx tsc -b tsconfig.json && npm --workspace apps/operator_console/server run typecheck && npm --workspace apps/operator_console/web run typecheck",
     "check:python": "node scripts/check-python-syntax.mjs",
+    "check:ci": "npm ci --dry-run && npm run build && npm run console:test",
     "console:server": "npm --workspace apps/operator_console/server run start --",
     "console:test": "npm --workspace apps/operator_console/server test && npm --workspace apps/operator_console/web test",
     "console:web": "npm --workspace apps/operator_console/web run dev",
