@@ -7,7 +7,10 @@ import type {
   RuntimeEventType,
 } from '../../../strategy_runtime/src/contracts/events/index.js';
 import { FEATURE_AVAILABILITY_MASK } from '../../../strategy_runtime/src/features/availability-mask.js';
-import { buildConsoleSnapshotFromEvents } from '../src/aggregator/live-state.js';
+import {
+  buildConsoleSnapshotFromEvents,
+  createConsoleLiveStateAccumulator,
+} from '../src/aggregator/live-state.js';
 import { ingestJournalOnce } from '../src/ingest/journal-tail.js';
 import { normalizeJournalTailResult } from '../src/ingest/event-normalizer.js';
 import type { IngestedJournalEvent, JournalTailResult } from '../src/ingest/journal-tail.js';
@@ -125,6 +128,46 @@ describe('operator console live-state aggregator', () => {
       status: 'available',
       value: 'checkpointed',
     });
+  });
+
+  it('accumulates normalized batches into the same snapshot as a full rebuild', () => {
+    const root = tempRoot();
+    const journal = join(root, 'rel00_controlled_live_sim_journal.jsonl');
+    const checkpointDir = join(root, 'console-checkpoints');
+    writeFileSync(journal, readFileSync(fixturePath, 'utf8'), 'utf8');
+
+    const fullNormalized = normalizeJournalTailResult(
+      ingestJournalOnce({
+        journal_path: journal,
+        checkpoint_dir: checkpointDir,
+      }),
+      { check_missing_terminal_order_intents: false },
+    );
+    const splitIndex = Math.floor(fullNormalized.events.length / 2);
+    const firstChunk = normalizeJournalTailResult(
+      tailResult(fullNormalized.events.slice(0, splitIndex)),
+      { check_missing_terminal_order_intents: false },
+    );
+    const secondChunk = normalizeJournalTailResult(
+      tailResult(fullNormalized.events.slice(splitIndex)),
+      { check_missing_terminal_order_intents: false },
+    );
+
+    const incremental = createConsoleLiveStateAccumulator({
+      journal_path: journal,
+    });
+    incremental.applyNormalizedResult(firstChunk);
+    incremental.applyNormalizedResult(secondChunk);
+    const incrementalSnapshot = incremental.snapshot({
+      checkpoint_status: { status: 'available', value: 'checkpointed' },
+    });
+    const fullSnapshot = buildConsoleSnapshotFromEvents(fullNormalized, {
+      journal_path: journal,
+      render_time_ns: undefined,
+      checkpoint_status: { status: 'available', value: 'checkpointed' },
+    });
+
+    expect(incrementalSnapshot).toEqual(fullSnapshot);
   });
 
   it('sums only explicit MGMT_ACTION realized P&L facts by position', () => {

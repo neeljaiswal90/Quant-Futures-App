@@ -34,6 +34,30 @@ export interface LiveStateSnapshotOptions {
   readonly max_alerts?: number;
 }
 
+export interface ConsoleLiveStateAccumulator {
+  applyNormalizedResult: (normalized: EventNormalizerResult) => void;
+  snapshot: (options?: LiveStateSnapshotRuntimeOptions) => ConsoleSnapshot;
+}
+
+export interface ConsoleLiveStateAccumulatorOptions {
+  readonly journal_path: string;
+  readonly journal_path_redacted?: boolean;
+  readonly max_trade_rows?: number;
+  readonly max_alerts?: number;
+  readonly max_cached_alerts?: number;
+}
+
+interface LiveStateSnapshotRuntimeOptions {
+  readonly render_time_ns?: bigint | string;
+  readonly server_status?: ConsoleSnapshot['system_health']['server_status'];
+  readonly ws_client_count?: number;
+  readonly ws_backpressure?: boolean;
+  readonly dropped_critical_frame_count?: number;
+  readonly checkpoint_status?: MaybeAvailable<string>;
+  readonly max_trade_rows?: number;
+  readonly max_alerts?: number;
+}
+
 interface MutablePosition {
   position_id: string;
   side: string;
@@ -52,6 +76,10 @@ interface LatestRiskState {
   open_trade_count: MaybeAvailable<number>;
   rejected_trade_count: MaybeAvailable<number>;
 }
+
+const DEFAULT_TRADE_ROWS = 200;
+const DEFAULT_ALERT_ROWS = 100;
+const DEFAULT_CACHED_ALERTS = 5000;
 
 const TRADE_ROW_EVENT_TYPES = new Set<RuntimeEventType>([
   'ORDER_INTENT',
@@ -147,6 +175,383 @@ export function buildConsoleSnapshotFromEvents(
     feature_surface: featureSurface,
     mbo_shadow: aggregateMboShadow(allEvents),
   };
+}
+
+export function createConsoleLiveStateAccumulator(
+  options: ConsoleLiveStateAccumulatorOptions,
+): ConsoleLiveStateAccumulator {
+  const state: MutableLiveState = {
+    journal_path: options.journal_path,
+    journal_path_redacted: options.journal_path_redacted ?? false,
+    max_trade_rows: options.max_trade_rows ?? DEFAULT_TRADE_ROWS,
+    max_alerts: options.max_alerts ?? DEFAULT_ALERT_ROWS,
+    max_cached_alerts: Math.max(options.max_cached_alerts ?? DEFAULT_CACHED_ALERTS, 100),
+    source_event_count: 0,
+    by_type: {},
+    trades: [],
+    positions: new Map(),
+    strategies: new Map(),
+    risk: null,
+    feature_mask: undefined,
+    feature_mask_alerts: [],
+    explicit_realized_pnl_value: 0,
+    explicit_realized_pnl_count: 0,
+    explicit_realized_pnl_by_position: new Map(),
+    mbo_shadow: { status: 'absent', last_event_id: null },
+    alerts: [],
+    malformed_or_schema_invalid_count: 0,
+    feature_policy_violation_count: 0,
+    blocked_feature_policy_violation_count: 0,
+    missing_terminal_order_intent_count: 0,
+    last_event_id: null,
+    last_event_ts_ns: null,
+    last_run_id: 'unavailable',
+    session_id: 'unavailable',
+  };
+
+  return {
+    applyNormalizedResult: (next) => {
+      for (const alert of next.alerts) {
+        appendAlert(state, {
+          id: alert.id,
+          severity: alert.severity,
+          message: alert.message,
+          ...(alert.event_id === undefined ? {} : { event_id: alert.event_id }),
+        });
+      }
+
+      for (const normalizedEvent of next.events) {
+        applyNormalizedEvent(state, normalizedEvent);
+        state.source_event_count += 1;
+      }
+
+      state.malformed_or_schema_invalid_count += next.malformed_or_schema_invalid_count;
+      state.feature_policy_violation_count += next.feature_policy_violation_count;
+      state.blocked_feature_policy_violation_count += next.blocked_feature_policy_violation_count;
+      state.missing_terminal_order_intent_count += next.missing_terminal_order_intent_count;
+    },
+    snapshot: (runtimeOptions) => {
+      const runtime = runtimeOptions ?? {};
+      const hasAnyEvent = state.last_event_id !== null;
+      const runId = hasAnyEvent ? state.last_run_id : 'unavailable';
+      const sessionId = hasAnyEvent ? state.session_id : 'unavailable';
+      const lastEventTsNs = state.last_event_ts_ns;
+      const renderTimeNs = nsString(runtime.render_time_ns ?? state.last_event_ts_ns);
+      const maxTradeRows = runtime.max_trade_rows ?? state.max_trade_rows;
+      const maxAlerts = runtime.max_alerts ?? state.max_alerts;
+      const alerts = trimToMax([...state.alerts, ...state.feature_mask_alerts], maxAlerts);
+      const featureSurface = aggregateFeatureSurface(state.feature_mask, alerts);
+
+      return {
+        schema_version: CONSOLE_SNAPSHOT_SCHEMA_VERSION,
+        run_id: runId,
+        session_id: sessionId,
+        generated_from: {
+          journal_path: state.journal_path,
+          journal_path_redacted: state.journal_path_redacted,
+          last_event_id: state.last_event_id,
+          last_event_ts_ns: lastEventTsNs,
+          event_count: state.source_event_count,
+        },
+        data_pipeline: {
+          source_event_count: state.source_event_count,
+          by_type: { ...state.by_type },
+          last_event_age_ms: lastEventTsNs === null || renderTimeNs === null
+            ? unavailable('no events yet')
+            : available(nsDeltaMs(renderTimeNs, lastEventTsNs)),
+          malformed_or_schema_invalid_count: state.malformed_or_schema_invalid_count,
+        },
+        strategies: [...state.strategies.values()]
+          .map((strategy) => ({ ...strategy }))
+          .sort((left, right) => left.strategy_id.localeCompare(right.strategy_id)),
+        trades: {
+          rows: trimToMax(state.trades, maxTradeRows),
+        },
+        positions: [...state.positions.values()].map((position) => ({ ...position })).sort((left, right) =>
+          left.position_id.localeCompare(right.position_id)),
+        pnl: {
+          realized_pnl_usd: state.explicit_realized_pnl_count === 0
+            ? unavailable('no explicit MGMT_ACTION.realized_pnl_usd lifecycle facts')
+            : available(state.explicit_realized_pnl_value),
+          unrealized_pnl_usd: sumAvailable(
+            [...state.positions.values()].map((position) => position.unrealized_pnl_usd),
+          ),
+          source: state.explicit_realized_pnl_count === 0
+            ? 'unavailable'
+            : 'explicit_lifecycle_fact',
+        },
+        risk: state.risk ?? {
+          circuit_breaker_state: unavailable('no RISK_GATE.session_risk fact'),
+          daily_loss_usage: unavailable('no RISK_GATE.session_risk fact'),
+          open_trade_count: unavailable('no RISK_GATE.session_risk fact'),
+          rejected_trade_count: unavailable('no RISK_GATE.session_risk fact'),
+        },
+        latency: {
+          last_event_lag_ms: lastEventTsNs === null || renderTimeNs === null
+            ? unavailable('no events yet')
+            : available(nsDeltaMs(renderTimeNs, lastEventTsNs)),
+          telemetry_only: true,
+        },
+        alerts,
+        system_health: {
+          server_status: runtime.server_status ?? 'running',
+          ws_client_count: runtime.ws_client_count ?? 0,
+          ws_backpressure: runtime.ws_backpressure ?? false,
+          dropped_critical_frame_count: runtime.dropped_critical_frame_count ?? 0,
+          checkpoint_status: runtime.checkpoint_status ?? unavailable('not connected to journal checkpoint'),
+        },
+        feature_surface: featureSurface,
+        mbo_shadow: {
+          status: state.mbo_shadow.status,
+          decision_use: false,
+          last_event_id: state.mbo_shadow.last_event_id,
+        },
+      };
+    },
+  };
+}
+
+interface MutableLiveState {
+  journal_path: string;
+  journal_path_redacted: boolean;
+  max_trade_rows: number;
+  max_alerts: number;
+  max_cached_alerts: number;
+  source_event_count: number;
+  by_type: Partial<Record<RuntimeEventType, number>>;
+  trades: TradeBlotterRow[];
+  positions: Map<string, MutablePosition>;
+  strategies: Map<string, StrategyGateState>;
+  risk: LatestRiskState | null;
+  feature_mask: FeatureAvailabilityMask | undefined;
+  feature_mask_alerts: readonly AlertState[];
+  explicit_realized_pnl_value: number;
+  explicit_realized_pnl_count: number;
+  explicit_realized_pnl_by_position: Map<string, number>;
+  mbo_shadow: { status: MboShadowState['status']; last_event_id: string | null };
+  alerts: AlertState[];
+  malformed_or_schema_invalid_count: number;
+  feature_policy_violation_count: number;
+  blocked_feature_policy_violation_count: number;
+  missing_terminal_order_intent_count: number;
+  last_event_id: string | null;
+  last_event_ts_ns: UnixNsString | null;
+  last_run_id: string;
+  session_id: string;
+}
+
+function applyNormalizedEvent(state: MutableLiveState, normalizedEvent: { readonly event: JournalEventEnvelope; readonly decision_grade: boolean }): void {
+  const event = normalizedEvent.event;
+  const payload = payloadRecord(event);
+  state.by_type[event.type] = (state.by_type[event.type] ?? 0) + 1;
+  state.last_event_id = event.event_id;
+  state.last_event_ts_ns = nsString(event.ts_ns);
+  state.last_run_id = event.run_id;
+  state.session_id = event.session_id;
+
+  if (FEATURE_SURFACE_EVENT_TYPES.has(event.type)) {
+    applyMboShadowEvent(state, event);
+    applyEmbeddedFeatureMask(state, event, payload);
+  }
+
+  if (!normalizedEvent.decision_grade) {
+    return;
+  }
+
+  if (TRADE_ROW_EVENT_TYPES.has(event.type)) {
+    applyTradeRow(state, event, payload);
+  }
+
+  if (event.type === 'STRAT_EVAL') {
+    const strategyId = stringValue(payload.strategy_id);
+    if (strategyId !== undefined) {
+      state.strategies.set(strategyId, {
+        strategy_id: strategyId,
+        status: 'available',
+        last_event_id: event.event_id,
+        last_event_ts_ns: nsString(event.ts_ns),
+      });
+    }
+    return;
+  }
+
+  if (event.type === 'POSITION' || event.type === 'MGMT_TICK' || event.type === 'MGMT_ACTION') {
+    const positionId = stringValue(payload.position_id);
+    if (positionId === undefined) {
+      return;
+    }
+    const position = ensurePosition(state.positions, positionId);
+
+    if (event.type === 'POSITION') {
+      position.side = stringValue(payload.side) ?? position.side;
+      position.status = stringValue(payload.status) ?? position.status;
+      position.quantity_open = maybeNumber(payload.quantity_open, 'POSITION.quantity_open unavailable');
+      position.avg_entry_price = maybeNumber(payload.avg_entry_price, 'POSITION.avg_entry_price unavailable');
+      return;
+    }
+
+    if (event.type === 'MGMT_TICK') {
+      position.mark_price = maybeNumber(payload.mark_price, 'MGMT_TICK.mark_price unavailable');
+      position.unrealized_pnl_usd = maybeNumber(
+        payload.unrealized_pnl_usd,
+        'MGMT_TICK.unrealized_pnl_usd unavailable',
+      );
+      return;
+    }
+
+    position.last_management_action = stringValue(payload.action_type) ?? event.event_id;
+    const realizedPnl = numberValue(payload.realized_pnl_usd);
+    if (realizedPnl !== undefined) {
+      state.explicit_realized_pnl_value += realizedPnl;
+      state.explicit_realized_pnl_count += 1;
+      const previousPositionPnl = state.explicit_realized_pnl_by_position.get(positionId) ?? 0;
+      const nextPositionPnl = previousPositionPnl + realizedPnl;
+      state.explicit_realized_pnl_by_position.set(positionId, nextPositionPnl);
+      position.realized_pnl_usd = available(nextPositionPnl);
+      return;
+    }
+    return;
+  }
+
+  if (event.type === 'RISK_GATE') {
+    const sessionRisk = jsonObject(payload.session_risk);
+    if (sessionRisk === null) {
+      return;
+    }
+    state.risk = {
+      circuit_breaker_state: maybeString(
+        sessionRisk.circuit_breaker_state,
+        'RISK_GATE.session_risk.circuit_breaker_state unavailable',
+      ),
+      daily_loss_usage: unavailable('no daily_loss_usage fact in RISK_GATE.session_risk'),
+      open_trade_count: maybeNumber(
+        sessionRisk.open_trade_count,
+        'RISK_GATE.session_risk.open_trade_count unavailable',
+      ),
+      rejected_trade_count: maybeNumber(
+        sessionRisk.rejected_trade_count,
+        'RISK_GATE.session_risk.rejected_trade_count unavailable',
+      ),
+    };
+    return;
+  }
+
+  applyDecisionEventAlert(state, event, payload);
+}
+
+function applyTradeRow(
+  state: MutableLiveState,
+  event: JournalEventEnvelope,
+  payload: Record<string, unknown>,
+): void {
+  const row: TradeBlotterRow = {
+    event_id: event.event_id,
+    type: event.type as TradeBlotterRow['type'],
+    ts_ns: nsString(event.ts_ns) ?? '0',
+    summary: summarizeTradeEvent(event),
+  };
+  state.trades.push(row);
+  if (state.trades.length > state.max_trade_rows) {
+    state.trades.splice(0, state.trades.length - state.max_trade_rows);
+  }
+}
+
+function applyMboShadowEvent(
+  state: MutableLiveState,
+  event: JournalEventEnvelope,
+): void {
+  const payload = payloadRecord(event);
+  const shadowValues = jsonObject(payload.shadow_values);
+  const diagnosticValues = jsonObject(payload.diagnostic_values);
+  if (shadowValues !== null && Object.keys(shadowValues).length > 0) {
+    state.mbo_shadow = {
+      status: 'shadow',
+      last_event_id: event.event_id,
+    };
+    return;
+  }
+  if (state.mbo_shadow.status === 'absent' && diagnosticValues !== null && Object.keys(diagnosticValues).length > 0) {
+    state.mbo_shadow = {
+      status: 'diagnostic',
+      last_event_id: event.event_id,
+    };
+  }
+}
+
+function applyEmbeddedFeatureMask(
+  state: MutableLiveState,
+  event: JournalEventEnvelope,
+  payload: Record<string, unknown>,
+): void {
+  const rawMask = payload.feature_availability_mask;
+  if (rawMask === undefined) {
+    return;
+  }
+  const mask = jsonObject(rawMask);
+  if (isFeatureAvailabilityMask(mask)) {
+    state.feature_mask = mask;
+    state.feature_mask_alerts = [];
+  } else {
+    state.feature_mask = undefined;
+    state.feature_mask_alerts = embeddedMaskAlerts(mask, event);
+  }
+}
+
+function applyDecisionEventAlert(
+  state: MutableLiveState,
+  event: JournalEventEnvelope,
+  payload: Record<string, unknown>,
+): void {
+  if (event.type === 'EXEC_REJECT') {
+    appendAlert(state, {
+      id: `exec-reject:${event.event_id}`,
+      severity: 'warning',
+      message: `Simulated execution ${stringValue(payload.status) ?? 'rejected'}: ${
+        stringValue(payload.reason) ?? event.event_id
+      }`,
+      event_id: event.event_id,
+    });
+  }
+  if (event.type === 'GAP') {
+    appendAlert(state, {
+      id: `gap:${event.event_id}`,
+      severity: 'warning',
+      message: `Feed gap on ${stringValue(payload.stream) ?? 'unknown stream'}`,
+      event_id: event.event_id,
+    });
+  }
+  if (event.type === 'FEED') {
+    const stateValue = stringValue(payload.state);
+    if (stateValue === 'stale' || stateValue === 'gap' || stateValue === 'closed') {
+      appendAlert(state, {
+        id: `feed:${event.event_id}`,
+        severity: stateValue === 'closed' ? 'critical' : 'warning',
+        message: `Feed state is ${stateValue}${
+          stringValue(payload.stream) === undefined ? '' : ` for ${stringValue(payload.stream)}`
+        }`,
+        event_id: event.event_id,
+      });
+    }
+  }
+  if (event.type === 'HALT' && stringValue(payload.state) === 'halted') {
+    appendAlert(state, {
+      id: `halt:${event.event_id}`,
+      severity: 'critical',
+      message: `Runtime halt: ${stringValue(payload.reason) ?? 'no reason provided'}`,
+      event_id: event.event_id,
+    });
+  }
+}
+
+function appendAlert(state: MutableLiveState, alert: AlertState): void {
+  state.alerts.push(alert);
+  if (state.alerts.length > state.max_cached_alerts) {
+    state.alerts.splice(0, state.alerts.length - state.max_cached_alerts);
+  }
+}
+
+function trimToMax<T>(items: readonly T[], maxItems: number): readonly T[] {
+  return items.length <= maxItems ? [...items] : items.slice(items.length - maxItems);
 }
 
 function countByType(

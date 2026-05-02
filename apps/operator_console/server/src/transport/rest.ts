@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { basename } from 'node:path';
-import { buildConsoleSnapshotFromEvents } from '../aggregator/live-state.js';
-import { normalizeJournalTailResult, type EventNormalizerResult } from '../ingest/event-normalizer.js';
+import {
+  createConsoleLiveStateAccumulator,
+  type ConsoleLiveStateAccumulator,
+} from '../aggregator/live-state.js';
+import { normalizeJournalTailResult } from '../ingest/event-normalizer.js';
 import { ingestJournalOnce } from '../ingest/journal-tail.js';
 import { allowedCorsOrigin, authenticateRestRequest } from './auth.js';
 import {
@@ -38,15 +41,6 @@ export interface JournalBackedDataSourceOptions {
   };
 }
 
-interface MergedNormalizerResult {
-  events: EventNormalizerResult['events'];
-  alerts: EventNormalizerResult['alerts'];
-  malformed_or_schema_invalid_count: number;
-  feature_policy_violation_count: number;
-  blocked_feature_policy_violation_count: number;
-  missing_terminal_order_intent_count: number;
-}
-
 export function createOperatorConsoleRestServer(
   options: CreateOperatorConsoleRestServerOptions,
 ): Server {
@@ -66,14 +60,12 @@ export function createJournalBackedRestDataSource(
   options: JournalBackedDataSourceOptions,
 ): ConsoleRestDataSource {
   const history = new ConsoleHistoryStore();
-  const merged: MergedNormalizerResult = {
-    events: [],
-    alerts: [],
-    malformed_or_schema_invalid_count: 0,
-    feature_policy_violation_count: 0,
-    blocked_feature_policy_violation_count: 0,
-    missing_terminal_order_intent_count: 0,
-  };
+  const snapshotBuilder: ConsoleLiveStateAccumulator = createConsoleLiveStateAccumulator({
+    journal_path: options.redact_journal_path
+      ? redactedJournalPath(options.journal_path)
+      : options.journal_path,
+    journal_path_redacted: options.redact_journal_path ?? false,
+  });
   let latestSnapshot: ConsoleSnapshot | null = null;
 
   const refresh = (): ConsoleSnapshot => {
@@ -82,12 +74,8 @@ export function createJournalBackedRestDataSource(
       checkpoint_dir: options.ingest_options.checkpoint_dir,
     });
     const normalized = normalizeJournalTailResult(tailed);
-    appendNormalizedResult(merged, normalized);
-    latestSnapshot = buildConsoleSnapshotFromEvents(merged, {
-      journal_path: options.redact_journal_path
-        ? redactedJournalPath(options.journal_path)
-        : options.journal_path,
-      journal_path_redacted: options.redact_journal_path ?? false,
+    snapshotBuilder.applyNormalizedResult(normalized);
+    latestSnapshot = snapshotBuilder.snapshot({
       ...options.transport_health?.(),
       checkpoint_status: {
         status: 'available',
@@ -209,18 +197,6 @@ function sendJson(response: ServerResponse, statusCode: number, value: unknown):
   response.statusCode = statusCode;
   response.setHeader('Content-Type', 'application/json; charset=utf-8');
   response.end(`${stableJsonStringify(value)}\n`);
-}
-
-function appendNormalizedResult(
-  target: MergedNormalizerResult,
-  next: EventNormalizerResult,
-): void {
-  target.events = [...target.events, ...next.events];
-  target.alerts = [...target.alerts, ...next.alerts];
-  target.malformed_or_schema_invalid_count += next.malformed_or_schema_invalid_count;
-  target.feature_policy_violation_count += next.feature_policy_violation_count;
-  target.blocked_feature_policy_violation_count += next.blocked_feature_policy_violation_count;
-  target.missing_terminal_order_intent_count += next.missing_terminal_order_intent_count;
 }
 
 function redactedJournalPath(journalPath: string): string {
