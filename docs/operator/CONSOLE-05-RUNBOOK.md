@@ -6,6 +6,8 @@ This runbook captures safe startup, configuration, and runtime checks for the li
 
 The Operator Console is read-only. It renders read-only aggregates and event deltas from a runtime JSONL journal.
 
+The operator console is intentionally **simulated-only**: no live broker connectivity is used, no order-placement path is active through the console, and no real-money execution is triggered. Data comes from `SIM_FILL` and `POSITION` rows in journal state for observability only.
+
 Supported interfaces:
 
 - `GET /healthz`
@@ -15,7 +17,26 @@ Supported interfaces:
 
 The web shell is in `apps/operator_console/web` and is optional for operators; REST endpoints are always available with the server.
 
-## 2) Loopback mode (recommended default)
+## 2) Feature surface and MBO status interpretation
+
+The banner and `feature_surface` state are derived from feature availability tiers. These tiers are operationally significant:
+
+- `authoritative`: canonical fields/logic considered safe for normal decision flow.
+- `subscope`: provider-internal sub-scope logic that may be accepted but only within narrow context; not equivalent to full canonical decision evidence.
+- `diagnostic_only`: quality/health metrics used for observability only.
+- `shadow_only`: emitted as shadow candidates; currently excluded from decisions (`decision_use=false`).
+- `advisory_only`: informational fields intended for human display only; not used in decision paths.
+- `blocked`: intentionally disabled/blocked feature paths.
+- `available`: feature payload present and generally unblocked at a policy level, but not always used by the core decision path unless specifically consumed elsewhere.
+
+Interpretation:
+
+- **MBO decision use blocked** means `decision_grade` excludes MBO-impacted events from core position/risk/trade/state updates. This reflects the project’s REL-01D/REL-01E posture.
+- `feature_surface.mask_source === 'embedded'` means the console parsed a runtime-emitted `FEATURES`-event mask and is using embedded policy metadata.
+- `feature_surface.mask_source === 'fallback'` means the console is using the local static mask. This is healthy only when the runtime does not include a mask; if embedded was present but rejected, `recent_violations` should include `feature-policy-*` alerts (schema/version/identity), and operators should inspect those.
+- `feature_surface.recent_violations` in the banner are schema/availability events that were not eligible for decision-grade state. It is the primary operator signal that some fields were filtered from decision state due to feature-policy violations.
+
+## 3) Loopback mode (recommended default)
 
 Loopback mode is safest for a local workstation and requires no remote auth.
 
@@ -41,7 +62,7 @@ curl http://127.0.0.1:3217/healthz
 curl http://127.0.0.1:3217/snapshot
 ```
 
-## 3) Remote mode
+## 4) Remote mode
 
 Remote mode binds non-loopback and requires strict operator credentials.
 
@@ -77,7 +98,7 @@ $env:VITE_OPERATOR_CONSOLE_WS_URL = 'wss://ops.example/stream'
 npm run console:web
 ```
 
-## 4) CLI flags and env variables
+## 5) CLI flags and env variables
 
 - Journal source (required):
   - `--journal <path>` or `QFA_CONSOLE_JOURNAL=<path>`
@@ -96,7 +117,17 @@ npm run console:web
   - `QFA_CONSOLE_BIND` (default `127.0.0.1`)
   - `QFA_CONSOLE_PORT` (default `3217`)
 
-## 5) Validation checklist
+## 6) Redacted journal path
+
+When running remote mode, endpoint responses sanitize journal paths for privacy:
+
+- `journal:basename:12_char_sha`
+
+Example: `journal:live-sim.jsonl:ab12cd34ef56`
+
+This is expected; it is not an error condition.
+
+## 7) Validation checklist
 
 Run these checks during rollout and after incidents:
 
@@ -110,18 +141,17 @@ $env:OPERATOR_CONSOLE_VERIFY_600K_FIXTURE = "C:\path\to\large-journal.jsonl"
 npm run console:test
 ```
 
-## 6) Known operational caveats
+## 8) Known operational caveats
 
 - **TLS/transport security (remote):** remote mode must sit behind a loopback-restricted host or TLS-terminating proxy. Remote bearer auth is required and token rotation is restart-required.
 - **Restart safety:** console restores snapshot state from checkpoint cache and journal checkpoints on restart; this is intended to prevent reprocessing from offset 0.
 - **Embedded feature-mask restore:** when `mask_source=embedded`, the restored snapshot rebuilds mask metadata from snapshot fields and static embedded defaults. This is sufficient for current policy posture, but if a future mask version adds semantic shape changes, prefer a full native embedded-mask snapshot migration or add a migration note.
 - **Counter continuity:** feature-policy and missing-terminal-order counters are reconstructed from capped history at restore and may not be strictly monotonic across restart.
 
-## 7) Known bad states
+## 9) Known bad states
 
 - If restart requires remote token rotation, the token must be replaced and the console restarted; hot token swap is not supported.
 - For `403` on `Origin`:
   - `Origin` is not allowed in local loopback mode unless loopback.
   - remote mode requires exact match in `OPERATOR_CONSOLE_ORIGIN_ALLOWLIST` (comma-delimited list).
 - For repeated dropped WS frames: check client count and network health; snapshots are replayed on connect.
-

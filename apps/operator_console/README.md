@@ -8,6 +8,7 @@ Current implementation status:
 - `web`: React/Vite shell with live snapshot and WebSocket delta hooks. Detailed MVP panels are deferred to `CONSOLE-03-MVP`.
 
 The console must never mutate runtime state, publish journal events, route orders, expose raw journal downloads, or create `JournalEventEnvelope` records.
+See the operator start/run documentation in [CONSOLE-05 runbook](../../docs/operator/CONSOLE-05-RUNBOOK.md).
 
 ## Scripts
 
