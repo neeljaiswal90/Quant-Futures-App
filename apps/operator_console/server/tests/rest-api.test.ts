@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   createJournalBackedRestDataSource,
   createOperatorConsoleRestServer,
+  type ConsoleRestDataSource,
 } from '../src/transport/rest.js';
 import { resolveServerConfigFromEnv, type OperatorConsoleServerConfig } from '../src/runtime/config.js';
 import type { JournalIngestOptions } from '../src/ingest/options.js';
@@ -59,14 +60,13 @@ function ingestOptions(root: string, journal: string): JournalIngestOptions {
   };
 }
 
-async function startServer(config: OperatorConsoleServerConfig, root: string, journal: string): Promise<string> {
+async function startServerWithDataSource(
+  config: OperatorConsoleServerConfig,
+  dataSource: ConsoleRestDataSource,
+): Promise<string> {
   const server = createOperatorConsoleRestServer({
     config,
-    data_source: createJournalBackedRestDataSource({
-      journal_path: journal,
-      ingest_options: ingestOptions(root, journal),
-      redact_journal_path: config.remote.enabled,
-    }),
+    data_source: dataSource,
   });
   servers.push(server);
   await new Promise<void>((resolveListen) => {
@@ -74,6 +74,14 @@ async function startServer(config: OperatorConsoleServerConfig, root: string, jo
   });
   const address = server.address() as AddressInfo;
   return `http://127.0.0.1:${address.port}`;
+}
+
+async function startServer(config: OperatorConsoleServerConfig, root: string, journal: string): Promise<string> {
+  return startServerWithDataSource(config, createJournalBackedRestDataSource({
+    journal_path: journal,
+    ingest_options: ingestOptions(root, journal),
+    redact_journal_path: config.remote.enabled,
+  }));
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown>> {
@@ -95,9 +103,23 @@ describe('operator console REST API', () => {
     const journal = fixtureJournal(root);
     const baseUrl = await startServer(resolveServerConfigFromEnv({}), root, journal);
 
+    const preflight = await fetch(`${baseUrl}/snapshot`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Access-Control-Request-Method': 'GET',
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+    expect(preflight.headers.get('access-control-allow-methods')).toContain('GET');
+
     const health = await readJson(await fetch(`${baseUrl}/healthz`));
     expect(health.status).toBe('ok');
-    expect(health.event_count).toBe(24);
+    expect(health.schema_version).toBe(1);
+    expect(health.server_status).toBe('running');
+    expect(typeof health.uptime_ms).toBe('number');
+    expect(health.event_count).toBeUndefined();
 
     const snapshot = await readJson(await fetch(`${baseUrl}/snapshot`));
     expect(snapshot.schema_version).toBe(1);
@@ -167,5 +189,63 @@ describe('operator console REST API', () => {
     expect(generatedFrom.journal_path_redacted).toBe(true);
     expect(generatedFrom.journal_path).not.toBe(journal);
     expect(String(generatedFrom.journal_path)).toContain('journal:');
+  });
+
+  it('serves health without remote auth or journal refresh', async () => {
+    let refreshCalled = false;
+    const config = resolveServerConfigFromEnv({
+      QFA_CONSOLE_BIND: '0.0.0.0',
+      OPERATOR_CONSOLE_ALLOW_REMOTE: 'true',
+      OPERATOR_CONSOLE_AUTH_TOKEN: 'secret',
+      OPERATOR_CONSOLE_ORIGIN_ALLOWLIST: 'https://ops.example',
+    });
+    const baseUrl = await startServerWithDataSource(config, {
+      refresh: () => {
+        refreshCalled = true;
+        throw new Error('healthz must not refresh journal state');
+      },
+      history: () => {
+        throw new Error('history must not be reached');
+      },
+    });
+
+    const response = await fetch(`${baseUrl}/healthz`);
+    expect(response.status).toBe(200);
+    expect((await readJson(response)).status).toBe('ok');
+    expect(refreshCalled).toBe(false);
+  });
+
+  it('handles CORS preflight for remote allowed origins only', async () => {
+    const root = tempRoot();
+    const journal = fixtureJournal(root);
+    const config = resolveServerConfigFromEnv({
+      QFA_CONSOLE_BIND: '0.0.0.0',
+      OPERATOR_CONSOLE_ALLOW_REMOTE: 'true',
+      OPERATOR_CONSOLE_AUTH_TOKEN: 'secret',
+      OPERATOR_CONSOLE_ORIGIN_ALLOWLIST: 'https://ops.example',
+    });
+    const baseUrl = await startServer(config, root, journal);
+
+    const ok = await fetch(`${baseUrl}/snapshot`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://ops.example',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'Authorization',
+      },
+    });
+    expect(ok.status).toBe(204);
+    expect(ok.headers.get('access-control-allow-origin')).toBe('https://ops.example');
+    expect(ok.headers.get('access-control-allow-methods')).toContain('GET');
+    expect(ok.headers.get('access-control-allow-headers')).toContain('Authorization');
+
+    const denied = await fetch(`${baseUrl}/snapshot`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://evil.example',
+        'Access-Control-Request-Method': 'GET',
+      },
+    });
+    expect(denied.status).toBe(403);
   });
 });

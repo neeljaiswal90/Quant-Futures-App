@@ -4,7 +4,7 @@ import { basename } from 'node:path';
 import { buildConsoleSnapshotFromEvents } from '../aggregator/live-state.js';
 import { normalizeJournalTailResult, type EventNormalizerResult } from '../ingest/event-normalizer.js';
 import { ingestJournalOnce } from '../ingest/journal-tail.js';
-import { authenticateRestRequest } from './auth.js';
+import { allowedCorsOrigin, authenticateRestRequest } from './auth.js';
 import {
   ConsoleHistoryStore,
   DEFAULT_MAX_HISTORY_RANGE_MS,
@@ -14,7 +14,7 @@ import {
 import { assertJsonSafe, stableJsonStringify, type JsonValue } from './json-safe.js';
 import type { JournalIngestOptions } from '../ingest/options.js';
 import type { OperatorConsoleServerConfig } from '../runtime/config.js';
-import type { ConsoleSnapshot } from '../types/snapshot.js';
+import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '../types/snapshot.js';
 
 export interface ConsoleRestDataSource {
   readonly refresh: () => Promise<ConsoleSnapshot> | ConsoleSnapshot;
@@ -111,13 +111,26 @@ async function handleRequest(
   response: ServerResponse,
 ): Promise<void> {
   const method = request.method ?? 'GET';
+  if (method === 'OPTIONS') {
+    handleOptionsRequest(options.config, request, response);
+    return;
+  }
+
   if (method !== 'GET') {
     sendJson(response, 405, { error: 'method_not_allowed', message: 'only GET is supported' });
     return;
   }
 
+  const url = new URL(request.url ?? '/', 'http://operator-console.local');
+  if (url.pathname === '/healthz') {
+    applyCorsHeaders(response, allowedCorsOrigin(options.config, request));
+    sendJson(response, 200, healthResponse());
+    return;
+  }
+
   const auth = authenticateRestRequest(options.config, request);
   if (!auth.ok) {
+    applyCorsHeaders(response, allowedCorsOrigin(options.config, request));
     sendJson(response, auth.status_code ?? 403, {
       error: auth.status_code === 401 ? 'unauthorized' : 'forbidden',
       message: auth.message ?? 'request is not authorized',
@@ -125,17 +138,7 @@ async function handleRequest(
     return;
   }
 
-  const url = new URL(request.url ?? '/', 'http://operator-console.local');
-  if (auth.allow_origin !== undefined) {
-    response.setHeader('Access-Control-Allow-Origin', auth.allow_origin);
-    response.setHeader('Vary', 'Origin');
-  }
-
-  if (url.pathname === '/healthz') {
-    const snapshot = await options.data_source.refresh();
-    sendJson(response, 200, healthResponse(snapshot));
-    return;
-  }
+  applyCorsHeaders(response, auth.allow_origin);
 
   if (url.pathname === '/snapshot') {
     sendJson(response, 200, await options.data_source.refresh());
@@ -158,14 +161,40 @@ async function handleRequest(
   sendJson(response, 404, { error: 'not_found', message: 'unknown operator console endpoint' });
 }
 
-function healthResponse(snapshot: ConsoleSnapshot): JsonValue {
+function handleOptionsRequest(
+  config: OperatorConsoleServerConfig,
+  request: IncomingMessage,
+  response: ServerResponse,
+): void {
+  const origin = request.headers.origin;
+  const allowOrigin = allowedCorsOrigin(config, request);
+  if (origin !== undefined && allowOrigin === undefined) {
+    sendJson(response, 403, { error: 'forbidden', message: 'origin is not allowed' });
+    return;
+  }
+
+  applyCorsHeaders(response, allowOrigin);
+  response.statusCode = 204;
+  response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  response.setHeader('Access-Control-Max-Age', '600');
+  response.end();
+}
+
+function applyCorsHeaders(response: ServerResponse, allowOrigin: string | undefined): void {
+  if (allowOrigin === undefined) {
+    return;
+  }
+  response.setHeader('Access-Control-Allow-Origin', allowOrigin);
+  response.setHeader('Vary', 'Origin');
+}
+
+function healthResponse(): JsonValue {
   return {
     status: 'ok',
-    schema_version: snapshot.schema_version,
-    server_status: snapshot.system_health.server_status,
-    event_count: snapshot.generated_from.event_count,
-    last_event_id: snapshot.generated_from.last_event_id,
-    last_event_ts_ns: snapshot.generated_from.last_event_ts_ns,
+    schema_version: CONSOLE_SNAPSHOT_SCHEMA_VERSION,
+    server_status: 'running',
+    uptime_ms: Math.floor(process.uptime() * 1000),
   };
 }
 

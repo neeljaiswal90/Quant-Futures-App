@@ -37,3 +37,5 @@ The server exposes read-only aggregate endpoints:
 - `GET /history?panel=<name>&limit=<n>&range=<iso8601-duration>`
 
 History responses contain panel-level aggregate state only. They do not return raw journal lines, raw event envelopes, or payload dumps. Supported `range` values use ISO-8601 durations such as `PT5M`, `PT1H`, and `P1D`; malformed ranges return `400`. The default history limit is `100`, and requests above `1000` are capped to `1000`.
+
+`/healthz` is an unauthenticated process-liveness endpoint and does not tail or rebuild journal state. Remote `/snapshot` and `/history` requests require bearer auth and an allowed `Origin`; CORS preflight is answered for allowed origins.

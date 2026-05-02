@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import type { OperatorConsoleServerConfig } from '../runtime/config.js';
+import { isLoopbackBindAddress, type OperatorConsoleServerConfig } from '../runtime/config.js';
 
 export interface RestAuthResult {
   readonly ok: boolean;
@@ -8,12 +8,34 @@ export interface RestAuthResult {
   readonly allow_origin?: string;
 }
 
+export function allowedCorsOrigin(
+  config: OperatorConsoleServerConfig,
+  request: IncomingMessage,
+): string | undefined {
+  const origin = request.headers.origin;
+  if (origin === undefined) {
+    return undefined;
+  }
+
+  if (config.remote.auth_required) {
+    return config.remote.origin_allowlist.includes(origin) ? origin : undefined;
+  }
+
+  try {
+    const parsed = new URL(origin);
+    const hostname = parsed.hostname.replace(/^\[(.*)\]$/, '$1');
+    return isLoopbackBindAddress(hostname) ? origin : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function authenticateRestRequest(
   config: OperatorConsoleServerConfig,
   request: IncomingMessage,
 ): RestAuthResult {
   if (!config.remote.auth_required) {
-    return { ok: true };
+    return { ok: true, allow_origin: allowedCorsOrigin(config, request) };
   }
 
   const authorization = request.headers.authorization;
@@ -27,7 +49,8 @@ export function authenticateRestRequest(
   }
 
   const origin = request.headers.origin;
-  if (origin === undefined || !config.remote.origin_allowlist.includes(origin)) {
+  const allowOrigin = allowedCorsOrigin(config, request);
+  if (origin === undefined || allowOrigin === undefined) {
     return {
       ok: false,
       status_code: 403,
@@ -35,5 +58,5 @@ export function authenticateRestRequest(
     };
   }
 
-  return { ok: true, allow_origin: origin };
+  return { ok: true, allow_origin: allowOrigin };
 }
