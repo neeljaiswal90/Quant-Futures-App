@@ -4,9 +4,9 @@ import type { Socket } from 'node:net';
 import { diffConsoleSnapshots, coalesceTelemetryDeltas } from './coalesce.js';
 import { authenticateRestRequest } from './auth.js';
 import { assertJsonSafe, stableJsonStringify } from './json-safe.js';
-import { nextSequence, type ConsoleDelta, type ConsoleStreamFrame } from '../types/delta.js';
+import { nextSequence, type ConsoleDelta, type ConsoleStreamFrame } from '@quant-futures/operator-console-contracts';
 import type { OperatorConsoleServerConfig } from '../runtime/config.js';
-import type { ConsoleSnapshot } from '../types/snapshot.js';
+import type { ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 import type { ConsoleRestDataSource } from './rest.js';
 
 export interface ConsoleWebSocketHealth {

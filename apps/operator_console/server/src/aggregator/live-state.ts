@@ -4,7 +4,6 @@ import type {
 } from '../../../../strategy_runtime/src/contracts/events/index.js';
 import {
   FEATURE_AVAILABILITY_MASK,
-  type FeatureAvailabilityMask,
   type FeatureAvailabilityTier,
 } from '../../../../strategy_runtime/src/features/availability-mask.js';
 import type { EventNormalizerResult, NormalizedJournalEvent } from '../ingest/event-normalizer.js';
@@ -17,9 +16,11 @@ import {
   type MboShadowState,
   type PositionState,
   type StrategyGateState,
+  type FeatureAvailabilityMask,
   type TradeBlotterRow,
   type UnixNsString,
-} from '../types/snapshot.js';
+  isFeatureAvailabilityMask,
+} from '@quant-futures/operator-console-contracts';
 
 export interface LiveStateSnapshotOptions {
   readonly journal_path: string;
@@ -37,6 +38,7 @@ export interface LiveStateSnapshotOptions {
 export interface ConsoleLiveStateAccumulator {
   applyNormalizedResult: (normalized: EventNormalizerResult) => void;
   snapshot: (options?: LiveStateSnapshotRuntimeOptions) => ConsoleSnapshot;
+  featureMask: () => FeatureAvailabilityMask | undefined;
 }
 
 export interface ConsoleLiveStateAccumulatorFromSnapshotOptions {
@@ -45,6 +47,7 @@ export interface ConsoleLiveStateAccumulatorFromSnapshotOptions {
   readonly max_trade_rows?: number;
   readonly max_alerts?: number;
   readonly max_cached_alerts?: number;
+  readonly feature_mask?: FeatureAvailabilityMask;
 }
 
 export interface ConsoleLiveStateAccumulatorOptions {
@@ -206,7 +209,7 @@ export function createConsoleLiveStateAccumulatorFromSnapshot(
     max_alerts: options.max_alerts,
     max_cached_alerts: options.max_cached_alerts,
   });
-  restoreLiveStateFromSnapshot(state, snapshot);
+  restoreLiveStateFromSnapshot(state, snapshot, options.feature_mask);
   return createLiveStateAccumulator(state);
 }
 
@@ -310,6 +313,7 @@ function createLiveStateAccumulator(state: MutableLiveState): ConsoleLiveStateAc
         },
       };
     },
+    featureMask: () => state.feature_mask,
   };
 }
 
@@ -347,6 +351,7 @@ function createEmptyLiveState(options: ConsoleLiveStateAccumulatorOptions): Muta
 function restoreLiveStateFromSnapshot(
   state: MutableLiveState,
   snapshot: ConsoleSnapshot,
+  featureMask?: FeatureAvailabilityMask,
 ): void {
   state.source_event_count = snapshot.generated_from.event_count;
   state.by_type = { ...snapshot.data_pipeline.by_type };
@@ -393,7 +398,7 @@ function restoreLiveStateFromSnapshot(
     rejected_trade_count: { ...snapshot.risk.rejected_trade_count },
   };
 
-  state.feature_mask = createFeatureMaskFromSnapshot(snapshot.feature_surface);
+  state.feature_mask = featureMask ?? createFeatureMaskFromSnapshot(snapshot.feature_surface);
   state.feature_mask_alerts = [...snapshot.feature_surface.recent_violations];
   state.alerts = [...snapshot.alerts];
   if (state.alerts.length > state.max_cached_alerts) {
@@ -1077,18 +1082,6 @@ function sumAvailable(values: readonly MaybeAvailable<number>[]): MaybeAvailable
     return unavailable('no explicit unrealized P&L mark facts');
   }
   return available(availableValues.reduce((sum, item) => sum + item.value, 0));
-}
-
-function isFeatureAvailabilityMask(value: unknown): value is FeatureAvailabilityMask {
-  const record = jsonObject(value);
-  return (
-    record !== null &&
-    record.schema_version === FEATURE_AVAILABILITY_MASK.schema_version &&
-    record.mask_version === FEATURE_AVAILABILITY_MASK.mask_version &&
-    typeof record.mask_id === 'string' &&
-    typeof record.mask_hash === 'string' &&
-    jsonObject(record.field_tiers) !== null
-  );
 }
 
 function payloadRecord(event: JournalEventEnvelope): Record<string, unknown> {

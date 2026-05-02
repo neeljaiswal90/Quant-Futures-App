@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { DataPipelineState } from '../../../server/src/types/snapshot.js';
+import type { DataPipelineState } from '@quant-futures/operator-console-contracts';
 import { EmptyState, MetricRow, PanelFrame, toneForAvailability } from './PanelFrame.js';
 import { formatMaybeNumber, titleCaseValue } from './format.js';
 

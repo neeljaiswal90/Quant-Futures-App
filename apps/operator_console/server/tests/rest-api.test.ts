@@ -19,6 +19,7 @@ import {
 } from '../src/transport/rest.js';
 import { resolveServerConfigFromEnv, type OperatorConsoleServerConfig } from '../src/runtime/config.js';
 import type { JournalIngestOptions } from '../src/ingest/options.js';
+import { FEATURE_AVAILABILITY_MASK } from '../../../../apps/strategy_runtime/src/features/availability-mask.js';
 
 const tempDirs: string[] = [];
 const servers: Server[] = [];
@@ -405,6 +406,67 @@ describe('operator console REST API', () => {
     const afterTail = await restartedSource.refresh();
     expect(afterTail.generated_from.event_count).toBe(3);
     expect(afterTail.generated_from.last_event_id).toBe('position-initial-3');
+  });
+
+  it('rehydrates embedded feature mask from sidecar cache on restart', async () => {
+    const root = tempRoot();
+    const journal = join(root, 'feature-mask-restart-journal.jsonl');
+    appendJournalLines(journal, [
+      makeJournalLine({
+        event_id: 'features-embedded-v5',
+        type: 'FEATURES',
+        ts_ns: '1700000000000001000',
+        run_id: 'run-console-04b-feature-mask',
+        session_id: 'session-console-04b-feature-mask',
+        causation_id: 'cause-features-embedded-v5',
+        payload: {
+          values: {
+            queue_position: 1,
+          },
+          feature_snapshot_id: 'snapshot-embedded-v5',
+          feature_availability_mask: {
+            ...FEATURE_AVAILABILITY_MASK,
+            field_tiers: {
+              ...FEATURE_AVAILABILITY_MASK.field_tiers,
+              exchange_event_ts_ns: 'blocked' as const,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const options = ingestOptions(root, journal);
+    const firstSource = createJournalBackedRestDataSource({
+      journal_path: journal,
+      ingest_options: options,
+    });
+    const firstSnapshot = await firstSource.refresh();
+    expect(firstSnapshot.generated_from.event_count).toBe(1);
+    expect(firstSnapshot.feature_surface.mask_source).toBe('embedded');
+    expect((firstSnapshot.feature_surface.field_tiers as Record<string, string>).exchange_event_ts_ns).toBe('blocked');
+
+    const checkpointBase = join(root, 'console-checkpoints', 'checkpoints');
+    const snapshotPath = join(checkpointBase, 'console-snapshot.json');
+    const featureMaskPath = join(checkpointBase, 'console-feature-mask.json');
+    expect(existsSync(snapshotPath)).toBe(true);
+    expect(existsSync(featureMaskPath)).toBe(true);
+
+    const staleSnapshot = JSON.parse(readFileSync(snapshotPath, 'utf8')) as {
+      feature_surface: { field_tiers: Record<string, string> };
+    };
+    staleSnapshot.feature_surface.field_tiers = {
+      ...staleSnapshot.feature_surface.field_tiers,
+      exchange_event_ts_ns: 'authoritative' as const,
+    };
+    writeFileSync(snapshotPath, `${JSON.stringify(staleSnapshot)}\n`, 'utf8');
+
+    const restartedSource = createJournalBackedRestDataSource({
+      journal_path: journal,
+      ingest_options: options,
+    });
+    const restoredSnapshot = await restartedSource.refresh();
+    expect(restoredSnapshot.feature_surface.mask_source).toBe('embedded');
+    expect((restoredSnapshot.feature_surface.field_tiers as Record<string, string>).exchange_event_ts_ns).toBe('blocked');
   });
 
   it('advances across rotated journals without replaying prior rows', async () => {

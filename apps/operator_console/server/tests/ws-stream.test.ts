@@ -9,7 +9,7 @@ import {
   type OperatorConsoleWebSocketStream,
 } from '../src/transport/ws.js';
 import { resolveServerConfigFromEnv, type OperatorConsoleServerConfig } from '../src/runtime/config.js';
-import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '../src/types/snapshot.js';
+import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 
 interface StartedServer {
   readonly server: Server;

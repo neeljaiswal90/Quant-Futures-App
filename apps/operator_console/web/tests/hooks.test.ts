@@ -9,7 +9,7 @@ import {
   parseConsoleStreamMessage,
   reconnectDelayMs,
 } from '../src/hooks/useLiveDeltas.js';
-import type { ConsoleDelta, ConsoleStreamFrame } from '../../server/src/types/delta.js';
+import type { ConsoleDelta, ConsoleStreamFrame } from '@quant-futures/operator-console-contracts';
 
 describe('operator console live-state helpers', () => {
   it('applies aggregate deltas without raw journal envelope state', () => {

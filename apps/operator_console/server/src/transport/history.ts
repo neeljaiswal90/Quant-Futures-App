@@ -1,6 +1,6 @@
 import type { JsonValue } from './json-safe.js';
 import { assertJsonSafe } from './json-safe.js';
-import type { ConsoleSnapshot, UnixNsString } from '../types/snapshot.js';
+import type { ConsoleSnapshot, UnixNsString } from '@quant-futures/operator-console-contracts';
 
 export const CONSOLE_HISTORY_PANELS = [
   'data_pipeline',

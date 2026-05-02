@@ -1,12 +1,12 @@
 import { stableJsonStringify } from './json-safe.js';
-import type { ConsoleDelta } from '../types/delta.js';
 import type {
   AlertState,
+  ConsoleDelta,
   ConsoleSnapshot,
   PositionState,
   StrategyGateState,
   TradeBlotterRow,
-} from '../types/snapshot.js';
+} from '@quant-futures/operator-console-contracts';
 
 export interface SnapshotDeltaBatch {
   readonly immediate: readonly ConsoleDelta[];

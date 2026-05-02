@@ -8,6 +8,8 @@ coverage/
 .turbo/
 .cache/
 .local/
+tsconfig.tsbuildinfo
+**/*.tsbuildinfo
 data/probes/
 data/databento/
 reports/sim/

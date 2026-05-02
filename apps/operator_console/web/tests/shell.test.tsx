@@ -7,9 +7,13 @@ import {
   OPERATOR_CONSOLE_APP_NAME,
   OperatorConsoleApp,
 } from '../src/App.js';
+import { LatencyPanel } from '../src/panels/LatencyPanel.js';
+import { MboShadowPanel } from '../src/panels/MboShadowPanel.js';
+import { PerformancePanel } from '../src/panels/PerformancePanel.js';
+import { StrategyPanel } from '../src/panels/StrategyPanel.js';
 import { createUnavailableSnapshot } from '../src/lib/console-state.js';
 import type { LiveDeltaState } from '../src/hooks/useLiveDeltas.js';
-import type { ConsoleSnapshot } from '../../server/src/types/snapshot.js';
+import type { ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 
 const deltaState: LiveDeltaState = {
   status: 'open',
@@ -103,7 +107,121 @@ describe('operator console web shell', () => {
     expect(pnlPanel.getAllByText('unavailable').length).toBeGreaterThanOrEqual(2);
     expect(pnlPanel.getByText('-$3.50')).toBeVisible();
   });
+
+  it('handles deferred panel edge cases without regressions', () => {
+    render(
+      <LatencyPanel
+        latency={{ last_event_lag_ms: { status: 'unavailable', reason: 'cold start' }, telemetry_only: true }}
+        data_pipeline={{
+          source_event_count: 0,
+          by_type: {},
+          last_event_age_ms: { status: 'unavailable', reason: 'cold start' },
+          malformed_or_schema_invalid_count: 0,
+        }}
+      />,
+    );
+    const latencyPanel = screen.getByLabelText('Latency');
+    expect(getMetricValue(latencyPanel, 'Event lag histogram')).toBe('unavailable');
+    expect(getMetricValue(latencyPanel, 'Pipeline age histogram')).toBe('unavailable');
+    cleanup();
+
+    render(
+      <MboShadowPanel
+        mbo_shadow={undefined}
+      />,
+    );
+    expect(screen.getByLabelText('MBO Shadow')).toBeVisible();
+    expect(screen.getByText('No MBO shadow telemetry available')).toBeVisible();
+    cleanup();
+
+    render(
+      <StrategyPanel
+        strategies={[
+          {
+            strategy_id: 'strategy-alpha',
+            status: 'available',
+            last_event_id: 'event-a',
+            last_event_ts_ns: null,
+          },
+          {
+            strategy_id: 'strategy-beta',
+            status: 'unavailable',
+            last_event_id: null,
+            last_event_ts_ns: null,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByLabelText('Strategy Detail')).toBeVisible();
+    expect(screen.getByText('1 available / 1 unavailable')).toBeVisible();
+    expect(screen.getByText('strategy-alpha')).toBeVisible();
+    expect(screen.getByText('strategy-beta')).toBeVisible();
+  });
+
+  it('shows Performance throughput from live source_event_count (delta-patched)', () => {
+    const snapshotFixture = createUnavailableSnapshot('throughput fixture');
+    const snapshot: ConsoleSnapshot = {
+      ...snapshotFixture,
+      generated_from: {
+        ...snapshotFixture.generated_from,
+        event_count: 1,
+        last_event_id: 'snapshot-1',
+      },
+      data_pipeline: {
+        ...snapshotFixture.data_pipeline,
+        source_event_count: 5,
+      },
+    };
+
+    const { rerender } = render(
+      <PerformancePanel snapshot={snapshot} />,
+    );
+    const panel = screen.getByLabelText('Performance');
+
+    expect(panel).toBeVisible();
+    expect(getMetricValue(panel, 'Current live events')).toBe('5');
+
+    rerender(
+      <PerformancePanel
+        snapshot={{
+          ...snapshot,
+          generated_from: {
+            ...snapshot.generated_from,
+            event_count: 99,
+          },
+          data_pipeline: {
+            ...snapshot.data_pipeline,
+            source_event_count: 5,
+          },
+        }}
+      />,
+    );
+
+    expect(getMetricValue(screen.getByLabelText('Performance'), 'Current live events')).toBe('5');
+
+    rerender(
+      <PerformancePanel
+        snapshot={{
+          ...snapshot,
+          generated_from: {
+            ...snapshot.generated_from,
+            event_count: 99,
+          },
+          data_pipeline: {
+            ...snapshot.data_pipeline,
+            source_event_count: 18,
+          },
+        }}
+      />,
+    );
+    expect(getMetricValue(screen.getByLabelText('Performance'), 'Current live events')).toBe('18');
+  });
 });
+
+function getMetricValue(panel: HTMLElement, label: string): string {
+  const row = within(panel).getByText(label).closest('.metric-row');
+  return row?.querySelector('strong')?.textContent ?? '';
+}
 
 function createFixtureSnapshot(): ConsoleSnapshot {
   const base = createUnavailableSnapshot('fixture');

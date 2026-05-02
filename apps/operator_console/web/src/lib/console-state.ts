@@ -1,4 +1,4 @@
-import type { ConsoleDelta, ConsoleStreamFrame } from '../../../server/src/types/delta.js';
+import type { ConsoleDelta, ConsoleStreamFrame } from '@quant-futures/operator-console-contracts';
 import {
   CONSOLE_SNAPSHOT_SCHEMA_VERSION,
   type AlertState,
@@ -6,7 +6,7 @@ import {
   type FeatureSurfaceState,
   type PositionState,
   type StrategyGateState,
-} from '../../../server/src/types/snapshot.js';
+} from '@quant-futures/operator-console-contracts';
 
 export interface StreamApplyResult {
   readonly snapshot: ConsoleSnapshot;
