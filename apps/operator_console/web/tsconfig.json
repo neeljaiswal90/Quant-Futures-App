@@ -1,10 +1,25 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "../../../",
+    "composite": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "outDir": "../../../dist/tsbuild/operator-console-web",
+    "declarationDir": "../../../dist/tsbuild/operator-console-web",
+    "tsBuildInfoFile": "../../../dist/tsbuild/operator-console-web/tsconfig.tsbuildinfo"
   },
+  "references": [
+    {
+      "path": "../contracts"
+    },
+    {
+      "path": "../server"
+    }
+  ],
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",

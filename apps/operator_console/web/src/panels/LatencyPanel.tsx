@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type {
   DataPipelineState,
   LatencyState,
-} from '../../../server/src/types/snapshot.js';
+} from '@quant-futures/operator-console-contracts';
 import { MetricRow, PanelFrame, toneForAvailability } from './PanelFrame.js';
 import { formatMaybeNumber } from './format.js';
 

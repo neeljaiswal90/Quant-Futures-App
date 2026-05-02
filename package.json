@@ -3,11 +3,12 @@
   "private": true,
   "workspaces": [
     "apps/operator_console/server",
+    "apps/operator_console/contracts",
     "apps/operator_console/web"
   ],
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npx tsc -b tsconfig.json && npm --workspace apps/operator_console/server run typecheck && npm --workspace apps/operator_console/web run typecheck",
     "check:python": "node scripts/check-python-syntax.mjs",
     "console:server": "npm --workspace apps/operator_console/server run start --",
     "console:test": "npm --workspace apps/operator_console/server test && npm --workspace apps/operator_console/web test",

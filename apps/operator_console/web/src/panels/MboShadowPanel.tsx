@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { MboShadowState } from '../../../server/src/types/snapshot.js';
+import type { MboShadowState } from '@quant-futures/operator-console-contracts';
 import { EmptyState, MetricRow, PanelFrame, StatusDot } from './PanelFrame.js';
 import { compactId } from './format.js';
 

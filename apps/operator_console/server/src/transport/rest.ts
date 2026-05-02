@@ -21,7 +21,7 @@ import {
 import { assertJsonSafe, stableJsonStringify, type JsonValue } from './json-safe.js';
 import type { JournalIngestOptions } from '../ingest/options.js';
 import type { OperatorConsoleServerConfig } from '../runtime/config.js';
-import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '../types/snapshot.js';
+import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 
 export interface ConsoleRestDataSource {
   readonly refresh: () => Promise<ConsoleSnapshot> | ConsoleSnapshot;

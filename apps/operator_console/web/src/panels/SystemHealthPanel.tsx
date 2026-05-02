@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import type { LiveDeltaState } from '../hooks/useLiveDeltas.js';
 import type { LiveSnapshotStatus } from '../hooks/useLiveSnapshot.js';
-import type { ConsoleSnapshot } from '../../../server/src/types/snapshot.js';
+import type { ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 import { MetricRow, PanelFrame, StatusDot, toneForAvailability } from './PanelFrame.js';
 import { compactId, formatMaybeNumber, formatMaybeText, formatNsTimestamp, titleCaseValue } from './format.js';
 

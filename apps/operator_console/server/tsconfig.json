@@ -1,8 +1,23 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "../../../"
+    "rootDir": "../../../",
+    "composite": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "../../../dist/tsbuild/operator-console-server",
+    "declarationDir": "../../../dist/tsbuild/operator-console-server",
+    "tsBuildInfoFile": "../../../dist/tsbuild/operator-console-server/tsconfig.tsbuildinfo"
   },
+  "references": [
+    {
+      "path": "../contracts"
+    },
+    {
+      "path": "../../strategy_runtime"
+    }
+  ],
   "include": [
     "src/**/*.ts",
     "tests/**/*.ts"

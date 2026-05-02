@@ -1,4 +1,4 @@
-import type { MaybeAvailable, UnixNsString } from '../../../server/src/types/snapshot.js';
+import type { MaybeAvailable, UnixNsString } from '@quant-futures/operator-console-contracts';
 
 export function formatMaybeNumber(
   value: MaybeAvailable<number>,

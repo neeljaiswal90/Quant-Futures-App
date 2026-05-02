@@ -5,8 +5,7 @@ import {
   isConsoleStreamFrame,
 } from '../lib/console-state.js';
 import { consoleHttpBase, endpointUrl } from './useLiveSnapshot.js';
-import type { ConsoleSnapshot } from '../../../server/src/types/snapshot.js';
-import type { ConsoleStreamFrame } from '../../../server/src/types/delta.js';
+import type { ConsoleSnapshot, ConsoleStreamFrame } from '@quant-futures/operator-console-contracts';
 
 export type LiveDeltaStatus =
   | 'disabled'

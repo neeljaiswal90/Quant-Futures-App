@@ -19,7 +19,7 @@ import {
   type StrategyGateState,
   type TradeBlotterRow,
   type UnixNsString,
-} from '../types/snapshot.js';
+} from '@quant-futures/operator-console-contracts';
 
 export interface LiveStateSnapshotOptions {
   readonly journal_path: string;

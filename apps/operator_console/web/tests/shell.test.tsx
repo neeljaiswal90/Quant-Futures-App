@@ -13,7 +13,7 @@ import { PerformancePanel } from '../src/panels/PerformancePanel.js';
 import { StrategyPanel } from '../src/panels/StrategyPanel.js';
 import { createUnavailableSnapshot } from '../src/lib/console-state.js';
 import type { LiveDeltaState } from '../src/hooks/useLiveDeltas.js';
-import type { ConsoleSnapshot } from '../../server/src/types/snapshot.js';
+import type { ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 
 const deltaState: LiveDeltaState = {
   status: 'open',

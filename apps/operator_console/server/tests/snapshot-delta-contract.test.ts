@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assertJsonSafe, stableJsonStringify } from '../src/transport/json-safe.js';
-import { assertDecimalSequence, nextSequence, type ConsoleStreamFrame } from '../src/types/delta.js';
-import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '../src/types/snapshot.js';
+import { assertDecimalSequence, nextSequence, type ConsoleStreamFrame } from '@quant-futures/operator-console-contracts';
+import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 
 function minimalSnapshot(): ConsoleSnapshot {
   return {

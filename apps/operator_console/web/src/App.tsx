@@ -12,7 +12,7 @@ import { TradeBlotterPanel } from './panels/TradeBlotterPanel.js';
 import { MboShadowPanel } from './panels/MboShadowPanel.js';
 import { PerformancePanel } from './panels/PerformancePanel.js';
 import { StrategyPanel } from './panels/StrategyPanel.js';
-import type { ConsoleSnapshot } from '../../server/src/types/snapshot.js';
+import type { ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 
 export const OPERATOR_CONSOLE_APP_NAME = 'Live-Sim Operator Console';
 

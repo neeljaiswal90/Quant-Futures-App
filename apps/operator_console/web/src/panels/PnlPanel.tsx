@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { PnlState } from '../../../server/src/types/snapshot.js';
+import type { PnlState } from '@quant-futures/operator-console-contracts';
 import { MetricRow, PanelFrame, toneForAvailability } from './PanelFrame.js';
 import { formatMaybeNumber, titleCaseValue } from './format.js';
 

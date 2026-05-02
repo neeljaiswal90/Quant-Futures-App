@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { RiskState } from '../../../server/src/types/snapshot.js';
+import type { RiskState } from '@quant-futures/operator-console-contracts';
 import { MetricRow, PanelFrame, toneForAvailability } from './PanelFrame.js';
 import { formatMaybeNumber, formatMaybeText, titleCaseValue } from './format.js';
 

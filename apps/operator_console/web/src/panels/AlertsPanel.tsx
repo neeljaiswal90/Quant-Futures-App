@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { AlertState } from '../../../server/src/types/snapshot.js';
+import type { AlertState } from '@quant-futures/operator-console-contracts';
 import { EmptyState, PanelFrame } from './PanelFrame.js';
 import { compactId } from './format.js';
 

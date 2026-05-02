@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactElement, useEffect, useRef, useState } from 'react';
-import type { ConsoleSnapshot } from '../../../server/src/types/snapshot.js';
+import type { ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 import { EmptyState, MetricRow, PanelFrame } from './PanelFrame.js';
 
 interface PerformancePanelProps {

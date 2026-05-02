@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { TradeBlotterState } from '../../../server/src/types/snapshot.js';
+import type { TradeBlotterState } from '@quant-futures/operator-console-contracts';
 import { EmptyState, PanelFrame } from './PanelFrame.js';
 import { compactId, formatNsTimestamp, titleCaseValue } from './format.js';
 

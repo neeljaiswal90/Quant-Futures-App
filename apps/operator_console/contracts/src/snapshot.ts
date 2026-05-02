@@ -1,8 +1,8 @@
-import type { RuntimeEventType } from '../../../../strategy_runtime/src/contracts/events/index.js';
+import type { RuntimeEventType } from '../../../strategy_runtime/src/contracts/events/index.js';
 import type {
   FeatureAvailabilityMask,
   FeatureAvailabilityTier,
-} from '../../../../strategy_runtime/src/features/availability-mask.js';
+} from '../../../strategy_runtime/src/features/availability-mask.js';
 
 export const CONSOLE_SNAPSHOT_SCHEMA_VERSION = 1 as const;
 

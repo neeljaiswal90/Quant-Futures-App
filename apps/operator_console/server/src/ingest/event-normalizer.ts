@@ -9,7 +9,7 @@ import {
   type FeatureAvailabilityTier,
   type MboFeatureUseContext,
 } from '../../../../strategy_runtime/src/features/availability-mask.js';
-import type { OperatorConsoleAlertInput } from '../types/alerts.js';
+import type { OperatorConsoleAlertInput } from '@quant-futures/operator-console-contracts';
 import type { IngestedJournalEvent, JournalTailResult, QuarantinedJournalLine } from './journal-tail.js';
 
 export type FeaturePolicyViolationKind =

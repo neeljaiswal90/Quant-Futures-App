@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { createUnavailableSnapshot } from '../lib/console-state.js';
-import type { ConsoleSnapshot } from '../../../server/src/types/snapshot.js';
+import type { ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 
 export type LiveSnapshotStatus = 'loading' | 'ready' | 'unavailable';
 

@@ -1,0 +1,10 @@
+{
+  "name": "@quant-futures/operator-console-contracts",
+  "private": true,
+  "type": "module",
+  "dependencies": {},
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
