@@ -123,12 +123,12 @@ export function LatencyPanel({
       <div className="metric-list margin-top-sm">
         <MetricRow
           label="Event lag histogram"
-          value={`${lastEventLag.current} ms`}
+          value={formatHistogramSample(lastEventLag.current)}
         />
         {eventLagHistogram}
         <MetricRow
           label="Pipeline age histogram"
-          value={`${lastPipelineAge.current} ms`}
+          value={formatHistogramSample(lastPipelineAge.current)}
         />
         {pipelineAgeHistogram}
       </div>
@@ -138,4 +138,8 @@ export function LatencyPanel({
 
 function toNumber(value: LatencyState['last_event_lag_ms'] | DataPipelineState['last_event_age_ms']): number {
   return value.status === 'available' && Number.isFinite(value.value) ? value.value : Number.NaN;
+}
+
+function formatHistogramSample(value: number): string {
+  return Number.isFinite(value) ? `${value} ms` : 'unavailable';
 }

@@ -9,20 +9,23 @@ interface PerformancePanelProps {
 const MAX_BARS = 20;
 
 export function PerformancePanel({ snapshot }: PerformancePanelProps): ReactElement {
+  // Read source_event_count from data_pipeline (delta-patched) rather than
+  // generated_from.event_count (only updated on full snapshot frames). This keeps
+  // the throughput sparkline live during steady delta-only streaming.
+  const liveEventCount = snapshot.data_pipeline.source_event_count;
   const [eventDeltaHistory, setEventDeltaHistory] = useState<number[]>([]);
-  const lastEventCount = useRef(snapshot.generated_from.event_count);
+  const lastEventCount = useRef(liveEventCount);
 
   useEffect(() => {
-    const nextCount = snapshot.generated_from.event_count;
     const previousCount = lastEventCount.current;
-    const delta = Math.max(0, nextCount - previousCount);
-    lastEventCount.current = nextCount;
+    const delta = Math.max(0, liveEventCount - previousCount);
+    lastEventCount.current = liveEventCount;
 
     setEventDeltaHistory((previous) => {
       const next = [...previous, delta];
       return next.length > MAX_BARS ? next.slice(-MAX_BARS) : next;
     });
-  }, [snapshot.generated_from.event_count, snapshot.generated_from.last_event_id]);
+  }, [liveEventCount, snapshot.generated_from.last_event_id]);
 
   const maxEventRate = Math.max(1, ...eventDeltaHistory);
   const dropRate = snapshot.system_health.dropped_critical_frame_count;
@@ -60,7 +63,7 @@ export function PerformancePanel({ snapshot }: PerformancePanelProps): ReactElem
         />
         <MetricRow
           label="Current live events"
-          value={snapshot.generated_from.event_count.toLocaleString()}
+          value={liveEventCount.toLocaleString()}
         />
         <MetricRow
           label="Dropped critical frames"
