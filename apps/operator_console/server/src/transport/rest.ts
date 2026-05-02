@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { basename } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import {
   createConsoleLiveStateAccumulator,
+  createConsoleLiveStateAccumulatorFromSnapshot,
   type ConsoleLiveStateAccumulator,
 } from '../aggregator/live-state.js';
 import { normalizeJournalTailResult } from '../ingest/event-normalizer.js';
-import { ingestJournalOnce } from '../ingest/journal-tail.js';
+import { ConsoleJournalPoller } from '../ingest/journal-poller.js';
+import { selectJournalPath } from '../ingest/journal-discovery.js';
 import { allowedCorsOrigin, authenticateRestRequest } from './auth.js';
 import {
   ConsoleHistoryStore,
@@ -31,7 +34,7 @@ export interface CreateOperatorConsoleRestServerOptions {
 }
 
 export interface JournalBackedDataSourceOptions {
-  readonly journal_path: string;
+  readonly journal_path?: string;
   readonly ingest_options: JournalIngestOptions;
   readonly redact_journal_path?: boolean;
   readonly max_history_range_ms?: number;
@@ -64,30 +67,44 @@ export function createJournalBackedRestDataSource(
   const history = new ConsoleHistoryStore({
     max_rows_per_panel: options.max_history_rows_per_panel ?? DEFAULT_MAX_HISTORY_ROWS_PER_PANEL,
   });
-  const snapshotBuilder: ConsoleLiveStateAccumulator = createConsoleLiveStateAccumulator({
-    journal_path: options.redact_journal_path
-      ? redactedJournalPath(options.journal_path)
-      : options.journal_path,
-    journal_path_redacted: options.redact_journal_path ?? false,
-  });
-  let latestSnapshot: ConsoleSnapshot | null = null;
+  const resolvedJournalPath = options.journal_path ?? selectJournalPath(options.ingest_options).journal_path;
+  const snapshotCachePath = checkpointSnapshotPath(options.ingest_options.checkpoint_dir);
+  const resolvedJournalPathRedacted = options.redact_journal_path
+    ? redactedJournalPath(resolvedJournalPath)
+    : resolvedJournalPath;
+  const resolvedJournalPathRedactedFlag = options.redact_journal_path ?? false;
+  const restoredSnapshot = readCachedSnapshot(snapshotCachePath);
+  const snapshotBuilder: ConsoleLiveStateAccumulator = restoredSnapshot === null
+    ? createConsoleLiveStateAccumulator({
+      journal_path: resolvedJournalPathRedacted,
+      journal_path_redacted: resolvedJournalPathRedactedFlag,
+    })
+    : createConsoleLiveStateAccumulatorFromSnapshot(restoredSnapshot, {
+      journal_path: resolvedJournalPathRedacted,
+      journal_path_redacted: resolvedJournalPathRedactedFlag,
+    });
+  let latestSnapshot: ConsoleSnapshot | null = restoredSnapshot;
+  let lastPersistedSnapshot: ConsoleSnapshot | null = latestSnapshot;
+  const poller = new ConsoleJournalPoller(options.ingest_options);
 
   const refresh = (): ConsoleSnapshot => {
-    const tailed = ingestJournalOnce({
-      journal_path: options.journal_path,
-      checkpoint_dir: options.ingest_options.checkpoint_dir,
-    });
+    const tailed = poller.pollOnce();
     const normalized = normalizeJournalTailResult(tailed);
     snapshotBuilder.applyNormalizedResult(normalized);
-    latestSnapshot = snapshotBuilder.snapshot({
+    const nextSnapshot = snapshotBuilder.snapshot({
       ...options.transport_health?.(),
       checkpoint_status: {
         status: 'available',
         value: `checkpointed files=${Object.keys(tailed.checkpoint.files).length}`,
       },
     });
-    history.recordSnapshot(latestSnapshot);
-    return latestSnapshot;
+    latestSnapshot = nextSnapshot;
+    history.recordSnapshot(nextSnapshot);
+    if (shouldPersistSnapshot(lastPersistedSnapshot, nextSnapshot)) {
+      writeCachedSnapshot(snapshotCachePath, nextSnapshot);
+      lastPersistedSnapshot = nextSnapshot;
+    }
+    return nextSnapshot;
   };
 
   return {
@@ -206,4 +223,61 @@ function sendJson(response: ServerResponse, statusCode: number, value: unknown):
 function redactedJournalPath(journalPath: string): string {
   const hash = createHash('sha256').update(journalPath).digest('hex').slice(0, 12);
   return `journal:${basename(journalPath)}:${hash}`;
+}
+
+function checkpointSnapshotPath(checkpointDir: string): string {
+  return join(resolve(checkpointDir), 'checkpoints', 'console-snapshot.json');
+}
+
+function readCachedSnapshot(path: string): ConsoleSnapshot | null {
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+    if (!looksLikeConsoleSnapshot(raw)) {
+      return null;
+    }
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedSnapshot(path: string, snapshot: ConsoleSnapshot): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmpPath = `${path}.tmp`;
+  writeFileSync(tmpPath, `${stableJsonStringify(snapshot)}\n`, 'utf8');
+  renameSync(tmpPath, path);
+}
+
+function shouldPersistSnapshot(
+  previous: ConsoleSnapshot | null,
+  next: ConsoleSnapshot,
+): boolean {
+  if (previous === null) {
+    return true;
+  }
+  return (
+    previous.generated_from.last_event_id !== next.generated_from.last_event_id ||
+    previous.generated_from.event_count !== next.generated_from.event_count ||
+    previous.system_health.ws_client_count !== next.system_health.ws_client_count ||
+    previous.system_health.ws_backpressure !== next.system_health.ws_backpressure ||
+    previous.system_health.dropped_critical_frame_count !== next.system_health.dropped_critical_frame_count
+  );
+}
+
+function looksLikeConsoleSnapshot(value: unknown): value is ConsoleSnapshot {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const snapshot = value as Record<string, unknown>;
+  return (
+    snapshot.schema_version === CONSOLE_SNAPSHOT_SCHEMA_VERSION &&
+    snapshot.generated_from !== undefined &&
+    typeof snapshot.generated_from === 'object' &&
+    snapshot.generated_from !== null &&
+    !Array.isArray(snapshot.generated_from) &&
+    typeof (snapshot.generated_from as Record<string, unknown>).event_count === 'number'
+  );
 }

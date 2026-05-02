@@ -39,6 +39,14 @@ export interface ConsoleLiveStateAccumulator {
   snapshot: (options?: LiveStateSnapshotRuntimeOptions) => ConsoleSnapshot;
 }
 
+export interface ConsoleLiveStateAccumulatorFromSnapshotOptions {
+  readonly journal_path?: string;
+  readonly journal_path_redacted?: boolean;
+  readonly max_trade_rows?: number;
+  readonly max_alerts?: number;
+  readonly max_cached_alerts?: number;
+}
+
 export interface ConsoleLiveStateAccumulatorOptions {
   readonly journal_path: string;
   readonly journal_path_redacted?: boolean;
@@ -48,6 +56,8 @@ export interface ConsoleLiveStateAccumulatorOptions {
 }
 
 interface LiveStateSnapshotRuntimeOptions {
+  readonly journal_path?: string;
+  readonly journal_path_redacted?: boolean;
   readonly render_time_ns?: bigint | string;
   readonly server_status?: ConsoleSnapshot['system_health']['server_status'];
   readonly ws_client_count?: number;
@@ -180,35 +190,27 @@ export function buildConsoleSnapshotFromEvents(
 export function createConsoleLiveStateAccumulator(
   options: ConsoleLiveStateAccumulatorOptions,
 ): ConsoleLiveStateAccumulator {
-  const state: MutableLiveState = {
-    journal_path: options.journal_path,
-    journal_path_redacted: options.journal_path_redacted ?? false,
-    max_trade_rows: options.max_trade_rows ?? DEFAULT_TRADE_ROWS,
-    max_alerts: options.max_alerts ?? DEFAULT_ALERT_ROWS,
-    max_cached_alerts: Math.max(options.max_cached_alerts ?? DEFAULT_CACHED_ALERTS, 100),
-    source_event_count: 0,
-    by_type: {},
-    trades: [],
-    positions: new Map(),
-    strategies: new Map(),
-    risk: null,
-    feature_mask: undefined,
-    feature_mask_alerts: [],
-    explicit_realized_pnl_value: 0,
-    explicit_realized_pnl_count: 0,
-    explicit_realized_pnl_by_position: new Map(),
-    mbo_shadow: { status: 'absent', last_event_id: null },
-    alerts: [],
-    malformed_or_schema_invalid_count: 0,
-    feature_policy_violation_count: 0,
-    blocked_feature_policy_violation_count: 0,
-    missing_terminal_order_intent_count: 0,
-    last_event_id: null,
-    last_event_ts_ns: null,
-    last_run_id: 'unavailable',
-    session_id: 'unavailable',
-  };
+  const state: MutableLiveState = createEmptyLiveState(options);
+  return createLiveStateAccumulator(state);
+}
 
+export function createConsoleLiveStateAccumulatorFromSnapshot(
+  snapshot: ConsoleSnapshot,
+  options: ConsoleLiveStateAccumulatorFromSnapshotOptions = {},
+): ConsoleLiveStateAccumulator {
+  const state = createEmptyLiveState({
+    journal_path: options.journal_path ?? snapshot.generated_from.journal_path,
+    journal_path_redacted:
+      options.journal_path_redacted ?? snapshot.generated_from.journal_path_redacted,
+    max_trade_rows: options.max_trade_rows,
+    max_alerts: options.max_alerts,
+    max_cached_alerts: options.max_cached_alerts,
+  });
+  restoreLiveStateFromSnapshot(state, snapshot);
+  return createLiveStateAccumulator(state);
+}
+
+function createLiveStateAccumulator(state: MutableLiveState): ConsoleLiveStateAccumulator {
   return {
     applyNormalizedResult: (next) => {
       for (const alert of next.alerts) {
@@ -247,8 +249,8 @@ export function createConsoleLiveStateAccumulator(
         run_id: runId,
         session_id: sessionId,
         generated_from: {
-          journal_path: state.journal_path,
-          journal_path_redacted: state.journal_path_redacted,
+          journal_path: runtime.journal_path ?? state.journal_path,
+          journal_path_redacted: runtime.journal_path_redacted ?? state.journal_path_redacted,
           last_event_id: state.last_event_id,
           last_event_ts_ns: lastEventTsNs,
           event_count: state.source_event_count,
@@ -308,6 +310,127 @@ export function createConsoleLiveStateAccumulator(
         },
       };
     },
+  };
+}
+
+function createEmptyLiveState(options: ConsoleLiveStateAccumulatorOptions): MutableLiveState {
+  return {
+    journal_path: options.journal_path,
+    journal_path_redacted: options.journal_path_redacted ?? false,
+    max_trade_rows: options.max_trade_rows ?? DEFAULT_TRADE_ROWS,
+    max_alerts: options.max_alerts ?? DEFAULT_ALERT_ROWS,
+    max_cached_alerts: Math.max(options.max_cached_alerts ?? DEFAULT_CACHED_ALERTS, 100),
+    source_event_count: 0,
+    by_type: {},
+    trades: [],
+    positions: new Map(),
+    strategies: new Map(),
+    risk: null,
+    feature_mask: undefined,
+    feature_mask_alerts: [],
+    explicit_realized_pnl_value: 0,
+    explicit_realized_pnl_count: 0,
+    explicit_realized_pnl_by_position: new Map(),
+    mbo_shadow: { status: 'absent', last_event_id: null },
+    alerts: [],
+    malformed_or_schema_invalid_count: 0,
+    feature_policy_violation_count: 0,
+    blocked_feature_policy_violation_count: 0,
+    missing_terminal_order_intent_count: 0,
+    last_event_id: null,
+    last_event_ts_ns: null,
+    last_run_id: 'unavailable',
+    session_id: 'unavailable',
+  };
+}
+
+function restoreLiveStateFromSnapshot(
+  state: MutableLiveState,
+  snapshot: ConsoleSnapshot,
+): void {
+  state.source_event_count = snapshot.generated_from.event_count;
+  state.by_type = { ...snapshot.data_pipeline.by_type };
+  state.trades = [...snapshot.trades.rows];
+
+  state.positions.clear();
+  state.strategies.clear();
+  state.explicit_realized_pnl_by_position = new Map();
+  state.explicit_realized_pnl_value = 0;
+  state.explicit_realized_pnl_count = 0;
+  for (const position of snapshot.positions) {
+    const restoredPosition: MutablePosition = {
+      position_id: position.position_id,
+      side: position.side,
+      status: position.status,
+      quantity_open: { ...position.quantity_open },
+      avg_entry_price: { ...position.avg_entry_price },
+      mark_price: { ...position.mark_price },
+      realized_pnl_usd: { ...position.realized_pnl_usd },
+      unrealized_pnl_usd: { ...position.unrealized_pnl_usd },
+      last_management_action: position.last_management_action,
+    };
+    state.positions.set(position.position_id, restoredPosition);
+    if (position.realized_pnl_usd.status === 'available') {
+      state.explicit_realized_pnl_by_position.set(position.position_id, position.realized_pnl_usd.value);
+      state.explicit_realized_pnl_value += position.realized_pnl_usd.value;
+      state.explicit_realized_pnl_count += 1;
+    }
+  }
+
+  for (const strategy of snapshot.strategies) {
+    state.strategies.set(strategy.strategy_id, {
+      strategy_id: strategy.strategy_id,
+      status: strategy.status,
+      last_event_id: strategy.last_event_id,
+      last_event_ts_ns: strategy.last_event_ts_ns,
+    });
+  }
+
+  state.risk = {
+    circuit_breaker_state: { ...snapshot.risk.circuit_breaker_state },
+    daily_loss_usage: { ...snapshot.risk.daily_loss_usage },
+    open_trade_count: { ...snapshot.risk.open_trade_count },
+    rejected_trade_count: { ...snapshot.risk.rejected_trade_count },
+  };
+
+  state.feature_mask = createFeatureMaskFromSnapshot(snapshot.feature_surface);
+  state.feature_mask_alerts = [...snapshot.feature_surface.recent_violations];
+  state.alerts = [...snapshot.alerts];
+  if (state.alerts.length > state.max_cached_alerts) {
+    state.alerts = state.alerts.slice(state.alerts.length - state.max_cached_alerts);
+  }
+
+  state.malformed_or_schema_invalid_count = snapshot.data_pipeline.malformed_or_schema_invalid_count;
+  state.feature_policy_violation_count = snapshot.feature_surface.recent_violations.length;
+  state.blocked_feature_policy_violation_count = snapshot.feature_surface.recent_violations
+    .filter((alert) => alert.severity === 'critical')
+    .length;
+  state.missing_terminal_order_intent_count = snapshot.alerts
+    .filter((alert) => alert.id.startsWith('missing-terminal-order-intent:'))
+    .length;
+
+  state.last_event_id = snapshot.generated_from.last_event_id;
+  state.last_event_ts_ns = snapshot.generated_from.last_event_ts_ns;
+  state.last_run_id = snapshot.run_id;
+  state.session_id = snapshot.session_id;
+  state.mbo_shadow = {
+    status: snapshot.mbo_shadow?.status ?? 'absent',
+    last_event_id: snapshot.mbo_shadow?.last_event_id ?? null,
+  };
+}
+
+function createFeatureMaskFromSnapshot(featureSurface: FeatureSurfaceState): FeatureAvailabilityMask {
+  if (featureSurface.mask_source === 'fallback') {
+    return featureSurface.fallback_mask ?? FEATURE_AVAILABILITY_MASK;
+  }
+
+  return {
+    ...FEATURE_AVAILABILITY_MASK,
+    schema_version: FEATURE_AVAILABILITY_MASK.schema_version,
+    mask_version: featureSurface.mask_version as FeatureAvailabilityMask['mask_version'],
+    mask_id: featureSurface.mask_id as FeatureAvailabilityMask['mask_id'],
+    mask_hash: featureSurface.mask_hash,
+    field_tiers: featureSurface.field_tiers as FeatureAvailabilityMask['field_tiers'],
   };
 }
 

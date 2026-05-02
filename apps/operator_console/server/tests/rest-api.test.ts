@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -322,6 +323,155 @@ describe('operator console REST API', () => {
     const history = dataSource.history(new URLSearchParams('panel=trades&limit=1000'));
     expect(history.panel).toBe('trades');
     expect(history.rows).toHaveLength(40);
+  });
+
+  it('restores cached snapshot state across restarts', async () => {
+    const root = tempRoot();
+    const journal = join(root, 'restart-journal.jsonl');
+    appendJournalLines(journal, [
+      makeJournalLine({
+        event_id: 'position-initial-1',
+        type: 'POSITION',
+        ts_ns: '1700000000000001000',
+        run_id: 'run-console-04b',
+        session_id: 'session-console-04b',
+        causation_id: 'cause-position-initial-1',
+        payload: {
+          position_id: 'position-1',
+          candidate_id: 'candidate-1',
+          side: 'long',
+          status: 'open',
+          quantity_open: 1,
+          avg_entry_price: 101,
+          updated_ts_ns: '1700000000000001000',
+        },
+      }),
+      makeJournalLine({
+        event_id: 'position-initial-2',
+        type: 'POSITION',
+        ts_ns: '1700000000000002000',
+        run_id: 'run-console-04b',
+        session_id: 'session-console-04b',
+        causation_id: 'cause-position-initial-2',
+        payload: {
+          position_id: 'position-2',
+          candidate_id: 'candidate-1',
+          side: 'short',
+          status: 'open',
+          quantity_open: 1,
+          avg_entry_price: 99,
+          updated_ts_ns: '1700000000000002000',
+        },
+      }),
+    ]);
+
+    const sourceOptions = ingestOptions(root, journal);
+    const firstSource = createJournalBackedRestDataSource({
+      journal_path: journal,
+      ingest_options: sourceOptions,
+    });
+    const firstSnapshot = await firstSource.refresh();
+    expect(firstSnapshot.generated_from.event_count).toBe(2);
+    expect(firstSnapshot.generated_from.last_event_id).toBe('position-initial-2');
+
+    const restartedSource = createJournalBackedRestDataSource({
+      journal_path: journal,
+      ingest_options: sourceOptions,
+    });
+    const restoredSnapshot = await restartedSource.refresh();
+    expect(restoredSnapshot.generated_from.event_count).toBe(2);
+    expect(restoredSnapshot.generated_from.last_event_id).toBe('position-initial-2');
+
+    appendJournalLines(journal, [
+      makeJournalLine({
+        event_id: 'position-initial-3',
+        type: 'POSITION',
+        ts_ns: '1700000000000003000',
+        run_id: 'run-console-04b',
+        session_id: 'session-console-04b',
+        causation_id: 'cause-position-initial-3',
+        payload: {
+          position_id: 'position-3',
+          candidate_id: 'candidate-1',
+          side: 'long',
+          status: 'open',
+          quantity_open: 1,
+          avg_entry_price: 103,
+          updated_ts_ns: '1700000000000003000',
+        },
+      }),
+    ]);
+
+    const afterTail = await restartedSource.refresh();
+    expect(afterTail.generated_from.event_count).toBe(3);
+    expect(afterTail.generated_from.last_event_id).toBe('position-initial-3');
+  });
+
+  it('advances across rotated journals without replaying prior rows', async () => {
+    const root = tempRoot();
+    const journalDir = root;
+    const journalA = join(root, 'rel00_controlled_live_sim_journal_a.jsonl');
+    const journalB = join(root, 'rel00_controlled_live_sim_journal_b.jsonl');
+    appendJournalLines(journalA, [
+      makeJournalLine({
+        event_id: 'position-rot-a',
+        type: 'POSITION',
+        ts_ns: '1700000001000000000',
+        run_id: 'run-console-04b',
+        session_id: 'session-console-04b',
+        causation_id: 'cause-position-rot-a',
+        payload: {
+          position_id: 'position-rot-a',
+          candidate_id: 'candidate-1',
+          side: 'long',
+          status: 'open',
+          quantity_open: 1,
+          avg_entry_price: 101,
+          updated_ts_ns: '1700000001000000000',
+        },
+      }),
+    ]);
+    utimesSync(journalA, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+
+    const rotateSource = createJournalBackedRestDataSource({
+      ingest_options: {
+        journal_dir: journalDir,
+        journal_glob: 'rel00_controlled_live_sim_journal*.jsonl',
+        checkpoint_dir: join(root, 'console-checkpoints'),
+        mode: 'live',
+        poll_ms: 250,
+      },
+    });
+    const first = await rotateSource.refresh();
+    expect(first.generated_from.event_count).toBe(1);
+    expect(first.generated_from.last_event_id).toBe('position-rot-a');
+
+    appendJournalLines(journalB, [
+      makeJournalLine({
+        event_id: 'position-rot-b',
+        type: 'POSITION',
+        ts_ns: '1700000002000000000',
+        run_id: 'run-console-04b',
+        session_id: 'session-console-04b',
+        causation_id: 'cause-position-rot-b',
+        payload: {
+          position_id: 'position-rot-b',
+          candidate_id: 'candidate-1',
+          side: 'short',
+          status: 'open',
+          quantity_open: 2,
+          avg_entry_price: 99,
+          updated_ts_ns: '1700000002000000000',
+        },
+      }),
+    ]);
+    utimesSync(journalB, new Date(Date.now() + 60_000), new Date(Date.now() + 60_000));
+
+    const second = await rotateSource.refresh();
+    expect(second.generated_from.event_count).toBe(2);
+    expect(second.generated_from.last_event_id).toBe('position-rot-b');
+    const tradeIds = second.trades.rows.map((row: { readonly event_id: string }) => row.event_id);
+    expect(tradeIds).toEqual(expect.arrayContaining(['position-rot-a', 'position-rot-b']));
   });
 
   it('surfaces malformed rows while keeping /snapshot available', async () => {
