@@ -1,5 +1,13 @@
 import type { RuntimeEventType } from '../../../strategy_runtime/src/contracts/events/index.js';
+import {
+  FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION,
+  FEATURE_AVAILABILITY_MASK_VERSION,
+} from '../../../strategy_runtime/src/features/availability-mask.js';
 import type {
+  FeatureAvailabilityMask,
+  FeatureAvailabilityTier,
+} from '../../../strategy_runtime/src/features/availability-mask.js';
+export type {
   FeatureAvailabilityMask,
   FeatureAvailabilityTier,
 } from '../../../strategy_runtime/src/features/availability-mask.js';
@@ -131,4 +139,90 @@ export interface MboShadowState {
   readonly status: 'absent' | 'diagnostic' | 'shadow';
   readonly decision_use: false;
   readonly last_event_id: string | null;
+}
+
+const FEATURE_AVAILABILITY_MASK_TIERS = new Set<FeatureAvailabilityTier>([
+  'authoritative',
+  'diagnostic_only',
+  'shadow_only',
+  'advisory_only',
+  'blocked',
+  'subscope',
+  'available',
+]);
+
+export function isFeatureAvailabilityMask(
+  value: unknown,
+): value is FeatureAvailabilityMask {
+  const record = asRecord(value);
+  if (record === null) {
+    return false;
+  }
+  if (record.schema_version !== FEATURE_AVAILABILITY_MASK_SCHEMA_VERSION) {
+    return false;
+  }
+  if (record.mask_version !== FEATURE_AVAILABILITY_MASK_VERSION) {
+    return false;
+  }
+  if (typeof record.mask_id !== 'string' || record.mask_id.length === 0) {
+    return false;
+  }
+  if (typeof record.mask_hash !== 'string' || record.mask_hash.length === 0) {
+    return false;
+  }
+
+  const fieldTiers = asRecord(record.field_tiers);
+  if (fieldTiers === null) {
+    return false;
+  }
+  for (const tier of Object.values(fieldTiers)) {
+    if (!FEATURE_AVAILABILITY_MASK_TIERS.has(tier as FeatureAvailabilityTier)) {
+      return false;
+    }
+  }
+
+  const mboPolicy = asRecord(record.mbo_policy);
+  if (mboPolicy === null) {
+    return false;
+  }
+  if (!Array.isArray(mboPolicy.accepted_normalized_action_literals)) {
+    return false;
+  }
+  if (asRecord(mboPolicy.feature_use_tiers) === null) {
+    return false;
+  }
+  if (asRecord(mboPolicy.allowed_contexts_by_tier) === null) {
+    return false;
+  }
+  if (!Array.isArray(mboPolicy.decision_contexts)) {
+    return false;
+  }
+
+  const lineage = asRecord(record.lineage);
+  if (lineage !== null) {
+    const requiredLineage = [
+      'adr',
+      'prior_adr',
+      'data_mbo_03',
+      'infra01e',
+      'infra01f',
+      'data01b_full_status',
+      'data01_full_status',
+      'mbo_decision_use_status',
+    ] as const;
+    for (const field of requiredLineage) {
+      if (typeof lineage[field] !== 'string' || lineage[field].length === 0) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
 }

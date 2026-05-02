@@ -4,7 +4,6 @@ import type {
 } from '../../../../strategy_runtime/src/contracts/events/index.js';
 import {
   FEATURE_AVAILABILITY_MASK,
-  type FeatureAvailabilityMask,
   type FeatureAvailabilityTier,
 } from '../../../../strategy_runtime/src/features/availability-mask.js';
 import type { EventNormalizerResult, NormalizedJournalEvent } from '../ingest/event-normalizer.js';
@@ -17,8 +16,10 @@ import {
   type MboShadowState,
   type PositionState,
   type StrategyGateState,
+  type FeatureAvailabilityMask,
   type TradeBlotterRow,
   type UnixNsString,
+  isFeatureAvailabilityMask,
 } from '@quant-futures/operator-console-contracts';
 
 export interface LiveStateSnapshotOptions {
@@ -1081,18 +1082,6 @@ function sumAvailable(values: readonly MaybeAvailable<number>[]): MaybeAvailable
     return unavailable('no explicit unrealized P&L mark facts');
   }
   return available(availableValues.reduce((sum, item) => sum + item.value, 0));
-}
-
-export function isFeatureAvailabilityMask(value: unknown): value is FeatureAvailabilityMask {
-  const record = jsonObject(value);
-  return (
-    record !== null &&
-    record.schema_version === FEATURE_AVAILABILITY_MASK.schema_version &&
-    record.mask_version === FEATURE_AVAILABILITY_MASK.mask_version &&
-    typeof record.mask_id === 'string' &&
-    typeof record.mask_hash === 'string' &&
-    jsonObject(record.field_tiers) !== null
-  );
 }
 
 function payloadRecord(event: JournalEventEnvelope): Record<string, unknown> {

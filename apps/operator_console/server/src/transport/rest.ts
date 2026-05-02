@@ -13,9 +13,7 @@ import {
   createConsoleLiveStateAccumulator,
   createConsoleLiveStateAccumulatorFromSnapshot,
   type ConsoleLiveStateAccumulator,
-  isFeatureAvailabilityMask,
 } from '../aggregator/live-state.js';
-import type { FeatureAvailabilityMask } from '../../../../strategy_runtime/src/features/availability-mask.js';
 import { normalizeJournalTailResult } from '../ingest/event-normalizer.js';
 import { ConsoleJournalPoller } from '../ingest/journal-poller.js';
 import { selectJournalPath } from '../ingest/journal-discovery.js';
@@ -30,7 +28,12 @@ import {
 import { assertJsonSafe, stableJsonStringify, type JsonValue } from './json-safe.js';
 import type { JournalIngestOptions } from '../ingest/options.js';
 import type { OperatorConsoleServerConfig } from '../runtime/config.js';
-import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
+import {
+  CONSOLE_SNAPSHOT_SCHEMA_VERSION,
+  type ConsoleSnapshot,
+  isFeatureAvailabilityMask,
+  type FeatureAvailabilityMask,
+} from '@quant-futures/operator-console-contracts';
 
 export interface ConsoleRestDataSource {
   readonly refresh: () => Promise<ConsoleSnapshot> | ConsoleSnapshot;
@@ -84,7 +87,12 @@ export function createJournalBackedRestDataSource(
     : resolvedJournalPath;
   const resolvedJournalPathRedactedFlag = options.redact_journal_path ?? false;
   const restoredSnapshot = readCachedSnapshot(snapshotCachePath);
-  const restoredFeatureMask = readCachedFeatureMask(featureMaskCachePath);
+  let restoredFeatureMask: FeatureAvailabilityMask | null = null;
+  if (restoredSnapshot?.feature_surface.mask_source === 'embedded') {
+    restoredFeatureMask = readCachedFeatureMask(featureMaskCachePath);
+  } else {
+    removeCachedFeatureMask(featureMaskCachePath);
+  }
   const snapshotBuilder: ConsoleLiveStateAccumulator = restoredSnapshot === null
     ? createConsoleLiveStateAccumulator({
       journal_path: resolvedJournalPathRedacted,
@@ -301,14 +309,37 @@ function writeCachedFeatureMask(path: string, mask: FeatureAvailabilityMask): vo
   renameSync(tmpPath, path);
 }
 
-function removeCachedFeatureMask(path: string): void {
+function removeCachedFeatureMask(path: string): boolean {
   if (!existsSync(path)) {
-    return;
+    return true;
   }
-  try {
-    unlinkSync(path);
-  } catch {
-    // best effort cleanup
+  const retryDelaysMs = [5, 10, 25];
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      unlinkSync(path);
+      return true;
+    } catch (error) {
+      const errno = error as NodeJS.ErrnoException;
+      if (errno.code === 'ENOENT') {
+        return true;
+      }
+      if (
+        (errno.code === 'EBUSY' || errno.code === 'EPERM' || errno.code === 'EACCES') &&
+        attempt < retryDelaysMs.length
+      ) {
+        sleepSync(retryDelaysMs[attempt]);
+        continue;
+      }
+      return false;
+    }
+  }
+  return false;
+}
+
+function sleepSync(milliseconds: number): void {
+  const deadline = Date.now() + milliseconds;
+  while (Date.now() < deadline) {
+    // spin-wait for brief lock-release retries only
   }
 }
 

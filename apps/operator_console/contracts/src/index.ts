@@ -6,7 +6,9 @@ export type {
   AvailableValue,
   UnixNsString,
   DecimalString,
+  FeatureAvailabilityTier,
   MaybeAvailable,
+  FeatureAvailabilityMask,
   AlertState,
   ConsoleSnapshot,
   DataPipelineState,
@@ -21,6 +23,8 @@ export type {
   FeatureSurfaceState,
   MboShadowState,
 } from './snapshot.js';
+
+export { isFeatureAvailabilityMask } from './snapshot.js';
 
 export type {
   ConsoleDelta,
