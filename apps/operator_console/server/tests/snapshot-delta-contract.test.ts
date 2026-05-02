@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { assertJsonSafe, stableJsonStringify } from '../src/transport/json-safe.js';
-import { assertDecimalSequence, nextSequence, type ConsoleStreamFrame } from '@quant-futures/operator-console-contracts';
+import { FEATURE_AVAILABILITY_MASK } from '../../../strategy_runtime/src/features/availability-mask.js';
+import {
+  assertDecimalSequence,
+  isFeatureAvailabilityMask,
+  nextSequence,
+  type ConsoleStreamFrame,
+} from '@quant-futures/operator-console-contracts';
 import { CONSOLE_SNAPSHOT_SCHEMA_VERSION, type ConsoleSnapshot } from '@quant-futures/operator-console-contracts';
 
 function minimalSnapshot(): ConsoleSnapshot {
@@ -89,5 +95,9 @@ describe('operator console snapshot and delta contracts', () => {
     expect(() => assertDecimalSequence('1')).not.toThrow();
     expect(() => assertDecimalSequence('01')).toThrow();
     expect(() => assertDecimalSequence('abc')).toThrow();
+  });
+
+  it('keeps the browser-safe feature mask validator aligned with runtime constants', () => {
+    expect(isFeatureAvailabilityMask(FEATURE_AVAILABILITY_MASK)).toBe(true);
   });
 });

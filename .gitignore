@@ -8,6 +8,7 @@ coverage/
 .turbo/
 .cache/
 .local/
+.operator-console/
 tsconfig.tsbuildinfo
 **/*.tsbuildinfo
 data/probes/
