@@ -5,6 +5,10 @@ import {
   createUnavailableSnapshot,
   isConsoleStreamFrame,
 } from '../src/lib/console-state.js';
+import {
+  parseConsoleStreamMessage,
+  reconnectDelayMs,
+} from '../src/hooks/useLiveDeltas.js';
 import type { ConsoleDelta, ConsoleStreamFrame } from '../../server/src/types/delta.js';
 
 describe('operator console live-state helpers', () => {
@@ -61,5 +65,23 @@ describe('operator console live-state helpers', () => {
     expect(isConsoleStreamFrame({ kind: 'snapshot', seq: '1', snapshot: {} })).toBe(true);
     expect(isConsoleStreamFrame({ type: 'SIM_FILL', payload: {} })).toBe(false);
     expect(isConsoleStreamFrame(null)).toBe(false);
+  });
+
+  it('caps WebSocket reconnect backoff', () => {
+    expect(reconnectDelayMs(0, 250, 1_000)).toBe(250);
+    expect(reconnectDelayMs(1, 250, 1_000)).toBe(500);
+    expect(reconnectDelayMs(2, 250, 1_000)).toBe(1_000);
+    expect(reconnectDelayMs(8, 250, 1_000)).toBe(1_000);
+  });
+
+  it('parses text stream frames and rejects binary payloads', () => {
+    const frame: ConsoleStreamFrame = {
+      kind: 'resync_required',
+      seq: '3',
+      reason: 'backpressure',
+    };
+
+    expect(parseConsoleStreamMessage(JSON.stringify(frame))).toEqual(frame);
+    expect(() => parseConsoleStreamMessage(new ArrayBuffer(8))).toThrow('binary stream frames are unsupported');
   });
 });

@@ -30,6 +30,7 @@ export function useLiveSnapshot(options: LiveSnapshotOptions = {}): LiveSnapshot
     setReloadIndex((current) => current + 1);
   }, []);
 
+  // Callers that pass headers should memoize them; this effect keys on object identity.
   useEffect(() => {
     const controller = new AbortController();
     const snapshotUrl = endpointUrl(options.base_url ?? consoleHttpBase(), '/snapshot');

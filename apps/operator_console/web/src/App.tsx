@@ -30,6 +30,7 @@ export default function App(): ReactElement {
   const snapshotState = useLiveSnapshot();
   const deltaState = useLiveDeltas({
     enabled: snapshotState.status === 'ready',
+    reloadSnapshot: snapshotState.reload,
     setSnapshot: snapshotState.setSnapshot,
   });
 

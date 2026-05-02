@@ -6,8 +6,16 @@ import {
 } from '../lib/console-state.js';
 import { consoleHttpBase, endpointUrl } from './useLiveSnapshot.js';
 import type { ConsoleSnapshot } from '../../../server/src/types/snapshot.js';
+import type { ConsoleStreamFrame } from '../../../server/src/types/delta.js';
 
-export type LiveDeltaStatus = 'disabled' | 'connecting' | 'open' | 'resync_required' | 'closed' | 'unavailable';
+export type LiveDeltaStatus =
+  | 'disabled'
+  | 'connecting'
+  | 'open'
+  | 'resync_required'
+  | 'reconnecting'
+  | 'closed'
+  | 'unavailable';
 
 export interface LiveDeltaState {
   readonly status: LiveDeltaStatus;
@@ -19,18 +27,32 @@ export interface LiveDeltaState {
 export interface LiveDeltaOptions {
   readonly enabled: boolean;
   readonly setSnapshot: Dispatch<SetStateAction<ConsoleSnapshot>>;
+  readonly reloadSnapshot?: () => void;
   readonly ws_url?: string;
+  readonly reconnect_initial_delay_ms?: number;
+  readonly reconnect_max_delay_ms?: number;
 }
+
+const DEFAULT_RECONNECT_INITIAL_DELAY_MS = 500;
+const DEFAULT_RECONNECT_MAX_DELAY_MS = 5_000;
 
 export function useLiveDeltas(options: LiveDeltaOptions): LiveDeltaState {
   const [status, setStatus] = useState<LiveDeltaStatus>(options.enabled ? 'connecting' : 'disabled');
   const [lastSeq, setLastSeq] = useState<string | null>(null);
   const [resyncRequired, setResyncRequired] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const lastSeqRef = useRef<string | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!options.enabled) {
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      reconnectAttemptRef.current = 0;
       setStatus('disabled');
       return;
     }
@@ -41,20 +63,19 @@ export function useLiveDeltas(options: LiveDeltaOptions): LiveDeltaState {
       return;
     }
 
+    let disposed = false;
     const ws = new WebSocket(options.ws_url ?? consoleWsUrl());
     setStatus('connecting');
     setErrorMessage(null);
 
     ws.addEventListener('open', () => {
+      reconnectAttemptRef.current = 0;
       setStatus('open');
     });
 
     ws.addEventListener('message', (message) => {
       try {
-        const parsed = JSON.parse(String(message.data)) as unknown;
-        if (!isConsoleStreamFrame(parsed)) {
-          throw new Error('stream frame shape is invalid');
-        }
+        const parsed = parseConsoleStreamMessage(message.data);
         options.setSnapshot((current) => {
           const result = applyConsoleStreamFrame(current, lastSeqRef.current, parsed);
           lastSeqRef.current = result.last_seq;
@@ -71,18 +92,47 @@ export function useLiveDeltas(options: LiveDeltaOptions): LiveDeltaState {
     });
 
     ws.addEventListener('close', () => {
-      setStatus((current) => current === 'resync_required' ? current : 'closed');
+      if (disposed) {
+        return;
+      }
+
+      const retryDelayMs = reconnectDelayMs(
+        reconnectAttemptRef.current,
+        options.reconnect_initial_delay_ms,
+        options.reconnect_max_delay_ms,
+      );
+      reconnectAttemptRef.current += 1;
+      setStatus((current) => current === 'resync_required' ? current : 'reconnecting');
+      setErrorMessage(`WebSocket stream closed; reconnecting in ${retryDelayMs}ms`);
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        options.reloadSnapshot?.();
+        setConnectionAttempt((current) => current + 1);
+      }, retryDelayMs);
     });
 
     ws.addEventListener('error', () => {
-      setStatus('unavailable');
+      setStatus('reconnecting');
       setErrorMessage('WebSocket stream failed');
     });
 
     return () => {
+      disposed = true;
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       ws.close();
     };
-  }, [options.enabled, options.setSnapshot, options.ws_url]);
+  }, [
+    connectionAttempt,
+    options.enabled,
+    options.reloadSnapshot,
+    options.reconnect_initial_delay_ms,
+    options.reconnect_max_delay_ms,
+    options.setSnapshot,
+    options.ws_url,
+  ]);
 
   return {
     status,
@@ -100,4 +150,26 @@ export function consoleWsUrl(): string {
   const snapshotBase = consoleHttpBase();
   const streamUrl = endpointUrl(snapshotBase, '/stream');
   return streamUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+}
+
+export function reconnectDelayMs(
+  attempt: number,
+  initialDelayMs = DEFAULT_RECONNECT_INITIAL_DELAY_MS,
+  maxDelayMs = DEFAULT_RECONNECT_MAX_DELAY_MS,
+): number {
+  const sanitizedAttempt = Math.max(0, Math.floor(attempt));
+  const sanitizedInitial = Math.max(1, Math.floor(initialDelayMs));
+  const sanitizedMax = Math.max(sanitizedInitial, Math.floor(maxDelayMs));
+  return Math.min(sanitizedInitial * (2 ** sanitizedAttempt), sanitizedMax);
+}
+
+export function parseConsoleStreamMessage(data: unknown): ConsoleStreamFrame {
+  if (typeof data !== 'string') {
+    throw new Error('binary stream frames are unsupported');
+  }
+  const parsed = JSON.parse(data) as unknown;
+  if (!isConsoleStreamFrame(parsed)) {
+    throw new Error('stream frame shape is invalid');
+  }
+  return parsed;
 }
