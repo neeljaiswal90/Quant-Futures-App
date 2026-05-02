@@ -35,7 +35,10 @@ The server exposes read-only aggregate endpoints:
 - `GET /healthz`
 - `GET /snapshot`
 - `GET /history?panel=<name>&limit=<n>&range=<iso8601-duration>`
+- `WS /stream`
 
 History responses contain panel-level aggregate state only. They do not return raw journal lines, raw event envelopes, or payload dumps. Supported `range` values use ISO-8601 durations such as `PT5M`, `PT1H`, and `P1D`; malformed ranges return `400`. The default history limit is `100`, and requests above `1000` are capped to `1000`.
 
 `/healthz` is an unauthenticated process-liveness endpoint and does not tail or rebuild journal state. Remote `/snapshot` and `/history` requests require bearer auth and an allowed `Origin`; CORS preflight is answered for allowed origins.
+
+`/stream` sends a full snapshot on connect, then sequence-aware aggregate deltas. High-rate telemetry deltas are coalesced at `250ms` by default; override with `--ws-coalesce-ms` or `QFA_CONSOLE_WS_COALESCE_MS`. Remote WebSocket upgrades require the same bearer token and allowed `Origin` as remote REST state endpoints.

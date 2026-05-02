@@ -45,10 +45,13 @@ describe('operator console journal discovery', () => {
         'replay',
         '--poll-ms',
         '500',
+        '--ws-coalesce-ms',
+        '125',
       ],
       {
         QFA_CONSOLE_JOURNAL: 'env.jsonl',
         QFA_CONSOLE_MODE: 'live',
+        QFA_CONSOLE_WS_COALESCE_MS: '1000',
       },
       root,
     );
@@ -59,6 +62,7 @@ describe('operator console journal discovery', () => {
     expect(options.checkpoint_dir).toBe(join(root, 'checkpoints'));
     expect(options.mode).toBe('replay');
     expect(options.poll_ms).toBe(500);
+    expect(options.ws_coalesce_ms).toBe(125);
   });
 
   it('lets explicit --journal win', () => {

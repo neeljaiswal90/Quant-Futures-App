@@ -7,6 +7,7 @@ export interface JournalIngestEnv {
   readonly QFA_CONSOLE_CHECKPOINT_DIR?: string;
   readonly QFA_CONSOLE_MODE?: string;
   readonly QFA_CONSOLE_POLL_MS?: string;
+  readonly QFA_CONSOLE_WS_COALESCE_MS?: string;
 }
 
 export interface JournalIngestOptions {
@@ -16,6 +17,7 @@ export interface JournalIngestOptions {
   readonly checkpoint_dir: string;
   readonly mode: 'live' | 'replay';
   readonly poll_ms: number;
+  readonly ws_coalesce_ms?: number;
 }
 
 export const DEFAULT_JOURNAL_GLOB = 'rel00_controlled_live_sim_journal*.jsonl';
@@ -67,6 +69,9 @@ export function parseJournalIngestOptions(
       case '--poll-ms':
         parsed.poll_ms = parsePositiveInteger(nextValue(), '--poll-ms');
         break;
+      case '--ws-coalesce-ms':
+        parsed.ws_coalesce_ms = parsePositiveInteger(nextValue(), '--ws-coalesce-ms');
+        break;
       default:
         throw new Error(`Unknown operator console journal option: ${arg}`);
     }
@@ -89,6 +94,11 @@ export function parseJournalIngestOptions(
       (env.QFA_CONSOLE_POLL_MS === undefined
         ? DEFAULT_POLL_MS
         : parsePositiveInteger(env.QFA_CONSOLE_POLL_MS, 'QFA_CONSOLE_POLL_MS')),
+    ws_coalesce_ms:
+      parsed.ws_coalesce_ms ??
+      (env.QFA_CONSOLE_WS_COALESCE_MS === undefined
+        ? undefined
+        : parsePositiveInteger(env.QFA_CONSOLE_WS_COALESCE_MS, 'QFA_CONSOLE_WS_COALESCE_MS')),
   };
 }
 

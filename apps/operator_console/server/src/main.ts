@@ -8,20 +8,39 @@ import {
   createJournalBackedRestDataSource,
   createOperatorConsoleRestServer,
 } from './transport/rest.js';
+import {
+  DEFAULT_WS_COALESCE_MS,
+  attachOperatorConsoleWebSocketStream,
+  type ConsoleWebSocketHealth,
+} from './transport/ws.js';
 
 export function main(argv = process.argv.slice(2), env = process.env): void {
   const config = resolveServerConfigFromEnv(env);
   const ingestOptions = parseJournalIngestOptions(argv, env, findRepoRoot(process.cwd()));
   const journalSelection = selectJournalPath(ingestOptions);
+  let wsHealth = (): ConsoleWebSocketHealth => ({
+    ws_client_count: 0,
+    ws_backpressure: false,
+    dropped_critical_frame_count: 0,
+  });
   const dataSource = createJournalBackedRestDataSource({
     journal_path: journalSelection.journal_path,
     ingest_options: ingestOptions,
     redact_journal_path: config.remote.enabled,
+    transport_health: () => wsHealth(),
   });
   const server = createOperatorConsoleRestServer({
     config,
     data_source: dataSource,
   });
+  const wsStream = attachOperatorConsoleWebSocketStream({
+    server,
+    config,
+    data_source: dataSource,
+    poll_ms: ingestOptions.poll_ms,
+    coalesce_ms: ingestOptions.ws_coalesce_ms,
+  });
+  wsHealth = wsStream.getHealth;
   const mode = config.remote.enabled ? 'remote' : 'loopback';
   server.listen(config.port, config.bind_address, () => {
     console.log(
@@ -34,13 +53,15 @@ export function main(argv = process.argv.slice(2), env = process.env): void {
         `journal=${journalSelection.journal_path}`,
         `journal_source=${journalSelection.source}`,
         `candidate_count=${journalSelection.candidate_count}`,
+        `ws=ws://${config.bind_address}:${config.port}/stream`,
+        `ws_coalesce_ms=${ingestOptions.ws_coalesce_ms ?? DEFAULT_WS_COALESCE_MS}`,
         `health=http://${config.bind_address}:${config.port}/healthz`,
       ].join(' '),
     );
   });
   server.on('error', (error) => {
     console.error(
-    [
+      [
         'operator-console-server failed',
         `bind=${config.bind_address}`,
         `port=${config.port}`,

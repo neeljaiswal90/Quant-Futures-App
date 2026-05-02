@@ -31,6 +31,11 @@ export interface JournalBackedDataSourceOptions {
   readonly ingest_options: JournalIngestOptions;
   readonly redact_journal_path?: boolean;
   readonly max_history_range_ms?: number;
+  readonly transport_health?: () => {
+    readonly ws_client_count: number;
+    readonly ws_backpressure: boolean;
+    readonly dropped_critical_frame_count: number;
+  };
 }
 
 interface MergedNormalizerResult {
@@ -83,6 +88,7 @@ export function createJournalBackedRestDataSource(
         ? redactedJournalPath(options.journal_path)
         : options.journal_path,
       journal_path_redacted: options.redact_journal_path ?? false,
+      ...options.transport_health?.(),
       checkpoint_status: {
         status: 'available',
         value: `checkpointed files=${Object.keys(tailed.checkpoint.files).length}`,
