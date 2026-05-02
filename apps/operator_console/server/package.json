@@ -8,6 +8,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@quant-futures/operator-console-contracts": "workspace:*"
+    "@quant-futures/operator-console-contracts": "*"
   }
 }
