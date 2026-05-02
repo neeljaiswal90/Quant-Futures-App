@@ -1,8 +1,14 @@
-import { useMemo } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { useLiveDeltas, type LiveDeltaState } from './hooks/useLiveDeltas.js';
 import { useLiveSnapshot, type LiveSnapshotStatus } from './hooks/useLiveSnapshot.js';
-import type { ConsoleSnapshot, MaybeAvailable } from '../../server/src/types/snapshot.js';
+import { AlertsPanel } from './panels/AlertsPanel.js';
+import { DataPipelinePanel } from './panels/DataPipelinePanel.js';
+import { PnlPanel } from './panels/PnlPanel.js';
+import { PositionsPanel } from './panels/PositionsPanel.js';
+import { RiskPanel } from './panels/RiskPanel.js';
+import { SystemHealthPanel } from './panels/SystemHealthPanel.js';
+import { TradeBlotterPanel } from './panels/TradeBlotterPanel.js';
+import type { ConsoleSnapshot } from '../../server/src/types/snapshot.js';
 
 export const OPERATOR_CONSOLE_APP_NAME = 'Live-Sim Operator Console';
 
@@ -48,8 +54,7 @@ export function OperatorConsoleApp({
   snapshot_status,
   delta_state,
 }: OperatorConsoleAppProps): ReactElement {
-  const featureSummary = useMemo(() => summarizeFeatureSurface(snapshot), [snapshot]);
-  const latestAlerts = snapshot.alerts.slice(0, 3);
+  const featureSummary = summarizeFeatureSurface(snapshot);
 
   return (
     <main className="console-shell" aria-label={OPERATOR_CONSOLE_APP_NAME}>
@@ -79,73 +84,16 @@ export function OperatorConsoleApp({
         </div>
       </section>
 
-      <section className="console-grid" aria-label="Operator overview">
-        <OverviewPanel title="Data Pipeline">
-          <Metric label="Events" value={snapshot.data_pipeline.source_event_count.toLocaleString()} />
-          <Metric label="Malformed" value={snapshot.data_pipeline.malformed_or_schema_invalid_count.toString()} />
-          <Metric label="Last Lag" value={formatMaybe(snapshot.data_pipeline.last_event_age_ms, 'ms')} />
-        </OverviewPanel>
-
-        <OverviewPanel title="Stream">
-          <Metric label="WS" value={delta_state.status.replaceAll('_', ' ')} />
-          <Metric label="Seq" value={delta_state.last_seq ?? 'unavailable'} />
-          <Metric label="Clients" value={snapshot.system_health.ws_client_count.toString()} />
-        </OverviewPanel>
-
-        <OverviewPanel title="P&L">
-          <Metric label="Realized" value={formatMaybe(snapshot.pnl.realized_pnl_usd, 'USD')} />
-          <Metric label="Unrealized" value={formatMaybe(snapshot.pnl.unrealized_pnl_usd, 'USD')} />
-          <Metric label="Source" value={snapshot.pnl.source.replaceAll('_', ' ')} />
-        </OverviewPanel>
-
-        <OverviewPanel title="System Health">
-          <Metric label="Server" value={snapshot.system_health.server_status} />
-          <Metric label="Backpressure" value={snapshot.system_health.ws_backpressure ? 'active' : 'clear'} />
-          <Metric label="Critical Drops" value={snapshot.system_health.dropped_critical_frame_count.toString()} />
-        </OverviewPanel>
-      </section>
-
-      <section className="alert-strip" aria-label="Alerts">
-        <div className="section-heading">
-          <h2>Alerts</h2>
-          <span>{snapshot.alerts.length} total</span>
-        </div>
-        <div className="alert-list">
-          {latestAlerts.length === 0 ? (
-            <p className="empty-state">No current alerts</p>
-          ) : latestAlerts.map((alert) => (
-            <article className={`alert-row alert-row-${alert.severity}`} key={alert.id}>
-              <strong>{alert.severity}</strong>
-              <span>{alert.message}</span>
-            </article>
-          ))}
-        </div>
+      <section className="dashboard-grid" aria-label="MVP panels">
+        <DataPipelinePanel data={snapshot.data_pipeline} />
+        <PnlPanel pnl={snapshot.pnl} />
+        <RiskPanel risk={snapshot.risk} />
+        <SystemHealthPanel snapshot={snapshot} snapshotStatus={snapshot_status} deltaState={delta_state} />
+        <TradeBlotterPanel trades={snapshot.trades} />
+        <PositionsPanel positions={snapshot.positions} />
+        <AlertsPanel alerts={snapshot.alerts} />
       </section>
     </main>
-  );
-}
-
-function OverviewPanel({
-  title,
-  children,
-}: {
-  readonly title: string;
-  readonly children: ReactNode;
-}): ReactElement {
-  return (
-    <article className="overview-panel">
-      <h2>{title}</h2>
-      <div className="metric-list">{children}</div>
-    </article>
-  );
-}
-
-function Metric({ label, value }: { readonly label: string; readonly value: string }): ReactElement {
-  return (
-    <div className="metric-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 
@@ -169,14 +117,4 @@ function summarizeFeatureSurface(snapshot: ConsoleSnapshot): {
     title: `Mask v${snapshot.feature_surface.mask_version} from ${snapshot.feature_surface.mask_source}`,
     partitionText: `${blocked} blocked / ${advisory} advisory`,
   };
-}
-
-function formatMaybe(value: MaybeAvailable<number>, unit: string): string {
-  if (value.status === 'unavailable') {
-    return 'unavailable';
-  }
-  const formatted = unit === 'USD'
-    ? `$${value.value.toFixed(2)}`
-    : `${Math.round(value.value).toLocaleString()} ${unit}`;
-  return formatted;
 }
