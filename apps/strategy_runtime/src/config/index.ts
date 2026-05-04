@@ -1,5 +1,11 @@
 export { ConfigValidationError } from './errors.js';
 export {
+  loadCorpusManifest,
+  loadCorpusManifestWithWarnings,
+  type CorpusManifestValidationWarning,
+  type LoadedCorpusManifest,
+} from './corpus-manifest-loader.js';
+export {
   CONFIG_PATH_ENV_KEYS,
   PUBLIC_CONFIG_ENV_KEYS,
   SECRET_ENV_KEYS,
