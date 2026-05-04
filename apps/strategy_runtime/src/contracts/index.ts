@@ -8,3 +8,5 @@ export * from './position.js';
 export * from './serialization.js';
 export * from './strategy-ids.js';
 export * from './time.js';
+export * from './vix-series.js';
+export * from './vix-quartiles.js';

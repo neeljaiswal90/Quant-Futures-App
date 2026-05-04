@@ -1,0 +1,54 @@
+{
+  "end_date": "1990-01-15",
+  "fetch_timestamp_ns": 1770000000000000000,
+  "has_missing": true,
+  "manifest_schema_version": 1,
+  "missing_count": 1,
+  "observations": [
+    {
+      "date": "1990-01-02",
+      "value": 17.24
+    },
+    {
+      "date": "1990-01-03",
+      "value": 18.19
+    },
+    {
+      "date": "1990-01-04",
+      "value": 19.22
+    },
+    {
+      "date": "1990-01-05",
+      "value": 20.11
+    },
+    {
+      "date": "1990-01-08",
+      "value": null
+    },
+    {
+      "date": "1990-01-09",
+      "value": 21.2
+    },
+    {
+      "date": "1990-01-10",
+      "value": 20.05
+    },
+    {
+      "date": "1990-01-11",
+      "value": 19.87
+    },
+    {
+      "date": "1990-01-12",
+      "value": 19.91
+    },
+    {
+      "date": "1990-01-15",
+      "value": 20.33
+    }
+  ],
+  "record_count": 10,
+  "series_id": "VIXCLS",
+  "sha256": "7b1d9382dddf6c6452eac0971e62a4044eb1f983243c0ee13516361aea49911f",
+  "source": "FRED",
+  "start_date": "1990-01-02"
+}

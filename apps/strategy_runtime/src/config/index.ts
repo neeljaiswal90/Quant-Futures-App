@@ -14,6 +14,7 @@ export {
   stableStringify,
 } from './hash.js';
 export { loadAppConfig, type LoadAppConfigOptions } from './loader.js';
+export { loadVixSeries } from './vix-series-loader.js';
 export {
   CANDIDATE_RANKING_METHOD,
   DEFAULT_BREAKDOWN_RETEST_SHORT_CONFIG,
