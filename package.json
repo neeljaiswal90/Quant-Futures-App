@@ -23,6 +23,7 @@
     "data:05a:retention": "python -m services.market_data_sidecar.retention_app",
     "data:06a:session-warmup": "python -m services.market_data_sidecar.session_warmup_app",
     "data:07a:gap-report": "python -m services.market_data_sidecar.gap_report_app",
+    "data:fetch-vix": "python scripts/research/fetch-vix-series.py",
     "format:journal": "tsx apps/strategy_runtime/src/operator/formatter.ts",
     "infra:01:evaluate": "tsx scripts/infra/evaluate-infra-01-probe.ts",
     "infra:01e:decision": "tsx scripts/infra/write-infra01e-decision-report.ts",

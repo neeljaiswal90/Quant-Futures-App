@@ -23,6 +23,7 @@ config/*.local.json
 config/secrets*.json
 config/*.secret.json
 config/sim03/session-list.yaml
+config/research/vix-series.json
 
 __pycache__/
 *.py[cod]
