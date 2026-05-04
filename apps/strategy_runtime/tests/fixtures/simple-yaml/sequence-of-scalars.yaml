@@ -1,0 +1,11 @@
+version: 1
+symbols:
+  - MNQM6
+  - MNQH6
+  - MNQU6
+empty_inline: []
+empty_inline_map: {}
+nested:
+  inner_list:
+    - first
+    - second

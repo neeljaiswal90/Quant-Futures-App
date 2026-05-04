@@ -1,0 +1,10 @@
+version: 1
+sessions:
+  - session_id: 2026-02-27-rth
+    start: 2026-02-27T14:30:00Z
+    end: 2026-02-27T21:00:00Z
+    symbol: MNQH6
+  - session_id: 2026-02-26-rth
+    start: 2026-02-26T14:30:00Z
+    end: 2026-02-26T21:00:00Z
+    symbol: MNQH6

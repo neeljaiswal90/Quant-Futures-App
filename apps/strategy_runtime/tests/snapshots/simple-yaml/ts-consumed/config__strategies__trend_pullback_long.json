@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "strategy_id": "trend_pullback_long",
+  "parameters": {
+    "z_ema9_min": 0.15,
+    "z_ema9_max": 1.25,
+    "pullback_ratio_min": 0.25,
+    "pullback_ratio_max": 0.62,
+    "flow_confirmation_min": 0.2,
+    "entry_half_band_sigma": 0.1,
+    "stop_sigma_multiple": 1.05,
+    "minimum_target_rr": 1,
+    "default_target_1_rr": 2,
+    "default_target_2_rr": 4,
+    "base_confidence_score": 8.1
+  }
+}

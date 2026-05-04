@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "account_equity_usd": 50000,
+  "max_risk_per_trade_pct": 0.5,
+  "max_daily_loss_pct": 2,
+  "min_reward_risk": 1,
+  "hard_position_cap": 10,
+  "hard_cap_contracts": 10,
+  "sizing_mode": "replay",
+  "default_regime": "mixed",
+  "default_n_eff": 10000,
+  "session": {
+    "max_daily_realized_loss_usd": 1000,
+    "max_open_trade_count": 3,
+    "max_trades_per_session": 12,
+    "circuit_breaker_enabled": true,
+    "reset_circuit_breaker_on_new_session": true
+  },
+  "sizing": {
+    "C_abs": 10,
+    "C_base": 100,
+    "c_support_k": 100,
+    "c_calibration_placeholder": 0.7,
+    "c_agreement_placeholder": 0.8,
+    "eta_liq": 0.07,
+    "liq_hysteresis_cycles": 3,
+    "liq_increase_cooldown_ms": 30000,
+    "d_min": 0.25,
+    "gamma": 0.75,
+    "slippage_buffer_points": 0.75,
+    "regime_scores": {
+      "strong_trend": 0.9,
+      "mixed": 0.5,
+      "chop": 0.3,
+      "unknown": 0.3
+    }
+  }
+}
