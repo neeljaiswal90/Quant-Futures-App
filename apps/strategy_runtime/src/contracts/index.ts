@@ -1,4 +1,6 @@
 export * from './candidate.js';
+export * from './corpus-manifest.js';
+export * from './corpus-manifest-hash.js';
 export * from './events/index.js';
 export * from './execution.js';
 export * from './ids.js';
