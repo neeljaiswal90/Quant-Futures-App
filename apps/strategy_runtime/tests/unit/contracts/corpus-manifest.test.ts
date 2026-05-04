@@ -17,6 +17,11 @@ const realManifestPaths = [
   `${tierAArchiveRoot}/manifest-feb-2026.json`,
   `${tierAArchiveRoot}/manifest-mar-2026.json`,
 ] as const;
+const tierAArchiveAvailable = realManifestPaths.every((path) => existsSync(path));
+const describeTierA = tierAArchiveAvailable ? describe : describe.skip;
+if (!tierAArchiveAvailable) {
+  console.info(`Skipping Tier A real-manifest smoke tests; archive not found at ${tierAArchiveRoot}`);
+}
 const fixturePath = join(
   repoRoot,
   'apps/strategy_runtime/tests/fixtures/corpus-manifests/minimal-valid.json',
@@ -30,70 +35,72 @@ afterEach(() => {
 });
 
 describe('QFA-101 corpus manifest contract', () => {
-  it('loads both Tier A Python-emitted manifests without errors', () => {
-    for (const manifestPath of realManifestPaths) {
-      expect(existsSync(manifestPath)).toBe(true);
-      const manifest = loadCorpusManifest(manifestPath);
+  describeTierA('real Tier A manifests', () => {
+    it('loads both Tier A Python-emitted manifests without errors', () => {
+      for (const manifestPath of realManifestPaths) {
+        expect(existsSync(manifestPath)).toBe(true);
+        const manifest = loadCorpusManifest(manifestPath);
 
-      expect(manifest.manifest_schema_version).toBe(1);
-      expect(manifest.ticket_id).toBe('SIM-03A-1');
-      expect(manifest.sessions.length).toBeGreaterThan(0);
-      expect(manifest.event_schemas).toEqual(['trades', 'mbp-1', 'mbp-10', 'mbo']);
-      expect(Object.keys(manifest.sessions[0].schemas).sort()).toEqual([
-        'definition',
-        'mbo',
-        'mbp-1',
-        'mbp-10',
-        'trades',
-      ]);
-    }
-  });
-
-  it('parses all sessions from the real manifests', () => {
-    const feb = loadCorpusManifest(realManifestPaths[0]);
-    const mar = loadCorpusManifest(realManifestPaths[1]);
-
-    expect(feb.sessions).toHaveLength(19);
-    expect(feb.sessions[0]).toMatchObject({
-      session_id: '2026-02-27-rth',
-      symbol: 'MNQH6',
-      status: 'complete',
+        expect(manifest.manifest_schema_version).toBe(1);
+        expect(manifest.ticket_id).toBe('SIM-03A-1');
+        expect(manifest.sessions.length).toBeGreaterThan(0);
+        expect(manifest.event_schemas).toEqual(['trades', 'mbp-1', 'mbp-10', 'mbo']);
+        expect(Object.keys(manifest.sessions[0].schemas).sort()).toEqual([
+          'definition',
+          'mbo',
+          'mbp-1',
+          'mbp-10',
+          'trades',
+        ]);
+      }
     });
-    expect(mar.sessions).toHaveLength(22);
-    expect(mar.sessions[0]).toMatchObject({
-      session_id: '2026-03-31-rth',
-      symbol: 'MNQM6',
-      status: 'complete',
+
+    it('parses all sessions from the real manifests', () => {
+      const feb = loadCorpusManifest(realManifestPaths[0]);
+      const mar = loadCorpusManifest(realManifestPaths[1]);
+
+      expect(feb.sessions).toHaveLength(19);
+      expect(feb.sessions[0]).toMatchObject({
+        session_id: '2026-02-27-rth',
+        symbol: 'MNQH6',
+        status: 'complete',
+      });
+      expect(mar.sessions).toHaveLength(22);
+      expect(mar.sessions[0]).toMatchObject({
+        session_id: '2026-03-31-rth',
+        symbol: 'MNQM6',
+        status: 'complete',
+      });
     });
-  });
 
-  it('preserves per-file fields and optional sha256 values without trimming', () => {
-    const realManifest = loadCorpusManifest(realManifestPaths[0]);
-    const realMbo = realManifest.sessions[0].schemas.mbo;
+    it('preserves per-file fields and optional sha256 values without trimming', () => {
+      const realManifest = loadCorpusManifest(realManifestPaths[0]);
+      const realMbo = realManifest.sessions[0].schemas.mbo;
 
-    expect(realMbo).toMatchObject({
-      attempts: 1,
-      byte_count: 601356775,
-      path: 'D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-02-27-rth\\mbo.dbn.zst',
-      record_count: null,
-      reused_existing: false,
-      schema: 'mbo',
-      status: 'available',
+      expect(realMbo).toMatchObject({
+        attempts: 1,
+        byte_count: 601356775,
+        path: 'D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-02-27-rth\\mbo.dbn.zst',
+        record_count: null,
+        reused_existing: false,
+        schema: 'mbo',
+        status: 'available',
+      });
+      expect(realMbo.sha256).toBeUndefined();
+
+      const fixture = loadCorpusManifest(fixturePath);
+      expect(fixture.sessions[0].schemas.mbo.sha256).toBe(
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      );
     });
-    expect(realMbo.sha256).toBeUndefined();
 
-    const fixture = loadCorpusManifest(fixturePath);
-    expect(fixture.sessions[0].schemas.mbo.sha256).toBe(
-      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-    );
-  });
+    it('computes a stable hash across repeated loads', () => {
+      const first = loadCorpusManifest(realManifestPaths[1]);
+      const second = loadCorpusManifest(realManifestPaths[1]);
 
-  it('computes a stable hash across repeated loads', () => {
-    const first = loadCorpusManifest(realManifestPaths[1]);
-    const second = loadCorpusManifest(realManifestPaths[1]);
-
-    expect(computeManifestHash(first)).toMatch(/^[a-f0-9]{64}$/u);
-    expect(computeManifestHash(first)).toBe(computeManifestHash(second));
+      expect(computeManifestHash(first)).toMatch(/^[a-f0-9]{64}$/u);
+      expect(computeManifestHash(first)).toBe(computeManifestHash(second));
+    });
   });
 
   it('computes the same hash regardless of JSON formatting or key order', () => {
