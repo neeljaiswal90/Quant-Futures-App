@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "instrument_root": "MNQ",
+  "exchange": "CME",
+  "timezone": "America/New_York",
+  "rth": {
+    "start_time": "09:30",
+    "end_time": "16:00"
+  },
+  "eth": {
+    "start_time": "18:00",
+    "end_time": "17:00",
+    "trading_day_roll_time": "18:00"
+  },
+  "maintenance": {
+    "start_time": "17:00",
+    "end_time": "18:00"
+  },
+  "overrides": {
+    "example_early_close": {
+      "date": "2026-11-27",
+      "phase": "rth",
+      "start_time": "09:30",
+      "end_time": "13:00",
+      "reason": "example_early_close"
+    },
+    "example_holiday": {
+      "date": "2026-12-25",
+      "phase": "closed",
+      "reason": "example_holiday"
+    }
+  }
+}

@@ -1,0 +1,285 @@
+{
+  "version": 1,
+  "profiles": {
+    "trend_pullback_long": {
+      "profile_id": "trend_pullback_long_management_v1",
+      "profile_version": 1,
+      "strategy_id": "trend_pullback_long",
+      "setup_family": "trend_pullback",
+      "display_name": "Trend Pullback Long Management V1",
+      "initial_stop": {
+        "mode": "candidate_stop",
+        "lock_to_candidate_stop": true,
+        "stop_widening_allowed": false,
+        "min_stop_distance_ticks": 2
+      },
+      "targets": {
+        "pt1": {
+          "action": "TAKE_PARTIAL",
+          "quantity_fraction": 0.5,
+          "minimum_reward_risk": 1
+        },
+        "pt2": {
+          "action": "TAKE_PROFIT",
+          "quantity_fraction": 0.5,
+          "minimum_reward_risk": 1.5
+        }
+      },
+      "break_even": {
+        "enabled": true,
+        "trigger": "after_pt1",
+        "offset_ticks": 1,
+        "action": "MARK_BREAKEVEN"
+      },
+      "trailing_stop": {
+        "enabled": true,
+        "mode": "post_pt1_ticks",
+        "activation": "after_pt1",
+        "distance_ticks": 8,
+        "action": "ACTIVATE_TRAIL"
+      },
+      "time_stop": {
+        "enabled": true,
+        "max_hold_minutes": 45,
+        "pre_pt1_min_unrealized_r": -0.25,
+        "post_pt1_min_unrealized_r": 0,
+        "action": "TIME_STOP_EXIT"
+      },
+      "fail_safe": {
+        "enabled": true,
+        "max_adverse_r": 1,
+        "max_spread_ticks": 8,
+        "action": "FAIL_SAFE_EXIT"
+      },
+      "partial_exit": {
+        "pt1_fraction": 0.5,
+        "pt2_fraction": 0.5,
+        "runner_fraction": 0
+      }
+    },
+    "trend_pullback_short": {
+      "profile_id": "trend_pullback_short_management_v1",
+      "profile_version": 1,
+      "strategy_id": "trend_pullback_short",
+      "setup_family": "trend_pullback",
+      "display_name": "Trend Pullback Short Management V1",
+      "initial_stop": {
+        "mode": "candidate_stop",
+        "lock_to_candidate_stop": true,
+        "stop_widening_allowed": false,
+        "min_stop_distance_ticks": 2
+      },
+      "targets": {
+        "pt1": {
+          "action": "TAKE_PARTIAL",
+          "quantity_fraction": 0.5,
+          "minimum_reward_risk": 1
+        },
+        "pt2": {
+          "action": "TAKE_PROFIT",
+          "quantity_fraction": 0.5,
+          "minimum_reward_risk": 1.5
+        }
+      },
+      "break_even": {
+        "enabled": true,
+        "trigger": "after_pt1",
+        "offset_ticks": 1,
+        "action": "MARK_BREAKEVEN"
+      },
+      "trailing_stop": {
+        "enabled": true,
+        "mode": "post_pt1_ticks",
+        "activation": "after_pt1",
+        "distance_ticks": 8,
+        "action": "ACTIVATE_TRAIL"
+      },
+      "time_stop": {
+        "enabled": true,
+        "max_hold_minutes": 45,
+        "pre_pt1_min_unrealized_r": -0.25,
+        "post_pt1_min_unrealized_r": 0,
+        "action": "TIME_STOP_EXIT"
+      },
+      "fail_safe": {
+        "enabled": true,
+        "max_adverse_r": 1,
+        "max_spread_ticks": 8,
+        "action": "FAIL_SAFE_EXIT"
+      },
+      "partial_exit": {
+        "pt1_fraction": 0.5,
+        "pt2_fraction": 0.5,
+        "runner_fraction": 0
+      }
+    },
+    "breakout_retest_long": {
+      "profile_id": "breakout_retest_long_management_v1",
+      "profile_version": 1,
+      "strategy_id": "breakout_retest_long",
+      "setup_family": "breakout_retest",
+      "display_name": "Breakout Retest Long Management V1",
+      "initial_stop": {
+        "mode": "candidate_stop",
+        "lock_to_candidate_stop": true,
+        "stop_widening_allowed": false,
+        "min_stop_distance_ticks": 3
+      },
+      "targets": {
+        "pt1": {
+          "action": "TAKE_PARTIAL",
+          "quantity_fraction": 0.5,
+          "minimum_reward_risk": 1
+        },
+        "pt2": {
+          "action": "TAKE_PROFIT",
+          "quantity_fraction": 0.5,
+          "minimum_reward_risk": 1.5
+        }
+      },
+      "break_even": {
+        "enabled": true,
+        "trigger": "after_pt1",
+        "offset_ticks": 1,
+        "action": "MARK_BREAKEVEN"
+      },
+      "trailing_stop": {
+        "enabled": true,
+        "mode": "post_pt1_ticks",
+        "activation": "after_pt1",
+        "distance_ticks": 10,
+        "action": "ACTIVATE_TRAIL"
+      },
+      "time_stop": {
+        "enabled": true,
+        "max_hold_minutes": 35,
+        "pre_pt1_min_unrealized_r": -0.25,
+        "post_pt1_min_unrealized_r": 0,
+        "action": "TIME_STOP_EXIT"
+      },
+      "fail_safe": {
+        "enabled": true,
+        "max_adverse_r": 1,
+        "max_spread_ticks": 8,
+        "action": "FAIL_SAFE_EXIT"
+      },
+      "partial_exit": {
+        "pt1_fraction": 0.5,
+        "pt2_fraction": 0.5,
+        "runner_fraction": 0
+      }
+    },
+    "breakdown_retest_short": {
+      "profile_id": "breakdown_retest_short_management_v1",
+      "profile_version": 1,
+      "strategy_id": "breakdown_retest_short",
+      "setup_family": "breakout_retest",
+      "display_name": "Breakdown Retest Short Management V1",
+      "initial_stop": {
+        "mode": "candidate_stop",
+        "lock_to_candidate_stop": true,
+        "stop_widening_allowed": false,
+        "min_stop_distance_ticks": 3
+      },
+      "targets": {
+        "pt1": {
+          "action": "TAKE_PARTIAL",
+          "quantity_fraction": 0.5,
+          "minimum_reward_risk": 1
+        },
+        "pt2": {
+          "action": "TAKE_PROFIT",
+          "quantity_fraction": 0.5,
+          "minimum_reward_risk": 1.5
+        }
+      },
+      "break_even": {
+        "enabled": true,
+        "trigger": "after_pt1",
+        "offset_ticks": 1,
+        "action": "MARK_BREAKEVEN"
+      },
+      "trailing_stop": {
+        "enabled": true,
+        "mode": "post_pt1_ticks",
+        "activation": "after_pt1",
+        "distance_ticks": 10,
+        "action": "ACTIVATE_TRAIL"
+      },
+      "time_stop": {
+        "enabled": true,
+        "max_hold_minutes": 35,
+        "pre_pt1_min_unrealized_r": -0.25,
+        "post_pt1_min_unrealized_r": 0,
+        "action": "TIME_STOP_EXIT"
+      },
+      "fail_safe": {
+        "enabled": true,
+        "max_adverse_r": 1,
+        "max_spread_ticks": 8,
+        "action": "FAIL_SAFE_EXIT"
+      },
+      "partial_exit": {
+        "pt1_fraction": 0.5,
+        "pt2_fraction": 0.5,
+        "runner_fraction": 0
+      }
+    }
+  },
+  "fallback_profile": {
+    "profile_id": "fallback_management_v1",
+    "profile_version": 1,
+    "strategy_id": "fallback",
+    "setup_family": "fallback",
+    "display_name": "Fallback Management V1",
+    "initial_stop": {
+      "mode": "candidate_stop",
+      "lock_to_candidate_stop": true,
+      "stop_widening_allowed": false,
+      "min_stop_distance_ticks": 2
+    },
+    "targets": {
+      "pt1": {
+        "action": "TAKE_PARTIAL",
+        "quantity_fraction": 0.5,
+        "minimum_reward_risk": 1
+      },
+      "pt2": {
+        "action": "TAKE_PROFIT",
+        "quantity_fraction": 0.5,
+        "minimum_reward_risk": 1.5
+      }
+    },
+    "break_even": {
+      "enabled": true,
+      "trigger": "after_pt1",
+      "offset_ticks": 1,
+      "action": "MARK_BREAKEVEN"
+    },
+    "trailing_stop": {
+      "enabled": false,
+      "mode": "disabled",
+      "activation": "after_pt1",
+      "distance_ticks": 0,
+      "action": "ACTIVATE_TRAIL"
+    },
+    "time_stop": {
+      "enabled": true,
+      "max_hold_minutes": 30,
+      "pre_pt1_min_unrealized_r": -0.25,
+      "post_pt1_min_unrealized_r": 0,
+      "action": "TIME_STOP_EXIT"
+    },
+    "fail_safe": {
+      "enabled": true,
+      "max_adverse_r": 1,
+      "max_spread_ticks": 8,
+      "action": "FAIL_SAFE_EXIT"
+    },
+    "partial_exit": {
+      "pt1_fraction": 0.5,
+      "pt2_fraction": 0.5,
+      "runner_fraction": 0
+    }
+  }
+}
