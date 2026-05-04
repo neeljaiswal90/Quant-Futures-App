@@ -1,0 +1,65 @@
+{
+  "blocked_reason": null,
+  "corpus_summary": {
+    "calibration_sessions": 1,
+    "complete_sessions": 1,
+    "excluded_sessions": 0,
+    "partial_sessions": 0,
+    "requested_sessions": 1,
+    "total_bytes": 100,
+    "validation_sessions": 0
+  },
+  "databento_api_key_present": true,
+  "dataset": "GLBX.MDP3",
+  "dataset_range": {
+    "end": "2026-05-04T00:00:00.000000000Z",
+    "schema": {
+      "mbo": { "end": "2026-05-04T00:00:00.000000000Z", "start": "2017-05-21T00:00:00.000000000Z" }
+    },
+    "start": "2010-06-06T00:00:00.000000000Z"
+  },
+  "dataset_range_error": null,
+  "definition_schema": "definition",
+  "event_schemas": ["mbo"],
+  "manifest_schema_version": 1,
+  "min_complete_sessions": 1,
+  "out_dir": "D:\\qfa-cache\\databento\\fixture-unrecognized",
+  "ready_for_sim03_model_fitting": false,
+  "retry_policy": { "attempts": 3, "backoff": "exponential", "base_seconds": 1 },
+  "scope_note": "QFA-106 unrecognized-schema fixture: includes a hypothetical future schema name. classifyCorpusTier should surface it in unrecognizedSchemas without throwing.",
+  "sessions": [
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776211201000000000",
+        "start_ts_ns": "1776211200000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776283200000000000",
+        "start_ts_ns": "1776259800000000000"
+      },
+      "schemas": {
+        "mbo": {
+          "attempts": 1, "byte_count": 50, "end_ts_ns": "1776283200000000000",
+          "path": "D:\\fixture\\mbo.dbn.zst", "record_count": null,
+          "reused_existing": false, "schema": "mbo",
+          "start_ts_ns": "1776259800000000000", "status": "available"
+        },
+        "future-mbp-25": {
+          "attempts": 1, "byte_count": 50, "end_ts_ns": "1776283200000000000",
+          "path": "D:\\fixture\\future-mbp-25.dbn.zst", "record_count": null,
+          "reused_existing": false, "schema": "future-mbp-25",
+          "start_ts_ns": "1776259800000000000", "status": "available"
+        }
+      },
+      "session_id": "2026-04-15-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    }
+  ],
+  "status": "complete",
+  "symbol": "MNQM6",
+  "ticket_id": "QFA-106-FIXTURE",
+  "validation_fraction": 0.2
+}
