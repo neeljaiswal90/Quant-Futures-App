@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { BacktestRunMetaPayload } from '../../../src/contracts/backtest-run-meta.js';
 import { computeRunSpecHash } from '../../../src/contracts/run-spec-hash.js';
+import { ns } from '../../../src/contracts/time.js';
 import { buildMinimalRunSpec } from './helpers/run-spec-builder.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../../..');
@@ -16,7 +17,7 @@ describe('QFA-115 BacktestRunMetaPayload — type shape', () => {
     const payload: BacktestRunMetaPayload = {
       ...spec,
       run_spec_hash: computeRunSpecHash(spec),
-      run_started_at_ns: 1_801_000_000_000_000_000n,
+      run_started_at_ns: ns(1_801_000_000_000_000_000n),
     };
     expect(typeof payload.run_spec_hash).toBe('string');
     expect(typeof payload.run_started_at_ns).toBe('bigint');
@@ -31,7 +32,7 @@ describe('QFA-115 BacktestRunMetaPayload — type shape', () => {
     const payload: BacktestRunMetaPayload = {
       ...spec,
       run_spec_hash: computeRunSpecHash(spec),
-      run_started_at_ns: 1_801_000_000_000_000_000n,
+      run_started_at_ns: ns(1_801_000_000_000_000_000n),
     };
     let bigintCount = 0;
     walk(payload, (value) => {
