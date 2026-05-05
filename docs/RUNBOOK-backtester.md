@@ -231,3 +231,72 @@ archive presence.
 or downstream lineage logic that needs the manifest hash must compute it
 externally via `computeManifestHash()` from
 `apps/strategy_runtime/src/contracts/corpus-manifest-hash.ts`.
+
+## Parquet cache
+
+QFA-103 adds a deterministic parquet cache layer on top of the QFA-102 DBN
+loader. The cache exists to avoid reparsing large `.dbn` / `.dbn.zst` files
+for downstream consumers such as the bar builder and later backtester passes.
+
+The primary entry point is `getCachedRecords(dbnPath, schema, options?)` in
+`apps/strategy_runtime/src/data/parquet-cache.ts`. It computes a content-based
+cache key from the on-disk DBN bytes, the logical Databento schema, and the
+project parquet format version. Cache artifacts are written under:
+
+```text
+<cache_root>/<schema>/<cache_key>.parquet
+```
+
+By default the cache root is:
+
+- Windows: `D:/qfa-cache/parquet`
+- POSIX: `~/.qfa-cache/parquet`
+
+Set `QFA_PARQUET_CACHE_ROOT` to override the default. The cache root is
+created recursively on first write.
+
+### Atomic write and integrity verification
+
+Cache writes are atomic. The writer streams records into
+`<cache_key>.parquet.tmp`, computes the parquet file hash during the write,
+and only renames the file to `<cache_key>.parquet` once the write completes.
+A sidecar hash file `<cache_key>.parquet.sha256` is written after the rename.
+
+On read, the cache verifies:
+
+- parquet file exists
+- `.sha256` sidecar exists
+- parquet bytes match the sidecar hash
+- parquet metadata matches the expected schema / format version
+- bigint encoding marker matches the current reader
+
+If top-level cache lookup finds a corrupt cache entry, it deletes the parquet
+file and its hash sidecar, logs a warning, and rebuilds from the original DBN.
+
+### Bigint encoding
+
+`parquetjs-lite` did not preserve large `INT64` values losslessly when writing
+native JS `bigint` values, so QFA-103 stores all bigint-bearing DBN columns as
+UTF-8 decimal strings in parquet. The reader converts them back to `bigint`
+with strict validation:
+
+- regex: `^-?(0|[1-9][0-9]{0,19})$`
+- explicit INT64 bounds check
+- malformed values fail closed with a typed cache error
+
+Every parquet file written by QFA-103 carries metadata marker
+`qfa_bigint_encoding=utf8_decimal_v1` so future readers can detect format
+changes rather than silently mis-decoding cached files.
+
+### Cache invalidation
+
+Invalidate the cache in one of three ways:
+
+- pass `forceRebuild: true` to `getCachedRecords()`
+- delete the cache directory or individual cache artifact files
+- bump the project `PARQUET_FORMAT_VERSION` constant when the parquet schema
+  changes incompatibly
+
+Because the cache key includes the DBN file content hash, any byte change to
+the underlying DBN file automatically routes to a new parquet artifact instead
+of reusing the old one.

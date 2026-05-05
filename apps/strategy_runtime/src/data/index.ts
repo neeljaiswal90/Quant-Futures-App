@@ -4,3 +4,7 @@ export * from './dbn-header.js';
 export * from './dbn-loader.js';
 export * from './dbn-records.js';
 export * from './dbn-types.js';
+export * from './parquet-cache-read.js';
+export * from './parquet-cache-write.js';
+export * from './parquet-cache.js';
+export * from './parquet-schemas.js';
