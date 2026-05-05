@@ -5,8 +5,8 @@
  *
  *   bt-{instrument_root}-{bar_token}-{window_token}-{strategy_token}-{hash12}
  *
- *   instrument_root: lowercased (e.g., "MNQ" → "mnq")
- *   bar_token:       deriveBarToken (time-bar pass-through; tick-derived → tickN/volN/dolN)
+ *   instrument_root: lowercased (e.g., "MNQ" -> "mnq")
+ *   bar_token:       deriveBarToken (time-bar pass-through; tick-derived -> tickN/volN/dolN)
  *   window_token:    deriveWindowToken (session: sYYYYMMDD[-YYYYMMDD]; instant: iISO[-ISO])
  *   strategy_token:  deriveStrategyToken (single: abbreviation; multi: multi{count})
  *   hash12:          first 12 lower-case hex chars of computeRunSpecHash
@@ -129,8 +129,8 @@ function instantToToken(value: string, label: 'start' | 'end'): string {
 }
 
 /**
- * Tokenize the strategy set per Q-2.2. Single strategy → abbreviation from
- * `STRATEGY_ID_TO_RUN_ID_ABBREV`. Multi strategy → `multi{count}`.
+ * Tokenize the strategy set per Q-2.2. Single strategy -> abbreviation from
+ * `STRATEGY_ID_TO_RUN_ID_ABBREV`. Multi strategy -> `multi{count}`.
  *
  * Caller is expected to pass deduped, validated strategy IDs (RunSpec
  * validation already enforces this). If passed an empty array, throws.

@@ -17,8 +17,8 @@
  *
  * Canonicalization rules:
  *   1. validateRunSpec() runs first; throws RunSpecValidationError on bad input
- *   2. bigint anywhere → throw (defense-in-depth; validation catches first)
- *   3. non-finite numbers → throw
+ *   2. bigint anywhere -> throw (defense-in-depth; validation catches first)
+ *   3. non-finite numbers -> throw
  *   4. undefined values throw (consistent with Q-3 reject-don't-coerce; RunSpec
  *      has no optional fields by design, so undefined indicates a bug)
  *   5. object keys sorted lexicographically (RFC 8785)

@@ -79,12 +79,12 @@ describe('QFA-115 computeRunSpecHash — single-field-mutation sensitivity', () 
   const baseline = buildMinimalRunSpec();
   const baselineHash = computeRunSpecHash(baseline);
 
-  it('bar_spec change → different hash', () => {
+  it('bar_spec change -> different hash', () => {
     const mutated = { ...baseline, bar_spec: '5m' };
     expect(computeRunSpecHash(mutated)).not.toBe(baselineHash);
   });
 
-  it('window.start change → different hash', () => {
+  it('window.start change -> different hash', () => {
     const mutated = {
       ...baseline,
       backtest_window: { ...baseline.backtest_window, start: '2026-02-03' },
@@ -92,7 +92,7 @@ describe('QFA-115 computeRunSpecHash — single-field-mutation sensitivity', () 
     expect(computeRunSpecHash(mutated)).not.toBe(baselineHash);
   });
 
-  it('window.end change → different hash', () => {
+  it('window.end change -> different hash', () => {
     const mutated = {
       ...baseline,
       backtest_window: { ...baseline.backtest_window, end: '2026-02-05' },
@@ -100,7 +100,7 @@ describe('QFA-115 computeRunSpecHash — single-field-mutation sensitivity', () 
     expect(computeRunSpecHash(mutated)).not.toBe(baselineHash);
   });
 
-  it('inclusive_end change → different hash', () => {
+  it('inclusive_end change -> different hash', () => {
     const mutated = {
       ...baseline,
       backtest_window: { ...baseline.backtest_window, inclusive_end: false },
@@ -108,22 +108,22 @@ describe('QFA-115 computeRunSpecHash — single-field-mutation sensitivity', () 
     expect(computeRunSpecHash(mutated)).not.toBe(baselineHash);
   });
 
-  it('determinism_seed change → different hash', () => {
+  it('determinism_seed change -> different hash', () => {
     const mutated = { ...baseline, determinism_seed: 43 };
     expect(computeRunSpecHash(mutated)).not.toBe(baselineHash);
   });
 
-  it('runner_code_dirty change → different hash', () => {
+  it('runner_code_dirty change -> different hash', () => {
     const mutated = { ...baseline, runner_code_dirty: true };
     expect(computeRunSpecHash(mutated)).not.toBe(baselineHash);
   });
 
-  it('runner_code_commit_sha change → different hash', () => {
+  it('runner_code_commit_sha change -> different hash', () => {
     const mutated = { ...baseline, runner_code_commit_sha: '1'.repeat(40) };
     expect(computeRunSpecHash(mutated)).not.toBe(baselineHash);
   });
 
-  it('corpus_inputs[0].manifest_hash change → different hash', () => {
+  it('corpus_inputs[0].manifest_hash change -> different hash', () => {
     const mutated = {
       ...baseline,
       corpus_inputs: [
@@ -133,7 +133,7 @@ describe('QFA-115 computeRunSpecHash — single-field-mutation sensitivity', () 
     expect(computeRunSpecHash(mutated)).not.toBe(baselineHash);
   });
 
-  it('config_inputs[0].lineage.config_hash change → different hash', () => {
+  it('config_inputs[0].lineage.config_hash change -> different hash', () => {
     const mutated = {
       ...baseline,
       config_inputs: [

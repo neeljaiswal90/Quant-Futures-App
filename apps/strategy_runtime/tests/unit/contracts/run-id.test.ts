@@ -65,7 +65,7 @@ describe('QFA-115 deriveBarToken (Q-2.5)', () => {
     ['1h', '1h'],
     ['1d', '1d'],
     ['30s', '30s'],
-  ])('time bar %s → %s (pass-through)', (input, expected) => {
+  ])('time bar %s -> %s (pass-through)', (input, expected) => {
     expect(deriveBarToken(input)).toBe(expected);
   });
 
@@ -76,7 +76,7 @@ describe('QFA-115 deriveBarToken (Q-2.5)', () => {
     ['tick:volume:5000', 'vol5000'],
     ['tick:dollar:50000', 'dol50000'],
     ['tick:dollar:1', 'dol1'],
-  ])('tick bar %s → %s', (input, expected) => {
+  ])('tick bar %s -> %s', (input, expected) => {
     expect(deriveBarToken(input)).toBe(expected);
   });
 
@@ -89,7 +89,7 @@ describe('QFA-115 deriveBarToken (Q-2.5)', () => {
 });
 
 describe('QFA-115 deriveWindowToken (Q-2.4)', () => {
-  it('session single-day → s + YYYYMMDD', () => {
+  it('session single-day -> s + YYYYMMDD', () => {
     const w: BacktestWindow = buildBacktestWindow({
       mode: 'session',
       start: '2026-02-02',
@@ -98,7 +98,7 @@ describe('QFA-115 deriveWindowToken (Q-2.4)', () => {
     expect(deriveWindowToken(w)).toBe('s20260202');
   });
 
-  it('session multi-day → s + start + - + end', () => {
+  it('session multi-day -> s + start + - + end', () => {
     const w: BacktestWindow = buildBacktestWindow({
       mode: 'session',
       start: '2026-02-02',
@@ -107,7 +107,7 @@ describe('QFA-115 deriveWindowToken (Q-2.4)', () => {
     expect(deriveWindowToken(w)).toBe('s20260202-20260206');
   });
 
-  it('instant single-instant → i + YYYYMMDDTHHMMSSZ', () => {
+  it('instant single-instant -> i + YYYYMMDDTHHMMSSZ', () => {
     const w: BacktestWindow = buildBacktestWindow({
       mode: 'instant',
       start: '2026-02-02T14:30:00Z',
@@ -116,7 +116,7 @@ describe('QFA-115 deriveWindowToken (Q-2.4)', () => {
     expect(deriveWindowToken(w)).toBe('i20260202T143000Z');
   });
 
-  it('instant multi-instant → i + start + - + end', () => {
+  it('instant multi-instant -> i + start + - + end', () => {
     const w: BacktestWindow = buildBacktestWindow({
       mode: 'instant',
       start: '2026-02-02T14:30:00Z',
@@ -174,7 +174,7 @@ describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
     ['trend_pullback_short', 'tp_short'],
     ['breakout_retest_long', 'bro_long'],
     ['breakdown_retest_short', 'bro_short'],
-  ])('single-strategy [%s] → %s', (id, expected) => {
+  ])('single-strategy [%s] -> %s', (id, expected) => {
     expect(deriveStrategyToken([id as StrategyId])).toBe(expected);
   });
 
@@ -182,7 +182,7 @@ describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
     [2, 'multi2'],
     [3, 'multi3'],
     [4, 'multi4'],
-  ])('multi-strategy with count %d → %s', (count, expected) => {
+  ])('multi-strategy with count %d -> %s', (count, expected) => {
     const ids = ACTIVE_STRATEGY_IDS.slice(0, count) as readonly StrategyId[];
     expect(deriveStrategyToken(ids)).toBe(expected);
   });
