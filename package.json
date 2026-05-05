@@ -74,5 +74,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "parquetjs-lite": "^0.8.7"
   }
 }
