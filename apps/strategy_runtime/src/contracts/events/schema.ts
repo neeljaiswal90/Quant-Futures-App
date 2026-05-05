@@ -65,6 +65,7 @@ const PAYLOAD_VALIDATORS = {
   MGMT_TICK: validateManagementTickPayload,
   MGMT_ACTION: validateManagementActionPayload,
   CONFIG: validateConfigPayload,
+  BACKTEST_RUN_META: validateBacktestRunMetaPayload,
 } as const satisfies Record<RuntimeEventType, Validator>;
 
 export function validateJournalEventEnvelope(value: unknown): JournalEventSchemaValidationResult {
@@ -397,6 +398,99 @@ function validateConfigPayload(
   if (record === undefined) return;
   requireNonEmptyString(record.config_hash, `${path}.config_hash`, issues);
   requireNumber(record.config_version, `${path}.config_version`, issues);
+}
+
+function validateBacktestRunMetaPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+
+  // Envelope fields must NOT appear in the payload — they are owned by
+  // JournalEventEnvelope. Detect violations early so misuse surfaces in
+  // schema validation rather than as silent duplication on the wire.
+  for (const envelopeField of [
+    'event_id',
+    'type',
+    'ts_ns',
+    'run_id',
+    'session_id',
+    'schema_version',
+  ] as const) {
+    if (envelopeField in record) {
+      addIssue(
+        issues,
+        `${path}.${envelopeField}`,
+        'invalid_field_value',
+        `BACKTEST_RUN_META payload must not duplicate envelope field "${envelopeField}"`,
+      );
+    }
+  }
+
+  // RunSpec-derived shape (light shape check; deep invariants are enforced
+  // by validateRunSpec at construction time, not at journal-schema time).
+  if (record.run_spec_schema_version !== 1) {
+    addIssue(
+      issues,
+      `${path}.run_spec_schema_version`,
+      'invalid_field_value',
+      'must be 1',
+    );
+  }
+  if (record.instrument_root !== 'MNQ') {
+    addIssue(
+      issues,
+      `${path}.instrument_root`,
+      'invalid_field_value',
+      'must be "MNQ"',
+    );
+  }
+  requireNonEmptyString(record.bar_spec, `${path}.bar_spec`, issues);
+  requireRecord(record.backtest_window, `${path}.backtest_window`, issues);
+  requireNumber(record.determinism_seed, `${path}.determinism_seed`, issues);
+  if (!Array.isArray(record.strategy_ids)) {
+    addIssue(
+      issues,
+      `${path}.strategy_ids`,
+      'invalid_field_type',
+      'must be an array',
+    );
+  }
+  if (!Array.isArray(record.corpus_inputs)) {
+    addIssue(
+      issues,
+      `${path}.corpus_inputs`,
+      'invalid_field_type',
+      'must be an array',
+    );
+  }
+  if (!Array.isArray(record.config_inputs)) {
+    addIssue(
+      issues,
+      `${path}.config_inputs`,
+      'invalid_field_type',
+      'must be an array',
+    );
+  }
+  requireNonEmptyString(
+    record.runner_code_commit_sha,
+    `${path}.runner_code_commit_sha`,
+    issues,
+  );
+  if (typeof record.runner_code_dirty !== 'boolean') {
+    addIssue(
+      issues,
+      `${path}.runner_code_dirty`,
+      'invalid_field_type',
+      'must be a boolean',
+    );
+  }
+
+  // Payload-only fields outside RunSpec.
+  requireNonEmptyString(record.run_spec_hash, `${path}.run_spec_hash`, issues);
+  requireTimestamp(record.run_started_at_ns, `${path}.run_started_at_ns`, issues);
 }
 
 function validateFeaturesPayload(

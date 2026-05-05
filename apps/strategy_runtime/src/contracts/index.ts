@@ -1,3 +1,4 @@
+export * from './backtest-run-meta.js';
 export * from './candidate.js';
 export * from './corpus-manifest.js';
 export * from './corpus-manifest-hash.js';
@@ -9,6 +10,10 @@ export * from './ids.js';
 export * from './lineage.js';
 export * from './market.js';
 export * from './position.js';
+export * from './run-id.js';
+export * from './run-spec.js';
+export * from './run-spec-hash.js';
+export * from './run-spec-validate.js';
 export * from './serialization.js';
 export * from './strategy-ids.js';
 export * from './tier-policy.js';
