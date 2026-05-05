@@ -1,3 +1,4 @@
+export * from './bar-builder/index.js';
 export * from './dbn-binary.js';
 export * from './dbn-errors.js';
 export * from './dbn-header.js';
