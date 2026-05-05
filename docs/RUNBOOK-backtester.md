@@ -173,3 +173,61 @@ in a single PR under QFA-601 / QFA-602.
 
 See [ADR-0007](./adr/ADR-0007-backtest-lineage-block.md) for the full
 design rationale, determinism contract, and consequences.
+
+## Databento DBN file loading
+
+QFA-102 adds a streaming DBN loader at
+`apps/strategy_runtime/src/data/dbn-loader.ts`. The loader accepts a single
+file path plus an expected logical schema and yields one parsed record at a
+time via async iteration:
+
+```typescript
+for await (const record of loadDbnFile(path, 'mbo')) {
+  // consume one record; no full-file buffering
+}
+```
+
+The loader supports both raw `.dbn` files and Databento's compressed
+`.dbn.zst` archives. The implementation is memory-bounded: it reads the
+header once, then keeps only the current chunk plus any partial trailing
+record bytes needed to complete the next parse.
+
+The loader enforces three header invariants before yielding records:
+
+- magic bytes must be `DBN\x01`
+- the metadata block must be complete
+- the file's header schema must match the caller's expected logical schema
+
+Schema matching is logical, not always wire-literal. In particular,
+Databento's wire schemas `bbo-1s` and `bbo-1m` are both accepted when the
+caller requests expected schema `bbo`. Yielded records preserve the wire
+granularity on `DbnBboRecord.bbo_interval`.
+
+### Legacy path translation
+
+The corpus inventory documents a historical `A:\` to `D:\` archive move.
+That rule is implemented locally inside QFA-102's loader as a named helper:
+`translateLegacyDbnPath()`. When the caller passes a path beginning with
+`A:\` or `A:/`, the loader rewrites it to the equivalent `D:\` / `D:/`
+path before opening the file.
+
+This translation is currently loader-owned behavior, not a shared repo-wide
+utility. Future tickets that consume corpus file paths directly (for example
+QFA-103 or QFA-104) must either apply the same rule or extract a shared
+utility in a dedicated refactor.
+
+### Testing surface
+
+QFA-102 ships small committed DBN fixtures under
+`apps/strategy_runtime/tests/fixtures/dbn/` for parser and loader tests.
+These fixtures are tiny, deterministic, and suitable for CI. Real-archive
+smoke tests against `D:/qfa-cache/databento/tier-a-feb-mar-2026/` are kept
+behind skip-when-absent guards so Linux CI runners are not coupled to local
+archive presence.
+
+### Manifest hash note
+
+`CorpusManifest` does not contain a `manifest_hash` field. Any documentation
+or downstream lineage logic that needs the manifest hash must compute it
+externally via `computeManifestHash()` from
+`apps/strategy_runtime/src/contracts/corpus-manifest-hash.ts`.
