@@ -58,3 +58,15 @@ schemas it has, not its reference data depth.
 
 Any change to tier semantics requires updating BOTH this table AND
 the `SCHEMA_TIER_MAP` / `TIER_REQUIRED_SCHEMAS` constants atomically.
+
+## Economic calendar maintenance
+
+QFA-111 uses a committed manual YAML calendar at `config/research/economic-calendar.yaml` rather than a network-backed economic-calendar API. This keeps Phase 4/5 event-day features deterministic and reviewable. The calendar covers the defined event universe from 2010 through scheduled 2026 events: FOMC rate-decision dates, BLS CPI releases, BLS Employment Situation/NFP releases, and OPEC/OPEC+ major policy, ministerial, and JMMC decision events.
+
+Event dates are curated from public release schedules: FOMC scheduled meetings, BLS CPI release schedules, BLS Employment Situation/NFP release schedules, and OPEC/OPEC+ ministerial decisions from the OPEC press archive. FOMC events carry per-event Federal Reserve statement URLs of the form `monetary<YYYYMMDD>a.htm`. CPI, NFP, and OPEC/OPEC+ events currently use archive-index URLs in `authoritative_source` because per-event URLs were not curated for QFA-111. Downstream consumers should treat those archive URLs as publishing-institution references, not specific event documentation. Per-event URL curation for CPI/NFP/OPEC is tracked as future curation work under QFA-111b.
+
+Phase 4 HMM training that uses these dates is no worse off than pulling dates from the same archive indexes directly. The calendar adds a reviewed per-event date inventory, stable category labels, deterministic hashing through the loader, and a single committed artifact for downstream feature construction.
+
+The original ticket estimated roughly 700+ events. The completed source-backed curation contains 667 events: FOMC 142, CPI 216, NFP 208, and OPEC/OPEC+ 101. The total is below the rough estimate because OPEC/OPEC+ inclusion is restricted to major policy, ministerial, and JMMC decision events. Lower-signal press releases, commentary, and non-decision items are intentionally excluded so the event universe remains useful for alpha-validation modeling.
+
+To add a new event, edit `config/research/economic-calendar.yaml`, keep `events` sorted by `event_date`, include `authoritative_source`, and run the economic-calendar unit tests. Use `event_time_utc: null` when the official source does not publish a canonical release timestamp; do not invent times. Extend forward-looking FOMC/CPI/NFP coverage every six months, and add OPEC/OPEC+ entries only after an official policy-decision source is available. For calendar errata, update `editorial_notes` instead of silently rewriting history.

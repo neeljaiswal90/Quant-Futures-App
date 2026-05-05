@@ -5,6 +5,7 @@ export {
   type CorpusManifestValidationWarning,
   type LoadedCorpusManifest,
 } from './corpus-manifest-loader.js';
+export { loadEconomicCalendar } from './economic-calendar-loader.js';
 export {
   CONFIG_PATH_ENV_KEYS,
   PUBLIC_CONFIG_ENV_KEYS,
