@@ -15,8 +15,9 @@ import type {
   RunSpec,
 } from '../../../../src/contracts/run-spec.js';
 
-/** A baseline RunSpec matching the committed minimal fixture. */
-export function buildMinimalRunSpec(): RunSpec {
+/** A baseline RunSpec matching the committed minimal fixture. Accepts
+ * Partial<RunSpec> overrides for tests that vary specific fields. */
+export function buildMinimalRunSpec(overrides: Partial<RunSpec> = {}): RunSpec {
   return {
     run_spec_schema_version: 1,
     instrument_root: 'MNQ',
@@ -28,6 +29,7 @@ export function buildMinimalRunSpec(): RunSpec {
     config_inputs: [buildConfigInput()],
     runner_code_commit_sha: '0123456789abcdef0123456789abcdef01234567',
     runner_code_dirty: false,
+    ...overrides,
   };
 }
 

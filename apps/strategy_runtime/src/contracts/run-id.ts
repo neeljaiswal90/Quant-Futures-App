@@ -57,7 +57,7 @@ const STRATEGY_ID_TO_RUN_ID_ABBREV: Record<StrategyId, string> = {
 const TIME_BAR_RE = /^[1-9][0-9]*(s|m|h|d)$/u;
 const TICK_BAR_RE = /^tick:(ticks|volume|dollar):([1-9][0-9]*)$/u;
 const SESSION_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/u;
-const INSTANT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/u;
+const INSTANT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/u;
 
 /**
  * Tokenize a `bar_spec` per Q-2.5. Time bars pass through unchanged; tick
@@ -121,7 +121,7 @@ function instantToToken(value: string, label: 'start' | 'end'): string {
   const match = INSTANT_RE.exec(value);
   if (match === null) {
     throw new Error(
-      `Invalid instant-mode ${label}: ${value}; expected UTC ISO-8601 (YYYY-MM-DDTHH:MM:SSZ, optional .fffffffff)`,
+      `Invalid instant-mode ${label}: ${value}; expected canonical UTC ISO-8601 (YYYY-MM-DDTHH:MM:SSZ; no fractional seconds per Q-2.4)`,
     );
   }
   const [, year, month, day, hh, mm, ss] = match;

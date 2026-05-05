@@ -325,6 +325,53 @@ describe('QFA-115 validateRunSpec — backtest_window', () => {
   });
 });
 
+describe('QFA-115 Q-2.4 instant-mode regex (no fractional seconds)', () => {
+  it('rejects instant-mode start with fractional seconds', () => {
+    const spec = clone(
+      buildMinimalRunSpec({
+        backtest_window: {
+          start: '2026-02-02T14:30:00.000Z',
+          end: '2026-02-02T21:00:00Z',
+          mode: 'instant',
+          inclusive_end: false,
+          calendar: 'CME_US_INDEX_FUTURES',
+        },
+      }),
+    );
+    expect(() => validateRunSpec(spec)).toThrow(/instant-mode start/u);
+  });
+
+  it('rejects instant-mode end with fractional seconds', () => {
+    const spec = clone(
+      buildMinimalRunSpec({
+        backtest_window: {
+          start: '2026-02-02T14:30:00Z',
+          end: '2026-02-02T21:00:00.500Z',
+          mode: 'instant',
+          inclusive_end: false,
+          calendar: 'CME_US_INDEX_FUTURES',
+        },
+      }),
+    );
+    expect(() => validateRunSpec(spec)).toThrow(/instant-mode end/u);
+  });
+
+  it('accepts instant-mode start and end without fractional seconds', () => {
+    const spec = clone(
+      buildMinimalRunSpec({
+        backtest_window: {
+          start: '2026-02-02T14:30:00Z',
+          end: '2026-02-02T21:00:00Z',
+          mode: 'instant',
+          inclusive_end: false,
+          calendar: 'CME_US_INDEX_FUTURES',
+        },
+      }),
+    );
+    expect(() => validateRunSpec(spec)).not.toThrow();
+  });
+});
+
 describe('QFA-115 validateRunSpec — runner_code_commit_sha', () => {
   it('throws on non-hex commit sha', () => {
     const spec = clone(buildMinimalRunSpec());

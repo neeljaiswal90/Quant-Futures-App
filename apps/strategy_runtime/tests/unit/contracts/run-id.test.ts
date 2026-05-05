@@ -144,6 +144,26 @@ describe('QFA-115 deriveWindowToken (Q-2.4)', () => {
   });
 });
 
+describe('QFA-115 Q-2.4 deriveWindowToken instant-mode rejection (no fractional seconds)', () => {
+  it('rejects instant-mode start with fractional seconds', () => {
+    const w: BacktestWindow = buildBacktestWindow({
+      mode: 'instant',
+      start: '2026-02-02T14:30:00.000Z',
+      end: '2026-02-02T21:00:00Z',
+    });
+    expect(() => deriveWindowToken(w)).toThrow(/instant-mode start/u);
+  });
+
+  it('rejects instant-mode end with fractional seconds', () => {
+    const w: BacktestWindow = buildBacktestWindow({
+      mode: 'instant',
+      start: '2026-02-02T14:30:00Z',
+      end: '2026-02-02T21:00:00.500Z',
+    });
+    expect(() => deriveWindowToken(w)).toThrow(/instant-mode end/u);
+  });
+});
+
 describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
   it('throws on empty strategy_ids', () => {
     expect(() => deriveStrategyToken([])).toThrow();
