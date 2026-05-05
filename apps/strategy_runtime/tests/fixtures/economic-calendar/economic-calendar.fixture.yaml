@@ -1,0 +1,61 @@
+version: 1
+schema_version: 1
+source: manual_curation
+editorial_notes: Fixture for QFA-111 economic calendar loader tests.
+events:
+  - event_id: nfp-2025-12-05
+    category: NFP
+    event_date: 2025-12-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2025-12-07
+    category: OPEC
+    event_date: 2025-12-07
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: fomc-2025-12-10
+    category: FOMC
+    event_date: 2025-12-10
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20251210a.htm
+    market_impact_class: high
+  - event_id: cpi-2025-12-18
+    category: CPI
+    event_date: 2025-12-18
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2026-01-09
+    category: NFP
+    event_date: 2026-01-09
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-01-13
+    category: CPI
+    event_date: 2026-01-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2026-01-28
+    category: FOMC
+    event_date: 2026-01-28
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260128a.htm
+    market_impact_class: high
+  - event_id: opec-2026-02-03
+    category: OPEC
+    event_date: 2026-02-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2026.html
+    market_impact_class: high

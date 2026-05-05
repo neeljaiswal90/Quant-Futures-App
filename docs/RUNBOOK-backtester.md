@@ -58,3 +58,13 @@ schemas it has, not its reference data depth.
 
 Any change to tier semantics requires updating BOTH this table AND
 the `SCHEMA_TIER_MAP` / `TIER_REQUIRED_SCHEMAS` constants atomically.
+
+## Economic calendar maintenance
+
+QFA-111 uses a committed manual YAML calendar at `config/research/economic-calendar.yaml` rather than a network-backed economic-calendar API. This keeps Phase 4/5 event-day features deterministic and reviewable. The calendar covers the defined event universe from 2010 through scheduled 2026 events: FOMC rate-decision dates, BLS CPI releases, BLS Employment Situation/NFP releases, and OPEC/OPEC+ major policy, ministerial, and JMMC decision events.
+
+Authoritative sources are Federal Reserve FOMC meeting calendars and statement pages for FOMC, BLS archived news-release and release-schedule pages for CPI and NFP, and OPEC press-release archive pages for OPEC/OPEC+ events. ALFRED release-date downloads may be used as a machine-readable cross-check for BLS historical release dates, but each calendar event still records official source metadata in `authoritative_source`.
+
+The original ticket estimated roughly 700+ events. The completed source-backed curation contains 667 events: FOMC 142, CPI 216, NFP 208, and OPEC/OPEC+ 101. The total is below the rough estimate because OPEC/OPEC+ inclusion is restricted to major policy, ministerial, and JMMC decision events. Lower-signal press releases, commentary, and non-decision items are intentionally excluded so the event universe remains useful for alpha-validation modeling.
+
+To add a new event, edit `config/research/economic-calendar.yaml`, keep `events` sorted by `event_date`, include `authoritative_source`, and run the economic-calendar unit tests. Use `event_time_utc: null` when the official source does not publish a canonical release timestamp; do not invent times. Extend forward-looking FOMC/CPI/NFP coverage every six months, and add OPEC/OPEC+ entries only after an official policy-decision source is available. For calendar errata, update `editorial_notes` instead of silently rewriting history.

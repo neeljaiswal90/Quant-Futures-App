@@ -1,0 +1,4674 @@
+version: 1
+schema_version: 1
+source: manual_curation
+editorial_notes: QFA-111 manually curates source-backed FOMC, CPI, NFP, and OPEC/OPEC+ event dates for 2010-2026. FOMC dates use Federal Reserve meeting calendars and statement pages; CPI and NFP dates use BLS archived release pages and release schedules, with ALFRED release-date downloads used as a machine-readable cross-check; OPEC/OPEC+ entries use OPEC press-release archive pages and include only major policy, ministerial, and JMMC decision events. Historical FOMC entries before the March 2013 release-time standardization and OPEC/OPEC+ events use event_time_utc: null when the official source does not publish a canonical release timestamp. The original ticket estimated roughly 700 events; the source-backed event universe contains 667 events and was not padded with lower-signal items.
+events:
+  - event_id: nfp-2010-01-08
+    category: NFP
+    event_date: 2010-01-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2010-01-15
+    category: CPI
+    event_date: 2010-01-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2010-01-27
+    category: FOMC
+    event_date: 2010-01-27
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomchistorical2010.htm
+    market_impact_class: high
+  - event_id: nfp-2010-02-05
+    category: NFP
+    event_date: 2010-02-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2010-02-17
+    category: CPI
+    event_date: 2010-02-17
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2010-02-19
+    category: CPI
+    event_date: 2010-02-19
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2010-03-05
+    category: NFP
+    event_date: 2010-03-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2010-03-16
+    category: FOMC
+    event_date: 2010-03-16
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomchistorical2010.htm
+    market_impact_class: high
+  - event_id: opec-2010-03-17
+    category: OPEC
+    event_date: 2010-03-17
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2010.html
+    market_impact_class: high
+  - event_id: cpi-2010-03-18
+    category: CPI
+    event_date: 2010-03-18
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2010-04-02
+    category: NFP
+    event_date: 2010-04-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2010-04-14
+    category: CPI
+    event_date: 2010-04-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2010-04-28
+    category: FOMC
+    event_date: 2010-04-28
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomchistorical2010.htm
+    market_impact_class: high
+  - event_id: nfp-2010-05-07
+    category: NFP
+    event_date: 2010-05-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2010-05-19
+    category: CPI
+    event_date: 2010-05-19
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2010-06-04
+    category: NFP
+    event_date: 2010-06-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2010-06-17
+    category: CPI
+    event_date: 2010-06-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2010-06-23
+    category: FOMC
+    event_date: 2010-06-23
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomchistorical2010.htm
+    market_impact_class: high
+  - event_id: nfp-2010-07-02
+    category: NFP
+    event_date: 2010-07-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2010-07-16
+    category: CPI
+    event_date: 2010-07-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2010-08-06
+    category: NFP
+    event_date: 2010-08-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2010-08-10
+    category: FOMC
+    event_date: 2010-08-10
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomchistorical2010.htm
+    market_impact_class: high
+  - event_id: cpi-2010-08-13
+    category: CPI
+    event_date: 2010-08-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2010-09-03
+    category: NFP
+    event_date: 2010-09-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2010-09-17
+    category: CPI
+    event_date: 2010-09-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2010-09-21
+    category: FOMC
+    event_date: 2010-09-21
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomchistorical2010.htm
+    market_impact_class: high
+  - event_id: nfp-2010-10-08
+    category: NFP
+    event_date: 2010-10-08
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2010-10-14
+    category: OPEC
+    event_date: 2010-10-14
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2010.html
+    market_impact_class: high
+  - event_id: cpi-2010-10-15
+    category: CPI
+    event_date: 2010-10-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2010-11-03
+    category: FOMC
+    event_date: 2010-11-03
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomchistorical2010.htm
+    market_impact_class: high
+  - event_id: nfp-2010-11-05
+    category: NFP
+    event_date: 2010-11-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2010-11-17
+    category: CPI
+    event_date: 2010-11-17
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2010-12-03
+    category: NFP
+    event_date: 2010-12-03
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2010-12-11
+    category: OPEC
+    event_date: 2010-12-11
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2010.html
+    market_impact_class: high
+  - event_id: fomc-2010-12-14
+    category: FOMC
+    event_date: 2010-12-14
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomchistorical2010.htm
+    market_impact_class: high
+  - event_id: cpi-2010-12-15
+    category: CPI
+    event_date: 2010-12-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2011-01-07
+    category: NFP
+    event_date: 2011-01-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2011-01-14
+    category: CPI
+    event_date: 2011-01-14
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2011-01-26
+    category: FOMC
+    event_date: 2011-01-26
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20110126a.htm
+    market_impact_class: high
+  - event_id: nfp-2011-02-04
+    category: NFP
+    event_date: 2011-02-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2011-02-15
+    category: CPI
+    event_date: 2011-02-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2011-02-17
+    category: CPI
+    event_date: 2011-02-17
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2011-03-04
+    category: NFP
+    event_date: 2011-03-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2011-03-15
+    category: FOMC
+    event_date: 2011-03-15
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20110315a.htm
+    market_impact_class: high
+  - event_id: cpi-2011-03-17
+    category: CPI
+    event_date: 2011-03-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2011-04-01
+    category: NFP
+    event_date: 2011-04-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2011-04-15
+    category: CPI
+    event_date: 2011-04-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2011-04-27
+    category: FOMC
+    event_date: 2011-04-27
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20110427a.htm
+    market_impact_class: high
+  - event_id: nfp-2011-05-06
+    category: NFP
+    event_date: 2011-05-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2011-05-13
+    category: CPI
+    event_date: 2011-05-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2011-06-03
+    category: NFP
+    event_date: 2011-06-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2011-06-08
+    category: OPEC
+    event_date: 2011-06-08
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2011.html
+    market_impact_class: high
+  - event_id: cpi-2011-06-15
+    category: CPI
+    event_date: 2011-06-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2011-06-22
+    category: FOMC
+    event_date: 2011-06-22
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20110622a.htm
+    market_impact_class: high
+  - event_id: nfp-2011-07-08
+    category: NFP
+    event_date: 2011-07-08
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2011-07-15
+    category: CPI
+    event_date: 2011-07-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2011-08-05
+    category: NFP
+    event_date: 2011-08-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2011-08-09
+    category: FOMC
+    event_date: 2011-08-09
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20110809a.htm
+    market_impact_class: high
+  - event_id: cpi-2011-08-18
+    category: CPI
+    event_date: 2011-08-18
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2011-09-02
+    category: NFP
+    event_date: 2011-09-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2011-09-15
+    category: CPI
+    event_date: 2011-09-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2011-09-21
+    category: FOMC
+    event_date: 2011-09-21
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20110921a.htm
+    market_impact_class: high
+  - event_id: nfp-2011-10-07
+    category: NFP
+    event_date: 2011-10-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2011-10-19
+    category: CPI
+    event_date: 2011-10-19
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2011-11-02
+    category: FOMC
+    event_date: 2011-11-02
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20111102a.htm
+    market_impact_class: high
+  - event_id: nfp-2011-11-04
+    category: NFP
+    event_date: 2011-11-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2011-11-16
+    category: CPI
+    event_date: 2011-11-16
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2011-12-02
+    category: NFP
+    event_date: 2011-12-02
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2011-12-13
+    category: FOMC
+    event_date: 2011-12-13
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20111213a.htm
+    market_impact_class: high
+  - event_id: opec-2011-12-14
+    category: OPEC
+    event_date: 2011-12-14
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2011.html
+    market_impact_class: high
+  - event_id: cpi-2011-12-16
+    category: CPI
+    event_date: 2011-12-16
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2012-01-06
+    category: NFP
+    event_date: 2012-01-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-01-19
+    category: CPI
+    event_date: 2012-01-19
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2012-01-25
+    category: FOMC
+    event_date: 2012-01-25
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20120125a.htm
+    market_impact_class: high
+  - event_id: nfp-2012-02-03
+    category: NFP
+    event_date: 2012-02-03
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-02-15
+    category: CPI
+    event_date: 2012-02-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2012-02-17
+    category: CPI
+    event_date: 2012-02-17
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2012-03-09
+    category: NFP
+    event_date: 2012-03-09
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2012-03-13
+    category: FOMC
+    event_date: 2012-03-13
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20120313a.htm
+    market_impact_class: high
+  - event_id: cpi-2012-03-16
+    category: CPI
+    event_date: 2012-03-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2012-04-06
+    category: NFP
+    event_date: 2012-04-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-04-13
+    category: CPI
+    event_date: 2012-04-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2012-04-25
+    category: FOMC
+    event_date: 2012-04-25
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20120425a.htm
+    market_impact_class: high
+  - event_id: nfp-2012-05-04
+    category: NFP
+    event_date: 2012-05-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-05-15
+    category: CPI
+    event_date: 2012-05-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2012-06-01
+    category: NFP
+    event_date: 2012-06-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-06-14
+    category: CPI
+    event_date: 2012-06-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2012-06-14
+    category: OPEC
+    event_date: 2012-06-14
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2012.html
+    market_impact_class: high
+  - event_id: fomc-2012-06-20
+    category: FOMC
+    event_date: 2012-06-20
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20120620a.htm
+    market_impact_class: high
+  - event_id: nfp-2012-07-06
+    category: NFP
+    event_date: 2012-07-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-07-17
+    category: CPI
+    event_date: 2012-07-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2012-08-01
+    category: FOMC
+    event_date: 2012-08-01
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20120801a.htm
+    market_impact_class: high
+  - event_id: nfp-2012-08-03
+    category: NFP
+    event_date: 2012-08-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-08-15
+    category: CPI
+    event_date: 2012-08-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2012-09-07
+    category: NFP
+    event_date: 2012-09-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2012-09-13
+    category: FOMC
+    event_date: 2012-09-13
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20120913a.htm
+    market_impact_class: high
+  - event_id: cpi-2012-09-14
+    category: CPI
+    event_date: 2012-09-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2012-10-05
+    category: NFP
+    event_date: 2012-10-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-10-16
+    category: CPI
+    event_date: 2012-10-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2012-10-24
+    category: FOMC
+    event_date: 2012-10-24
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20121024a.htm
+    market_impact_class: high
+  - event_id: nfp-2012-11-02
+    category: NFP
+    event_date: 2012-11-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2012-11-15
+    category: CPI
+    event_date: 2012-11-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2012-12-07
+    category: NFP
+    event_date: 2012-12-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2012-12-12
+    category: FOMC
+    event_date: 2012-12-12
+    event_time_utc: null
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20121212a.htm
+    market_impact_class: high
+  - event_id: nfp-2012-12-12
+    category: NFP
+    event_date: 2012-12-12
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2012-12-12
+    category: OPEC
+    event_date: 2012-12-12
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2012.html
+    market_impact_class: high
+  - event_id: cpi-2012-12-14
+    category: CPI
+    event_date: 2012-12-14
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2013-01-04
+    category: NFP
+    event_date: 2013-01-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-01-16
+    category: CPI
+    event_date: 2013-01-16
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2013-01-30
+    category: FOMC
+    event_date: 2013-01-30
+    event_time_utc: null
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20130130a.htm
+    market_impact_class: high
+  - event_id: nfp-2013-02-01
+    category: NFP
+    event_date: 2013-02-01
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-02-19
+    category: CPI
+    event_date: 2013-02-19
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2013-02-21
+    category: CPI
+    event_date: 2013-02-21
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2013-03-08
+    category: NFP
+    event_date: 2013-03-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-03-15
+    category: CPI
+    event_date: 2013-03-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2013-03-20
+    category: FOMC
+    event_date: 2013-03-20
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20130320a.htm
+    market_impact_class: high
+  - event_id: nfp-2013-04-05
+    category: NFP
+    event_date: 2013-04-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-04-16
+    category: CPI
+    event_date: 2013-04-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2013-05-01
+    category: FOMC
+    event_date: 2013-05-01
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20130501a.htm
+    market_impact_class: high
+  - event_id: nfp-2013-05-03
+    category: NFP
+    event_date: 2013-05-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: nfp-2013-05-06
+    category: NFP
+    event_date: 2013-05-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-05-16
+    category: CPI
+    event_date: 2013-05-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2013-05-31
+    category: OPEC
+    event_date: 2013-05-31
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2013.html
+    market_impact_class: high
+  - event_id: nfp-2013-06-07
+    category: NFP
+    event_date: 2013-06-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-06-18
+    category: CPI
+    event_date: 2013-06-18
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2013-06-19
+    category: FOMC
+    event_date: 2013-06-19
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20130619a.htm
+    market_impact_class: high
+  - event_id: nfp-2013-07-05
+    category: NFP
+    event_date: 2013-07-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-07-16
+    category: CPI
+    event_date: 2013-07-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2013-07-31
+    category: FOMC
+    event_date: 2013-07-31
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20130731a.htm
+    market_impact_class: high
+  - event_id: nfp-2013-08-02
+    category: NFP
+    event_date: 2013-08-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-08-15
+    category: CPI
+    event_date: 2013-08-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2013-09-06
+    category: NFP
+    event_date: 2013-09-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-09-17
+    category: CPI
+    event_date: 2013-09-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2013-09-18
+    category: FOMC
+    event_date: 2013-09-18
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20130918a.htm
+    market_impact_class: high
+  - event_id: nfp-2013-10-22
+    category: NFP
+    event_date: 2013-10-22
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2013-10-30
+    category: FOMC
+    event_date: 2013-10-30
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20131030a.htm
+    market_impact_class: high
+  - event_id: cpi-2013-10-30
+    category: CPI
+    event_date: 2013-10-30
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2013-11-08
+    category: NFP
+    event_date: 2013-11-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-11-20
+    category: CPI
+    event_date: 2013-11-20
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2013-12-04
+    category: OPEC
+    event_date: 2013-12-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2013.html
+    market_impact_class: high
+  - event_id: nfp-2013-12-06
+    category: NFP
+    event_date: 2013-12-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2013-12-17
+    category: CPI
+    event_date: 2013-12-17
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2013-12-18
+    category: FOMC
+    event_date: 2013-12-18
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20131218a.htm
+    market_impact_class: high
+  - event_id: nfp-2014-01-10
+    category: NFP
+    event_date: 2014-01-10
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-01-16
+    category: CPI
+    event_date: 2014-01-16
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2014-01-29
+    category: FOMC
+    event_date: 2014-01-29
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20140129a.htm
+    market_impact_class: high
+  - event_id: nfp-2014-02-07
+    category: NFP
+    event_date: 2014-02-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-02-18
+    category: CPI
+    event_date: 2014-02-18
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2014-02-20
+    category: CPI
+    event_date: 2014-02-20
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2014-03-07
+    category: NFP
+    event_date: 2014-03-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-03-18
+    category: CPI
+    event_date: 2014-03-18
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2014-03-19
+    category: FOMC
+    event_date: 2014-03-19
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20140319a.htm
+    market_impact_class: high
+  - event_id: nfp-2014-04-04
+    category: NFP
+    event_date: 2014-04-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-04-15
+    category: CPI
+    event_date: 2014-04-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2014-04-30
+    category: FOMC
+    event_date: 2014-04-30
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20140430a.htm
+    market_impact_class: high
+  - event_id: nfp-2014-05-02
+    category: NFP
+    event_date: 2014-05-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-05-15
+    category: CPI
+    event_date: 2014-05-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2014-06-06
+    category: NFP
+    event_date: 2014-06-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2014-06-11
+    category: OPEC
+    event_date: 2014-06-11
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2014.html
+    market_impact_class: high
+  - event_id: cpi-2014-06-17
+    category: CPI
+    event_date: 2014-06-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2014-06-18
+    category: FOMC
+    event_date: 2014-06-18
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20140618a.htm
+    market_impact_class: high
+  - event_id: nfp-2014-07-03
+    category: NFP
+    event_date: 2014-07-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-07-22
+    category: CPI
+    event_date: 2014-07-22
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2014-07-30
+    category: FOMC
+    event_date: 2014-07-30
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20140730a.htm
+    market_impact_class: high
+  - event_id: nfp-2014-08-01
+    category: NFP
+    event_date: 2014-08-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-08-19
+    category: CPI
+    event_date: 2014-08-19
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2014-09-05
+    category: NFP
+    event_date: 2014-09-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2014-09-17
+    category: FOMC
+    event_date: 2014-09-17
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20140917a.htm
+    market_impact_class: high
+  - event_id: cpi-2014-09-17
+    category: CPI
+    event_date: 2014-09-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2014-10-03
+    category: NFP
+    event_date: 2014-10-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-10-22
+    category: CPI
+    event_date: 2014-10-22
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2014-10-29
+    category: FOMC
+    event_date: 2014-10-29
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20141029a.htm
+    market_impact_class: high
+  - event_id: nfp-2014-11-07
+    category: NFP
+    event_date: 2014-11-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2014-11-20
+    category: CPI
+    event_date: 2014-11-20
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2014-11-27
+    category: OPEC
+    event_date: 2014-11-27
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2014.html
+    market_impact_class: high
+  - event_id: nfp-2014-12-05
+    category: NFP
+    event_date: 2014-12-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2014-12-17
+    category: FOMC
+    event_date: 2014-12-17
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20141217a.htm
+    market_impact_class: high
+  - event_id: cpi-2014-12-17
+    category: CPI
+    event_date: 2014-12-17
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2015-01-09
+    category: NFP
+    event_date: 2015-01-09
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-01-16
+    category: CPI
+    event_date: 2015-01-16
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2015-01-28
+    category: FOMC
+    event_date: 2015-01-28
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20150128a.htm
+    market_impact_class: high
+  - event_id: nfp-2015-02-06
+    category: NFP
+    event_date: 2015-02-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-02-20
+    category: CPI
+    event_date: 2015-02-20
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2015-02-26
+    category: CPI
+    event_date: 2015-02-26
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2015-03-06
+    category: NFP
+    event_date: 2015-03-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2015-03-18
+    category: FOMC
+    event_date: 2015-03-18
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20150318a.htm
+    market_impact_class: high
+  - event_id: cpi-2015-03-24
+    category: CPI
+    event_date: 2015-03-24
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2015-04-03
+    category: NFP
+    event_date: 2015-04-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-04-17
+    category: CPI
+    event_date: 2015-04-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2015-04-29
+    category: FOMC
+    event_date: 2015-04-29
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20150429a.htm
+    market_impact_class: high
+  - event_id: nfp-2015-05-08
+    category: NFP
+    event_date: 2015-05-08
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-05-22
+    category: CPI
+    event_date: 2015-05-22
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2015-06-05
+    category: NFP
+    event_date: 2015-06-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2015-06-05
+    category: OPEC
+    event_date: 2015-06-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2015.html
+    market_impact_class: high
+  - event_id: fomc-2015-06-17
+    category: FOMC
+    event_date: 2015-06-17
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20150617a.htm
+    market_impact_class: high
+  - event_id: cpi-2015-06-18
+    category: CPI
+    event_date: 2015-06-18
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2015-07-02
+    category: NFP
+    event_date: 2015-07-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-07-17
+    category: CPI
+    event_date: 2015-07-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2015-07-29
+    category: FOMC
+    event_date: 2015-07-29
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20150729a.htm
+    market_impact_class: high
+  - event_id: nfp-2015-08-07
+    category: NFP
+    event_date: 2015-08-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-08-19
+    category: CPI
+    event_date: 2015-08-19
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2015-09-04
+    category: NFP
+    event_date: 2015-09-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-09-16
+    category: CPI
+    event_date: 2015-09-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2015-09-17
+    category: FOMC
+    event_date: 2015-09-17
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20150917a.htm
+    market_impact_class: high
+  - event_id: nfp-2015-10-02
+    category: NFP
+    event_date: 2015-10-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-10-15
+    category: CPI
+    event_date: 2015-10-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2015-10-28
+    category: FOMC
+    event_date: 2015-10-28
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20151028a.htm
+    market_impact_class: high
+  - event_id: nfp-2015-11-06
+    category: NFP
+    event_date: 2015-11-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2015-11-17
+    category: CPI
+    event_date: 2015-11-17
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2015-12-04
+    category: NFP
+    event_date: 2015-12-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2015-12-04
+    category: OPEC
+    event_date: 2015-12-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2015.html
+    market_impact_class: high
+  - event_id: cpi-2015-12-15
+    category: CPI
+    event_date: 2015-12-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2015-12-16
+    category: FOMC
+    event_date: 2015-12-16
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20151216a.htm
+    market_impact_class: high
+  - event_id: nfp-2016-01-08
+    category: NFP
+    event_date: 2016-01-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-01-20
+    category: CPI
+    event_date: 2016-01-20
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2016-01-27
+    category: FOMC
+    event_date: 2016-01-27
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20160127a.htm
+    market_impact_class: high
+  - event_id: nfp-2016-02-05
+    category: NFP
+    event_date: 2016-02-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-02-19
+    category: CPI
+    event_date: 2016-02-19
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2016-03-04
+    category: NFP
+    event_date: 2016-03-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2016-03-16
+    category: FOMC
+    event_date: 2016-03-16
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20160316a.htm
+    market_impact_class: high
+  - event_id: cpi-2016-03-16
+    category: CPI
+    event_date: 2016-03-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2016-04-01
+    category: NFP
+    event_date: 2016-04-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-04-14
+    category: CPI
+    event_date: 2016-04-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2016-04-27
+    category: FOMC
+    event_date: 2016-04-27
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20160427a.htm
+    market_impact_class: high
+  - event_id: nfp-2016-05-06
+    category: NFP
+    event_date: 2016-05-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-05-17
+    category: CPI
+    event_date: 2016-05-17
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2016-06-02
+    category: OPEC
+    event_date: 2016-06-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2016.html
+    market_impact_class: high
+  - event_id: nfp-2016-06-03
+    category: NFP
+    event_date: 2016-06-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2016-06-15
+    category: FOMC
+    event_date: 2016-06-15
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20160615a.htm
+    market_impact_class: high
+  - event_id: cpi-2016-06-16
+    category: CPI
+    event_date: 2016-06-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2016-07-08
+    category: NFP
+    event_date: 2016-07-08
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-07-15
+    category: CPI
+    event_date: 2016-07-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2016-07-27
+    category: FOMC
+    event_date: 2016-07-27
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20160727a.htm
+    market_impact_class: high
+  - event_id: nfp-2016-08-05
+    category: NFP
+    event_date: 2016-08-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-08-16
+    category: CPI
+    event_date: 2016-08-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2016-09-02
+    category: NFP
+    event_date: 2016-09-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-09-16
+    category: CPI
+    event_date: 2016-09-16
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2016-09-21
+    category: FOMC
+    event_date: 2016-09-21
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20160921a.htm
+    market_impact_class: high
+  - event_id: opec-2016-09-28
+    category: OPEC
+    event_date: 2016-09-28
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2016.html
+    market_impact_class: high
+  - event_id: nfp-2016-10-07
+    category: NFP
+    event_date: 2016-10-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-10-18
+    category: CPI
+    event_date: 2016-10-18
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2016-11-02
+    category: FOMC
+    event_date: 2016-11-02
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20161102a.htm
+    market_impact_class: high
+  - event_id: nfp-2016-11-04
+    category: NFP
+    event_date: 2016-11-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2016-11-17
+    category: CPI
+    event_date: 2016-11-17
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2016-11-30
+    category: OPEC
+    event_date: 2016-11-30
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2016.html
+    market_impact_class: high
+  - event_id: nfp-2016-12-02
+    category: NFP
+    event_date: 2016-12-02
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2016-12-10
+    category: OPEC
+    event_date: 2016-12-10
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2016.html
+    market_impact_class: high
+  - event_id: fomc-2016-12-14
+    category: FOMC
+    event_date: 2016-12-14
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20161214a.htm
+    market_impact_class: high
+  - event_id: cpi-2016-12-15
+    category: CPI
+    event_date: 2016-12-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2017-01-06
+    category: NFP
+    event_date: 2017-01-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-01-18
+    category: CPI
+    event_date: 2017-01-18
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2017-01-22
+    category: OPEC
+    event_date: 2017-01-22
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2017.html
+    market_impact_class: high
+  - event_id: fomc-2017-02-01
+    category: FOMC
+    event_date: 2017-02-01
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20170201a.htm
+    market_impact_class: high
+  - event_id: nfp-2017-02-03
+    category: NFP
+    event_date: 2017-02-03
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-02-13
+    category: CPI
+    event_date: 2017-02-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2017-02-15
+    category: CPI
+    event_date: 2017-02-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2017-03-10
+    category: NFP
+    event_date: 2017-03-10
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2017-03-15
+    category: FOMC
+    event_date: 2017-03-15
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20170315a.htm
+    market_impact_class: high
+  - event_id: cpi-2017-03-15
+    category: CPI
+    event_date: 2017-03-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2017-03-26
+    category: OPEC
+    event_date: 2017-03-26
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2017.html
+    market_impact_class: high
+  - event_id: nfp-2017-04-07
+    category: NFP
+    event_date: 2017-04-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-04-14
+    category: CPI
+    event_date: 2017-04-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2017-05-03
+    category: FOMC
+    event_date: 2017-05-03
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20170503a.htm
+    market_impact_class: high
+  - event_id: nfp-2017-05-05
+    category: NFP
+    event_date: 2017-05-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-05-12
+    category: CPI
+    event_date: 2017-05-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2017-05-25
+    category: OPEC
+    event_date: 2017-05-25
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2017.html
+    market_impact_class: high
+  - event_id: nfp-2017-06-02
+    category: NFP
+    event_date: 2017-06-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2017-06-14
+    category: FOMC
+    event_date: 2017-06-14
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20170614a.htm
+    market_impact_class: high
+  - event_id: cpi-2017-06-14
+    category: CPI
+    event_date: 2017-06-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2017-07-07
+    category: NFP
+    event_date: 2017-07-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-07-14
+    category: CPI
+    event_date: 2017-07-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2017-07-24
+    category: OPEC
+    event_date: 2017-07-24
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2017.html
+    market_impact_class: high
+  - event_id: fomc-2017-07-26
+    category: FOMC
+    event_date: 2017-07-26
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20170726a.htm
+    market_impact_class: high
+  - event_id: nfp-2017-08-04
+    category: NFP
+    event_date: 2017-08-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-08-11
+    category: CPI
+    event_date: 2017-08-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2017-09-01
+    category: NFP
+    event_date: 2017-09-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-09-14
+    category: CPI
+    event_date: 2017-09-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2017-09-20
+    category: FOMC
+    event_date: 2017-09-20
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20170920a.htm
+    market_impact_class: high
+  - event_id: opec-2017-09-22
+    category: OPEC
+    event_date: 2017-09-22
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2017.html
+    market_impact_class: high
+  - event_id: nfp-2017-10-06
+    category: NFP
+    event_date: 2017-10-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-10-13
+    category: CPI
+    event_date: 2017-10-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2017-11-01
+    category: FOMC
+    event_date: 2017-11-01
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20171101a.htm
+    market_impact_class: high
+  - event_id: nfp-2017-11-03
+    category: NFP
+    event_date: 2017-11-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2017-11-15
+    category: CPI
+    event_date: 2017-11-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2017-11-30
+    category: OPEC
+    event_date: 2017-11-30
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2017.html
+    market_impact_class: high
+  - event_id: nfp-2017-12-08
+    category: NFP
+    event_date: 2017-12-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2017-12-13
+    category: FOMC
+    event_date: 2017-12-13
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20171213a.htm
+    market_impact_class: high
+  - event_id: cpi-2017-12-13
+    category: CPI
+    event_date: 2017-12-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2018-01-05
+    category: NFP
+    event_date: 2018-01-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-01-12
+    category: CPI
+    event_date: 2018-01-12
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2018-01-21
+    category: OPEC
+    event_date: 2018-01-21
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2018.html
+    market_impact_class: high
+  - event_id: fomc-2018-01-31
+    category: FOMC
+    event_date: 2018-01-31
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20180131a.htm
+    market_impact_class: high
+  - event_id: nfp-2018-02-02
+    category: NFP
+    event_date: 2018-02-02
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-02-14
+    category: CPI
+    event_date: 2018-02-14
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2018-03-09
+    category: NFP
+    event_date: 2018-03-09
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-03-13
+    category: CPI
+    event_date: 2018-03-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2018-03-21
+    category: FOMC
+    event_date: 2018-03-21
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20180321a.htm
+    market_impact_class: high
+  - event_id: nfp-2018-04-06
+    category: NFP
+    event_date: 2018-04-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-04-11
+    category: CPI
+    event_date: 2018-04-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2018-04-20
+    category: OPEC
+    event_date: 2018-04-20
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2018.html
+    market_impact_class: high
+  - event_id: fomc-2018-05-02
+    category: FOMC
+    event_date: 2018-05-02
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20180502a.htm
+    market_impact_class: high
+  - event_id: nfp-2018-05-04
+    category: NFP
+    event_date: 2018-05-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-05-10
+    category: CPI
+    event_date: 2018-05-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2018-06-01
+    category: NFP
+    event_date: 2018-06-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-06-12
+    category: CPI
+    event_date: 2018-06-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2018-06-13
+    category: FOMC
+    event_date: 2018-06-13
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20180613a.htm
+    market_impact_class: high
+  - event_id: opec-2018-06-22
+    category: OPEC
+    event_date: 2018-06-22
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2018.html
+    market_impact_class: high
+  - event_id: opec-2018-06-23
+    category: OPEC
+    event_date: 2018-06-23
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2018.html
+    market_impact_class: high
+  - event_id: nfp-2018-07-06
+    category: NFP
+    event_date: 2018-07-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-07-12
+    category: CPI
+    event_date: 2018-07-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2018-08-01
+    category: FOMC
+    event_date: 2018-08-01
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20180801a.htm
+    market_impact_class: high
+  - event_id: nfp-2018-08-03
+    category: NFP
+    event_date: 2018-08-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-08-10
+    category: CPI
+    event_date: 2018-08-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2018-09-07
+    category: NFP
+    event_date: 2018-09-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-09-13
+    category: CPI
+    event_date: 2018-09-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2018-09-23
+    category: OPEC
+    event_date: 2018-09-23
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2018.html
+    market_impact_class: high
+  - event_id: fomc-2018-09-26
+    category: FOMC
+    event_date: 2018-09-26
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20180926a.htm
+    market_impact_class: high
+  - event_id: nfp-2018-10-05
+    category: NFP
+    event_date: 2018-10-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2018-10-11
+    category: CPI
+    event_date: 2018-10-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2018-11-02
+    category: NFP
+    event_date: 2018-11-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2018-11-08
+    category: FOMC
+    event_date: 2018-11-08
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20181108a.htm
+    market_impact_class: high
+  - event_id: opec-2018-11-11
+    category: OPEC
+    event_date: 2018-11-11
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2018.html
+    market_impact_class: high
+  - event_id: cpi-2018-11-14
+    category: CPI
+    event_date: 2018-11-14
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2018-12-06
+    category: OPEC
+    event_date: 2018-12-06
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2018.html
+    market_impact_class: high
+  - event_id: nfp-2018-12-07
+    category: NFP
+    event_date: 2018-12-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2018-12-07
+    category: OPEC
+    event_date: 2018-12-07
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2018.html
+    market_impact_class: high
+  - event_id: cpi-2018-12-12
+    category: CPI
+    event_date: 2018-12-12
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2018-12-19
+    category: FOMC
+    event_date: 2018-12-19
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20181219a.htm
+    market_impact_class: high
+  - event_id: nfp-2019-01-04
+    category: NFP
+    event_date: 2019-01-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-01-11
+    category: CPI
+    event_date: 2019-01-11
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2019-01-30
+    category: FOMC
+    event_date: 2019-01-30
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20190130a.htm
+    market_impact_class: high
+  - event_id: nfp-2019-02-01
+    category: NFP
+    event_date: 2019-02-01
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-02-11
+    category: CPI
+    event_date: 2019-02-11
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2019-02-13
+    category: CPI
+    event_date: 2019-02-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2019-03-08
+    category: NFP
+    event_date: 2019-03-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-03-12
+    category: CPI
+    event_date: 2019-03-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2019-03-18
+    category: OPEC
+    event_date: 2019-03-18
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2019.html
+    market_impact_class: high
+  - event_id: fomc-2019-03-20
+    category: FOMC
+    event_date: 2019-03-20
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20190320a.htm
+    market_impact_class: high
+  - event_id: nfp-2019-04-05
+    category: NFP
+    event_date: 2019-04-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-04-10
+    category: CPI
+    event_date: 2019-04-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2019-05-01
+    category: FOMC
+    event_date: 2019-05-01
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20190501a.htm
+    market_impact_class: high
+  - event_id: nfp-2019-05-03
+    category: NFP
+    event_date: 2019-05-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-05-10
+    category: CPI
+    event_date: 2019-05-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2019-05-19
+    category: OPEC
+    event_date: 2019-05-19
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2019.html
+    market_impact_class: high
+  - event_id: nfp-2019-06-07
+    category: NFP
+    event_date: 2019-06-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-06-12
+    category: CPI
+    event_date: 2019-06-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2019-06-19
+    category: FOMC
+    event_date: 2019-06-19
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20190619a.htm
+    market_impact_class: high
+  - event_id: opec-2019-07-01
+    category: OPEC
+    event_date: 2019-07-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2019.html
+    market_impact_class: high
+  - event_id: opec-2019-07-02
+    category: OPEC
+    event_date: 2019-07-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2019.html
+    market_impact_class: high
+  - event_id: nfp-2019-07-05
+    category: NFP
+    event_date: 2019-07-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-07-11
+    category: CPI
+    event_date: 2019-07-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2019-07-31
+    category: FOMC
+    event_date: 2019-07-31
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20190731a.htm
+    market_impact_class: high
+  - event_id: nfp-2019-08-02
+    category: NFP
+    event_date: 2019-08-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-08-13
+    category: CPI
+    event_date: 2019-08-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2019-09-06
+    category: NFP
+    event_date: 2019-09-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-09-12
+    category: CPI
+    event_date: 2019-09-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2019-09-12
+    category: OPEC
+    event_date: 2019-09-12
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2019.html
+    market_impact_class: high
+  - event_id: fomc-2019-09-18
+    category: FOMC
+    event_date: 2019-09-18
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20190918a.htm
+    market_impact_class: high
+  - event_id: nfp-2019-10-04
+    category: NFP
+    event_date: 2019-10-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-10-10
+    category: CPI
+    event_date: 2019-10-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2019-10-11
+    category: FOMC
+    event_date: 2019-10-11
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20191011a.htm
+    market_impact_class: high
+  - event_id: fomc-2019-10-30
+    category: FOMC
+    event_date: 2019-10-30
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20191030a.htm
+    market_impact_class: high
+  - event_id: nfp-2019-11-01
+    category: NFP
+    event_date: 2019-11-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2019-11-13
+    category: CPI
+    event_date: 2019-11-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2019-12-05
+    category: OPEC
+    event_date: 2019-12-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2019.html
+    market_impact_class: high
+  - event_id: nfp-2019-12-06
+    category: NFP
+    event_date: 2019-12-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2019-12-06
+    category: OPEC
+    event_date: 2019-12-06
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2019.html
+    market_impact_class: high
+  - event_id: fomc-2019-12-11
+    category: FOMC
+    event_date: 2019-12-11
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20191211a.htm
+    market_impact_class: high
+  - event_id: cpi-2019-12-11
+    category: CPI
+    event_date: 2019-12-11
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2020-01-10
+    category: NFP
+    event_date: 2020-01-10
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-01-14
+    category: CPI
+    event_date: 2020-01-14
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2020-01-29
+    category: FOMC
+    event_date: 2020-01-29
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200129a.htm
+    market_impact_class: high
+  - event_id: nfp-2020-02-07
+    category: NFP
+    event_date: 2020-02-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-02-11
+    category: CPI
+    event_date: 2020-02-11
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2020-02-13
+    category: CPI
+    event_date: 2020-02-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2020-03-03
+    category: FOMC
+    event_date: 2020-03-03
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200303a.htm
+    market_impact_class: high
+  - event_id: opec-2020-03-05
+    category: OPEC
+    event_date: 2020-03-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: nfp-2020-03-06
+    category: NFP
+    event_date: 2020-03-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2020-03-06
+    category: OPEC
+    event_date: 2020-03-06
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: cpi-2020-03-11
+    category: CPI
+    event_date: 2020-03-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2020-03-15
+    category: FOMC
+    event_date: 2020-03-15
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200315a.htm
+    market_impact_class: high
+  - event_id: fomc-2020-03-23
+    category: FOMC
+    event_date: 2020-03-23
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200323a.htm
+    market_impact_class: high
+  - event_id: fomc-2020-03-31
+    category: FOMC
+    event_date: 2020-03-31
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200331a.htm
+    market_impact_class: high
+  - event_id: nfp-2020-04-03
+    category: NFP
+    event_date: 2020-04-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2020-04-09
+    category: OPEC
+    event_date: 2020-04-09
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: cpi-2020-04-10
+    category: CPI
+    event_date: 2020-04-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2020-04-12
+    category: OPEC
+    event_date: 2020-04-12
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: opec-2020-04-15
+    category: OPEC
+    event_date: 2020-04-15
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: fomc-2020-04-29
+    category: FOMC
+    event_date: 2020-04-29
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200429a.htm
+    market_impact_class: high
+  - event_id: nfp-2020-05-08
+    category: NFP
+    event_date: 2020-05-08
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: nfp-2020-05-11
+    category: NFP
+    event_date: 2020-05-11
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-05-12
+    category: CPI
+    event_date: 2020-05-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2020-06-05
+    category: NFP
+    event_date: 2020-06-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2020-06-06
+    category: OPEC
+    event_date: 2020-06-06
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: fomc-2020-06-10
+    category: FOMC
+    event_date: 2020-06-10
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200610a.htm
+    market_impact_class: high
+  - event_id: cpi-2020-06-10
+    category: CPI
+    event_date: 2020-06-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2020-06-18
+    category: OPEC
+    event_date: 2020-06-18
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: nfp-2020-07-02
+    category: NFP
+    event_date: 2020-07-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-07-14
+    category: CPI
+    event_date: 2020-07-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2020-07-15
+    category: OPEC
+    event_date: 2020-07-15
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: fomc-2020-07-29
+    category: FOMC
+    event_date: 2020-07-29
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200729a.htm
+    market_impact_class: high
+  - event_id: nfp-2020-08-07
+    category: NFP
+    event_date: 2020-08-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-08-12
+    category: CPI
+    event_date: 2020-08-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2020-08-19
+    category: OPEC
+    event_date: 2020-08-19
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: fomc-2020-08-27
+    category: FOMC
+    event_date: 2020-08-27
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200827a.htm
+    market_impact_class: high
+  - event_id: nfp-2020-09-04
+    category: NFP
+    event_date: 2020-09-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-09-11
+    category: CPI
+    event_date: 2020-09-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2020-09-16
+    category: FOMC
+    event_date: 2020-09-16
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20200916a.htm
+    market_impact_class: high
+  - event_id: opec-2020-09-17
+    category: OPEC
+    event_date: 2020-09-17
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: nfp-2020-10-02
+    category: NFP
+    event_date: 2020-10-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-10-13
+    category: CPI
+    event_date: 2020-10-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2020-10-19
+    category: OPEC
+    event_date: 2020-10-19
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: fomc-2020-11-05
+    category: FOMC
+    event_date: 2020-11-05
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20201105a.htm
+    market_impact_class: high
+  - event_id: nfp-2020-11-06
+    category: NFP
+    event_date: 2020-11-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-11-12
+    category: CPI
+    event_date: 2020-11-12
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2020-11-17
+    category: OPEC
+    event_date: 2020-11-17
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: opec-2020-12-03
+    category: OPEC
+    event_date: 2020-12-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2020.html
+    market_impact_class: high
+  - event_id: nfp-2020-12-04
+    category: NFP
+    event_date: 2020-12-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2020-12-10
+    category: CPI
+    event_date: 2020-12-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2020-12-16
+    category: FOMC
+    event_date: 2020-12-16
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20201216a.htm
+    market_impact_class: high
+  - event_id: opec-2021-01-05
+    category: OPEC
+    event_date: 2021-01-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-01-08
+    category: NFP
+    event_date: 2021-01-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-01-13
+    category: CPI
+    event_date: 2021-01-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2021-01-27
+    category: FOMC
+    event_date: 2021-01-27
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20210127a.htm
+    market_impact_class: high
+  - event_id: opec-2021-02-03
+    category: OPEC
+    event_date: 2021-02-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-02-05
+    category: NFP
+    event_date: 2021-02-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-02-08
+    category: CPI
+    event_date: 2021-02-08
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2021-02-10
+    category: CPI
+    event_date: 2021-02-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2021-03-03
+    category: OPEC
+    event_date: 2021-03-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: opec-2021-03-04
+    category: OPEC
+    event_date: 2021-03-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-03-05
+    category: NFP
+    event_date: 2021-03-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-03-10
+    category: CPI
+    event_date: 2021-03-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2021-03-17
+    category: FOMC
+    event_date: 2021-03-17
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20210317a.htm
+    market_impact_class: high
+  - event_id: opec-2021-03-31
+    category: OPEC
+    event_date: 2021-03-31
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: opec-2021-04-01
+    category: OPEC
+    event_date: 2021-04-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-04-02
+    category: NFP
+    event_date: 2021-04-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-04-13
+    category: CPI
+    event_date: 2021-04-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2021-04-27
+    category: OPEC
+    event_date: 2021-04-27
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: fomc-2021-04-28
+    category: FOMC
+    event_date: 2021-04-28
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20210428a.htm
+    market_impact_class: high
+  - event_id: nfp-2021-05-07
+    category: NFP
+    event_date: 2021-05-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-05-12
+    category: CPI
+    event_date: 2021-05-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2021-06-01
+    category: OPEC
+    event_date: 2021-06-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-06-04
+    category: NFP
+    event_date: 2021-06-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-06-10
+    category: CPI
+    event_date: 2021-06-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2021-06-16
+    category: FOMC
+    event_date: 2021-06-16
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20210616a.htm
+    market_impact_class: high
+  - event_id: opec-2021-06-29
+    category: OPEC
+    event_date: 2021-06-29
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: opec-2021-07-01
+    category: OPEC
+    event_date: 2021-07-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-07-02
+    category: NFP
+    event_date: 2021-07-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-07-13
+    category: CPI
+    event_date: 2021-07-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2021-07-18
+    category: OPEC
+    event_date: 2021-07-18
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: fomc-2021-07-28
+    category: FOMC
+    event_date: 2021-07-28
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20210728a.htm
+    market_impact_class: high
+  - event_id: nfp-2021-08-06
+    category: NFP
+    event_date: 2021-08-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-08-11
+    category: CPI
+    event_date: 2021-08-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2021-09-01
+    category: OPEC
+    event_date: 2021-09-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-09-03
+    category: NFP
+    event_date: 2021-09-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-09-14
+    category: CPI
+    event_date: 2021-09-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2021-09-22
+    category: FOMC
+    event_date: 2021-09-22
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20210922a.htm
+    market_impact_class: high
+  - event_id: opec-2021-09-30
+    category: OPEC
+    event_date: 2021-09-30
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: opec-2021-10-04
+    category: OPEC
+    event_date: 2021-10-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-10-08
+    category: NFP
+    event_date: 2021-10-08
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-10-13
+    category: CPI
+    event_date: 2021-10-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2021-11-03
+    category: FOMC
+    event_date: 2021-11-03
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20211103a.htm
+    market_impact_class: high
+  - event_id: opec-2021-11-04
+    category: OPEC
+    event_date: 2021-11-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-11-05
+    category: NFP
+    event_date: 2021-11-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-11-10
+    category: CPI
+    event_date: 2021-11-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2021-12-02
+    category: OPEC
+    event_date: 2021-12-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2021.html
+    market_impact_class: high
+  - event_id: nfp-2021-12-03
+    category: NFP
+    event_date: 2021-12-03
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2021-12-10
+    category: CPI
+    event_date: 2021-12-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2021-12-15
+    category: FOMC
+    event_date: 2021-12-15
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20211215a.htm
+    market_impact_class: high
+  - event_id: opec-2022-01-04
+    category: OPEC
+    event_date: 2022-01-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-01-07
+    category: NFP
+    event_date: 2022-01-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-01-12
+    category: CPI
+    event_date: 2022-01-12
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2022-01-26
+    category: FOMC
+    event_date: 2022-01-26
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20220126a.htm
+    market_impact_class: high
+  - event_id: opec-2022-02-02
+    category: OPEC
+    event_date: 2022-02-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-02-04
+    category: NFP
+    event_date: 2022-02-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-02-08
+    category: CPI
+    event_date: 2022-02-08
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2022-02-10
+    category: CPI
+    event_date: 2022-02-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2022-03-02
+    category: OPEC
+    event_date: 2022-03-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-03-04
+    category: NFP
+    event_date: 2022-03-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-03-10
+    category: CPI
+    event_date: 2022-03-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2022-03-16
+    category: FOMC
+    event_date: 2022-03-16
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20220316a.htm
+    market_impact_class: high
+  - event_id: opec-2022-03-31
+    category: OPEC
+    event_date: 2022-03-31
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-04-01
+    category: NFP
+    event_date: 2022-04-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-04-12
+    category: CPI
+    event_date: 2022-04-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2022-05-04
+    category: FOMC
+    event_date: 2022-05-04
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20220504a.htm
+    market_impact_class: high
+  - event_id: opec-2022-05-05
+    category: OPEC
+    event_date: 2022-05-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-05-06
+    category: NFP
+    event_date: 2022-05-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-05-11
+    category: CPI
+    event_date: 2022-05-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2022-06-02
+    category: OPEC
+    event_date: 2022-06-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-06-03
+    category: NFP
+    event_date: 2022-06-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-06-10
+    category: CPI
+    event_date: 2022-06-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2022-06-15
+    category: FOMC
+    event_date: 2022-06-15
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20220615a.htm
+    market_impact_class: high
+  - event_id: opec-2022-06-30
+    category: OPEC
+    event_date: 2022-06-30
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-07-08
+    category: NFP
+    event_date: 2022-07-08
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-07-13
+    category: CPI
+    event_date: 2022-07-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2022-07-27
+    category: FOMC
+    event_date: 2022-07-27
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20220727a.htm
+    market_impact_class: high
+  - event_id: opec-2022-08-03
+    category: OPEC
+    event_date: 2022-08-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-08-05
+    category: NFP
+    event_date: 2022-08-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-08-10
+    category: CPI
+    event_date: 2022-08-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2022-09-02
+    category: NFP
+    event_date: 2022-09-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2022-09-05
+    category: OPEC
+    event_date: 2022-09-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: cpi-2022-09-13
+    category: CPI
+    event_date: 2022-09-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2022-09-21
+    category: FOMC
+    event_date: 2022-09-21
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20220921a.htm
+    market_impact_class: high
+  - event_id: opec-2022-10-05
+    category: OPEC
+    event_date: 2022-10-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: nfp-2022-10-07
+    category: NFP
+    event_date: 2022-10-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-10-13
+    category: CPI
+    event_date: 2022-10-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2022-11-02
+    category: FOMC
+    event_date: 2022-11-02
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20221102a.htm
+    market_impact_class: high
+  - event_id: nfp-2022-11-04
+    category: NFP
+    event_date: 2022-11-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2022-11-10
+    category: CPI
+    event_date: 2022-11-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2022-12-02
+    category: NFP
+    event_date: 2022-12-02
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2022-12-04
+    category: OPEC
+    event_date: 2022-12-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2022.html
+    market_impact_class: high
+  - event_id: cpi-2022-12-13
+    category: CPI
+    event_date: 2022-12-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2022-12-14
+    category: FOMC
+    event_date: 2022-12-14
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20221214a.htm
+    market_impact_class: high
+  - event_id: nfp-2023-01-06
+    category: NFP
+    event_date: 2023-01-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-01-12
+    category: CPI
+    event_date: 2023-01-12
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2023-02-01
+    category: FOMC
+    event_date: 2023-02-01
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20230201a.htm
+    market_impact_class: high
+  - event_id: opec-2023-02-01
+    category: OPEC
+    event_date: 2023-02-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2023.html
+    market_impact_class: high
+  - event_id: nfp-2023-02-03
+    category: NFP
+    event_date: 2023-02-03
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-02-10
+    category: CPI
+    event_date: 2023-02-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2023-02-14
+    category: CPI
+    event_date: 2023-02-14
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2023-03-10
+    category: NFP
+    event_date: 2023-03-10
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-03-14
+    category: CPI
+    event_date: 2023-03-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2023-03-22
+    category: FOMC
+    event_date: 2023-03-22
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20230322a.htm
+    market_impact_class: high
+  - event_id: opec-2023-04-03
+    category: OPEC
+    event_date: 2023-04-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2023.html
+    market_impact_class: high
+  - event_id: nfp-2023-04-07
+    category: NFP
+    event_date: 2023-04-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-04-12
+    category: CPI
+    event_date: 2023-04-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2023-05-03
+    category: FOMC
+    event_date: 2023-05-03
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20230503a.htm
+    market_impact_class: high
+  - event_id: nfp-2023-05-05
+    category: NFP
+    event_date: 2023-05-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-05-10
+    category: CPI
+    event_date: 2023-05-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2023-06-02
+    category: NFP
+    event_date: 2023-06-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2023-06-04
+    category: OPEC
+    event_date: 2023-06-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2023.html
+    market_impact_class: high
+  - event_id: cpi-2023-06-13
+    category: CPI
+    event_date: 2023-06-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2023-06-14
+    category: FOMC
+    event_date: 2023-06-14
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20230614a.htm
+    market_impact_class: high
+  - event_id: nfp-2023-07-07
+    category: NFP
+    event_date: 2023-07-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-07-12
+    category: CPI
+    event_date: 2023-07-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2023-07-26
+    category: FOMC
+    event_date: 2023-07-26
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20230726a.htm
+    market_impact_class: high
+  - event_id: nfp-2023-08-04
+    category: NFP
+    event_date: 2023-08-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2023-08-04
+    category: OPEC
+    event_date: 2023-08-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2023.html
+    market_impact_class: high
+  - event_id: cpi-2023-08-10
+    category: CPI
+    event_date: 2023-08-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2023-09-01
+    category: NFP
+    event_date: 2023-09-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-09-13
+    category: CPI
+    event_date: 2023-09-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2023-09-20
+    category: FOMC
+    event_date: 2023-09-20
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20230920a.htm
+    market_impact_class: high
+  - event_id: opec-2023-10-04
+    category: OPEC
+    event_date: 2023-10-04
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2023.html
+    market_impact_class: high
+  - event_id: nfp-2023-10-06
+    category: NFP
+    event_date: 2023-10-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-10-12
+    category: CPI
+    event_date: 2023-10-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2023-11-01
+    category: FOMC
+    event_date: 2023-11-01
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20231101a.htm
+    market_impact_class: high
+  - event_id: nfp-2023-11-03
+    category: NFP
+    event_date: 2023-11-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-11-14
+    category: CPI
+    event_date: 2023-11-14
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2023-11-30
+    category: OPEC
+    event_date: 2023-11-30
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2023.html
+    market_impact_class: high
+  - event_id: nfp-2023-12-08
+    category: NFP
+    event_date: 2023-12-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2023-12-12
+    category: CPI
+    event_date: 2023-12-12
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2023-12-13
+    category: FOMC
+    event_date: 2023-12-13
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20231213a.htm
+    market_impact_class: high
+  - event_id: nfp-2024-01-05
+    category: NFP
+    event_date: 2024-01-05
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: nfp-2024-01-10
+    category: NFP
+    event_date: 2024-01-10
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-01-11
+    category: CPI
+    event_date: 2024-01-11
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2024-01-31
+    category: FOMC
+    event_date: 2024-01-31
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20240131a.htm
+    market_impact_class: high
+  - event_id: opec-2024-02-01
+    category: OPEC
+    event_date: 2024-02-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2024.html
+    market_impact_class: high
+  - event_id: nfp-2024-02-02
+    category: NFP
+    event_date: 2024-02-02
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-02-09
+    category: CPI
+    event_date: 2024-02-09
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: cpi-2024-02-13
+    category: CPI
+    event_date: 2024-02-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2024-03-08
+    category: NFP
+    event_date: 2024-03-08
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-03-12
+    category: CPI
+    event_date: 2024-03-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2024-03-20
+    category: FOMC
+    event_date: 2024-03-20
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20240320a.htm
+    market_impact_class: high
+  - event_id: opec-2024-04-03
+    category: OPEC
+    event_date: 2024-04-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2024.html
+    market_impact_class: high
+  - event_id: nfp-2024-04-05
+    category: NFP
+    event_date: 2024-04-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-04-10
+    category: CPI
+    event_date: 2024-04-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2024-05-01
+    category: FOMC
+    event_date: 2024-05-01
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20240501a.htm
+    market_impact_class: high
+  - event_id: nfp-2024-05-03
+    category: NFP
+    event_date: 2024-05-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-05-15
+    category: CPI
+    event_date: 2024-05-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2024-06-02
+    category: OPEC
+    event_date: 2024-06-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2024.html
+    market_impact_class: high
+  - event_id: nfp-2024-06-07
+    category: NFP
+    event_date: 2024-06-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2024-06-12
+    category: FOMC
+    event_date: 2024-06-12
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20240612a.htm
+    market_impact_class: high
+  - event_id: cpi-2024-06-12
+    category: CPI
+    event_date: 2024-06-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2024-07-05
+    category: NFP
+    event_date: 2024-07-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-07-11
+    category: CPI
+    event_date: 2024-07-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2024-07-31
+    category: FOMC
+    event_date: 2024-07-31
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20240731a.htm
+    market_impact_class: high
+  - event_id: opec-2024-08-01
+    category: OPEC
+    event_date: 2024-08-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2024.html
+    market_impact_class: high
+  - event_id: nfp-2024-08-02
+    category: NFP
+    event_date: 2024-08-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-08-14
+    category: CPI
+    event_date: 2024-08-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2024-08-21
+    category: NFP
+    event_date: 2024-08-21
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: nfp-2024-09-06
+    category: NFP
+    event_date: 2024-09-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-09-11
+    category: CPI
+    event_date: 2024-09-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2024-09-18
+    category: FOMC
+    event_date: 2024-09-18
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20240918a.htm
+    market_impact_class: high
+  - event_id: opec-2024-10-02
+    category: OPEC
+    event_date: 2024-10-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2024.html
+    market_impact_class: high
+  - event_id: nfp-2024-10-04
+    category: NFP
+    event_date: 2024-10-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-10-10
+    category: CPI
+    event_date: 2024-10-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2024-11-01
+    category: NFP
+    event_date: 2024-11-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2024-11-07
+    category: FOMC
+    event_date: 2024-11-07
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20241107a.htm
+    market_impact_class: high
+  - event_id: cpi-2024-11-13
+    category: CPI
+    event_date: 2024-11-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2024-12-05
+    category: OPEC
+    event_date: 2024-12-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2024.html
+    market_impact_class: high
+  - event_id: nfp-2024-12-06
+    category: NFP
+    event_date: 2024-12-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2024-12-11
+    category: CPI
+    event_date: 2024-12-11
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2024-12-18
+    category: FOMC
+    event_date: 2024-12-18
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20241218a.htm
+    market_impact_class: high
+  - event_id: nfp-2025-01-10
+    category: NFP
+    event_date: 2025-01-10
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2025-01-15
+    category: CPI
+    event_date: 2025-01-15
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2025-01-29
+    category: FOMC
+    event_date: 2025-01-29
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20250129a.htm
+    market_impact_class: high
+  - event_id: opec-2025-02-03
+    category: OPEC
+    event_date: 2025-02-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: nfp-2025-02-07
+    category: NFP
+    event_date: 2025-02-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2025-02-12
+    category: CPI
+    event_date: 2025-02-12
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2025-03-07
+    category: NFP
+    event_date: 2025-03-07
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2025-03-12
+    category: CPI
+    event_date: 2025-03-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2025-03-19
+    category: FOMC
+    event_date: 2025-03-19
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20250319a.htm
+    market_impact_class: high
+  - event_id: nfp-2025-04-04
+    category: NFP
+    event_date: 2025-04-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2025-04-05
+    category: OPEC
+    event_date: 2025-04-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: cpi-2025-04-10
+    category: CPI
+    event_date: 2025-04-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2025-05-02
+    category: NFP
+    event_date: 2025-05-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2025-05-03
+    category: OPEC
+    event_date: 2025-05-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: fomc-2025-05-07
+    category: FOMC
+    event_date: 2025-05-07
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20250507a.htm
+    market_impact_class: high
+  - event_id: cpi-2025-05-13
+    category: CPI
+    event_date: 2025-05-13
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: opec-2025-05-31
+    category: OPEC
+    event_date: 2025-05-31
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: opec-2025-06-01
+    category: OPEC
+    event_date: 2025-06-01
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: nfp-2025-06-06
+    category: NFP
+    event_date: 2025-06-06
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2025-06-11
+    category: CPI
+    event_date: 2025-06-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2025-06-18
+    category: FOMC
+    event_date: 2025-06-18
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20250618a.htm
+    market_impact_class: high
+  - event_id: nfp-2025-07-03
+    category: NFP
+    event_date: 2025-07-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2025-07-06
+    category: OPEC
+    event_date: 2025-07-06
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: cpi-2025-07-15
+    category: CPI
+    event_date: 2025-07-15
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2025-07-30
+    category: FOMC
+    event_date: 2025-07-30
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20250730a.htm
+    market_impact_class: high
+  - event_id: nfp-2025-08-01
+    category: NFP
+    event_date: 2025-08-01
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2025-08-03
+    category: OPEC
+    event_date: 2025-08-03
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: cpi-2025-08-12
+    category: CPI
+    event_date: 2025-08-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2025-08-22
+    category: FOMC
+    event_date: 2025-08-22
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20250822a.htm
+    market_impact_class: high
+  - event_id: nfp-2025-09-05
+    category: NFP
+    event_date: 2025-09-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2025-09-07
+    category: OPEC
+    event_date: 2025-09-07
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: cpi-2025-09-11
+    category: CPI
+    event_date: 2025-09-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2025-09-17
+    category: FOMC
+    event_date: 2025-09-17
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20250917a.htm
+    market_impact_class: high
+  - event_id: opec-2025-10-05
+    category: OPEC
+    event_date: 2025-10-05
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: cpi-2025-10-24
+    category: CPI
+    event_date: 2025-10-24
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2025-10-29
+    category: FOMC
+    event_date: 2025-10-29
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20251029a.htm
+    market_impact_class: high
+  - event_id: opec-2025-11-02
+    category: OPEC
+    event_date: 2025-11-02
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: nfp-2025-11-20
+    category: NFP
+    event_date: 2025-11-20
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: opec-2025-12-07
+    category: OPEC
+    event_date: 2025-12-07
+    event_time_utc: null
+    description: OPEC/OPEC+ policy, ministerial, or JMMC decision event
+    authoritative_source: https://www.opec.org/press-releases-2025.html
+    market_impact_class: high
+  - event_id: fomc-2025-12-10
+    category: FOMC
+    event_date: 2025-12-10
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20251210a.htm
+    market_impact_class: high
+  - event_id: nfp-2025-12-16
+    category: NFP
+    event_date: 2025-12-16
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2025-12-18
+    category: CPI
+    event_date: 2025-12-18
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2026-01-09
+    category: NFP
+    event_date: 2026-01-09
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-01-13
+    category: CPI
+    event_date: 2026-01-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2026-01-28
+    category: FOMC
+    event_date: 2026-01-28
+    event_time_utc: 19:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260128a.htm
+    market_impact_class: high
+  - event_id: nfp-2026-02-11
+    category: NFP
+    event_date: 2026-02-11
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-02-13
+    category: CPI
+    event_date: 2026-02-13
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2026-03-06
+    category: NFP
+    event_date: 2026-03-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-03-11
+    category: CPI
+    event_date: 2026-03-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2026-03-18
+    category: FOMC
+    event_date: 2026-03-18
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260318a.htm
+    market_impact_class: high
+  - event_id: nfp-2026-04-03
+    category: NFP
+    event_date: 2026-04-03
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/bls/news-release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-04-10
+    category: CPI
+    event_date: 2026-04-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/bls/news-release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2026-04-29
+    category: FOMC
+    event_date: 2026-04-29
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260429a.htm
+    market_impact_class: high
+  - event_id: nfp-2026-05-08
+    category: NFP
+    event_date: 2026-05-08
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/schedule/news_release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-05-12
+    category: CPI
+    event_date: 2026-05-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/schedule/news_release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2026-06-05
+    category: NFP
+    event_date: 2026-06-05
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/schedule/news_release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-06-10
+    category: CPI
+    event_date: 2026-06-10
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/schedule/news_release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2026-06-17
+    category: FOMC
+    event_date: 2026-06-17
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+    market_impact_class: high
+  - event_id: nfp-2026-07-02
+    category: NFP
+    event_date: 2026-07-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/schedule/news_release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-07-14
+    category: CPI
+    event_date: 2026-07-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/schedule/news_release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2026-07-29
+    category: FOMC
+    event_date: 2026-07-29
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+    market_impact_class: high
+  - event_id: nfp-2026-08-07
+    category: NFP
+    event_date: 2026-08-07
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/schedule/news_release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-08-12
+    category: CPI
+    event_date: 2026-08-12
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/schedule/news_release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2026-09-04
+    category: NFP
+    event_date: 2026-09-04
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/schedule/news_release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-09-11
+    category: CPI
+    event_date: 2026-09-11
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/schedule/news_release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2026-09-16
+    category: FOMC
+    event_date: 2026-09-16
+    event_time_utc: 18:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+    market_impact_class: high
+  - event_id: nfp-2026-10-02
+    category: NFP
+    event_date: 2026-10-02
+    event_time_utc: 12:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/schedule/news_release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-10-14
+    category: CPI
+    event_date: 2026-10-14
+    event_time_utc: 12:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/schedule/news_release/cpi.htm
+    market_impact_class: high
+  - event_id: fomc-2026-10-28
+    category: FOMC
+    event_date: 2026-10-28
+    event_time_utc: 18:00:00
+    description: FOMC rate decision
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+    market_impact_class: high
+  - event_id: nfp-2026-11-06
+    category: NFP
+    event_date: 2026-11-06
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/schedule/news_release/empsit.htm
+    market_impact_class: high
+  - event_id: cpi-2026-11-10
+    category: CPI
+    event_date: 2026-11-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/schedule/news_release/cpi.htm
+    market_impact_class: high
+  - event_id: nfp-2026-12-04
+    category: NFP
+    event_date: 2026-12-04
+    event_time_utc: 13:30:00
+    description: Employment Situation release
+    authoritative_source: https://www.bls.gov/schedule/news_release/empsit.htm
+    market_impact_class: high
+  - event_id: fomc-2026-12-09
+    category: FOMC
+    event_date: 2026-12-09
+    event_time_utc: 19:00:00
+    description: FOMC rate decision and economic projections
+    authoritative_source: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+    market_impact_class: high
+  - event_id: cpi-2026-12-10
+    category: CPI
+    event_date: 2026-12-10
+    event_time_utc: 13:30:00
+    description: Consumer Price Index release
+    authoritative_source: https://www.bls.gov/schedule/news_release/cpi.htm
+    market_impact_class: high
