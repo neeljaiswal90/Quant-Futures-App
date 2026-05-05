@@ -1,0 +1,43 @@
+{
+  "run_spec_schema_version": 1,
+  "instrument_root": "MNQ",
+  "bar_spec": "1m",
+  "backtest_window": {
+    "start": "2026-02-02",
+    "end": "2026-02-06",
+    "mode": "session",
+    "inclusive_end": true,
+    "calendar": "CME_US_INDEX_FUTURES"
+  },
+  "determinism_seed": 42,
+  "strategy_ids": ["trend_pullback_long"],
+  "corpus_inputs": [
+    {
+      "role": "primary",
+      "manifest_hash": "ba24ce7ab4fdd964a97e960eab0d8e89b5298f2bb4986d8afc332c5682d58dbe",
+      "manifest_schema_version": 1,
+      "verification_report_hash": "2fb89dcd871a4c4bb2bee335bf415be72a4a91a2ce8b35def89d504d1e87205c",
+      "verification_status": "passed",
+      "tier": "A",
+      "tier_classification": {
+        "classification_reason": "Tier A: required schemas mbo, mbp-10 all present",
+        "policy_source": "runner_code",
+        "policy_ref": null
+      }
+    }
+  ],
+  "config_inputs": [
+    {
+      "role": "strategy",
+      "config_path": "config/strategies/trend_pullback_long.yaml",
+      "lineage": {
+        "config_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "config_version": 1
+      }
+    }
+  ],
+  "runner_code_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "runner_code_dirty": false,
+  "run_spec_hash": "6f3862c2b101ad1f18eb8c68b8080af1a7511ba5a0ed0f7932649a36e590d3f8",
+  "run_started_at_ns": "1801000000000000000"
+}
