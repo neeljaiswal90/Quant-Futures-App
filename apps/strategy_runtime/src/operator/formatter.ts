@@ -393,6 +393,15 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
         `config_hash=${stringField(payload, 'config_hash')}`,
         `config_version=${numberField(payload, 'config_version')}`,
       ]);
+    case 'BACKTEST_RUN_META':
+      // run_id lives on the envelope, not the payload (Q-1.10: payload extends
+      // RunSpec without duplicating envelope fields). Access via event.run_id
+      // here even though the rest of this case reads from payload.
+      return compactParts([
+        `run_id=${event.run_id}`,
+        `run_spec_hash=${stringField(payload, 'run_spec_hash')}`,
+        `run_spec_schema_version=${numberField(payload, 'run_spec_schema_version')}`,
+      ]);
     default:
       return assertNeverRuntimeEventType(event.type);
   }

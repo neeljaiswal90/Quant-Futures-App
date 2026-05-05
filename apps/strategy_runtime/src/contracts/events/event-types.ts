@@ -25,6 +25,7 @@ export const RUNTIME_EVENT_TYPES = [
   'MGMT_TICK',
   'MGMT_ACTION',
   'CONFIG',
+  'BACKTEST_RUN_META',
 ] as const;
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[number];
@@ -47,6 +48,7 @@ export const SYSTEM_CONTROL_EVENT_TYPES = [
   'ROLL_ADVISORY',
   'HALT',
   'CONFIG',
+  'BACKTEST_RUN_META',
 ] as const satisfies readonly RuntimeEventType[];
 
 export const DERIVED_EVENT_TYPES = [

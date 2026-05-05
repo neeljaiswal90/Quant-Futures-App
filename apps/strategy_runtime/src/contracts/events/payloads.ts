@@ -21,6 +21,7 @@ import type {
   SessionPhase,
   TradeAggressorSide,
 } from '../market.js';
+import type { BacktestRunMetaPayload } from '../backtest-run-meta.js';
 import type { ManagementActionType, PositionStatus } from '../position.js';
 import type { SimulatedOrderStatus } from '../execution.js';
 import type { StrategyId } from '../strategy-ids.js';
@@ -370,6 +371,7 @@ export interface JournalEventPayloadByType {
   readonly MGMT_TICK: ManagementTickEventPayload;
   readonly MGMT_ACTION: ManagementActionEventPayload;
   readonly CONFIG: ConfigEventPayload;
+  readonly BACKTEST_RUN_META: BacktestRunMetaPayload;
 }
 
 export type JournalEventPayloadFor<TType extends RuntimeEventType> =

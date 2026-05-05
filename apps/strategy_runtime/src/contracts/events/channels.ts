@@ -233,14 +233,14 @@ export const EVENT_CHANNEL_CONTRACTS: readonly EventChannelContract[] = [
   },
   {
     channel: 'CONFIG',
-    event_types: ['CONFIG'],
+    event_types: ['CONFIG', 'BACKTEST_RUN_META'],
     emission_cadence: 'event_driven',
     throttle: { kind: 'none' },
     default_subscribers: ['FORMATTER', 'JOURNAL_QUERY', 'REPLAY'],
     tui_default: false,
     facts_are_authoritative: true,
     recomputation_allowed: false,
-    description: 'Runtime config lineage facts for replay and provenance.',
+    description: 'Runtime config lineage facts and backtest run-identity meta events for replay and provenance.',
   },
 ] as const;
 
