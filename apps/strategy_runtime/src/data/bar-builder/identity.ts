@@ -3,6 +3,8 @@ import type { ContractIdentityRef } from './output-types.js';
 import type { ContractRoot } from './roll-policy.js';
 
 function compactSecondTimestamp(timestamp: UnixNs): string {
+  // bar_id uses a compact UTC-second anchor because bars are bucket-aligned;
+  // boundary_id keeps raw ns because roll boundaries are exact instants.
   const iso = new Date(Number((timestamp as bigint) / 1_000_000n)).toISOString();
   return iso.slice(0, 19).replace(/[-:]/g, '') + 'Z';
 }

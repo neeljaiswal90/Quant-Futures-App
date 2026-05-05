@@ -300,3 +300,84 @@ Invalidate the cache in one of three ways:
 Because the cache key includes the DBN file content hash, any byte change to
 the underlying DBN file automatically routes to a new parquet artifact instead
 of reusing the old one.
+
+## Bar builder and contract rolls
+
+QFA-104 adds the bar-builder driver under
+`apps/strategy_runtime/src/data/bar-builder/`. The driver is a streaming
+transform over `DbnRecord` async iterables and composes directly with the
+QFA-103 parquet cache read path:
+
+```typescript
+const source = await getCachedRecords(dbnPath, schema, options);
+for await (const output of buildCachedBars(source, buildOptions)) {
+  // BuiltBar | ContractRollBoundary
+}
+```
+
+The builder never buffers a full file. It processes one record at a time and
+emits either a `BuiltBar` or a `ContractRollBoundary`.
+
+### Roll handling
+
+Concrete contract change is detected mechanically from stream identity:
+
+- `instrument_id` first
+- definition-record enrichment when available
+
+On roll:
+
+1. the current accumulator closes before the first new-contract record is used
+2. the old bar is emitted if active
+3. a `ContractRollBoundary` is emitted
+4. a fresh accumulator starts for the new contract
+
+No `BuiltBar` may contain records from more than one concrete contract.
+
+Time bars remain UTC wall-clock aligned through `deriveTimeBucket(...)`. If a
+roll lands inside a bucket, the bucket is split into two contract-isolated
+partial bars sharing the same bucket boundaries. Event bars (tick, volume,
+dollar) reset their accumulators at roll and carry no state across contracts.
+
+### Input capability rules
+
+Supported:
+
+- trade records -> time bars
+- trade records -> tick / volume / dollar bars
+- `ohlcv-1m` -> 1m passthrough
+- `ohlcv-1m` -> coarser time-bar aggregation
+
+Rejected:
+
+- subminute time bars from `ohlcv-1m` only
+- tick / volume / dollar bars from `ohlcv-1m` only
+- any `ohlcv-1m` aggregation that would need to split a source aggregate across
+  an intra-bucket roll
+
+Dollar-bar thresholds are interpreted using the same fixed-point scale as DBN
+price storage, with deterministic integer accumulation:
+
+```typescript
+notional += price * BigInt(size);
+```
+
+No floating-point accumulation is used in the builder.
+
+### Provenance fields
+
+Every emitted `BuiltBar` carries:
+
+- `manifest_symbol_check`
+- `source_metadata`
+- `open_reason`
+- `close_reason`
+- `is_complete`
+- `roll_boundary_id`
+
+Use `quality_flags` only for objective provenance:
+
+- `definition_missing`
+- `manifest_unverified`
+- `ohlcv_source`
+- `calendar_roll_fallback`

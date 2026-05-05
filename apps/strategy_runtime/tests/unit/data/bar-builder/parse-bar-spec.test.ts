@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ns } from '../../../../src/contracts/time.js';
+import { deriveBarToken } from '../../../../src/contracts/run-id.js';
 import { parseBarSpec, timeBarSpecDurationNs } from '../../../../src/data/bar-builder/bar-spec.js';
 
 /**
@@ -41,5 +42,12 @@ describe('QFA-104 parseBarSpec', () => {
       throw new Error('expected time bar');
     }
     expect(timeBarSpecDurationNs(parsed)).toEqual(ns('300000000000'));
+  });
+
+  it('keeps parseBarSpec tokenization in parity with deriveBarToken', () => {
+    const specs = ['1m', '5m', '1h', '30s', 'tick:ticks:100', 'tick:volume:1000', 'tick:dollar:50000'];
+    for (const spec of specs) {
+      expect(parseBarSpec(spec).token).toBe(deriveBarToken(spec));
+    }
   });
 });
