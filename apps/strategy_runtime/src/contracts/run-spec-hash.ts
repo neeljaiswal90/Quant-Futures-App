@@ -19,8 +19,8 @@
  *   1. validateRunSpec() runs first; throws RunSpecValidationError on bad input
  *   2. bigint anywhere → throw (defense-in-depth; validation catches first)
  *   3. non-finite numbers → throw
- *   4. undefined values dropped from objects (defensive; RunSpec has no optional
- *      fields by design)
+ *   4. undefined values throw (consistent with Q-3 reject-don't-coerce; RunSpec
+ *      has no optional fields by design, so undefined indicates a bug)
  *   5. object keys sorted lexicographically (RFC 8785)
  *   6. array element order preserved (RFC 8785)
  *   7. no insignificant whitespace
@@ -84,9 +84,7 @@ function canonicalizeValue(value: unknown, path: string): string {
   }
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    const keys = Object.keys(record)
-      .filter((key) => record[key] !== undefined)
-      .sort();
+    const keys = Object.keys(record).sort();
     const parts = keys.map((key) => {
       const childPath = `${path}.${key}`;
       const child = canonicalizeValue(record[key], childPath);

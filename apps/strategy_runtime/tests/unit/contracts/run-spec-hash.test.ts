@@ -157,6 +157,25 @@ describe('QFA-115 canonicalizeRunSpec — defense-in-depth', () => {
     spec.determinism_seed = -1;
     expect(() => canonicalizeRunSpec(spec as unknown as RunSpec)).toThrow();
   });
+
+  it('throws if an undefined property is present in the RunSpec object graph', () => {
+    // Deliberately violate the type to test the runtime guard. RunSpec has no
+    // optional fields by design; an undefined property indicates a bug.
+    const spec = {
+      ...buildMinimalRunSpec(),
+      extra_runtime_field: undefined,
+    } as unknown as RunSpec;
+    expect(() => canonicalizeRunSpec(spec)).toThrow(/undefined|invalid/u);
+  });
+
+  it('throws if a nested undefined property is present', () => {
+    const baseline = buildMinimalRunSpec();
+    const nested = {
+      ...baseline,
+      backtest_window: { ...baseline.backtest_window, extra: undefined },
+    } as unknown as RunSpec;
+    expect(() => canonicalizeRunSpec(nested)).toThrow(/undefined|invalid/u);
+  });
 });
 
 function reverseRecordKeys(value: unknown): unknown {
