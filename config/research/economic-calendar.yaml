@@ -1,7 +1,7 @@
 version: 1
 schema_version: 1
 source: manual_curation
-editorial_notes: QFA-111 manually curates source-backed FOMC, CPI, NFP, and OPEC/OPEC+ event dates for 2010-2026. FOMC dates use Federal Reserve meeting calendars and statement pages; CPI and NFP dates use BLS archived release pages and release schedules, with ALFRED release-date downloads used as a machine-readable cross-check; OPEC/OPEC+ entries use OPEC press-release archive pages and include only major policy, ministerial, and JMMC decision events. Historical FOMC entries before the March 2013 release-time standardization and OPEC/OPEC+ events use event_time_utc: null when the official source does not publish a canonical release timestamp. The original ticket estimated roughly 700 events; the source-backed event universe contains 667 events and was not padded with lower-signal items.
+editorial_notes: Event dates curated from public release schedules (FOMC: 8 scheduled meetings/year; CPI: monthly mid-month release; NFP: first Friday of month; OPEC: ministerial decisions per OPEC press archive). FOMC events have per-event Federal Reserve URLs of the form monetary<YYYYMMDD>a.htm. CPI, NFP, and OPEC events use archive-index URLs as authoritative_source because per-event URLs were not curated; downstream consumers should treat archive URLs as 'publishing institution reference,' not as 'specific event documentation.' Per-event URL curation for CPI/NFP/OPEC tracked under future curation work (QFA-111b).
 events:
   - event_id: nfp-2010-01-08
     category: NFP
