@@ -8,10 +8,11 @@
  * Shape note: the payload extends `RunSpec` (so all RunSpec fields are
  * present in the journal verbatim) and adds two envelope-adjacent fields:
  *   - `run_spec_hash`: the canonical hash of the RunSpec (anchors lineage).
- *   - `run_started_at_ns`: bigint nanosecond timestamp captured by the
- *     runner at run start. This is the ONLY bigint field anywhere in the
- *     payload, and it lives outside the RunSpec proper so RunSpec hashing
- *     remains bigint-free (Q-3.3).
+ *   - `run_started_at_ns`: branded `UnixNs` (bigint nanoseconds) timestamp
+ *     captured by the runner at run start, following the existing
+ *     journal-event timestamp convention from `contracts/time.ts`. This is
+ *     the ONLY bigint field anywhere in the payload, and it lives outside
+ *     the RunSpec proper so RunSpec hashing remains bigint-free (Q-3.3).
  *
  * JournalEventEnvelope already owns `event_id`, `type`, `ts_ns`, `run_id`,
  * `session_id`, `schema_version`, `causation_id`, `correlation_id`, and an
@@ -24,6 +25,7 @@
  */
 
 import type { RunSpec } from './run-spec.js';
+import type { UnixNs } from './time.js';
 
 /**
  * Payload of the `BACKTEST_RUN_META` runtime event. Self-contained lineage
@@ -37,9 +39,11 @@ export interface BacktestRunMetaPayload extends RunSpec {
    */
   readonly run_spec_hash: string;
   /**
-   * Nanosecond Unix-epoch timestamp captured by the runner at run start.
-   * Envelope-adjacent: NOT part of RunSpec, NOT included in
-   * `run_spec_hash`. The only bigint field in the payload.
+   * Wall-clock timestamp at run start. Branded `UnixNs` nanoseconds following
+   * the existing journal-event timestamp convention (see `contracts/time.ts`).
+   * NOT part of `run_spec_hash` — this field lives outside RunSpec proper, in
+   * the BacktestRunMetaPayload envelope only. Construct via `ns()` from
+   * `time.ts`.
    */
-  readonly run_started_at_ns: bigint;
+  readonly run_started_at_ns: UnixNs;
 }
