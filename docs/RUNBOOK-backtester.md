@@ -381,3 +381,18 @@ Use `quality_flags` only for objective provenance:
 - `manifest_unverified`
 - `ohlcv_source`
 - `calendar_roll_fallback`
+
+## Queue synthesis
+
+QFA-105 `synthesizeQueue(...)` consumes DBN record streams, not built bars, and emits deterministic queue-synthesis outputs:
+
+- `QueueStateSnapshot` for synthesized queue state at observed price levels
+- `PassiveFillEstimate` only for caller-supplied `PassiveOrderProbe` inputs
+
+Supported modes are `mbo_reconstruction`, `mbp_proxy`, and `tbbo_trade_proxy`. `auto` mode chooses MBO first, then MBP, then TBBO+trades based on the declared input schemas. OHLCV-only and BBO-only inputs fail closed because they do not contain enough queue evidence.
+
+Passive probes are validated before use. A probe's effective timestamp is `ts_ns + latency_ns`; estimates are emitted after all market records with `ts_event <= effective_ts_ns` have been processed. Warmup probes before any usable queue state emit an unverified zero-fill placeholder instead of throwing.
+
+Passive-fill estimates use trailing observed depletion only. Future records cannot affect an estimate already emitted for an earlier probe. Queue quantities, prices, and notional-style calculations stay in bigint/fixed-scale arithmetic; fill probability is an integer ppm value from 0 to 1,000,000.
+
+Out of scope for Phase 0 queue synthesis: persistent order lifecycle, cancel/replace handling, slippage, stochastic latency, live or paper execution, journal events, operational telemetry, health checks, and production alerting.
