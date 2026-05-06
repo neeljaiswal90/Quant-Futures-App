@@ -8,4 +8,5 @@ export * from './dbn-types.js';
 export * from './parquet-cache-read.js';
 export * from './parquet-cache-write.js';
 export * from './parquet-cache.js';
+export * from './queue-synthesis/index.js';
 export * from './parquet-schemas.js';
