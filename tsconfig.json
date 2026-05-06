@@ -4,6 +4,7 @@
   "include": [],
   "references": [
     { "path": "./apps/strategy_runtime" },
+    { "path": "./apps/backtester" },
     { "path": "./apps/operator_console/server" },
     { "path": "./apps/operator_console/contracts" },
     { "path": "./apps/operator_console/web" }

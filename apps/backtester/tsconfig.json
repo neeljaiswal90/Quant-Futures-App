@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../../",
+    "composite": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "../../dist/tsbuild/backtester",
+    "declarationDir": "../../dist/tsbuild/backtester",
+    "tsBuildInfoFile": "../../dist/tsbuild/backtester/tsconfig.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "references": [
+    { "path": "../strategy_runtime" }
+  ]
+}
