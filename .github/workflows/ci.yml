@@ -40,3 +40,6 @@ jobs:
 
       - name: Python syntax check
         run: npm run check:python
+
+      - name: Determinism replay gate
+        run: npm run check:determinism
