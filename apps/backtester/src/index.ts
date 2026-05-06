@@ -5,3 +5,4 @@ export * from './repro-hash/index.js';
 export * from './run-spec-builder.js';
 export * from './trade-ledger/index.js';
 export * from './types.js';
+export * from './walk-forward/index.js';
