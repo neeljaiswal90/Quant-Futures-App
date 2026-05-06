@@ -54,3 +54,21 @@ This design deliberately excludes live/paper execution behavior and journal
 event types. Later backtester work may consume queue-synthesis outputs, but any
 strategy-order lifecycle, cancel/replace behavior, stochastic latency, or
 slippage model must be introduced by a separate decision.
+
+## Session 2b driver implementation
+
+Session 2b implements the queue-synthesis driver on top of the Session 2a contract surface. The driver consumes DBN record streams directly, optionally through QFA-103 cached record sources, and emits only `QueueStateSnapshot` and caller-requested `PassiveFillEstimate` outputs. It does not accept `BuiltBar` as queue truth.
+
+The driver preserves the Session 2a bounded merge contract: records are merged by `ts_event`, schema priority, source index, and record index, with monotonicity enforced per source. The implementation keeps one-record lookahead per source and does not buffer full input streams.
+
+Passive-fill estimates are evaluated at each probe's effective timestamp after all market records with `ts_event <= effective_ts_ns` have been processed. Estimates use only trailing observed depletion within the configured lookback window; future records cannot affect an already emitted estimate. Probe streams must be monotonic by effective timestamp and fail closed if they are not.
+
+The passive-fill formula uses bigint arithmetic for queue ahead, order quantity, depletion, and horizon scaling. Probability is represented as integer ppm and converted to `number` only after the bounded bigint ppm value is in `[0, 1_000_000]`. Unknown queue ahead remains `null` and produces an unverified zero-fill estimate with `queue_ahead_unknown`.
+
+The supported modes are unchanged:
+
+- `mbo_reconstruction`: uses MBO order/action/side/price/size evidence for deterministic reconstruction, not ground-truth queue position.
+- `mbp_proxy`: uses displayed MBP levels as visible-depth proxy evidence.
+- `tbbo_trade_proxy`: uses top-of-book context plus trade depletion evidence.
+
+OHLCV-only inputs remain forbidden for queue synthesis. QFA-105 still does not model order lifecycle, cancel/replace behavior, slippage, stochastic latency, live or paper execution, or journal events.
