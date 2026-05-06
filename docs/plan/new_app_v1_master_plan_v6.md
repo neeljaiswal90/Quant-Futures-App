@@ -6,6 +6,12 @@ This is the integrated master handoff for the greenfield `Quant-futures-app` V1.
 
 This document is the planning source of truth. The authoritative ticket list is `new_app_v1_ticket_backlog_v6.csv`.
 
+Current implementation status snapshot:
+
+- Phase 0: COMPLETE.
+- Phase 0 exit gate: PASSED.
+- Current next ticket: QFA-201.
+
 ### v6 architecture decision
 
 This v6 plan incorporates the v5 acceptance-criteria/risk-control tightening review and the canonical exchange-time architecture pivot. The material changes versus v5 are:

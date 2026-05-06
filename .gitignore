@@ -11,9 +11,9 @@ coverage/
 .operator-console/
 tsconfig.tsbuildinfo
 **/*.tsbuildinfo
+reports/
 data/probes/
 data/databento/
-reports/sim/
 
 .env
 .env.*
@@ -24,6 +24,8 @@ config/secrets*.json
 config/*.secret.json
 config/sim03/session-list.yaml
 config/research/vix-series.json
+config.zip
+*.bak
 
 __pycache__/
 *.py[cod]
