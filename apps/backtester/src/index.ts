@@ -13,3 +13,4 @@ export * from './validation-report/index.js';
 export * from './walk-forward/index.js';
 export * from './fidelity/ofi/index.js';
 export * from './fidelity/queue/index.js';
+export * from './oos-replay/index.js';
