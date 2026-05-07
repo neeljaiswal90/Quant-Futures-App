@@ -4,26 +4,54 @@ import { fileURLToPath } from 'node:url';
 import {
   analyzeTradeLedger,
   buildTradeLedger,
+  buildCapabilityAssessmentSet,
+  canonicalizeReproJson,
   computeReproducibilityManifest,
+  computeStrategyFingerprintSet,
+  defaultStrategyReplayIds,
+  evaluateValidationGateSet,
+  replayStrategies,
+  sha256Utf8,
   runBacktest,
   writeReproducibilityManifest,
   REPRO_ARTIFACT_ORDER,
   type BacktestRunnerOptions,
+  type CapabilityAssessmentSet,
   type EquityMetricsOptions,
   type ReproArtifactName,
   type ReproducibilityManifest,
+  type StrategyFingerprint,
+  type StrategyFingerprintSet,
+  type StrategyReplayResult,
+  type StrategyValidationGateInput,
+  type StrategyValidationWindowInput,
+  type ValidationGateResultSet,
+  type ValidationTrialAccounting,
   type TradeLedgerInstrumentContext,
 } from '../../apps/backtester/src/index.js';
 import {
   journalEventFromJsonLine,
   type AnyJournalEventEnvelope,
 } from '../../apps/strategy_runtime/src/contracts/index.js';
+import type { StrategyId } from '../../apps/strategy_runtime/src/contracts/strategy-ids.js';
+import type { BuiltBar } from '../../apps/strategy_runtime/src/data/bar-builder/index.js';
 
 const OUTPUT_ROOT = resolve('.tmp', 'qfa-determinism-fixture');
 const MANIFEST_PATH = resolve(OUTPUT_ROOT, 'manifest.json');
 const DBN_FIXTURE = resolve('apps/strategy_runtime/tests/fixtures/dbn/trades-minimal.dbn');
 const RUN_STARTED_AT_NS = '1767365700000000000';
 const RUNNER_SHA = 'd'.repeat(40);
+// CF-20 future dispatch: readers must dispatch on this marker before treating
+// the Phase 2 artifact aggregate as qfa_phase2_determinism_artifacts_sha256_v1.
+export const PHASE2_DETERMINISM_ARTIFACTS_ALGORITHM =
+  'qfa_phase2_determinism_artifacts_sha256_v1' as const;
+
+const PHASE2_ARTIFACT_ORDER = [
+  'strategy_replay_result',
+  'strategy_fingerprint_set',
+  'capability_assessment_set',
+  'validation_gate_result_set',
+] as const;
 
 const INSTRUMENT_CONTEXT: TradeLedgerInstrumentContext = {
   instrument_id: 1,
@@ -39,22 +67,50 @@ const EQUITY_OPTIONS: EquityMetricsOptions = {
   },
 };
 
+type Phase2DeterminismArtifactName = (typeof PHASE2_ARTIFACT_ORDER)[number];
+
+interface Phase2DeterminismArtifactHashes {
+  readonly strategy_replay_result: string;
+  readonly strategy_fingerprint_set: string;
+  readonly capability_assessment_set: string;
+  readonly validation_gate_result_set: string;
+}
+
+interface Phase2DeterminismArtifacts {
+  readonly strategy_replay_result: StrategyReplayResult;
+  readonly strategy_fingerprint_set: StrategyFingerprintSet;
+  readonly capability_assessment_set: CapabilityAssessmentSet;
+  readonly validation_gate_result_set: ValidationGateResultSet;
+}
+
+export interface Phase2DeterminismSummary {
+  readonly artifact_hashes: Phase2DeterminismArtifactHashes;
+  readonly final_phase2_hash: string;
+}
+
 export interface DeterminismRunSummary {
   readonly label: 'A' | 'B';
   readonly run_id: string;
   readonly run_spec_hash: string;
   readonly final_chain_hash: string;
+  readonly final_phase2_hash: string;
   readonly event_count: number;
   readonly journal_path: string;
   readonly manifest_path: string;
   readonly manifest: ReproducibilityManifest;
+  readonly phase2: Phase2DeterminismSummary;
 }
 
 export interface DeterminismComparison {
   readonly equal: boolean;
+  readonly chain_equal: boolean;
+  readonly phase2_equal: boolean;
   readonly left_final_chain_hash: string;
   readonly right_final_chain_hash: string;
+  readonly left_final_phase2_hash: string;
+  readonly right_final_phase2_hash: string;
   readonly differing_artifacts: readonly ReproArtifactName[];
+  readonly differing_phase2_artifacts: readonly Phase2DeterminismArtifactName[];
 }
 
 export interface DeterminismCheckResult {
@@ -65,6 +121,7 @@ export interface DeterminismCheckResult {
 
 export interface DeterminismCheckOptions {
   readonly force_mismatch_for_test?: boolean;
+  readonly force_phase2_mismatch_for_test?: boolean;
 }
 
 export async function runDeterminismCheck(
@@ -75,15 +132,42 @@ export async function runDeterminismCheck(
 
   const runA = await runFixture('A');
   const rawRunB = await runFixture('B');
-  const runB = options.force_mismatch_for_test
+  const chainRunB = options.force_mismatch_for_test
     ? forceMismatchForTest(rawRunB)
     : rawRunB;
-  const comparison = compareDeterminismManifests(runA.manifest, runB.manifest);
+  const runB = options.force_phase2_mismatch_for_test
+    ? forcePhase2MismatchForTest(chainRunB)
+    : chainRunB;
+  const comparison = compareDeterminismRuns(runA, runB);
 
   return {
     run_a: runA,
     run_b: runB,
     comparison,
+  };
+}
+
+export function compareDeterminismRuns(
+  left: DeterminismRunSummary,
+  right: DeterminismRunSummary,
+): DeterminismComparison {
+  const manifestComparison = compareDeterminismManifests(left.manifest, right.manifest);
+  const differingPhase2Artifacts = PHASE2_ARTIFACT_ORDER.filter(
+    (artifactName) =>
+      left.phase2.artifact_hashes[artifactName] !== right.phase2.artifact_hashes[artifactName],
+  );
+  const phase2Equal = left.final_phase2_hash === right.final_phase2_hash;
+
+  return {
+    equal: manifestComparison.equal && phase2Equal,
+    chain_equal: manifestComparison.equal,
+    phase2_equal: phase2Equal,
+    left_final_chain_hash: left.final_chain_hash,
+    right_final_chain_hash: right.final_chain_hash,
+    left_final_phase2_hash: left.final_phase2_hash,
+    right_final_phase2_hash: right.final_phase2_hash,
+    differing_artifacts: manifestComparison.differing_artifacts,
+    differing_phase2_artifacts: differingPhase2Artifacts,
   };
 }
 
@@ -100,9 +184,14 @@ export function compareDeterminismManifests(
 
   return {
     equal: left.final_chain_hash === right.final_chain_hash,
+    chain_equal: left.final_chain_hash === right.final_chain_hash,
+    phase2_equal: true,
     left_final_chain_hash: left.final_chain_hash,
     right_final_chain_hash: right.final_chain_hash,
+    left_final_phase2_hash: '',
+    right_final_phase2_hash: '',
     differing_artifacts: differingArtifacts,
+    differing_phase2_artifacts: [],
   };
 }
 
@@ -118,6 +207,18 @@ export function formatDeterminismMismatch(comparison: DeterminismComparison): st
   ].join('\n');
 }
 
+export function formatPhase2DeterminismMismatch(comparison: DeterminismComparison): string {
+  const differing = comparison.differing_phase2_artifacts.length === 0
+    ? 'none'
+    : comparison.differing_phase2_artifacts.join(', ');
+  return [
+    'QFA Phase 2 determinism check failed: artifact hashes differ',
+    `run A final_phase2_hash: ${comparison.left_final_phase2_hash}`,
+    `run B final_phase2_hash: ${comparison.right_final_phase2_hash}`,
+    `differing Phase 2 artifacts: ${differing}`,
+  ].join('\n');
+}
+
 async function runFixture(label: 'A' | 'B'): Promise<DeterminismRunSummary> {
   const outputDir = resolve(OUTPUT_ROOT, `run-${label}`, 'out');
   const cacheRoot = resolve(OUTPUT_ROOT, `run-${label}`, 'cache');
@@ -128,6 +229,7 @@ async function runFixture(label: 'A' | 'B'): Promise<DeterminismRunSummary> {
     run_id: result.run_id,
     instrument_context: INSTRUMENT_CONTEXT,
   });
+  const phase2 = await computePhase2DeterminismSummary(events);
   const analysis = analyzeTradeLedger(tradeLedger, EQUITY_OPTIONS);
   const manifest = computeReproducibilityManifest({
     run_id: result.run_id,
@@ -146,10 +248,12 @@ async function runFixture(label: 'A' | 'B'): Promise<DeterminismRunSummary> {
     run_id: result.run_id,
     run_spec_hash: result.run_spec_hash,
     final_chain_hash: manifest.final_chain_hash,
+    final_phase2_hash: phase2.final_phase2_hash,
     event_count: result.event_count,
     journal_path: result.journal_path,
     manifest_path: manifestPath,
     manifest,
+    phase2,
   };
 }
 
@@ -181,6 +285,223 @@ function parseJournalEvents(journalJsonl: string): AnyJournalEventEnvelope[] {
     .split('\n')
     .filter((line) => line.length > 0)
     .map((line) => journalEventFromJsonLine(line) as AnyJournalEventEnvelope);
+}
+
+async function computePhase2DeterminismSummary(
+  events: readonly AnyJournalEventEnvelope[],
+): Promise<Phase2DeterminismSummary> {
+  const strategyOrder = defaultStrategyReplayIds();
+  const strategyReplayResult = await replayStrategies({
+    strategy_ids: strategyOrder,
+    bars: replayBarsFromJournal(events),
+  });
+  const strategyFingerprintSet = computeStrategyFingerprintSet(
+    strategyReplayResult.evaluations,
+    strategyOrder,
+  );
+  const capabilityAssessmentSet = buildCapabilityAssessmentSet(
+    strategyReplayResult,
+    strategyFingerprintSet,
+    { strategy_order: strategyOrder },
+  );
+  const validationGateResultSet = evaluateValidationGateSet(
+    buildValidationGateInputs(strategyOrder, strategyFingerprintSet, capabilityAssessmentSet),
+    undefined,
+    strategyOrder,
+  );
+  return hashPhase2Artifacts({
+    strategy_replay_result: strategyReplayResult,
+    strategy_fingerprint_set: strategyFingerprintSet,
+    capability_assessment_set: capabilityAssessmentSet,
+    validation_gate_result_set: validationGateResultSet,
+  });
+}
+
+function hashPhase2Artifacts(
+  artifacts: Phase2DeterminismArtifacts,
+): Phase2DeterminismSummary {
+  const artifactHashes: Phase2DeterminismArtifactHashes = {
+    strategy_replay_result: hashCanonicalArtifact(artifacts.strategy_replay_result),
+    strategy_fingerprint_set: hashCanonicalArtifact(artifacts.strategy_fingerprint_set),
+    capability_assessment_set: hashCanonicalArtifact(artifacts.capability_assessment_set),
+    validation_gate_result_set: hashCanonicalArtifact(artifacts.validation_gate_result_set),
+  };
+  const finalHashInput = [
+    PHASE2_DETERMINISM_ARTIFACTS_ALGORITHM,
+    ...PHASE2_ARTIFACT_ORDER.map((name) => `${name}=${artifactHashes[name]}`),
+  ].join('\n') + '\n';
+
+  return {
+    artifact_hashes: artifactHashes,
+    final_phase2_hash: sha256Utf8(finalHashInput),
+  };
+}
+
+function hashCanonicalArtifact(value: unknown): string {
+  return sha256Utf8(canonicalizeReproJson(value));
+}
+
+function replayBarsFromJournal(events: readonly AnyJournalEventEnvelope[]): readonly BuiltBar[] {
+  return events
+    .filter((event) => event.type === 'BAR_CLOSE')
+    .map((event, index) => {
+      const payload = event.payload as Record<string, unknown>;
+      const barSpec = timeframeToBarSpec(String(payload.timeframe));
+      return {
+        type: 'bar',
+        bar_id: `journal-bar-${(index + 1).toString().padStart(3, '0')}`,
+        instrument_root: 'MNQ',
+        instrument_id: INSTRUMENT_CONTEXT.instrument_id,
+        raw_symbol: INSTRUMENT_CONTEXT.raw_symbol,
+        bar_spec: barSpec,
+        open_reason: index === 0 ? 'stream_start' : 'bar_boundary',
+        close_reason: 'bar_boundary',
+        is_complete: true,
+        roll_boundary_id: null,
+        manifest_symbol_check: {
+          manifest_symbol: 'MNQ',
+          expectation_type: 'root',
+          status: 'matched',
+          message: 'fixture manifest symbol matches replay sanity root',
+        },
+        source_metadata: {
+          corpus_tier: null,
+          input_schemas: ['trades'],
+          construction_method: 'trade_aggregation',
+          contract_identity_source: 'raw_symbol',
+          quality_flags: [],
+        },
+        bucket_start_ts_ns: toBigInt(payload.start_ts_ns, 'BAR_CLOSE.start_ts_ns'),
+        bucket_end_ts_ns: toBigInt(payload.end_ts_ns, 'BAR_CLOSE.end_ts_ns'),
+        first_record_ts_ns: toBigInt(
+          payload.exchange_event_ts_ns ?? payload.start_ts_ns,
+          'BAR_CLOSE.exchange_event_ts_ns',
+        ),
+        last_record_ts_ns: toBigInt(
+          payload.exchange_event_ts_ns ?? event.ts_ns,
+          'BAR_CLOSE.exchange_event_ts_ns',
+        ),
+        open: toBigInt(payload.open, 'BAR_CLOSE.open'),
+        high: toBigInt(payload.high, 'BAR_CLOSE.high'),
+        low: toBigInt(payload.low, 'BAR_CLOSE.low'),
+        close: toBigInt(payload.close, 'BAR_CLOSE.close'),
+        volume: toBigInt(payload.volume, 'BAR_CLOSE.volume'),
+      } satisfies BuiltBar;
+    });
+}
+
+function buildValidationGateInputs(
+  strategyOrder: readonly StrategyId[],
+  fingerprintSet: StrategyFingerprintSet,
+  capabilitySet: CapabilityAssessmentSet,
+): readonly StrategyValidationGateInput[] {
+  return strategyOrder.map((strategyId) => {
+    const fingerprint = findFingerprint(fingerprintSet, strategyId);
+    return {
+      strategy_id: strategyId,
+      capability_assessment: findAssessment(capabilitySet, strategyId),
+      fingerprint,
+      session_order: validationSessionOrder(),
+      windows: validationWindows(strategyId, fingerprint),
+      trial_accounting: validationTrialAccounting(strategyId),
+    };
+  });
+}
+
+function findFingerprint(
+  fingerprintSet: StrategyFingerprintSet,
+  strategyId: StrategyId,
+): StrategyFingerprint | null {
+  return fingerprintSet.fingerprints.find((fingerprint) => fingerprint.strategy_id === strategyId) ?? null;
+}
+
+function findAssessment(
+  capabilitySet: CapabilityAssessmentSet,
+  strategyId: StrategyId,
+): CapabilityAssessmentSet['assessments'][number] {
+  const assessment = capabilitySet.assessments.find((candidate) => candidate.strategy_id === strategyId);
+  if (assessment === undefined) {
+    throw new Error(`missing capability assessment for ${strategyId}`);
+  }
+  return assessment;
+}
+
+function validationSessionOrder(): readonly string[] {
+  return [
+    '2026-02-02-test-00',
+    '2026-02-02-test-01',
+    '2026-02-02-test-02',
+    '2026-02-02-test-03',
+    '2026-02-02-test-04',
+    '2026-02-02-test-05',
+    '2026-02-02-test-06',
+    '2026-02-02-test-07',
+    '2026-02-02-test-08',
+  ];
+}
+
+function validationWindows(
+  strategyId: StrategyId,
+  fingerprint: StrategyFingerprint | null,
+): readonly StrategyValidationWindowInput[] {
+  const fingerprintSha256 = fingerprint?.fingerprint_sha256 ?? '0'.repeat(64);
+  const sessions = validationSessionOrder();
+  return Array.from({ length: 8 }, (_, index) => {
+    const sequence = index + 1;
+    return {
+      strategy_id: strategyId,
+      window_id: `${strategyId}-determinism-test-${sequence.toString().padStart(2, '0')}`,
+      sequence,
+      role: 'test',
+      start_session: sessions[index]!,
+      end_session: sessions[index + 1]!,
+      start_index: index,
+      end_index: index + 1,
+      total_trades: 10,
+      gross_profit_cents: 2_000n,
+      gross_loss_cents: -1_000n,
+      net_pnl_cents: 1_000n,
+      profit_factor_ppm: 2_000_000,
+      max_drawdown_cents: 1_000n,
+      initial_equity_cents: 100_000n,
+      average_trade_pnl_cents: 100n,
+      win_rate_ppm: 600_000,
+      fingerprint_sha256: fingerprintSha256,
+      fingerprint_algorithm: 'qfa_strategy_fingerprint_sha256_v1',
+    };
+  });
+}
+
+function validationTrialAccounting(strategyId: StrategyId): ValidationTrialAccounting {
+  return {
+    trial_accounting_schema_version: 1,
+    strategy_id: strategyId,
+    campaign_id: 'qfa-211b-phase2-determinism',
+    raw_research_trials: 8,
+    excluded_determinism_reruns: 0,
+    manual_declared_effective_trials: 1,
+    distinct_window_fingerprint_tuples: 8,
+    effective_trial_count: 8,
+    effective_trial_scope: 'campaign',
+    effective_trial_method: 'max_of_manual_and_distinct_fingerprints',
+  };
+}
+
+function timeframeToBarSpec(timeframe: string): string {
+  return timeframe === '60m' ? '1h' : timeframe;
+}
+
+function toBigInt(value: unknown, path: string): bigint {
+  if (typeof value === 'bigint') {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isSafeInteger(value)) {
+    return BigInt(value);
+  }
+  if (typeof value === 'string' && /^-?\d+$/u.test(value)) {
+    return BigInt(value);
+  }
+  throw new Error(`${path} must be an integer-compatible value`);
 }
 
 async function prepareOutputRoot(): Promise<void> {
@@ -267,15 +588,23 @@ async function main(): Promise<void> {
   try {
     const result = await runDeterminismCheck({
       force_mismatch_for_test: process.argv.includes('--force-mismatch-for-test'),
+      force_phase2_mismatch_for_test: process.argv.includes('--force-phase2-mismatch-for-test'),
     });
-    if (!result.comparison.equal) {
+    if (!result.comparison.chain_equal) {
       console.error(formatDeterminismMismatch(result.comparison));
+    }
+    if (!result.comparison.phase2_equal) {
+      console.error(formatPhase2DeterminismMismatch(result.comparison));
+    }
+    if (!result.comparison.equal) {
       process.exitCode = 1;
       return;
     }
     console.log('QFA determinism check passed');
     console.log(`run A final_chain_hash: ${result.run_a.final_chain_hash}`);
     console.log(`run B final_chain_hash: ${result.run_b.final_chain_hash}`);
+    console.log(`run A final_phase2_hash: ${result.run_a.final_phase2_hash}`);
+    console.log(`run B final_phase2_hash: ${result.run_b.final_phase2_hash}`);
     console.log(`events per run: ${result.run_a.event_count}`);
     console.log(`manifest A: ${result.run_a.manifest_path}`);
     console.log(`manifest B: ${result.run_b.manifest_path}`);
@@ -317,3 +646,19 @@ function forceMismatchForTest(summary: DeterminismRunSummary): DeterminismRunSum
     manifest,
   };
 }
+
+function forcePhase2MismatchForTest(summary: DeterminismRunSummary): DeterminismRunSummary {
+  const phase2: Phase2DeterminismSummary = {
+    artifact_hashes: {
+      ...summary.phase2.artifact_hashes,
+      strategy_replay_result: 'e'.repeat(64),
+    },
+    final_phase2_hash: 'e'.repeat(64),
+  };
+  return {
+    ...summary,
+    final_phase2_hash: phase2.final_phase2_hash,
+    phase2,
+  };
+}
+
