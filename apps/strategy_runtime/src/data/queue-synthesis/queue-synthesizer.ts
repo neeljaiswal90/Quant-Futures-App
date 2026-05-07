@@ -19,12 +19,14 @@ import {
   aggressorSideToDepletedBookSide,
   isDefinitionRecord,
   isMboRecord,
+  isMbp1Record,
   isMbpRecord,
   isTbboRecord,
   isTradesRecord,
   resolveQueueContractIdentity,
   toKnownQueueContract,
   type KnownQueueContract,
+  type QueueContractIdentity,
   type TradeDepletionEvidence,
 } from './record-adapter.js';
 import {
@@ -98,26 +100,40 @@ function applyMarketRecord(
     return state.applyMbp(record, identity);
   }
 
+  if (mode === 'mbp_trades_proxy' && isMbp1Record(record)) {
+    return state.applyMbp(record, identity);
+  }
+
+  if (mode === 'mbp_trades_proxy' && isTradesRecord(record)) {
+    return applyTradeDepletionRecord(record, identity.raw_symbol, identity, state, depletionEvents);
+  }
+
   if (mode === 'tbbo_trade_proxy' && isTbboRecord(record)) {
-    const outputs = state.applyTbbo(record, identity);
-    const tradeDepletion = toTradeDepletion(record, identity.raw_symbol);
-    if (tradeDepletion !== null) {
-      depletionEvents.push(tradeDepletion);
-      outputs.push(state.applyTradeDepletion({ ...tradeDepletion, identity }));
-    }
+    const outputs: QueueSynthesisOutput[] = state.applyTbbo(record, identity);
+    outputs.push(...applyTradeDepletionRecord(record, identity.raw_symbol, identity, state, depletionEvents));
     return outputs;
   }
 
   if (mode === 'tbbo_trade_proxy' && isTradesRecord(record)) {
-    const tradeDepletion = toTradeDepletion(record, identity.raw_symbol);
-    if (tradeDepletion === null) {
-      return [];
-    }
-    depletionEvents.push(tradeDepletion);
-    return [state.applyTradeDepletion({ ...tradeDepletion, identity })];
+    return applyTradeDepletionRecord(record, identity.raw_symbol, identity, state, depletionEvents);
   }
 
   return [];
+}
+
+function applyTradeDepletionRecord(
+  record: Extract<DbnRecord, { schema: 'trades' | 'tbbo' }>,
+  rawSymbol: string | null,
+  identity: QueueContractIdentity,
+  state: QueueSynthesisState,
+  depletionEvents: TradeDepletionEvidence[],
+): QueueSynthesisOutput[] {
+  const tradeDepletion = toTradeDepletion(record, rawSymbol);
+  if (tradeDepletion === null) {
+    return [];
+  }
+  depletionEvents.push(tradeDepletion);
+  return [state.applyTradeDepletion({ ...tradeDepletion, identity })];
 }
 
 function assertSupportedQueueRecord(record: DbnRecord): void {

@@ -21,6 +21,11 @@ describe('QFA-105 resolveQueueSynthesisMode', () => {
     expect(resolveQueueSynthesisMode(['mbp-1'], 'auto')).toBe('mbp_proxy');
   });
 
+  it('auto selects mbp_trades_proxy when mbp-1 and trades are present', () => {
+    expect(resolveQueueSynthesisMode(['mbp-1', 'trades'], 'auto')).toBe('mbp_trades_proxy');
+    expect(resolveQueueSynthesisMode(['mbp-10', 'mbp-1', 'trades'], 'auto')).toBe('mbp_trades_proxy');
+  });
+
   it('auto selects tbbo_trade_proxy when tbbo and trades are present', () => {
     expect(resolveQueueSynthesisMode(['tbbo', 'trades'], 'auto')).toBe('tbbo_trade_proxy');
   });
@@ -45,6 +50,12 @@ describe('QFA-105 resolveQueueSynthesisMode', () => {
 
   it('rejects explicit modes unsupported by the input schemas', () => {
     expect(() => resolveQueueSynthesisMode(['trades', 'tbbo'], 'mbp_proxy')).toThrow(
+      /unsupported_input_schema/,
+    );
+    expect(() => resolveQueueSynthesisMode(['mbp-1'], 'mbp_trades_proxy')).toThrow(
+      /unsupported_input_schema/,
+    );
+    expect(() => resolveQueueSynthesisMode(['trades'], 'mbp_trades_proxy')).toThrow(
       /unsupported_input_schema/,
     );
   });
