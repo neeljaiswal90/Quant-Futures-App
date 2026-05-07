@@ -11,3 +11,4 @@ export * from './types.js';
 export * from './validation-gate/index.js';
 export * from './validation-report/index.js';
 export * from './walk-forward/index.js';
+export * from './fidelity/ofi/index.js';
