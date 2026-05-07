@@ -9,4 +9,5 @@ export * from './strategy-replay/index.js';
 export * from './trade-ledger/index.js';
 export * from './types.js';
 export * from './validation-gate/index.js';
+export * from './validation-report/index.js';
 export * from './walk-forward/index.js';
