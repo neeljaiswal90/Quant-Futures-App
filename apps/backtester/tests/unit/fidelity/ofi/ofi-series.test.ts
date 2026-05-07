@@ -155,10 +155,10 @@ describe('QFA-401 Tier A archive inventory', () => {
   const archiveRoot = 'D:/qfa-cache/databento/tier-a-feb-mar-2026';
   const archiveIt = existsSync(archiveRoot) ? it : it.skip;
 
-  archiveIt('documents the locked schema correction: TBBO absent, MBP-10/MBP-1/trades present', () => {
+  archiveIt('documents the current Tier A schema inventory: TBBO present, QFA-401 uses MBP-10/MBP-1/trades', () => {
     const expected = new Map([
-      ['manifest-feb-2026.json', 'ba24ce7ab4fdd964a97e960eab0d8e89b5298f2bb4986d8afc332c5682d58dbe'],
-      ['manifest-mar-2026.json', 'a2c65f2bd8afbb3567a132cd7a26d4c13c4b4345dbcb62ec471f1a46ee78606a'],
+      ['manifest-feb-2026.json', '05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c'],
+      ['manifest-mar-2026.json', 'cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f'],
     ]);
 
     for (const [manifestName, expectedHash] of expected) {
@@ -168,8 +168,8 @@ describe('QFA-401 Tier A archive inventory', () => {
       const manifest = JSON.parse(content.toString('utf8')) as { readonly event_schemas: readonly string[] };
 
       expect(actualHash).toBe(expectedHash);
-      expect(manifest.event_schemas).toEqual(['trades', 'mbp-1', 'mbp-10', 'mbo']);
-      expect(manifest.event_schemas).not.toContain('tbbo');
+      expect(manifest.event_schemas).toEqual(['mbo', 'mbp-1', 'mbp-10', 'tbbo', 'trades']);
+      expect(manifest.event_schemas).toEqual(expect.arrayContaining(['mbp-10', 'mbp-1', 'trades']));
     }
   });
 });

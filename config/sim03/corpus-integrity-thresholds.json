@@ -35,6 +35,11 @@
       "min_byte_count": 3196200,
       "observed_min_byte_count": 6392401,
       "floor_derivation": "50_percent_of_observed_min"
+    },
+    "tbbo": {
+      "min_byte_count": 54,
+      "observed_min_byte_count": 109,
+      "floor_derivation": "50_percent_of_observed_min_including_2026-03-20_expiry_migration_anomaly"
     }
   }
 }
