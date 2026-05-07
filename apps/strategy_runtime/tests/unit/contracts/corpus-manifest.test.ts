@@ -44,12 +44,13 @@ describe('QFA-101 corpus manifest contract', () => {
         expect(manifest.manifest_schema_version).toBe(1);
         expect(manifest.ticket_id).toBe('SIM-03A-1');
         expect(manifest.sessions.length).toBeGreaterThan(0);
-        expect(manifest.event_schemas).toEqual(['trades', 'mbp-1', 'mbp-10', 'mbo']);
+        expect(manifest.event_schemas).toEqual(['mbo', 'mbp-1', 'mbp-10', 'tbbo', 'trades']);
         expect(Object.keys(manifest.sessions[0].schemas).sort()).toEqual([
           'definition',
           'mbo',
           'mbp-1',
           'mbp-10',
+          'tbbo',
           'trades',
         ]);
       }
