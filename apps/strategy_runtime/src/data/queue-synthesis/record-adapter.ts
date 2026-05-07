@@ -42,6 +42,10 @@ export function isMbpRecord(record: DbnRecord): record is DbnMbp1Record | DbnMbp
   return record.schema === 'mbp-1' || record.schema === 'mbp-10';
 }
 
+export function isMbp1Record(record: DbnRecord): record is DbnMbp1Record {
+  return record.schema === 'mbp-1';
+}
+
 export function isTbboRecord(record: DbnRecord): record is DbnTbboRecord {
   return record.schema === 'tbbo';
 }

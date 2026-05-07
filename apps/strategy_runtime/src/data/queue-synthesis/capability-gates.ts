@@ -28,11 +28,14 @@ export function resolveQueueSynthesisMode(
   if (inputSchemas.includes('mbo')) {
     return 'mbo_reconstruction';
   }
-  if (inputSchemas.includes('mbp-10') || inputSchemas.includes('mbp-1')) {
-    return 'mbp_proxy';
+  if (inputSchemas.includes('mbp-1') && inputSchemas.includes('trades')) {
+    return 'mbp_trades_proxy';
   }
   if (inputSchemas.includes('tbbo') && inputSchemas.includes('trades')) {
     return 'tbbo_trade_proxy';
+  }
+  if (inputSchemas.includes('mbp-10') || inputSchemas.includes('mbp-1')) {
+    return 'mbp_proxy';
   }
 
   throwUnsupportedMode(inputSchemas, 'auto');
@@ -105,6 +108,8 @@ function modeSupported(
       return inputSchemas.includes('mbo');
     case 'mbp_proxy':
       return inputSchemas.includes('mbp-10') || inputSchemas.includes('mbp-1');
+    case 'mbp_trades_proxy':
+      return inputSchemas.includes('mbp-1') && inputSchemas.includes('trades');
     case 'tbbo_trade_proxy':
       return inputSchemas.includes('tbbo') && inputSchemas.includes('trades');
   }

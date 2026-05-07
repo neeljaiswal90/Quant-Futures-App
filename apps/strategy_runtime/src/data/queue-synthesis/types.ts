@@ -6,6 +6,7 @@ export type CorpusDataTier = DataTier;
 export type QueueSynthesisMode =
   | 'mbo_reconstruction'
   | 'mbp_proxy'
+  | 'mbp_trades_proxy'
   | 'tbbo_trade_proxy';
 
 export type FillProbabilityPpm = number;

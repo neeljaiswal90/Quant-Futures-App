@@ -238,12 +238,19 @@ export class QueueSynthesisState {
   }): PriceLevelState {
     const qualityFlags: QueueSynthesisQualityFlag[] = [...definitionQualityFlags(input.identity)];
     let confidence: QueueSynthesisConfidence =
-      this.mode === 'mbo_reconstruction' ? 'high' : this.mode === 'mbp_proxy' ? 'medium' : 'low';
+      this.mode === 'mbo_reconstruction'
+        ? 'high'
+        : this.mode === 'mbp_proxy' || this.mode === 'mbp_trades_proxy'
+          ? 'medium'
+          : 'low';
 
-    if (this.mode === 'mbp_proxy') {
+    if (this.mode === 'mbp_proxy' || this.mode === 'mbp_trades_proxy') {
       qualityFlags.push('visible_size_proxy');
     }
-    if (this.mode === 'tbbo_trade_proxy' && input.queueAhead === null) {
+    if (
+      (this.mode === 'tbbo_trade_proxy' || this.mode === 'mbp_trades_proxy')
+      && input.queueAhead === null
+    ) {
       qualityFlags.push('trade_depletion_only', 'queue_ahead_unknown');
       confidence = 'unverified';
     }
