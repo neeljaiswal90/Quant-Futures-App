@@ -75,11 +75,11 @@ After `npm ci` in the isolated worktree:
 | --- | --- |
 | `npm run build` | pass |
 | `npm run lint` | pass |
-| `npm test` | pending rerun after TBBO manifest expectation housekeeping |
+| `npm test` | pass (169 files; 1,347 passed, 1 skipped, 4 todo; 1,352 total) |
 | `npm run check:python` | pass |
 | `npm run check:determinism` | pass |
 
 Determinism closeout hashes:
 
-- `final_chain_hash`: pending rerun after TBBO manifest expectation housekeeping
-- `final_phase2_hash`: pending rerun after TBBO manifest expectation housekeeping
+- `final_chain_hash`: `c9d4982bcbcef71c02a81a6a525ac7dd14bff175e5c60142c92fe506d08354aa`
+- `final_phase2_hash`: `dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b`
