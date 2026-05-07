@@ -1,6 +1,6 @@
 # QFA-401 Real-Archive OFI Smoke
 
-Generated: 2026-05-06 21:31 PDT / 2026-05-07T04:31Z
+Generated: 2026-05-07 07:51 PDT / 2026-05-07T14:51Z
 
 Scope: QFA-401-housekeeping-1 real Tier A archive smoke against
 `D:/qfa-cache/databento/tier-a-feb-mar-2026`.
@@ -19,17 +19,17 @@ formulas or schemas.
 
 | Artifact | SHA-256 | Expected | Status |
 | --- | --- | --- | --- |
-| `manifest-feb-2026.json` | `ba24ce7ab4fdd964a97e960eab0d8e89b5298f2bb4986d8afc332c5682d58dbe` | `ba24ce7ab4fdd964a97e960eab0d8e89b5298f2bb4986d8afc332c5682d58dbe` | pass |
-| `manifest-mar-2026.json` | `a2c65f2bd8afbb3567a132cd7a26d4c13c4b4345dbcb62ec471f1a46ee78606a` | `a2c65f2bd8afbb3567a132cd7a26d4c13c4b4345dbcb62ec471f1a46ee78606a` | pass |
+| `manifest-feb-2026.json` | `05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c` | `05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c` | pass |
+| `manifest-mar-2026.json` | `cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f` | `cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f` | pass |
 
-Both manifests report event schemas `trades`, `mbp-1`, `mbp-10`, `mbo`; `tbbo` is absent.
+Both current manifests report event schemas `mbo`, `mbp-1`, `mbp-10`, `tbbo`, `trades`. QFA-401 uses only `mbp-10`, `mbp-1`, and `trades`; `tbbo` is present but out of scope for this smoke.
 
 Verified report hashes captured for traceability:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `verified-feb-2026.json` | `2fb89dcd871a4c4bb2bee335bf415be72a4a91a2ce8b35def89d504d1e87205c` |
-| `verified-mar-2026.json` | `c8402682c8d375571a9a17e251dda67947f8b1cdfb9bfd9ff5bf5cd0fc2750f5` |
+| `verified-feb-2026.json` | `9ca2b49b423303f115ed3ae39d86cfbad7f8231b89de6db91c9cb75856168af6` |
+| `verified-mar-2026.json` | `a72e662519cf7cfa30db251675b2f609b8b3e4ee081813a06637c1723b52c701` |
 
 ## Method
 
@@ -66,8 +66,8 @@ Threshold: `pearson_r_ppm >= 850_000`.
 
 | Session | Symbol | Split | Scope | Window seconds | MBP-10 records | MBP-1 records | Trades records | Reference buckets | Synthesized buckets | Aligned buckets | pearson_r_ppm | Status | Runtime |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |
-| `2026-02-25-rth` | `MNQH6` | calibration | partial RTH prefix | 360 | 1,082,115 | 822,446 | 34,350 | 360 | 360 | 360 | 896,600 | pass | 5,554 ms |
-| `2026-03-19-rth` | `MNQH6` | calibration | partial RTH prefix | 360 | 304,781 | 200,827 | 3,668 | 360 | 360 | 360 | 690,691 | fail | 1,544 ms |
+| `2026-02-25-rth` | `MNQH6` | calibration | partial RTH prefix | 360 | 1,082,115 | 822,446 | 34,350 | 360 | 360 | 360 | 896,600 | pass | 5,478 ms |
+| `2026-03-19-rth` | `MNQH6` | calibration | partial RTH prefix | 360 | 304,781 | 200,827 | 3,668 | 360 | 360 | 360 | 690,691 | fail | 1,517 ms |
 
 Both completed runs reported:
 

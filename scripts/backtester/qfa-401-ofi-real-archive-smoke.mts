@@ -13,10 +13,10 @@ import type { DbnRecord } from '../../apps/strategy_runtime/src/data/dbn-types.j
 const DEFAULT_ARCHIVE_ROOT = 'D:/qfa-cache/databento/tier-a-feb-mar-2026';
 const DEFAULT_SESSIONS = ['2026-02-25-rth', '2026-03-19-rth'] as const;
 const EXPECTED_MANIFEST_HASHES = Object.freeze({
-  'manifest-feb-2026.json': 'ba24ce7ab4fdd964a97e960eab0d8e89b5298f2bb4986d8afc332c5682d58dbe',
-  'manifest-mar-2026.json': 'a2c65f2bd8afbb3567a132cd7a26d4c13c4b4345dbcb62ec471f1a46ee78606a',
+  'manifest-feb-2026.json': '05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c',
+  'manifest-mar-2026.json': 'cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f',
 });
-const EXPECTED_SCHEMAS = ['trades', 'mbp-1', 'mbp-10', 'mbo'] as const;
+const EXPECTED_SCHEMAS = ['mbo', 'mbp-1', 'mbp-10', 'tbbo', 'trades'] as const;
 const ONE_SECOND_NS = 1_000_000_000n;
 
 type MonthManifestName = keyof typeof EXPECTED_MANIFEST_HASHES;
