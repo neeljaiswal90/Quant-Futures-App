@@ -42,7 +42,7 @@ def verify_corpus(request: VerifyRequest) -> dict[str, Any]:
     _validate_thresholds_shape(thresholds)
 
     threshold_schemas: dict[str, Any] = thresholds["schemas"]
-    min_verified_sessions = int(thresholds.get("min_verified_sessions", 20))
+    min_verified_sessions = _min_verified_sessions(thresholds=thresholds, manifest=manifest)
     quality_exclusions = _quality_exclusions(thresholds)
 
     sessions: list[dict[str, Any]] = []
@@ -161,6 +161,17 @@ def _verify_session(
             verified_byte_count=0,
         )
 
+    quality_reason = quality_exclusions.get(session_id)
+    if quality_reason is not None:
+        return _session_report(
+            source_session=source_session,
+            status="quality_excluded",
+            quality_exclusion_reason=quality_reason,
+            schemas={},
+            failure_reasons=[],
+            verified_byte_count=0,
+        )
+
     for schema, schema_threshold in threshold_schemas.items():
         source_schema = source_schemas.get(schema)
         if not isinstance(source_schema, dict):
@@ -174,11 +185,8 @@ def _verify_session(
         else:
             failure_reasons.extend(f"{schema}: {reason}" for reason in schema_report["failure_reasons"])
 
-    quality_reason = quality_exclusions.get(session_id)
     if failure_reasons:
         status = "failed"
-    elif quality_reason is not None:
-        status = "quality_excluded"
     else:
         status = "verified"
     return _session_report(
@@ -294,6 +302,39 @@ def _validate_thresholds_shape(thresholds: dict[str, Any]) -> None:
         min_byte_count = config.get("min_byte_count")
         if not isinstance(min_byte_count, int) or min_byte_count <= 0:
             raise ValueError(f"threshold for {schema} must define positive min_byte_count")
+    month_minimums = thresholds.get("min_verified_sessions_by_month", {})
+    if not isinstance(month_minimums, dict):
+        raise ValueError("min_verified_sessions_by_month must be an object when provided")
+    for month_key, minimum in month_minimums.items():
+        if not re.fullmatch(r"\d{4}-\d{2}", str(month_key)):
+            raise ValueError(f"min_verified_sessions_by_month key {month_key} must be YYYY-MM")
+        if not isinstance(minimum, int) or minimum <= 0:
+            raise ValueError(f"min_verified_sessions_by_month for {month_key} must be a positive integer")
+
+
+def _min_verified_sessions(*, thresholds: dict[str, Any], manifest: dict[str, Any]) -> int:
+    default_minimum = int(thresholds.get("min_verified_sessions", 20))
+    month_key = _manifest_month_key(manifest)
+    month_minimums = thresholds.get("min_verified_sessions_by_month", {})
+    if month_key is not None and isinstance(month_minimums, dict):
+        configured = month_minimums.get(month_key)
+        if isinstance(configured, int):
+            return configured
+    return default_minimum
+
+
+def _manifest_month_key(manifest: dict[str, Any]) -> str | None:
+    month_keys: set[str] = set()
+    for session in manifest.get("sessions", []):
+        if not isinstance(session, dict):
+            continue
+        session_id = session.get("session_id")
+        if not isinstance(session_id, str):
+            continue
+        match = re.match(r"^(\d{4}-\d{2})-\d{2}-rth$", session_id)
+        if match is not None:
+            month_keys.add(match.group(1))
+    return next(iter(month_keys)) if len(month_keys) == 1 else None
 
 
 def _quality_exclusions(thresholds: dict[str, Any]) -> dict[str, str]:
