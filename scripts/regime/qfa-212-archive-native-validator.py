@@ -25,6 +25,12 @@ RV_CACHE = ROOT / ".tmp/qfa-212-rv-cache.json"
 HASHES = {
     "2026-02": "05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c",
     "2026-03": "cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f",
+    "2026-04": "e37d01b3a3976f2f2614c2a85171ce4cc8b6b5ad069bf782f55285b0e7721a2c",
+}
+MANIFEST_SHORT_NAMES = {
+    "2026-02": "feb",
+    "2026-03": "mar",
+    "2026-04": "apr",
 }
 FIVE_MIN_NS = 300_000_000_000
 FULL_RTH_NS = 23_400_000_000_000
@@ -90,7 +96,7 @@ def read_snapshot() -> dict[str, Any]:
 
 def read_sessions() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for month, short in (("2026-02", "feb"), ("2026-03", "mar")):
+    for month, short in MANIFEST_SHORT_NAMES.items():
         path = ARCHIVE / f"manifest-{short}-2026.json"
         actual = sha256_file(path)
         if actual != HASHES[month]:
@@ -301,7 +307,7 @@ def build_validation(snapshot: dict[str, Any], sessions: list[dict[str, Any]], l
         },
         "secondary_basis": {
             "selected_basis": "within_window",
-            "reason": "ADR-0014: 41-session archive cannot populate rolling 60-session secondary percentile",
+            "reason": f"ADR-0014: {len(sessions)}-session archive cannot populate rolling 60-session secondary percentile with 10-session RV smoother",
             "smoother_sessions": RV_SMOOTH,
             "smoothed_available_sessions": sum(1 for label in labels if label["secondary_status"] == "available"),
             "rolling_60_available_sessions": max(0, len(sessions) - (RV_ROLLING_REQUIRED - 1)),
@@ -401,7 +407,7 @@ def render_report(snapshot: dict[str, Any], sessions: list[dict[str, Any]], labe
         "- ADR-0013 methodology applied with ADR-0014 archive-size refinement.",
         "- Primary label is VIX previous trading day close with rolling 60-session percentile.",
         "- Secondary diagnostic is MNQ RTH MBP-1 mid-quote RV, 5-minute bars, 10-session smoother.",
-        "- Secondary percentile basis is explicitly `within_window` because the archive has 41 sessions.",
+        f"- Secondary percentile basis is explicitly `within_window` because the archive has {len(sessions)} sessions, fewer than the {RV_ROLLING_REQUIRED} needed for rolling-60 RV10 percentiles.",
         "- No QFA-105, QFA-402, RunSpec, journal, corpus manifest, or determinism-gate changes.",
         "",
         "## Source inputs",
@@ -411,8 +417,7 @@ def render_report(snapshot: dict[str, Any], sessions: list[dict[str, Any]], labe
         f"- VIX rows: {snapshot['row_counts']['VIXCLS']}",
         f"- VXN rows: {snapshot['row_counts']['VXNCLS']}",
         f"- Archive sessions: {len(sessions)} ({sessions[0]['session_id']} to {sessions[-1]['session_id']})",
-        f"- Feb manifest: {HASHES['2026-02']}",
-        f"- Mar manifest: {HASHES['2026-03']}",
+        *[f"- {month} manifest: {manifest_hash}" for month, manifest_hash in HASHES.items()],
         "",
         "## Secondary basis",
         "",

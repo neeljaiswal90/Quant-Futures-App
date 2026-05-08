@@ -16,6 +16,7 @@ const tierAArchiveRoot = 'D:/qfa-cache/databento/tier-a-feb-mar-2026';
 const realManifestPaths = [
   `${tierAArchiveRoot}/manifest-feb-2026.json`,
   `${tierAArchiveRoot}/manifest-mar-2026.json`,
+  `${tierAArchiveRoot}/manifest-apr-2026.json`,
 ] as const;
 const tierAArchiveAvailable = realManifestPaths.every((path) => existsSync(path));
 const describeTierA = tierAArchiveAvailable ? describe : describe.skip;
@@ -36,15 +37,15 @@ afterEach(() => {
 
 describe('QFA-101 corpus manifest contract', () => {
   describeTierA('real Tier A manifests', () => {
-    it('loads both Tier A Python-emitted manifests without errors', () => {
+    it('loads Tier A Python-emitted manifests without errors', () => {
       for (const manifestPath of realManifestPaths) {
         expect(existsSync(manifestPath)).toBe(true);
         const manifest = loadCorpusManifest(manifestPath);
 
         expect(manifest.manifest_schema_version).toBe(1);
-        expect(manifest.ticket_id).toBe('SIM-03A-1');
+        expect(['SIM-03A-1', 'QFA-119d']).toContain(manifest.ticket_id);
         expect(manifest.sessions.length).toBeGreaterThan(0);
-        expect(manifest.event_schemas).toEqual(['mbo', 'mbp-1', 'mbp-10', 'tbbo', 'trades']);
+        expect([...manifest.event_schemas].sort()).toEqual(['mbo', 'mbp-1', 'mbp-10', 'tbbo', 'trades']);
         expect(Object.keys(manifest.sessions[0].schemas).sort()).toEqual([
           'definition',
           'mbo',
@@ -59,6 +60,7 @@ describe('QFA-101 corpus manifest contract', () => {
     it('parses all sessions from the real manifests', () => {
       const feb = loadCorpusManifest(realManifestPaths[0]);
       const mar = loadCorpusManifest(realManifestPaths[1]);
+      const apr = loadCorpusManifest(realManifestPaths[2]);
 
       expect(feb.sessions).toHaveLength(19);
       expect(feb.sessions[0]).toMatchObject({
@@ -69,6 +71,12 @@ describe('QFA-101 corpus manifest contract', () => {
       expect(mar.sessions).toHaveLength(22);
       expect(mar.sessions[0]).toMatchObject({
         session_id: '2026-03-31-rth',
+        symbol: 'MNQM6',
+        status: 'complete',
+      });
+      expect(apr.sessions).toHaveLength(21);
+      expect(apr.sessions[0]).toMatchObject({
+        session_id: '2026-04-01-rth',
         symbol: 'MNQM6',
         status: 'complete',
       });
