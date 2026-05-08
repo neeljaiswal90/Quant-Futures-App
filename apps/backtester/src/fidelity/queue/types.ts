@@ -29,7 +29,7 @@ export interface QueueFidelityPolicy extends QueueFidelityProbePolicy {
   readonly tolerance_ppm: number;
   readonly min_comparable_probes: number;
   readonly min_within_tolerance_share_ppm: number;
-  readonly synthesized_mode: 'qfa105_mbp_proxy_mbp1_only';
+  readonly synthesized_mode: 'qfa105_mbp_trades_proxy_mbp1_trades';
 }
 
 export interface QueueFidelityProbe {
@@ -83,15 +83,14 @@ export interface QueueFidelityResult {
 export const DEFAULT_QUEUE_FIDELITY_POLICY_V1: QueueFidelityPolicy = Object.freeze({
   policy_schema_version: 1,
   sample_interval: '1s',
-  fill_horizon_ns: 5_000_000_000n,
-  depletion_lookback_ns: 30_000_000_000n,
+  fill_horizon_ns: 15_000_000_000n,
+  depletion_lookback_ns: 60_000_000_000n,
   order_quantity: 1n,
   sides: Object.freeze(['buy', 'sell'] as const),
   tolerance_ppm: 100_000,
   min_comparable_probes: 300,
   min_within_tolerance_share_ppm: 800_000,
-  // QFA-402 v1 intentionally uses the existing QFA-105 MBP proxy path. Trades
-  // are present in the Tier A archive, but QFA-105 only consumes trades in the
-  // TBBO+trades mode, and TBBO is absent from the locked corpus.
-  synthesized_mode: 'qfa105_mbp_proxy_mbp1_only',
+  // ADR-0012 locks QFA-402 to QFA-105's MBP-1 + trades proxy while preserving
+  // the ADR-0011 threshold/tolerance posture.
+  synthesized_mode: 'qfa105_mbp_trades_proxy_mbp1_trades',
 });

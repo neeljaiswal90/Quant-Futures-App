@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ns } from '../../../../../strategy_runtime/src/contracts/time.js';
-import type { DbnMbp1Record } from '../../../../../strategy_runtime/src/data/dbn-types.js';
+import type {
+  DbnMbp1Record,
+  DbnTradesRecord,
+} from '../../../../../strategy_runtime/src/data/dbn-types.js';
 import {
   buildQueueFidelityResult,
   compareQueueFidelityProbe,
@@ -13,19 +16,22 @@ import {
 } from '../../../../src/fidelity/queue/index.js';
 
 describe('QFA-402 queue fidelity comparison', () => {
-  it('uses QFA-105 mbp_proxy output for the synthesized path', async () => {
-    const result = await computeSynthesizedFillEstimate(probe(), [mbp1(900n)]);
+  it('uses QFA-105 mbp_trades_proxy output for the synthesized path', async () => {
+    const result = await computeSynthesizedFillEstimate(probe(), [
+      mbp1(900n),
+      trade(950n, { aggressor_side: 'A', price: 100n, size: 30 }),
+    ]);
 
-    expect(result.synthesized_source_mode).toBe('mbp_proxy');
-    expect(result.synthesized_fill_probability_ppm).toBe(0);
+    expect(result.synthesized_source_mode).toBe('mbp_trades_proxy');
+    expect(result.synthesized_fill_probability_ppm).toBe(454_545);
   });
 
   it('keeps the synthesized adapter wired to synthesizeQueue rather than local probability math', () => {
     const source = readFileSync('apps/backtester/src/fidelity/queue/synthesized-queue.ts', 'utf8');
 
     expect(source).toContain('synthesizeQueue(');
-    expect(source).toContain("mode: 'mbp_proxy'");
-    expect(source).toContain("input_schemas: ['mbp-1']");
+    expect(source).toContain("mode: 'mbp_trades_proxy'");
+    expect(source).toContain("input_schemas: ['mbp-1', 'trades']");
   });
 
   it('computes absolute_error_ppm correctly', () => {
@@ -139,7 +145,7 @@ function synthesized(ppm: number | null): QueueFidelityProbeResult {
     reference_fill_probability_ppm: null,
     synthesized_fill_probability_ppm: ppm,
     status: ppm === null ? 'synthesized_unavailable' : 'compared',
-    synthesized_source_mode: 'mbp_proxy',
+    synthesized_source_mode: 'mbp_trades_proxy',
   };
 }
 
@@ -151,7 +157,7 @@ function compared(withinTolerance: boolean): QueueFidelityProbeResult {
     absolute_error_ppm: withinTolerance ? 100_000 : 100_001,
     within_tolerance: withinTolerance,
     status: 'compared',
-    synthesized_source_mode: 'mbp_proxy',
+    synthesized_source_mode: 'mbp_trades_proxy',
   };
 }
 
@@ -192,5 +198,18 @@ function mbp1(ts: bigint): DbnMbp1Record {
         ask_ct: 1,
       },
     ],
+  };
+}
+
+function trade(ts: bigint, overrides: Partial<DbnTradesRecord> = {}): DbnTradesRecord {
+  return {
+    schema: 'trades',
+    ts_event: ns(ts),
+    ts_recv: ns(ts),
+    instrument_id: 1,
+    price: 100n,
+    size: 1,
+    aggressor_side: 'A',
+    ...overrides,
   };
 }

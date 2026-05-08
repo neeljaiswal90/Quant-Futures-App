@@ -1,4 +1,4 @@
-import type { DbnMbp1Record, DbnRecord } from '../../../../strategy_runtime/src/data/dbn-types.js';
+import type { DbnRecord } from '../../../../strategy_runtime/src/data/dbn-types.js';
 import { synthesizeQueue } from '../../../../strategy_runtime/src/data/queue-synthesis/queue-synthesizer.js';
 import type {
   PassiveFillEstimate,
@@ -15,10 +15,10 @@ export async function computeSynthesizedFillEstimate(
   probe: QueueFidelityProbe,
   records: readonly DbnRecord[] | AsyncIterable<DbnRecord>,
 ): Promise<QueueFidelityProbeResult> {
-  const mbp1Records = sortRecords(await collectMbp1Records(records));
+  const proxyRecords = sortRecords(await collectMbpTradeRecords(records));
   const outputs: QueueSynthesisOutput[] = [];
   for await (const output of synthesizeQueue(
-    asyncRecords(mbp1Records),
+    asyncRecords(proxyRecords),
     makeMbpProxyOptions(probe),
     asyncProbes([toPassiveOrderProbe(probe)]),
   )) {
@@ -50,9 +50,9 @@ function makeMbpProxyOptions(probe: QueueFidelityProbe): QueueSynthesisOptions {
   return {
     instrument_root: instrumentRoot,
     manifest_symbol: probe.raw_symbol ?? instrumentRoot,
-    input_schemas: ['mbp-1'],
+    input_schemas: ['mbp-1', 'trades'],
     corpus_tier: null,
-    mode: 'mbp_proxy',
+    mode: 'mbp_trades_proxy',
     passive_order_quantity: probe.quantity,
     fill_horizon_ns: probe.fill_horizon_ns,
     depletion_lookback_ns: probe.depletion_lookback_ns,
@@ -84,15 +84,15 @@ function makeUnavailableResult(probe: QueueFidelityProbe): QueueFidelityProbeRes
     absolute_error_ppm: null,
     within_tolerance: null,
     status: 'synthesized_unavailable',
-    synthesized_source_mode: 'mbp_proxy',
+    synthesized_source_mode: 'mbp_trades_proxy',
   });
 }
 
-async function collectMbp1Records(records: readonly DbnRecord[] | AsyncIterable<DbnRecord>): Promise<DbnMbp1Record[]> {
-  const collected: DbnMbp1Record[] = [];
+async function collectMbpTradeRecords(records: readonly DbnRecord[] | AsyncIterable<DbnRecord>): Promise<DbnRecord[]> {
+  const collected: DbnRecord[] = [];
   if (Array.isArray(records)) {
     for (const record of records) {
-      if (record.schema === 'mbp-1') {
+      if (record.schema === 'mbp-1' || record.schema === 'trades') {
         collected.push(record);
       }
     }
@@ -100,7 +100,7 @@ async function collectMbp1Records(records: readonly DbnRecord[] | AsyncIterable<
   }
 
   for await (const record of records) {
-    if (record.schema === 'mbp-1') {
+    if (record.schema === 'mbp-1' || record.schema === 'trades') {
       collected.push(record);
     }
   }
