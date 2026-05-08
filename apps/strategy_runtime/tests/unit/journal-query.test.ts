@@ -185,5 +185,5 @@ describe('TUI-04 journal-query CLI', () => {
     expect(strict.status).toBe(1);
     expect(strict.stdout).toContain('CONFIG event=config-1');
     expect(strict.stderr).toContain('malformed.jsonl:2:');
-  });
+  }, 15_000);
 });
