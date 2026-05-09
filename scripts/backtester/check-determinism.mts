@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,12 +40,17 @@ import type { BuiltBar } from '../../apps/strategy_runtime/src/data/bar-builder/
 const OUTPUT_ROOT = resolve('.tmp', 'qfa-determinism-fixture');
 const MANIFEST_PATH = resolve(OUTPUT_ROOT, 'manifest.json');
 const DBN_FIXTURE = resolve('apps/strategy_runtime/tests/fixtures/dbn/trades-minimal.dbn');
+const REGIME_LABELS_PATH = resolve('artifacts/regime/regime-labels.json');
+const VIX_VXN_SNAPSHOT_PATH = resolve('config/research/vix-vxn-daily-2025-09-to-2026-04.json');
+const TIER_A_ARCHIVE_ROOT = 'D:/qfa-cache/databento/tier-a-feb-mar-2026';
 const RUN_STARTED_AT_NS = '1767365700000000000';
 const RUNNER_SHA = 'd'.repeat(40);
 // CF-20 future dispatch: readers must dispatch on this marker before treating
 // the Phase 2 artifact aggregate as qfa_phase2_determinism_artifacts_sha256_v1.
 export const PHASE2_DETERMINISM_ARTIFACTS_ALGORITHM =
   'qfa_phase2_determinism_artifacts_sha256_v1' as const;
+export const PHASE4_REGIME_SUBSTRATE_DETERMINISM_ALGORITHM =
+  'qfa_phase4_regime_substrate_determinism_sha256_v1' as const;
 
 const PHASE2_ARTIFACT_ORDER = [
   'strategy_replay_result',
@@ -52,6 +58,32 @@ const PHASE2_ARTIFACT_ORDER = [
   'capability_assessment_set',
   'validation_gate_result_set',
 ] as const;
+
+const PHASE4_HASH_ORDER = [
+  'regime_labels_json',
+  'vix_vxn_snapshot',
+  'manifest_feb_2026',
+  'manifest_mar_2026',
+  'manifest_apr_2026',
+] as const;
+
+const PINNED_PHASE4_HASHES = {
+  regime_labels_json: 'f49c2ac2c94b77fede4dbffa2c785d04c11c5d974901621c97f43f5d2f82e5c9',
+  vix_vxn_snapshot: '1f4cf55f82657a1aaa9b2dd293886c8498cdaf3743207fcdd8089e7de1940036',
+  manifest_feb_2026: '05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c',
+  manifest_mar_2026: 'cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f',
+  manifest_apr_2026: 'e37d01b3a3976f2f2614c2a85171ce4cc8b6b5ad069bf782f55285b0e7721a2c',
+} as const;
+
+const PINNED_PHASE4_QUALITY_EXCLUSIONS = [
+  '2026-03-17-rth',
+  '2026-03-18-rth',
+  '2026-03-19-rth',
+  '2026-03-20-rth',
+  '2026-04-10-rth',
+] as const;
+
+const PINNED_SECONDARY_PERCENTILE_BASIS = 'within_window' as const;
 
 const INSTRUMENT_CONTEXT: TradeLedgerInstrumentContext = {
   instrument_id: 1,
@@ -68,6 +100,7 @@ const EQUITY_OPTIONS: EquityMetricsOptions = {
 };
 
 type Phase2DeterminismArtifactName = (typeof PHASE2_ARTIFACT_ORDER)[number];
+type Phase4DeterminismHashName = (typeof PHASE4_HASH_ORDER)[number];
 
 interface Phase2DeterminismArtifactHashes {
   readonly strategy_replay_result: string;
@@ -83,6 +116,21 @@ interface Phase2DeterminismArtifacts {
   readonly validation_gate_result_set: ValidationGateResultSet;
 }
 
+interface Phase4DeterminismHashes {
+  readonly regime_labels_json: string;
+  readonly vix_vxn_snapshot: string;
+  readonly manifest_feb_2026: string;
+  readonly manifest_mar_2026: string;
+  readonly manifest_apr_2026: string;
+}
+
+export interface Phase4DeterminismSummary {
+  readonly artifact_hashes: Phase4DeterminismHashes;
+  readonly quality_exclusions: readonly string[];
+  readonly secondary_percentile_basis: string;
+  readonly final_phase4_hash: string;
+}
+
 export interface Phase2DeterminismSummary {
   readonly artifact_hashes: Phase2DeterminismArtifactHashes;
   readonly final_phase2_hash: string;
@@ -94,23 +142,29 @@ export interface DeterminismRunSummary {
   readonly run_spec_hash: string;
   readonly final_chain_hash: string;
   readonly final_phase2_hash: string;
+  readonly final_phase4_hash: string;
   readonly event_count: number;
   readonly journal_path: string;
   readonly manifest_path: string;
   readonly manifest: ReproducibilityManifest;
   readonly phase2: Phase2DeterminismSummary;
+  readonly phase4: Phase4DeterminismSummary;
 }
 
 export interface DeterminismComparison {
   readonly equal: boolean;
   readonly chain_equal: boolean;
   readonly phase2_equal: boolean;
+  readonly phase4_equal: boolean;
   readonly left_final_chain_hash: string;
   readonly right_final_chain_hash: string;
   readonly left_final_phase2_hash: string;
   readonly right_final_phase2_hash: string;
+  readonly left_final_phase4_hash: string;
+  readonly right_final_phase4_hash: string;
   readonly differing_artifacts: readonly ReproArtifactName[];
   readonly differing_phase2_artifacts: readonly Phase2DeterminismArtifactName[];
+  readonly differing_phase4_hashes: readonly Phase4DeterminismHashName[];
 }
 
 export interface DeterminismCheckResult {
@@ -122,6 +176,7 @@ export interface DeterminismCheckResult {
 export interface DeterminismCheckOptions {
   readonly force_mismatch_for_test?: boolean;
   readonly force_phase2_mismatch_for_test?: boolean;
+  readonly force_phase4_mismatch_for_test?: boolean;
 }
 
 export async function runDeterminismCheck(
@@ -138,11 +193,14 @@ export async function runDeterminismCheck(
   const runB = options.force_phase2_mismatch_for_test
     ? forcePhase2MismatchForTest(chainRunB)
     : chainRunB;
-  const comparison = compareDeterminismRuns(runA, runB);
+  const comparedRunB = options.force_phase4_mismatch_for_test
+    ? forcePhase4MismatchForTest(runB)
+    : runB;
+  const comparison = compareDeterminismRuns(runA, comparedRunB);
 
   return {
     run_a: runA,
-    run_b: runB,
+    run_b: comparedRunB,
     comparison,
   };
 }
@@ -156,18 +214,27 @@ export function compareDeterminismRuns(
     (artifactName) =>
       left.phase2.artifact_hashes[artifactName] !== right.phase2.artifact_hashes[artifactName],
   );
+  const differingPhase4Hashes = PHASE4_HASH_ORDER.filter(
+    (artifactName) =>
+      left.phase4.artifact_hashes[artifactName] !== right.phase4.artifact_hashes[artifactName],
+  );
   const phase2Equal = left.final_phase2_hash === right.final_phase2_hash;
+  const phase4Equal = left.final_phase4_hash === right.final_phase4_hash;
 
   return {
-    equal: manifestComparison.equal && phase2Equal,
+    equal: manifestComparison.equal && phase2Equal && phase4Equal,
     chain_equal: manifestComparison.equal,
     phase2_equal: phase2Equal,
+    phase4_equal: phase4Equal,
     left_final_chain_hash: left.final_chain_hash,
     right_final_chain_hash: right.final_chain_hash,
     left_final_phase2_hash: left.final_phase2_hash,
     right_final_phase2_hash: right.final_phase2_hash,
+    left_final_phase4_hash: left.final_phase4_hash,
+    right_final_phase4_hash: right.final_phase4_hash,
     differing_artifacts: manifestComparison.differing_artifacts,
     differing_phase2_artifacts: differingPhase2Artifacts,
+    differing_phase4_hashes: differingPhase4Hashes,
   };
 }
 
@@ -186,12 +253,16 @@ export function compareDeterminismManifests(
     equal: left.final_chain_hash === right.final_chain_hash,
     chain_equal: left.final_chain_hash === right.final_chain_hash,
     phase2_equal: true,
+    phase4_equal: true,
     left_final_chain_hash: left.final_chain_hash,
     right_final_chain_hash: right.final_chain_hash,
     left_final_phase2_hash: '',
     right_final_phase2_hash: '',
+    left_final_phase4_hash: '',
+    right_final_phase4_hash: '',
     differing_artifacts: differingArtifacts,
     differing_phase2_artifacts: [],
+    differing_phase4_hashes: [],
   };
 }
 
@@ -219,6 +290,18 @@ export function formatPhase2DeterminismMismatch(comparison: DeterminismCompariso
   ].join('\n');
 }
 
+export function formatPhase4DeterminismMismatch(comparison: DeterminismComparison): string {
+  const differing = comparison.differing_phase4_hashes.length === 0
+    ? 'none'
+    : comparison.differing_phase4_hashes.join(', ');
+  return [
+    'QFA Phase 4 regime-substrate determinism check failed: pinned substrate contract drifted',
+    `run A final_phase4_hash: ${comparison.left_final_phase4_hash}`,
+    `run B final_phase4_hash: ${comparison.right_final_phase4_hash}`,
+    `differing Phase 4 hashes: ${differing}`,
+  ].join('\n');
+}
+
 async function runFixture(label: 'A' | 'B'): Promise<DeterminismRunSummary> {
   const outputDir = resolve(OUTPUT_ROOT, `run-${label}`, 'out');
   const cacheRoot = resolve(OUTPUT_ROOT, `run-${label}`, 'cache');
@@ -230,6 +313,7 @@ async function runFixture(label: 'A' | 'B'): Promise<DeterminismRunSummary> {
     instrument_context: INSTRUMENT_CONTEXT,
   });
   const phase2 = await computePhase2DeterminismSummary(events);
+  const phase4 = await computePhase4DeterminismSummary();
   const analysis = analyzeTradeLedger(tradeLedger, EQUITY_OPTIONS);
   const manifest = computeReproducibilityManifest({
     run_id: result.run_id,
@@ -249,12 +333,82 @@ async function runFixture(label: 'A' | 'B'): Promise<DeterminismRunSummary> {
     run_spec_hash: result.run_spec_hash,
     final_chain_hash: manifest.final_chain_hash,
     final_phase2_hash: phase2.final_phase2_hash,
+    final_phase4_hash: phase4.final_phase4_hash,
     event_count: result.event_count,
     journal_path: result.journal_path,
     manifest_path: manifestPath,
     manifest,
     phase2,
+    phase4,
   };
+}
+
+async function computePhase4DeterminismSummary(): Promise<Phase4DeterminismSummary> {
+  const artifactHashes: Phase4DeterminismHashes = {
+    regime_labels_json: await sha256File(REGIME_LABELS_PATH),
+    vix_vxn_snapshot: await sha256File(VIX_VXN_SNAPSHOT_PATH),
+    manifest_feb_2026: await sha256File(resolve(TIER_A_ARCHIVE_ROOT, 'manifest-feb-2026.json')),
+    manifest_mar_2026: await sha256File(resolve(TIER_A_ARCHIVE_ROOT, 'manifest-mar-2026.json')),
+    manifest_apr_2026: await sha256File(resolve(TIER_A_ARCHIVE_ROOT, 'manifest-apr-2026.json')),
+  };
+  assertPinnedHashes(artifactHashes);
+
+  const labels = JSON.parse(await readFile(REGIME_LABELS_PATH, 'utf8')) as {
+    readonly secondary_substrate?: { readonly percentile_basis?: unknown };
+    readonly labels?: readonly {
+      readonly session_id?: unknown;
+      readonly quality_excluded?: unknown;
+    }[];
+  };
+  const qualityExclusions = (labels.labels ?? [])
+    .filter((entry) => entry.quality_excluded === true)
+    .map((entry) => String(entry.session_id))
+    .sort();
+  assertStringArrayEqual(
+    qualityExclusions,
+    [...PINNED_PHASE4_QUALITY_EXCLUSIONS],
+    'regime-labels quality_exclusions list',
+  );
+
+  const secondaryPercentileBasis = labels.secondary_substrate?.percentile_basis;
+  if (secondaryPercentileBasis !== PINNED_SECONDARY_PERCENTILE_BASIS) {
+    throw new Error(
+      `regime-labels secondary_percentile_basis drifted: expected ${PINNED_SECONDARY_PERCENTILE_BASIS}, actual ${String(secondaryPercentileBasis)}`,
+    );
+  }
+
+  const finalHashInput = [
+    PHASE4_REGIME_SUBSTRATE_DETERMINISM_ALGORITHM,
+    ...PHASE4_HASH_ORDER.map((name) => `${name}=${artifactHashes[name]}`),
+    `quality_exclusions=${JSON.stringify(qualityExclusions)}`,
+    `secondary_percentile_basis=${secondaryPercentileBasis}`,
+  ].join('\n') + '\n';
+
+  return {
+    artifact_hashes: artifactHashes,
+    quality_exclusions: qualityExclusions,
+    secondary_percentile_basis: secondaryPercentileBasis,
+    final_phase4_hash: sha256Utf8(finalHashInput),
+  };
+}
+
+function assertPinnedHashes(actual: Phase4DeterminismHashes): void {
+  for (const name of PHASE4_HASH_ORDER) {
+    const expected = PINNED_PHASE4_HASHES[name];
+    if (actual[name] !== expected) {
+      throw new Error(`Phase 4 substrate hash drift for ${name}: expected ${expected}, actual ${actual[name]}`);
+    }
+  }
+}
+
+function assertStringArrayEqual(actual: readonly string[], expected: readonly string[], label: string): void {
+  if (actual.length !== expected.length || actual.some((value, index) => value !== expected[index])) {
+    throw new Error(`${label} drifted: expected ${JSON.stringify(expected)}, actual ${JSON.stringify(actual)}`);
+  }
+}
+
+async function sha256File(path: string): Promise<string> {
+  return createHash('sha256').update(await readFile(path)).digest('hex');
 }
 
 function backtestOptions(outputDir: string, cacheRoot: string): BacktestRunnerOptions {
@@ -589,12 +743,16 @@ async function main(): Promise<void> {
     const result = await runDeterminismCheck({
       force_mismatch_for_test: process.argv.includes('--force-mismatch-for-test'),
       force_phase2_mismatch_for_test: process.argv.includes('--force-phase2-mismatch-for-test'),
+      force_phase4_mismatch_for_test: process.argv.includes('--force-phase4-mismatch-for-test'),
     });
     if (!result.comparison.chain_equal) {
       console.error(formatDeterminismMismatch(result.comparison));
     }
     if (!result.comparison.phase2_equal) {
       console.error(formatPhase2DeterminismMismatch(result.comparison));
+    }
+    if (!result.comparison.phase4_equal) {
+      console.error(formatPhase4DeterminismMismatch(result.comparison));
     }
     if (!result.comparison.equal) {
       process.exitCode = 1;
@@ -605,6 +763,8 @@ async function main(): Promise<void> {
     console.log(`run B final_chain_hash: ${result.run_b.final_chain_hash}`);
     console.log(`run A final_phase2_hash: ${result.run_a.final_phase2_hash}`);
     console.log(`run B final_phase2_hash: ${result.run_b.final_phase2_hash}`);
+    console.log(`run A final_phase4_hash: ${result.run_a.final_phase4_hash}`);
+    console.log(`run B final_phase4_hash: ${result.run_b.final_phase4_hash}`);
     console.log(`events per run: ${result.run_a.event_count}`);
     console.log(`manifest A: ${result.run_a.manifest_path}`);
     console.log(`manifest B: ${result.run_b.manifest_path}`);
@@ -659,6 +819,22 @@ function forcePhase2MismatchForTest(summary: DeterminismRunSummary): Determinism
     ...summary,
     final_phase2_hash: phase2.final_phase2_hash,
     phase2,
+  };
+}
+
+function forcePhase4MismatchForTest(summary: DeterminismRunSummary): DeterminismRunSummary {
+  const phase4: Phase4DeterminismSummary = {
+    ...summary.phase4,
+    artifact_hashes: {
+      ...summary.phase4.artifact_hashes,
+      regime_labels_json: 'c'.repeat(64),
+    },
+    final_phase4_hash: 'c'.repeat(64),
+  };
+  return {
+    ...summary,
+    final_phase4_hash: phase4.final_phase4_hash,
+    phase4,
   };
 }
 
