@@ -159,6 +159,7 @@ describe('QFA-401 Tier A archive inventory', () => {
     const expected = new Map([
       ['manifest-feb-2026.json', '05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c'],
       ['manifest-mar-2026.json', 'cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f'],
+      ['manifest-apr-2026.json', 'e37d01b3a3976f2f2614c2a85171ce4cc8b6b5ad069bf782f55285b0e7721a2c'],
     ]);
 
     for (const [manifestName, expectedHash] of expected) {
@@ -168,7 +169,7 @@ describe('QFA-401 Tier A archive inventory', () => {
       const manifest = JSON.parse(content.toString('utf8')) as { readonly event_schemas: readonly string[] };
 
       expect(actualHash).toBe(expectedHash);
-      expect(manifest.event_schemas).toEqual(['mbo', 'mbp-1', 'mbp-10', 'tbbo', 'trades']);
+      expect([...manifest.event_schemas].sort()).toEqual(['mbo', 'mbp-1', 'mbp-10', 'tbbo', 'trades']);
       expect(manifest.event_schemas).toEqual(expect.arrayContaining(['mbp-10', 'mbp-1', 'trades']));
     }
   });

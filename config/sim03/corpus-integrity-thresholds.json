@@ -6,7 +6,8 @@
   "min_verified_sessions": 20,
   "min_verified_sessions_by_month": {
     "2026-02": 19,
-    "2026-03": 18
+    "2026-03": 18,
+    "2026-04": 20
   },
   "lineage_note": "Byte floors are conservative 50% floors derived from observed minimum compressed DBN file sizes in the 30-session MNQ SIM-03A-1 corpus fetched on 2026-04-28.",
   "quality_exclusions": {
