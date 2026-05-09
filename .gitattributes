@@ -3,3 +3,6 @@
 
 *.jsonl text eol=lf
 apps/strategy_runtime/tests/fixtures/** text eol=lf
+artifacts/regime/regime-labels.json text eol=lf
+config/research/vix-vxn-daily-*.json text eol=lf
+config/research/manifests/*.json text eol=lf
