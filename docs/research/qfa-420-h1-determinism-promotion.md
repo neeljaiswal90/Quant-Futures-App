@@ -131,3 +131,21 @@ run B final_phase4_hash: 59f31389748a1eef5d5aeb379380eb6bac241267c306d0af8e9a4f9
 Merge QFA-420-h1 once gates are green. Phase 4 substrate will then be
 validated and audit-locked, with QFA-510 methodology walkthrough as the
 next coordinator decision.
+
+## CF-27 CI portability follow-up
+
+The initial implementation pinned Feb / Mar / Apr manifest hashes from the
+operational archive path (`D:/qfa-cache/databento/tier-a-feb-mar-2026`). That
+path is valid on the research workstation but unavailable on Linux CI runners,
+so the determinism gate must consume repo-internal manifest copies.
+
+QFA-420-h1 therefore tracks byte-identical pinned manifest snapshots under
+`config/research/manifests/`:
+
+- `manifest-feb-2026.json`
+- `manifest-mar-2026.json`
+- `manifest-apr-2026.json`
+
+The SHA-256 values are unchanged from the operational source copies. This is a
+portability fix only; it does not alter the Phase 4 determinism contract or the
+computed `final_phase4_hash`.

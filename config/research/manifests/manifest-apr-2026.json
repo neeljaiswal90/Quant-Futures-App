@@ -1,0 +1,1844 @@
+{
+  "blocked_reason": null,
+  "corpus_summary": {
+    "calibration_sessions": 16,
+    "complete_sessions": 21,
+    "excluded_sessions": 0,
+    "partial_sessions": 0,
+    "requested_sessions": 21,
+    "total_bytes": 21049281454,
+    "validation_sessions": 5
+  },
+  "databento_api_key_present": true,
+  "dataset": "GLBX.MDP3",
+  "dataset_range": {
+    "end": "2026-05-08T21:10:00.000000000Z",
+    "schema": {
+      "bbo-1m": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "bbo-1s": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "definition": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "mbo": {
+        "end": "2026-05-08T13:13:25.041340000Z",
+        "start": "2017-05-21T00:00:00.000000000Z"
+      },
+      "mbp-1": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "mbp-10": {
+        "end": "2026-05-08T13:13:25.041340000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "ohlcv-1d": {
+        "end": "2026-05-08T00:00:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "ohlcv-1h": {
+        "end": "2026-05-08T21:00:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "ohlcv-1m": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "ohlcv-1s": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "statistics": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "status": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "tbbo": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      },
+      "trades": {
+        "end": "2026-05-08T21:10:00.000000000Z",
+        "start": "2010-06-06T00:00:00.000000000Z"
+      }
+    },
+    "start": "2010-06-06T00:00:00.000000000Z"
+  },
+  "dataset_range_error": null,
+  "definition_schema": "definition",
+  "event_schemas": [
+    "trades",
+    "mbp-1",
+    "mbp-10",
+    "mbo",
+    "tbbo"
+  ],
+  "manifest_schema_version": 1,
+  "min_complete_sessions": 21,
+  "out_dir": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026",
+  "ready_for_sim03_model_fitting": true,
+  "retry_policy": {
+    "attempts": 3,
+    "backoff": "exponential",
+    "base_seconds": 1.0
+  },
+  "scope_note": "SIM-03A-1 fetches corpus files and writes a manifest only; no model fitting is performed.",
+  "sessions": [
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1775001601000000000",
+        "start_ts_ns": "1775001600000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1775077200000000000",
+        "start_ts_ns": "1775053800000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 336,
+          "end_ts_ns": "1775001601000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-01-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1775001600000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 335121188,
+          "end_ts_ns": "1775077200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-01-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1775053800000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 244506804,
+          "end_ts_ns": "1775077200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-01-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1775053800000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 457287787,
+          "end_ts_ns": "1775077200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-01-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1775053800000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 10437883,
+          "end_ts_ns": "1775077200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-01-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1775053800000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 7630198,
+          "end_ts_ns": "1775077200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-01-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1775053800000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-01-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1775088001000000000",
+        "start_ts_ns": "1775088000000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1775163600000000000",
+        "start_ts_ns": "1775140200000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 336,
+          "end_ts_ns": "1775088001000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-02-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1775088000000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 359227771,
+          "end_ts_ns": "1775163600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-02-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1775140200000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 249051770,
+          "end_ts_ns": "1775163600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-02-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1775140200000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 487775000,
+          "end_ts_ns": "1775163600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-02-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1775140200000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 12131818,
+          "end_ts_ns": "1775163600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-02-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1775140200000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 8909087,
+          "end_ts_ns": "1775163600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-02-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1775140200000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-02-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1775433601000000000",
+        "start_ts_ns": "1775433600000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1775509200000000000",
+        "start_ts_ns": "1775485800000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 338,
+          "end_ts_ns": "1775433601000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-06-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1775433600000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 261215324,
+          "end_ts_ns": "1775509200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-06-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1775485800000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 181461138,
+          "end_ts_ns": "1775509200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-06-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1775485800000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 354953864,
+          "end_ts_ns": "1775509200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-06-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1775485800000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 8881658,
+          "end_ts_ns": "1775509200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-06-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1775485800000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 2,
+          "byte_count": 6524093,
+          "end_ts_ns": "1775509200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-06-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1775485800000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-06-rth",
+      "split": "validation",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1775520001000000000",
+        "start_ts_ns": "1775520000000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1775595600000000000",
+        "start_ts_ns": "1775572200000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 332,
+          "end_ts_ns": "1775520001000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-07-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1775520000000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 444307206,
+          "end_ts_ns": "1775595600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-07-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1775572200000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 319272203,
+          "end_ts_ns": "1775595600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-07-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1775572200000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 610463853,
+          "end_ts_ns": "1775595600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-07-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1775572200000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 14261510,
+          "end_ts_ns": "1775595600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-07-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1775572200000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 10365305,
+          "end_ts_ns": "1775595600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-07-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1775572200000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-07-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1775606401000000000",
+        "start_ts_ns": "1775606400000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1775682000000000000",
+        "start_ts_ns": "1775658600000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 338,
+          "end_ts_ns": "1775606401000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-08-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1775606400000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 334941307,
+          "end_ts_ns": "1775682000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-08-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1775658600000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 248402879,
+          "end_ts_ns": "1775682000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-08-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1775658600000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 454063659,
+          "end_ts_ns": "1775682000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-08-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1775658600000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 11021650,
+          "end_ts_ns": "1775682000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-08-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1775658600000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 8018061,
+          "end_ts_ns": "1775682000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-08-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1775658600000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-08-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1775692801000000000",
+        "start_ts_ns": "1775692800000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1775768400000000000",
+        "start_ts_ns": "1775745000000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 337,
+          "end_ts_ns": "1775692801000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-09-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1775692800000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 307781150,
+          "end_ts_ns": "1775768400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-09-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1775745000000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 220650171,
+          "end_ts_ns": "1775768400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-09-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1775745000000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 417034609,
+          "end_ts_ns": "1775768400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-09-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1775745000000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 10453880,
+          "end_ts_ns": "1775768400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-09-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1775745000000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 7635791,
+          "end_ts_ns": "1775768400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-09-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1775745000000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-09-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1775779201000000000",
+        "start_ts_ns": "1775779200000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1775854800000000000",
+        "start_ts_ns": "1775831400000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 337,
+          "end_ts_ns": "1775779201000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-10-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1775779200000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 271662182,
+          "end_ts_ns": "1775854800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-10-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1775831400000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 207997906,
+          "end_ts_ns": "1775854800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-10-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1775831400000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 364792587,
+          "end_ts_ns": "1775854800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-10-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1775831400000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 9029449,
+          "end_ts_ns": "1775854800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-10-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1775831400000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 6572202,
+          "end_ts_ns": "1775854800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-10-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1775831400000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-10-rth",
+      "split": "validation",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776038401000000000",
+        "start_ts_ns": "1776038400000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776114000000000000",
+        "start_ts_ns": "1776090600000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 338,
+          "end_ts_ns": "1776038401000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-13-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776038400000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 239555870,
+          "end_ts_ns": "1776114000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-13-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776090600000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 183898530,
+          "end_ts_ns": "1776114000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-13-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776090600000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 320214721,
+          "end_ts_ns": "1776114000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-13-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776090600000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 8460921,
+          "end_ts_ns": "1776114000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-13-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776090600000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 6160525,
+          "end_ts_ns": "1776114000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-13-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776090600000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-13-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776124801000000000",
+        "start_ts_ns": "1776124800000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776200400000000000",
+        "start_ts_ns": "1776177000000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 337,
+          "end_ts_ns": "1776124801000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-14-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776124800000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 207643133,
+          "end_ts_ns": "1776200400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-14-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776177000000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 162998326,
+          "end_ts_ns": "1776200400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-14-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776177000000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 273962655,
+          "end_ts_ns": "1776200400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-14-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776177000000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 8141381,
+          "end_ts_ns": "1776200400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-14-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776177000000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 5931143,
+          "end_ts_ns": "1776200400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-14-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776177000000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-14-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776211201000000000",
+        "start_ts_ns": "1776211200000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776286800000000000",
+        "start_ts_ns": "1776263400000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 338,
+          "end_ts_ns": "1776211201000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-15-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776211200000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 257634347,
+          "end_ts_ns": "1776286800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-15-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776263400000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 189812289,
+          "end_ts_ns": "1776286800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-15-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776263400000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 344182966,
+          "end_ts_ns": "1776286800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-15-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776263400000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 9379299,
+          "end_ts_ns": "1776286800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-15-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776263400000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 6854598,
+          "end_ts_ns": "1776286800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-15-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776263400000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-15-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776297601000000000",
+        "start_ts_ns": "1776297600000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776373200000000000",
+        "start_ts_ns": "1776349800000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 337,
+          "end_ts_ns": "1776297601000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-16-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776297600000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 315344470,
+          "end_ts_ns": "1776373200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-16-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776349800000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 232050484,
+          "end_ts_ns": "1776373200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-16-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776349800000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 421797079,
+          "end_ts_ns": "1776373200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-16-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776349800000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 11150249,
+          "end_ts_ns": "1776373200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-16-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776349800000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 8120679,
+          "end_ts_ns": "1776373200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-16-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776349800000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-16-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776384001000000000",
+        "start_ts_ns": "1776384000000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776459600000000000",
+        "start_ts_ns": "1776436200000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 337,
+          "end_ts_ns": "1776384001000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-17-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776384000000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 321810773,
+          "end_ts_ns": "1776459600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-17-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776436200000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 249322870,
+          "end_ts_ns": "1776459600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-17-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776436200000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 431061038,
+          "end_ts_ns": "1776459600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-17-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776436200000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 10372226,
+          "end_ts_ns": "1776459600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-17-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776436200000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 7518777,
+          "end_ts_ns": "1776459600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-17-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776436200000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-17-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776643201000000000",
+        "start_ts_ns": "1776643200000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776718800000000000",
+        "start_ts_ns": "1776695400000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 337,
+          "end_ts_ns": "1776643201000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-20-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776643200000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 268274734,
+          "end_ts_ns": "1776718800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-20-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776695400000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 201662670,
+          "end_ts_ns": "1776718800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-20-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776695400000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 360625083,
+          "end_ts_ns": "1776718800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-20-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776695400000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 9085329,
+          "end_ts_ns": "1776718800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-20-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776695400000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 6605880,
+          "end_ts_ns": "1776718800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-20-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776695400000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-20-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776729601000000000",
+        "start_ts_ns": "1776729600000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776805200000000000",
+        "start_ts_ns": "1776781800000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 336,
+          "end_ts_ns": "1776729601000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-21-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776729600000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 434425315,
+          "end_ts_ns": "1776805200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-21-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776781800000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 334281702,
+          "end_ts_ns": "1776805200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-21-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776781800000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 585834447,
+          "end_ts_ns": "1776805200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-21-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776781800000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 14909911,
+          "end_ts_ns": "1776805200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-21-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776781800000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 10810541,
+          "end_ts_ns": "1776805200000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-21-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776781800000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-21-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776816001000000000",
+        "start_ts_ns": "1776816000000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776891600000000000",
+        "start_ts_ns": "1776868200000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 333,
+          "end_ts_ns": "1776816001000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-22-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776816000000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 274966858,
+          "end_ts_ns": "1776891600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-22-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776868200000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 213898983,
+          "end_ts_ns": "1776891600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-22-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776868200000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 370176418,
+          "end_ts_ns": "1776891600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-22-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776868200000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 8737528,
+          "end_ts_ns": "1776891600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-22-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776868200000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 6337812,
+          "end_ts_ns": "1776891600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-22-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776868200000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-22-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776902401000000000",
+        "start_ts_ns": "1776902400000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1776978000000000000",
+        "start_ts_ns": "1776954600000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 336,
+          "end_ts_ns": "1776902401000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-23-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776902400000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 417499857,
+          "end_ts_ns": "1776978000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-23-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1776954600000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 298662353,
+          "end_ts_ns": "1776978000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-23-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1776954600000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 552618486,
+          "end_ts_ns": "1776978000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-23-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1776954600000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 14680979,
+          "end_ts_ns": "1776978000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-23-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1776954600000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 10727224,
+          "end_ts_ns": "1776978000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-23-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1776954600000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-23-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1776988801000000000",
+        "start_ts_ns": "1776988800000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1777064400000000000",
+        "start_ts_ns": "1777041000000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 336,
+          "end_ts_ns": "1776988801000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-24-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1776988800000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 326299969,
+          "end_ts_ns": "1777064400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-24-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1777041000000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 248052443,
+          "end_ts_ns": "1777064400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-24-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1777041000000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 440721198,
+          "end_ts_ns": "1777064400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-24-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1777041000000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 9825061,
+          "end_ts_ns": "1777064400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-24-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1777041000000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 7130582,
+          "end_ts_ns": "1777064400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-24-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1777041000000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-24-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1777248001000000000",
+        "start_ts_ns": "1777248000000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1777323600000000000",
+        "start_ts_ns": "1777300200000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 337,
+          "end_ts_ns": "1777248001000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-27-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1777248000000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 266551869,
+          "end_ts_ns": "1777323600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-27-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1777300200000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 206401922,
+          "end_ts_ns": "1777323600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-27-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1777300200000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 358079953,
+          "end_ts_ns": "1777323600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-27-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1777300200000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 7897666,
+          "end_ts_ns": "1777323600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-27-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1777300200000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 5731728,
+          "end_ts_ns": "1777323600000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-27-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1777300200000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-27-rth",
+      "split": "validation",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1777334401000000000",
+        "start_ts_ns": "1777334400000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1777410000000000000",
+        "start_ts_ns": "1777386600000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 336,
+          "end_ts_ns": "1777334401000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-28-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1777334400000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 353929222,
+          "end_ts_ns": "1777410000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-28-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1777386600000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 261672274,
+          "end_ts_ns": "1777410000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-28-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1777386600000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 478206985,
+          "end_ts_ns": "1777410000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-28-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1777386600000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 10753470,
+          "end_ts_ns": "1777410000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-28-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1777386600000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 7796114,
+          "end_ts_ns": "1777410000000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-28-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1777386600000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-28-rth",
+      "split": "validation",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1777420801000000000",
+        "start_ts_ns": "1777420800000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1777496400000000000",
+        "start_ts_ns": "1777473000000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 336,
+          "end_ts_ns": "1777420801000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-29-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1777420800000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 341476673,
+          "end_ts_ns": "1777496400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-29-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1777473000000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 255894859,
+          "end_ts_ns": "1777496400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-29-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1777473000000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 454546268,
+          "end_ts_ns": "1777496400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-29-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1777473000000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 11408277,
+          "end_ts_ns": "1777496400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-29-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1777473000000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 8309826,
+          "end_ts_ns": "1777496400000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-29-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1777473000000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-29-rth",
+      "split": "calibration",
+      "status": "complete",
+      "symbol": "MNQM6"
+    },
+    {
+      "definition_snapshot_window": {
+        "end_ts_ns": "1777507201000000000",
+        "start_ts_ns": "1777507200000000000"
+      },
+      "exclusion_reason": null,
+      "rth_window": {
+        "end_ts_ns": "1777582800000000000",
+        "start_ts_ns": "1777559400000000000"
+      },
+      "schemas": {
+        "definition": {
+          "attempts": 1,
+          "byte_count": 336,
+          "end_ts_ns": "1777507201000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-30-rth\\definition.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "definition",
+          "start_ts_ns": "1777507200000000000",
+          "status": "available"
+        },
+        "mbo": {
+          "attempts": 1,
+          "byte_count": 348538719,
+          "end_ts_ns": "1777582800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-30-rth\\mbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbo",
+          "start_ts_ns": "1777559400000000000",
+          "status": "available"
+        },
+        "mbp-1": {
+          "attempts": 1,
+          "byte_count": 258081107,
+          "end_ts_ns": "1777582800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-30-rth\\mbp-1.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-1",
+          "start_ts_ns": "1777559400000000000",
+          "status": "available"
+        },
+        "mbp-10": {
+          "attempts": 1,
+          "byte_count": 471112178,
+          "end_ts_ns": "1777582800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-30-rth\\mbp-10.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "mbp-10",
+          "start_ts_ns": "1777559400000000000",
+          "status": "available"
+        },
+        "tbbo": {
+          "attempts": 1,
+          "byte_count": 10871496,
+          "end_ts_ns": "1777582800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-30-rth\\tbbo.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "tbbo",
+          "start_ts_ns": "1777559400000000000",
+          "status": "available"
+        },
+        "trades": {
+          "attempts": 1,
+          "byte_count": 7940129,
+          "end_ts_ns": "1777582800000000000",
+          "path": "D:\\qfa-cache\\databento\\tier-a-feb-mar-2026\\2026-04-30-rth\\trades.dbn.zst",
+          "record_count": null,
+          "reused_existing": false,
+          "schema": "trades",
+          "start_ts_ns": "1777559400000000000",
+          "status": "available"
+        }
+      },
+      "session_id": "2026-04-30-rth",
+      "split": "validation",
+      "status": "complete",
+      "symbol": "MNQM6"
+    }
+  ],
+  "status": "complete",
+  "symbol": "MNQM6",
+  "ticket_id": "QFA-119d",
+  "validation_fraction": 0.2
+}

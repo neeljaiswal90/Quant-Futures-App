@@ -42,7 +42,7 @@ const MANIFEST_PATH = resolve(OUTPUT_ROOT, 'manifest.json');
 const DBN_FIXTURE = resolve('apps/strategy_runtime/tests/fixtures/dbn/trades-minimal.dbn');
 const REGIME_LABELS_PATH = resolve('artifacts/regime/regime-labels.json');
 const VIX_VXN_SNAPSHOT_PATH = resolve('config/research/vix-vxn-daily-2025-09-to-2026-04.json');
-const TIER_A_ARCHIVE_ROOT = 'D:/qfa-cache/databento/tier-a-feb-mar-2026';
+const RESEARCH_MANIFESTS_ROOT = resolve('config/research/manifests');
 const RUN_STARTED_AT_NS = '1767365700000000000';
 const RUNNER_SHA = 'd'.repeat(40);
 // CF-20 future dispatch: readers must dispatch on this marker before treating
@@ -347,9 +347,9 @@ async function computePhase4DeterminismSummary(): Promise<Phase4DeterminismSumma
   const artifactHashes: Phase4DeterminismHashes = {
     regime_labels_json: await sha256File(REGIME_LABELS_PATH),
     vix_vxn_snapshot: await sha256File(VIX_VXN_SNAPSHOT_PATH),
-    manifest_feb_2026: await sha256File(resolve(TIER_A_ARCHIVE_ROOT, 'manifest-feb-2026.json')),
-    manifest_mar_2026: await sha256File(resolve(TIER_A_ARCHIVE_ROOT, 'manifest-mar-2026.json')),
-    manifest_apr_2026: await sha256File(resolve(TIER_A_ARCHIVE_ROOT, 'manifest-apr-2026.json')),
+    manifest_feb_2026: await sha256File(resolve(RESEARCH_MANIFESTS_ROOT, 'manifest-feb-2026.json')),
+    manifest_mar_2026: await sha256File(resolve(RESEARCH_MANIFESTS_ROOT, 'manifest-mar-2026.json')),
+    manifest_apr_2026: await sha256File(resolve(RESEARCH_MANIFESTS_ROOT, 'manifest-apr-2026.json')),
   };
   assertPinnedHashes(artifactHashes);
 
