@@ -37,26 +37,26 @@ Result:
 ```text
 final_phase2_hash before: dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b
 final_phase2_hash after:  dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b
-final_phase4_hash:        59f31389748a1eef5d5aeb379380eb6bac241267c306d0af8e9a4f9f2c41ff5c
+final_phase4_hash:        ad8dad3c36a5b64fa3ddbd955abec819db31b2b4c160d0152074fc6bcbb40090
 ```
 
 ## Pinned hash values
 
 ```text
 regime_labels_json_sha256:
-  f49c2ac2c94b77fede4dbffa2c785d04c11c5d974901621c97f43f5d2f82e5c9
+  f90e3e6df588a60756c675befe7fd77adf1a33ed3878fbb8900d519b79f0a41a
 
 vix_vxn_snapshot_sha256:
-  1f4cf55f82657a1aaa9b2dd293886c8498cdaf3743207fcdd8089e7de1940036
+  3f42904f0d57a00dee37489fbafc69aff9466b63d14115dfddd8e0df23cad9ef
 
 manifest_feb_2026_sha256:
-  05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c
+  91bcfbf523b8d9129e67478c82cfebdb29bb353fa63ea1fc54bb06415cf833e9
 
 manifest_mar_2026_sha256:
-  cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f
+  1f8319cf8a40b8b4256b65499e46c8e5e6676e4f738e9a41708332a0ddfb558f
 
 manifest_apr_2026_sha256:
-  e37d01b3a3976f2f2614c2a85171ce4cc8b6b5ad069bf782f55285b0e7721a2c
+  5ba1ec230982ae2bc409fa5f21278dd84715cab62753f20b0988b4e0ddd8e965
 ```
 
 ## Pinned contract fields
@@ -105,7 +105,7 @@ Result:
 perturb_exit_code=1
 QFA determinism check failed before comparison
 Phase 4 substrate hash drift for regime_labels_json:
-  expected f49c2ac2c94b77fede4dbffa2c785d04c11c5d974901621c97f43f5d2f82e5c9
+  expected f90e3e6df588a60756c675befe7fd77adf1a33ed3878fbb8900d519b79f0a41a
   actual   a355980d8993da280883c4aaff30137dd3a84d2090204908d1ece5e7cdb7d748
 ```
 
@@ -122,8 +122,8 @@ run A final_chain_hash: 260e9c0fd725b941b33937c6a8cd6bc51878f614efdcb7c0c883d324
 run B final_chain_hash: 260e9c0fd725b941b33937c6a8cd6bc51878f614efdcb7c0c883d3244ff02321
 run A final_phase2_hash: dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b
 run B final_phase2_hash: dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b
-run A final_phase4_hash: 59f31389748a1eef5d5aeb379380eb6bac241267c306d0af8e9a4f9f2c41ff5c
-run B final_phase4_hash: 59f31389748a1eef5d5aeb379380eb6bac241267c306d0af8e9a4f9f2c41ff5c
+run A final_phase4_hash: ad8dad3c36a5b64fa3ddbd955abec819db31b2b4c160d0152074fc6bcbb40090
+run B final_phase4_hash: ad8dad3c36a5b64fa3ddbd955abec819db31b2b4c160d0152074fc6bcbb40090
 ```
 
 ## Recommendation
@@ -149,3 +149,22 @@ QFA-420-h1 therefore tracks byte-identical pinned manifest snapshots under
 The SHA-256 values are unchanged from the operational source copies. This is a
 portability fix only; it does not alter the Phase 4 determinism contract or the
 computed `final_phase4_hash`.
+## CF-28 LF-canonical hash basis
+
+Path X is adopted for the manifest hash-basis discrepancy. Historical hashes
+in QFA-119b / QFA-119d research notes were computed against workstation
+on-disk bytes, which can include CRLF on Windows. The determinism contract now
+uses LF-canonical bytes for all pinned text inputs, so it is stable across
+Windows, Linux, and macOS checkouts.
+
+This PR adds a two-layer defense:
+
+- `.gitattributes` forces LF checkout for the pinned regime-label, VIX/VXN, and
+  manifest JSON paths.
+- `check-determinism.mts` strips carriage returns before SHA-256 hashing.
+
+The pinned JSON content is unchanged; only the hash basis changes. QFA-420-h1 is
+the canonical source for the LF-canonical hashes used by the determinism gate.
+No retroactive ADR or QFA-119b / QFA-119d artifact amendment is required.
+
+

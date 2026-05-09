@@ -68,11 +68,11 @@ const PHASE4_HASH_ORDER = [
 ] as const;
 
 const PINNED_PHASE4_HASHES = {
-  regime_labels_json: 'f49c2ac2c94b77fede4dbffa2c785d04c11c5d974901621c97f43f5d2f82e5c9',
-  vix_vxn_snapshot: '1f4cf55f82657a1aaa9b2dd293886c8498cdaf3743207fcdd8089e7de1940036',
-  manifest_feb_2026: '05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c',
-  manifest_mar_2026: 'cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f',
-  manifest_apr_2026: 'e37d01b3a3976f2f2614c2a85171ce4cc8b6b5ad069bf782f55285b0e7721a2c',
+  regime_labels_json: 'f90e3e6df588a60756c675befe7fd77adf1a33ed3878fbb8900d519b79f0a41a',
+  vix_vxn_snapshot: '3f42904f0d57a00dee37489fbafc69aff9466b63d14115dfddd8e0df23cad9ef',
+  manifest_feb_2026: '91bcfbf523b8d9129e67478c82cfebdb29bb353fa63ea1fc54bb06415cf833e9',
+  manifest_mar_2026: '1f8319cf8a40b8b4256b65499e46c8e5e6676e4f738e9a41708332a0ddfb558f',
+  manifest_apr_2026: '5ba1ec230982ae2bc409fa5f21278dd84715cab62753f20b0988b4e0ddd8e965',
 } as const;
 
 const PINNED_PHASE4_QUALITY_EXCLUSIONS = [
@@ -408,7 +408,8 @@ function assertStringArrayEqual(actual: readonly string[], expected: readonly st
 }
 
 async function sha256File(path: string): Promise<string> {
-  return createHash('sha256').update(await readFile(path)).digest('hex');
+  const content = await readFile(path, 'utf8');
+  return createHash('sha256').update(content.replace(/\r/g, ''), 'utf8').digest('hex');
 }
 
 function backtestOptions(outputDir: string, cacheRoot: string): BacktestRunnerOptions {
@@ -837,4 +838,5 @@ function forcePhase4MismatchForTest(summary: DeterminismRunSummary): Determinism
     phase4,
   };
 }
+
 
