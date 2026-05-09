@@ -1,0 +1,974 @@
+{
+  "methodology_id": "adr-0015-v1",
+  "input_substrate_hash": "f49c2ac2c94b77fede4dbffa2c785d04c11c5d974901621c97f43f5d2f82e5c9",
+  "input_manifest_hashes": {
+    "2026-02": "05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c",
+    "2026-03": "cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f",
+    "2026-04": "e37d01b3a3976f2f2614c2a85171ce4cc8b6b5ad069bf782f55285b0e7721a2c"
+  },
+  "probe_policy": {
+    "mode": "mbp_trades_proxy",
+    "fill_horizon_ns": "15000000000",
+    "depletion_lookback_ns": "60000000000",
+    "sample_interval": "1s",
+    "order_quantity": "1",
+    "tolerance_ppm": 100000,
+    "threshold_ppm": 800000
+  },
+  "sesoi_ppm": 50000,
+  "per_session": [
+    {
+      "session_id": "2026-02-02-rth",
+      "regime": "high",
+      "share_ppm": 914996,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42820,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 64,
+      "twenty_one_plus_within_tolerance_probes": 41,
+      "twenty_one_plus_share_ppm": 640625
+    },
+    {
+      "session_id": "2026-02-03-rth",
+      "regime": "high",
+      "share_ppm": 936877,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 43844,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 27,
+      "twenty_one_plus_within_tolerance_probes": 12,
+      "twenty_one_plus_share_ppm": 444444
+    },
+    {
+      "session_id": "2026-02-04-rth",
+      "regime": "high",
+      "share_ppm": 917539,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42939,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 15,
+      "twenty_one_plus_within_tolerance_probes": 8,
+      "twenty_one_plus_share_ppm": 533333
+    },
+    {
+      "session_id": "2026-02-05-rth",
+      "regime": "high",
+      "share_ppm": 905166,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42360,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 22,
+      "twenty_one_plus_within_tolerance_probes": 11,
+      "twenty_one_plus_share_ppm": 500000
+    },
+    {
+      "session_id": "2026-02-06-rth",
+      "regime": "high",
+      "share_ppm": 900786,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42155,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 45,
+      "twenty_one_plus_within_tolerance_probes": 24,
+      "twenty_one_plus_share_ppm": 533333
+    },
+    {
+      "session_id": "2026-02-09-rth",
+      "regime": "high",
+      "share_ppm": 897175,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41986,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 113,
+      "twenty_one_plus_within_tolerance_probes": 49,
+      "twenty_one_plus_share_ppm": 433628
+    },
+    {
+      "session_id": "2026-02-10-rth",
+      "regime": "high",
+      "share_ppm": 906363,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42416,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 67,
+      "twenty_one_plus_within_tolerance_probes": 31,
+      "twenty_one_plus_share_ppm": 462686
+    },
+    {
+      "session_id": "2026-02-11-rth",
+      "regime": "high",
+      "share_ppm": 904974,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42351,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 71,
+      "twenty_one_plus_within_tolerance_probes": 37,
+      "twenty_one_plus_share_ppm": 521126
+    },
+    {
+      "session_id": "2026-02-12-rth",
+      "regime": "high",
+      "share_ppm": 919718,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 43041,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 40,
+      "twenty_one_plus_within_tolerance_probes": 22,
+      "twenty_one_plus_share_ppm": 550000
+    },
+    {
+      "session_id": "2026-02-13-rth",
+      "regime": "high",
+      "share_ppm": 910679,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42618,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 40,
+      "twenty_one_plus_within_tolerance_probes": 23,
+      "twenty_one_plus_share_ppm": 575000
+    },
+    {
+      "session_id": "2026-02-17-rth",
+      "regime": "high",
+      "share_ppm": 908867,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 42535,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 43,
+      "twenty_one_plus_within_tolerance_probes": 21,
+      "twenty_one_plus_share_ppm": 488372
+    },
+    {
+      "session_id": "2026-02-18-rth",
+      "regime": "high",
+      "share_ppm": 911021,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42634,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 53,
+      "twenty_one_plus_within_tolerance_probes": 28,
+      "twenty_one_plus_share_ppm": 528301
+    },
+    {
+      "session_id": "2026-02-19-rth",
+      "regime": "high",
+      "share_ppm": 908478,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42515,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 49,
+      "twenty_one_plus_within_tolerance_probes": 32,
+      "twenty_one_plus_share_ppm": 653061
+    },
+    {
+      "session_id": "2026-02-20-rth",
+      "regime": "high",
+      "share_ppm": 911705,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42666,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 37,
+      "twenty_one_plus_within_tolerance_probes": 17,
+      "twenty_one_plus_share_ppm": 459459
+    },
+    {
+      "session_id": "2026-02-23-rth",
+      "regime": "high",
+      "share_ppm": 907517,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42470,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 66,
+      "twenty_one_plus_within_tolerance_probes": 30,
+      "twenty_one_plus_share_ppm": 454545
+    },
+    {
+      "session_id": "2026-02-24-rth",
+      "regime": "high",
+      "share_ppm": 902218,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42222,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 95,
+      "twenty_one_plus_within_tolerance_probes": 48,
+      "twenty_one_plus_share_ppm": 505263
+    },
+    {
+      "session_id": "2026-02-25-rth",
+      "regime": "high",
+      "share_ppm": 889636,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 41635,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 267,
+      "twenty_one_plus_within_tolerance_probes": 126,
+      "twenty_one_plus_share_ppm": 471910
+    },
+    {
+      "session_id": "2026-02-26-rth",
+      "regime": "high",
+      "share_ppm": 918949,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 43005,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 72,
+      "twenty_one_plus_within_tolerance_probes": 39,
+      "twenty_one_plus_share_ppm": 541666
+    },
+    {
+      "session_id": "2026-02-27-rth",
+      "regime": "high",
+      "share_ppm": 908072,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42496,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 79,
+      "twenty_one_plus_within_tolerance_probes": 43,
+      "twenty_one_plus_share_ppm": 544303
+    },
+    {
+      "session_id": "2026-03-02-rth",
+      "regime": "high",
+      "share_ppm": 906730,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 42435,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 44,
+      "twenty_one_plus_within_tolerance_probes": 19,
+      "twenty_one_plus_share_ppm": 431818
+    },
+    {
+      "session_id": "2026-03-03-rth",
+      "regime": "high",
+      "share_ppm": 914162,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42781,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 22,
+      "twenty_one_plus_within_tolerance_probes": 6,
+      "twenty_one_plus_share_ppm": 272727
+    },
+    {
+      "session_id": "2026-03-04-rth",
+      "regime": "high",
+      "share_ppm": 902367,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42229,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 55,
+      "twenty_one_plus_within_tolerance_probes": 31,
+      "twenty_one_plus_share_ppm": 563636
+    },
+    {
+      "session_id": "2026-03-05-rth",
+      "regime": "high",
+      "share_ppm": 920747,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 43091,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 19,
+      "twenty_one_plus_within_tolerance_probes": 12,
+      "twenty_one_plus_share_ppm": 631578
+    },
+    {
+      "session_id": "2026-03-06-rth",
+      "regime": "high",
+      "share_ppm": 915320,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 42837,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 15,
+      "twenty_one_plus_within_tolerance_probes": 3,
+      "twenty_one_plus_share_ppm": 200000
+    },
+    {
+      "session_id": "2026-03-09-rth",
+      "regime": "high",
+      "share_ppm": 920897,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 43098,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 32,
+      "twenty_one_plus_within_tolerance_probes": 12,
+      "twenty_one_plus_share_ppm": 375000
+    },
+    {
+      "session_id": "2026-03-10-rth",
+      "regime": "high",
+      "share_ppm": 922029,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 43151,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 44,
+      "twenty_one_plus_within_tolerance_probes": 20,
+      "twenty_one_plus_share_ppm": 454545
+    },
+    {
+      "session_id": "2026-03-11-rth",
+      "regime": "high",
+      "share_ppm": 912410,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42699,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 34,
+      "twenty_one_plus_within_tolerance_probes": 13,
+      "twenty_one_plus_share_ppm": 382352
+    },
+    {
+      "session_id": "2026-03-12-rth",
+      "regime": "high",
+      "share_ppm": 907303,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42460,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 28,
+      "twenty_one_plus_within_tolerance_probes": 14,
+      "twenty_one_plus_share_ppm": 500000
+    },
+    {
+      "session_id": "2026-03-13-rth",
+      "regime": "high",
+      "share_ppm": 916089,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 42873,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 51,
+      "twenty_one_plus_within_tolerance_probes": 25,
+      "twenty_one_plus_share_ppm": 490196
+    },
+    {
+      "session_id": "2026-03-16-rth",
+      "regime": "high",
+      "share_ppm": 838653,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 39249,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 40,
+      "twenty_one_plus_within_tolerance_probes": 20,
+      "twenty_one_plus_share_ppm": 500000
+    },
+    {
+      "session_id": "2026-03-23-rth",
+      "regime": "high",
+      "share_ppm": 910876,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 42629,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 23,
+      "twenty_one_plus_within_tolerance_probes": 8,
+      "twenty_one_plus_share_ppm": 347826
+    },
+    {
+      "session_id": "2026-03-24-rth",
+      "regime": "high",
+      "share_ppm": 906901,
+      "comparable_probes": 46800,
+      "within_tolerance_probes": 42443,
+      "total_probes": 46800,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 30,
+      "twenty_one_plus_within_tolerance_probes": 20,
+      "twenty_one_plus_share_ppm": 666666
+    },
+    {
+      "session_id": "2026-03-25-rth",
+      "regime": "high",
+      "share_ppm": 907474,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42468,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 27,
+      "twenty_one_plus_within_tolerance_probes": 9,
+      "twenty_one_plus_share_ppm": 333333
+    },
+    {
+      "session_id": "2026-03-26-rth",
+      "regime": "high",
+      "share_ppm": 914333,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42789,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 58,
+      "twenty_one_plus_within_tolerance_probes": 33,
+      "twenty_one_plus_share_ppm": 568965
+    },
+    {
+      "session_id": "2026-03-27-rth",
+      "regime": "high",
+      "share_ppm": 912752,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42715,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 31,
+      "twenty_one_plus_within_tolerance_probes": 15,
+      "twenty_one_plus_share_ppm": 483870
+    },
+    {
+      "session_id": "2026-03-30-rth",
+      "regime": "high",
+      "share_ppm": 914718,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42807,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 58,
+      "twenty_one_plus_within_tolerance_probes": 27,
+      "twenty_one_plus_share_ppm": 465517
+    },
+    {
+      "session_id": "2026-03-31-rth",
+      "regime": "high",
+      "share_ppm": 918479,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 42983,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 25,
+      "twenty_one_plus_within_tolerance_probes": 19,
+      "twenty_one_plus_share_ppm": 760000
+    },
+    {
+      "session_id": "2026-04-01-rth",
+      "regime": "high",
+      "share_ppm": 875400,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 40967,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 51,
+      "twenty_one_plus_within_tolerance_probes": 24,
+      "twenty_one_plus_share_ppm": 470588
+    },
+    {
+      "session_id": "2026-04-02-rth",
+      "regime": "high",
+      "share_ppm": 878926,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41132,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 53,
+      "twenty_one_plus_within_tolerance_probes": 22,
+      "twenty_one_plus_share_ppm": 415094
+    },
+    {
+      "session_id": "2026-04-06-rth",
+      "regime": "high",
+      "share_ppm": 861233,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 40304,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 41,
+      "twenty_one_plus_within_tolerance_probes": 15,
+      "twenty_one_plus_share_ppm": 365853
+    },
+    {
+      "session_id": "2026-04-07-rth",
+      "regime": "high",
+      "share_ppm": 894290,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41851,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 41,
+      "twenty_one_plus_within_tolerance_probes": 24,
+      "twenty_one_plus_share_ppm": 585365
+    },
+    {
+      "session_id": "2026-04-08-rth",
+      "regime": "high",
+      "share_ppm": 885037,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41418,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 113,
+      "twenty_one_plus_within_tolerance_probes": 52,
+      "twenty_one_plus_share_ppm": 460176
+    },
+    {
+      "session_id": "2026-04-09-rth",
+      "regime": "high",
+      "share_ppm": 880721,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41216,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 97,
+      "twenty_one_plus_within_tolerance_probes": 40,
+      "twenty_one_plus_share_ppm": 412371
+    },
+    {
+      "session_id": "2026-04-13-rth",
+      "regime": "mid",
+      "share_ppm": 881682,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41261,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 148,
+      "twenty_one_plus_within_tolerance_probes": 66,
+      "twenty_one_plus_share_ppm": 445945
+    },
+    {
+      "session_id": "2026-04-14-rth",
+      "regime": "mid",
+      "share_ppm": 885187,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41425,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 225,
+      "twenty_one_plus_within_tolerance_probes": 120,
+      "twenty_one_plus_share_ppm": 533333
+    },
+    {
+      "session_id": "2026-04-15-rth",
+      "regime": "mid",
+      "share_ppm": 886960,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41508,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 183,
+      "twenty_one_plus_within_tolerance_probes": 98,
+      "twenty_one_plus_share_ppm": 535519
+    },
+    {
+      "session_id": "2026-04-16-rth",
+      "regime": "low",
+      "share_ppm": 881341,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41245,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 128,
+      "twenty_one_plus_within_tolerance_probes": 73,
+      "twenty_one_plus_share_ppm": 570312
+    },
+    {
+      "session_id": "2026-04-17-rth",
+      "regime": "low",
+      "share_ppm": 874503,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 40925,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 95,
+      "twenty_one_plus_within_tolerance_probes": 53,
+      "twenty_one_plus_share_ppm": 557894
+    },
+    {
+      "session_id": "2026-04-20-rth",
+      "regime": "low",
+      "share_ppm": 863947,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 40431,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 115,
+      "twenty_one_plus_within_tolerance_probes": 58,
+      "twenty_one_plus_share_ppm": 504347
+    },
+    {
+      "session_id": "2026-04-21-rth",
+      "regime": "low",
+      "share_ppm": 890315,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41665,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 48,
+      "twenty_one_plus_within_tolerance_probes": 26,
+      "twenty_one_plus_share_ppm": 541666
+    },
+    {
+      "session_id": "2026-04-22-rth",
+      "regime": "low",
+      "share_ppm": 878798,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41126,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 158,
+      "twenty_one_plus_within_tolerance_probes": 91,
+      "twenty_one_plus_share_ppm": 575949
+    },
+    {
+      "session_id": "2026-04-23-rth",
+      "regime": "low",
+      "share_ppm": 888862,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41597,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 62,
+      "twenty_one_plus_within_tolerance_probes": 36,
+      "twenty_one_plus_share_ppm": 580645
+    },
+    {
+      "session_id": "2026-04-24-rth",
+      "regime": "low",
+      "share_ppm": 875144,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 40955,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 83,
+      "twenty_one_plus_within_tolerance_probes": 47,
+      "twenty_one_plus_share_ppm": 566265
+    },
+    {
+      "session_id": "2026-04-27-rth",
+      "regime": "low",
+      "share_ppm": 863306,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 40401,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 178,
+      "twenty_one_plus_within_tolerance_probes": 73,
+      "twenty_one_plus_share_ppm": 410112
+    },
+    {
+      "session_id": "2026-04-28-rth",
+      "regime": "low",
+      "share_ppm": 873968,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 40900,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 116,
+      "twenty_one_plus_within_tolerance_probes": 55,
+      "twenty_one_plus_share_ppm": 474137
+    },
+    {
+      "session_id": "2026-04-29-rth",
+      "regime": "low",
+      "share_ppm": 879781,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41172,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 61,
+      "twenty_one_plus_within_tolerance_probes": 32,
+      "twenty_one_plus_share_ppm": 524590
+    },
+    {
+      "session_id": "2026-04-30-rth",
+      "regime": "low",
+      "share_ppm": 888136,
+      "comparable_probes": 46798,
+      "within_tolerance_probes": 41563,
+      "total_probes": 46798,
+      "status": "pass",
+      "twenty_one_plus_comparable_probes": 62,
+      "twenty_one_plus_within_tolerance_probes": 31,
+      "twenty_one_plus_share_ppm": 500000
+    }
+  ],
+  "per_regime_equal_weight": {
+    "high": {
+      "mean": 905083,
+      "median": 908478,
+      "min": 838653,
+      "max": 936877,
+      "n": 43,
+      "sessions": [
+        "2026-02-02-rth",
+        "2026-02-03-rth",
+        "2026-02-04-rth",
+        "2026-02-05-rth",
+        "2026-02-06-rth",
+        "2026-02-09-rth",
+        "2026-02-10-rth",
+        "2026-02-11-rth",
+        "2026-02-12-rth",
+        "2026-02-13-rth",
+        "2026-02-17-rth",
+        "2026-02-18-rth",
+        "2026-02-19-rth",
+        "2026-02-20-rth",
+        "2026-02-23-rth",
+        "2026-02-24-rth",
+        "2026-02-25-rth",
+        "2026-02-26-rth",
+        "2026-02-27-rth",
+        "2026-03-02-rth",
+        "2026-03-03-rth",
+        "2026-03-04-rth",
+        "2026-03-05-rth",
+        "2026-03-06-rth",
+        "2026-03-09-rth",
+        "2026-03-10-rth",
+        "2026-03-11-rth",
+        "2026-03-12-rth",
+        "2026-03-13-rth",
+        "2026-03-16-rth",
+        "2026-03-23-rth",
+        "2026-03-24-rth",
+        "2026-03-25-rth",
+        "2026-03-26-rth",
+        "2026-03-27-rth",
+        "2026-03-30-rth",
+        "2026-03-31-rth",
+        "2026-04-01-rth",
+        "2026-04-02-rth",
+        "2026-04-06-rth",
+        "2026-04-07-rth",
+        "2026-04-08-rth",
+        "2026-04-09-rth"
+      ]
+    },
+    "mid": {
+      "mean": 884610,
+      "median": 885187,
+      "min": 881682,
+      "max": 886960,
+      "n": 3,
+      "sessions": [
+        "2026-04-13-rth",
+        "2026-04-14-rth",
+        "2026-04-15-rth"
+      ]
+    },
+    "low": {
+      "mean": 878009,
+      "median": 878798,
+      "min": 863306,
+      "max": 890315,
+      "n": 11,
+      "sessions": [
+        "2026-04-16-rth",
+        "2026-04-17-rth",
+        "2026-04-20-rth",
+        "2026-04-21-rth",
+        "2026-04-22-rth",
+        "2026-04-23-rth",
+        "2026-04-24-rth",
+        "2026-04-27-rth",
+        "2026-04-28-rth",
+        "2026-04-29-rth",
+        "2026-04-30-rth"
+      ]
+    }
+  },
+  "per_regime_probe_weighted": {
+    "high": {
+      "pooled_share": 905083,
+      "comparable_probes": 2012336,
+      "within_tolerance_probes": 1821333,
+      "n": 43
+    },
+    "mid": {
+      "pooled_share": 884610,
+      "comparable_probes": 140394,
+      "within_tolerance_probes": 124194,
+      "n": 3
+    },
+    "low": {
+      "pooled_share": 878009,
+      "comparable_probes": 514778,
+      "within_tolerance_probes": 451980,
+      "n": 11
+    }
+  },
+  "high_low_delta": {
+    "equal_weight_delta_ppm": 27074,
+    "ci_90_lower": 21521,
+    "ci_90_upper": 32883,
+    "ci_95_lower": 20280,
+    "ci_95_upper": 33773,
+    "block_length_5_verdict": "A",
+    "block_length_3_verdict": "A",
+    "block_length_7_verdict": "A",
+    "block_length_stability_flag": true,
+    "block_length_sensitivity": {
+      "3": {
+        "block_length": 3,
+        "ci_90_lower": 21541,
+        "ci_90_upper": 34580,
+        "ci_95_lower": 20241,
+        "ci_95_upper": 35769,
+        "verdict": "A"
+      },
+      "5": {
+        "block_length": 5,
+        "ci_90_lower": 21521,
+        "ci_90_upper": 32883,
+        "ci_95_lower": 20280,
+        "ci_95_upper": 33773,
+        "verdict": "A"
+      },
+      "7": {
+        "block_length": 7,
+        "ci_90_lower": 22757,
+        "ci_90_upper": 32394,
+        "ci_95_lower": 21587,
+        "ci_95_upper": 33099,
+        "verdict": "A"
+      }
+    }
+  },
+  "mid_descriptive": {
+    "sessions": [
+      {
+        "session_id": "2026-04-13-rth",
+        "share_ppm": 881682
+      },
+      {
+        "session_id": "2026-04-14-rth",
+        "share_ppm": 885187
+      },
+      {
+        "session_id": "2026-04-15-rth",
+        "share_ppm": 886960
+      }
+    ],
+    "mean": 884610,
+    "median": 885187,
+    "min": 881682,
+    "max": 886960,
+    "loo_pair_means": [
+      {
+        "excluded_session_id": "2026-04-13-rth",
+        "mean": 886074,
+        "sessions": [
+          "2026-04-14-rth",
+          "2026-04-15-rth"
+        ]
+      },
+      {
+        "excluded_session_id": "2026-04-14-rth",
+        "mean": 884321,
+        "sessions": [
+          "2026-04-13-rth",
+          "2026-04-15-rth"
+        ]
+      },
+      {
+        "excluded_session_id": "2026-04-15-rth",
+        "mean": 883434,
+        "sessions": [
+          "2026-04-13-rth",
+          "2026-04-14-rth"
+        ]
+      }
+    ]
+  },
+  "twenty_one_plus_diagnostic": {
+    "high": {
+      "pooled_share": 489769,
+      "comparable_probes": 2297,
+      "within_tolerance_probes": 1125,
+      "overall_pooled_share": 905083,
+      "warning_triggered": false,
+      "warning_delta_ppm": 500000,
+      "warning_min_comparable_probes": 100
+    },
+    "mid": {
+      "pooled_share": 510791,
+      "comparable_probes": 556,
+      "within_tolerance_probes": 284,
+      "overall_pooled_share": 884610,
+      "warning_triggered": false,
+      "warning_delta_ppm": 500000,
+      "warning_min_comparable_probes": 100
+    },
+    "low": {
+      "pooled_share": 519891,
+      "comparable_probes": 1106,
+      "within_tolerance_probes": 575,
+      "overall_pooled_share": 878009,
+      "warning_triggered": false,
+      "warning_delta_ppm": 500000,
+      "warning_min_comparable_probes": 100
+    }
+  },
+  "twenty_one_plus_warning_flag": false,
+  "mid_anomaly_flag": false,
+  "primary_verdict": "A",
+  "mid_regime_status": "screening_floor",
+  "mid_regime_inference": "descriptive_only",
+  "bootstrap_replications": 10000,
+  "bootstrap_block_lengths_tested": [
+    3,
+    5,
+    7
+  ],
+  "bootstrap_seed": 420,
+  "quality_excluded_sessions": [
+    {
+      "session_id": "2026-03-17-rth",
+      "confirmed_label": "high",
+      "quality_excluded": true,
+      "quality_exclusion_reason": "documented_h_cycle_expiry_thinning",
+      "use_for_calibration": false
+    },
+    {
+      "session_id": "2026-03-18-rth",
+      "confirmed_label": "high",
+      "quality_excluded": true,
+      "quality_exclusion_reason": "documented_h_cycle_expiry_thinning",
+      "use_for_calibration": false
+    },
+    {
+      "session_id": "2026-03-19-rth",
+      "confirmed_label": "high",
+      "quality_excluded": true,
+      "quality_exclusion_reason": "documented_h_cycle_expiry_thinning",
+      "use_for_calibration": false
+    },
+    {
+      "session_id": "2026-03-20-rth",
+      "confirmed_label": "high",
+      "quality_excluded": true,
+      "quality_exclusion_reason": "documented_h_cycle_expiry_migration",
+      "use_for_calibration": false
+    },
+    {
+      "session_id": "2026-04-10-rth",
+      "confirmed_label": "mid",
+      "quality_excluded": true,
+      "quality_exclusion_reason": "databento_condition_degraded_warning",
+      "use_for_calibration": false
+    }
+  ],
+  "runtime_seconds": 4476.24,
+  "generated_at_note": "Deterministic archive analysis script; no wall-clock timestamp emitted."
+}
