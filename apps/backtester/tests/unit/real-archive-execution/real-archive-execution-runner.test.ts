@@ -24,8 +24,8 @@ const CONFIG = {
   config_version: 1,
 };
 
-describe('QFA-201b real-archive execution runner', () => {
-  it('emits deterministic per-trade records from synthetic archive records', async () => {
+describe('QFA-201c real-archive lifecycle execution runner', () => {
+  it('emits deterministic multi-bar per-trade records from synthetic archive records', async () => {
     const first = await runFixture();
     const second = await runFixture();
 
@@ -38,6 +38,10 @@ describe('QFA-201b real-archive execution runner', () => {
       quantity: 1,
       spread_bucket: '2-tick',
       queue_ahead_bucket: '6-20',
+      exit_reason: 'stop_loss',
+      exit_bar_index: 2,
+      max_favorable_excursion_cents: 150n,
+      max_adverse_excursion_cents: -250n,
     });
     expect(first.trade_analysis.summary.total_trades).toBe(1);
     expect(first.runtime_metrics.candidate_count).toBe(1);
@@ -49,6 +53,8 @@ describe('QFA-201b real-archive execution runner', () => {
     expect(result.journal_events.map((event) => event.type)).toContain('ORDER_INTENT');
     expect(result.journal_events.map((event) => event.type)).toContain('SIM_FILL');
     expect(result.journal_events.map((event) => event.type)).toContain('POSITION');
+    expect(result.journal_events.map((event) => event.type)).toContain('MGMT_TICK');
+    expect(result.journal_events.map((event) => event.type)).toContain('MGMT_ACTION');
   });
 });
 
@@ -70,11 +76,13 @@ async function runFixture() {
         regime_label: 'high',
         trades_records: [
           trade(1_000_000_000n, 100),
-          trade(61_000_000_000n, 101),
+          trade(61_000_000_000n, 100.5),
+          trade(121_000_000_000n, 98.5),
         ],
         mbp1_records: [
           mbp1(1_000_000_000n, 99.75, 100.25),
-          mbp1(61_000_000_000n, 100.75, 101.25),
+          mbp1(61_000_000_000n, 100.25, 100.75),
+          mbp1(121_000_000_000n, 98.25, 98.75),
         ],
       },
     ],
@@ -111,8 +119,14 @@ function deterministicGenerator(): RealArchiveStrategyGenerator {
       entry_price: snapshot.quote.bid_px,
       stop_price: snapshot.quote.bid_px - 1,
       risk_points: 1,
-      targets: [{ label: 'pt1', price: snapshot.quote.bid_px + 1, quantity_fraction: 1 }],
-      reward_risk: [{ label: 'pt1', reward_risk: 1 }],
+      targets: [
+        { label: 'pt1', price: snapshot.quote.bid_px + 1, quantity_fraction: 0.5 },
+        { label: 'pt2', price: snapshot.quote.bid_px + 2, quantity_fraction: 0.5 },
+      ],
+      reward_risk: [
+        { label: 'pt1', reward_risk: 1 },
+        { label: 'pt2', reward_risk: 2 },
+      ],
       confidence: 1,
       config: CONFIG,
       reasons: ['qfa-201b-fixture'],

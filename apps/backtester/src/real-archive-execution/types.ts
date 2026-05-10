@@ -25,6 +25,15 @@ export type SpreadBucket = '1-tick' | '2-tick' | '3+ ticks' | 'unknown';
 
 export type QueueAheadBucket = '1-5' | '6-20' | '21+' | 'unknown';
 
+export type RealArchiveExitReason =
+  | 'stop_loss'
+  | 'target'
+  | 'time_stop'
+  | 'strategy_exit'
+  | 'session_close'
+  | 'fail_safe'
+  | 'unknown';
+
 export interface RealArchiveSessionSource {
   readonly session_id: string;
   readonly trading_date: string;
@@ -91,6 +100,10 @@ export interface RealArchivePerTradeRecord {
   readonly pnl_cents: bigint;
   readonly spread_bucket: SpreadBucket;
   readonly queue_ahead_bucket: QueueAheadBucket;
+  readonly exit_reason: RealArchiveExitReason;
+  readonly exit_bar_index: number;
+  readonly max_favorable_excursion_cents: bigint;
+  readonly max_adverse_excursion_cents: bigint;
   readonly fill_quality_metric: {
     readonly entry_fill_probability_ppm: number;
     readonly entry_estimated_fill_quantity: bigint;
