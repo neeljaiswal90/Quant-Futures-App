@@ -38,6 +38,17 @@ import {
   getActiveStrategyGenerator,
   type StrategyFeatureSnapshot,
 } from '../../../strategy_runtime/src/strategies/index.js';
+import {
+  applyInitialFillToTargetPosition,
+  buildTargetPositionFromCandidate,
+  evaluatePositionManager,
+  resolveManagementProfile,
+  type ManagementProfile,
+  type PositionManagerAction,
+  type PositionManagerEvaluation,
+  type TargetPosition,
+} from '../../../strategy_runtime/src/management/index.js';
+import type { SimulatedFill } from '../../../strategy_runtime/src/contracts/execution.js';
 import { buildTradeLedger } from '../trade-ledger/index.js';
 import {
   analyzeTradeLedger,
@@ -48,6 +59,7 @@ import type {
   RealArchiveBacktestOptions,
   RealArchiveBacktestResult,
   RealArchiveExecutionFillPolicy,
+  RealArchiveExitReason,
   RealArchivePerTradeRecord,
   RealArchiveRegimeLabel,
   RealArchiveSessionSource,
@@ -86,6 +98,12 @@ interface OpenExecutionPosition {
   readonly entry_spread_bucket: SpreadBucket;
   readonly entry_queue_ahead_bucket: QueueAheadBucket;
   readonly quantity: number;
+  readonly order_intent_id: ReturnType<typeof makeOrderIntentId>;
+  readonly management_profile: ManagementProfile;
+  readonly entry_bar_index: number;
+  target_position: TargetPosition;
+  mfe_cents: bigint;
+  mae_cents: bigint;
 }
 
 interface MutableRuntimeMetrics {
@@ -101,6 +119,10 @@ interface EntryMetadata {
   readonly spread_bucket: SpreadBucket;
   readonly queue_ahead_bucket: QueueAheadBucket;
   readonly estimate: PassiveFillEstimate;
+  exit_reason?: RealArchiveExitReason;
+  exit_bar_index?: number;
+  max_favorable_excursion_cents?: bigint;
+  max_adverse_excursion_cents?: bigint;
 }
 
 interface EventSequence {
@@ -219,6 +241,8 @@ async function runSession(input: {
   const history: BuiltBar[] = [];
   const quoteState: { latest: RealArchiveTopOfBook | null } = { latest: null };
   let openPosition: OpenExecutionPosition | null = null;
+  let barIndex = 0;
+  let lastBar: BuiltBar | null = null;
 
   for await (const output of buildBars(recordSource(input.session, 'trades'), {
     bar_spec: input.options.bar_spec ?? '1m',
@@ -231,6 +255,8 @@ async function runSession(input: {
       continue;
     }
     const bar = output as BuiltBar;
+    barIndex += 1;
+    lastBar = bar;
     await advanceQueueCursor(mbp1Cursor, bar.last_record_ts_ns, recentQueueRecords, (record) => {
       quoteState.latest = topOfBookFromMbp1(record);
     });
@@ -244,32 +270,48 @@ async function runSession(input: {
     input.metrics.bars_processed += 1;
 
     if (openPosition !== null) {
-      const exitFill = makeFillEvent({
-        runId: input.runId,
-        sessionId,
-        sequence: input.sequence,
-        orderIntentId: openPosition.entry_fill.payload.order_intent_id,
-        side: openPosition.candidate.direction === 'long' ? 'sell' : 'buy',
-        price: priceNumber(bar.close),
-        quantity: openPosition.quantity,
-        tsNs: bar.last_record_ts_ns,
-        causationEventId: openPosition.entry_fill.event_id,
-        fillSuffix: 'exit',
-        estimate: openPosition.entry_estimate,
+      updateExcursions(openPosition, bar);
+      const management = evaluatePositionManager({
+        position: openPosition.target_position,
+        profile: openPosition.management_profile,
+        market: {
+          event_ts_ns: bar.last_record_ts_ns,
+          mark_price: priceNumber(bar.close),
+          high_price: priceNumber(bar.high),
+          low_price: priceNumber(bar.low),
+          ...(quoteState.latest === null ? {} : {
+            bid_px: quoteState.latest.bid_px,
+            ask_px: quoteState.latest.ask_px,
+            authority: 'authoritative' as const,
+          }),
+        },
       });
-      input.events.push(exitFill as AnyJournalEventEnvelope);
-      input.events.push(positionEvent({
+      appendManagementEvents({
+        events: input.events,
         runId: input.runId,
         sessionId,
         sequence: input.sequence,
-        candidate: openPosition.candidate,
-        status: 'closed',
-        quantityOpen: 0,
-        avgEntryPrice: openPosition.entry_fill.payload.price,
+        evaluation: management,
         tsNs: bar.last_record_ts_ns,
-      }));
-      input.metrics.fill_count += 1;
-      openPosition = null;
+      });
+      openPosition.target_position = management.updated_position;
+      const exitAction = firstExitAction(management.actions);
+      if (exitAction !== undefined) {
+        const closed = closeOpenPosition({
+          openPosition,
+          action: exitAction,
+          exitReason: exitReasonFromManagement(management, exitAction),
+          bar,
+          barIndex,
+          runId: input.runId,
+          sessionId,
+          sequence: input.sequence,
+          events: input.events,
+          entryMetadataByOrderIntentId: input.entryMetadataByOrderIntentId,
+        });
+        input.metrics.fill_count += closed.exitFillCount;
+        openPosition = closed.openPosition;
+      }
       continue;
     }
 
@@ -359,8 +401,23 @@ async function runSession(input: {
       spread_bucket: spreadBucket(quoteState.latest),
       queue_ahead_bucket: queueAheadBucketFromQuote(candidate.direction, quoteState.latest),
       estimate,
+      exit_reason: 'unknown' as const,
+      exit_bar_index: 0,
+      max_favorable_excursion_cents: 0n,
+      max_adverse_excursion_cents: 0n,
     };
     input.entryMetadataByOrderIntentId.set(String(orderIntent.payload.order_intent_id), entryMetadata);
+    const managementProfile = resolveManagementProfile(candidate.strategy_id, { allow_fallback: false }).profile;
+    const targetPosition = applyInitialFillToTargetPosition(
+      buildTargetPositionFromCandidate({
+        candidate,
+        profile: managementProfile,
+        quantity: input.fillPolicy.order_quantity,
+        opened_ts_ns: bar.last_record_ts_ns,
+        position_id: makePositionId(`position-${candidate.candidate_id}`),
+      }),
+      simulatedFillFromEvent(entryFill, candidate),
+    );
     input.events.push(positionEvent({
       runId: input.runId,
       sessionId,
@@ -370,6 +427,8 @@ async function runSession(input: {
       quantityOpen: input.fillPolicy.order_quantity,
       avgEntryPrice: candidate.entry_price,
       tsNs: bar.last_record_ts_ns,
+      positionId: targetPosition.position_id,
+      managementProfile,
     }));
     input.metrics.fill_count += 1;
     openPosition = {
@@ -379,7 +438,28 @@ async function runSession(input: {
       entry_spread_bucket: entryMetadata.spread_bucket,
       entry_queue_ahead_bucket: entryMetadata.queue_ahead_bucket,
       quantity: input.fillPolicy.order_quantity,
+      order_intent_id: orderIntent.payload.order_intent_id,
+      management_profile: managementProfile,
+      target_position: targetPosition,
+      entry_bar_index: barIndex,
+      mfe_cents: 0n,
+      mae_cents: 0n,
     };
+  }
+
+  if (openPosition !== null && lastBar !== null) {
+    const closed = closeOpenPosition({
+      openPosition,
+      exitReason: 'session_close',
+      bar: lastBar,
+      barIndex,
+      runId: input.runId,
+      sessionId,
+      sequence: input.sequence,
+      events: input.events,
+      entryMetadataByOrderIntentId: input.entryMetadataByOrderIntentId,
+    });
+    input.metrics.fill_count += closed.exitFillCount;
   }
 }
 
@@ -390,6 +470,182 @@ function validateOptions(options: RealArchiveBacktestOptions): void {
   if (options.sessions.length === 0) {
     throw new Error('at least one session is required');
   }
+}
+
+function appendManagementEvents(input: {
+  readonly events: AnyJournalEventEnvelope[];
+  readonly runId: ReturnType<typeof makeRunId>;
+  readonly sessionId: ReturnType<typeof makeSessionId>;
+  readonly sequence: EventSequence;
+  readonly evaluation: PositionManagerEvaluation;
+  readonly tsNs: UnixNs;
+}): void {
+  input.events.push(createJournalEventEnvelope({
+    event_id: makeEventId(`evt-${input.runId}-${padSequence(input.sequence.next())}`),
+    type: 'MGMT_TICK',
+    ts_ns: input.tsNs,
+    run_id: input.runId,
+    session_id: input.sessionId,
+    payload: input.evaluation.management_tick_payload,
+  }) as AnyJournalEventEnvelope);
+  for (const payload of input.evaluation.management_action_payloads) {
+    input.events.push(createJournalEventEnvelope({
+      event_id: makeEventId(`evt-${input.runId}-${padSequence(input.sequence.next())}`),
+      type: 'MGMT_ACTION',
+      ts_ns: input.tsNs,
+      run_id: input.runId,
+      session_id: input.sessionId,
+      payload,
+    }) as AnyJournalEventEnvelope);
+  }
+}
+
+function firstExitAction(actions: readonly PositionManagerAction[]): PositionManagerAction | undefined {
+  return actions.find((action) => action.exit_quantity !== undefined && action.exit_price !== undefined);
+}
+
+function closeOpenPosition(input: {
+  readonly openPosition: OpenExecutionPosition;
+  readonly action?: PositionManagerAction;
+  readonly exitReason: RealArchiveExitReason;
+  readonly bar: BuiltBar;
+  readonly barIndex: number;
+  readonly runId: ReturnType<typeof makeRunId>;
+  readonly sessionId: ReturnType<typeof makeSessionId>;
+  readonly sequence: EventSequence;
+  readonly events: AnyJournalEventEnvelope[];
+  readonly entryMetadataByOrderIntentId: Map<string, EntryMetadata>;
+}): { readonly openPosition: OpenExecutionPosition | null; readonly exitFillCount: number } {
+  const exitQuantity = input.action?.exit_quantity ?? input.openPosition.target_position.remaining_quantity;
+  if (exitQuantity <= 0) {
+    return { openPosition: input.openPosition, exitFillCount: 0 };
+  }
+  const exitPrice = input.action?.exit_price ?? priceNumber(input.bar.close);
+  const exitFill = makeFillEvent({
+    runId: input.runId,
+    sessionId: input.sessionId,
+    sequence: input.sequence,
+    orderIntentId: input.openPosition.order_intent_id,
+    positionId: input.openPosition.target_position.position_id,
+    managementActionId: input.action?.management_action_id,
+    managementProfile: input.openPosition.management_profile,
+    side: input.openPosition.candidate.direction === 'long' ? 'sell' : 'buy',
+    price: exitPrice,
+    quantity: exitQuantity,
+    tsNs: input.bar.last_record_ts_ns,
+    causationEventId: input.openPosition.entry_fill.event_id,
+    fillSuffix: `${input.exitReason}-${input.barIndex}`,
+    estimate: input.openPosition.entry_estimate,
+  });
+  input.events.push(exitFill as AnyJournalEventEnvelope);
+
+  const fullyClosed =
+    input.exitReason === 'session_close' ||
+    input.openPosition.target_position.lifecycle_state === 'closed' ||
+    input.openPosition.target_position.remaining_quantity - exitQuantity <= 0;
+  input.events.push(positionEvent({
+    runId: input.runId,
+    sessionId: input.sessionId,
+    sequence: input.sequence,
+    candidate: input.openPosition.candidate,
+    status: fullyClosed ? 'closed' : 'open',
+    quantityOpen: fullyClosed
+      ? 0
+      : Math.max(0, input.openPosition.target_position.remaining_quantity - exitQuantity),
+    avgEntryPrice: input.openPosition.entry_fill.payload.price,
+    tsNs: input.bar.last_record_ts_ns,
+    positionId: input.openPosition.target_position.position_id,
+    managementProfile: input.openPosition.management_profile,
+  }));
+
+  if (!fullyClosed) {
+    return { openPosition: input.openPosition, exitFillCount: 1 };
+  }
+
+  const metadata = input.entryMetadataByOrderIntentId.get(String(input.openPosition.order_intent_id));
+  if (metadata !== undefined) {
+    metadata.exit_reason = input.exitReason;
+    metadata.exit_bar_index = input.barIndex - input.openPosition.entry_bar_index;
+    metadata.max_favorable_excursion_cents = input.openPosition.mfe_cents;
+    metadata.max_adverse_excursion_cents = input.openPosition.mae_cents;
+  }
+  return { openPosition: null, exitFillCount: 1 };
+}
+
+function exitReasonFromManagement(
+  evaluation: PositionManagerEvaluation,
+  action: PositionManagerAction,
+): RealArchiveExitReason {
+  if (evaluation.fsm_state === 'FAILED_SAFE_EXIT' || action.reason.startsWith('fail_safe:')) {
+    return 'fail_safe';
+  }
+  if (evaluation.fsm_state === 'TIME_STOP_EXIT' || action.reason.startsWith('time_stop:')) {
+    return 'time_stop';
+  }
+  if (action.reason.startsWith('stop:')) {
+    return 'stop_loss';
+  }
+  if (action.reason.startsWith('target:')) {
+    return 'target';
+  }
+  return 'unknown';
+}
+
+function updateExcursions(position: OpenExecutionPosition, bar: BuiltBar): void {
+  const high = priceNumber(bar.high);
+  const low = priceNumber(bar.low);
+  const favorablePrice = position.candidate.direction === 'long' ? high : low;
+  const adversePrice = position.candidate.direction === 'long' ? low : high;
+  position.mfe_cents = maxBigint(
+    position.mfe_cents,
+    unrealizedPnlCents(position, favorablePrice),
+  );
+  position.mae_cents = minBigint(
+    position.mae_cents,
+    unrealizedPnlCents(position, adversePrice),
+  );
+}
+
+function unrealizedPnlCents(position: OpenExecutionPosition, markPrice: number): bigint {
+  const points = position.candidate.direction === 'long'
+    ? markPrice - position.entry_fill.payload.price
+    : position.entry_fill.payload.price - markPrice;
+  const ticks = BigInt(Math.round(points / TICK_SIZE));
+  return ticks * DEFAULT_VALUATION.tick_value_usd_cents * BigInt(position.quantity);
+}
+
+function simulatedFillFromEvent(
+  fill: JournalEventEnvelope<'SIM_FILL', JournalEventPayloadFor<'SIM_FILL'>>,
+  candidate: Candidate,
+): SimulatedFill {
+  return {
+    fill_id: fill.payload.fill_id,
+    order_intent_id: fill.payload.order_intent_id,
+    instrument: candidate.instrument,
+    side: fill.payload.side,
+    quantity: fill.payload.quantity,
+    price: fill.payload.price,
+    liquidity: fill.payload.liquidity,
+    exchange_fee_usd: fill.payload.exchange_fee_usd ?? 0,
+    commission_usd: fill.payload.commission_usd ?? 0,
+    slippage_points: fill.payload.slippage_points ?? 0,
+    filled_ts_ns: fill.ts_ns,
+    config: candidate.config,
+    execution_model_version: fill.payload.execution_model_version,
+    fill_model: fill.payload.fill_model,
+    input_tier: fill.payload.input_tier,
+    fill_probability: fill.payload.fill_probability,
+    queue_ahead_size_estimate: fill.payload.queue_ahead_size_estimate,
+    calibration_status: fill.payload.calibration_status,
+  };
+}
+
+function maxBigint(left: bigint, right: bigint): bigint {
+  return left > right ? left : right;
+}
+
+function minBigint(left: bigint, right: bigint): bigint {
+  return left < right ? left : right;
 }
 
 function recordSource(
@@ -703,12 +959,15 @@ function makeFillEvent(input: {
   readonly sessionId: ReturnType<typeof makeSessionId>;
   readonly sequence: EventSequence;
   readonly orderIntentId: ReturnType<typeof makeOrderIntentId>;
+  readonly positionId?: ReturnType<typeof makePositionId>;
+  readonly managementActionId?: string;
+  readonly managementProfile?: ManagementProfile;
   readonly side: 'buy' | 'sell';
   readonly price: number;
   readonly quantity: number;
   readonly tsNs: UnixNs;
   readonly causationEventId: string;
-  readonly fillSuffix: 'entry' | 'exit';
+  readonly fillSuffix: string;
   readonly estimate: PassiveFillEstimate;
   readonly exchangeFeeUsd?: number;
   readonly commissionUsd?: number;
@@ -736,6 +995,16 @@ function makeFillEvent(input: {
       fill_probability: input.estimate.estimated_fill_probability_ppm / 1_000_000,
       queue_ahead_size_estimate: Number(input.estimate.estimated_fill_quantity),
       calibration_status: input.estimate.source_metadata.confidence,
+      ...(input.managementActionId === undefined ? {} : {
+        management_action_id: input.managementActionId as JournalEventPayloadFor<'SIM_FILL'>['management_action_id'],
+      }),
+      ...(input.positionId === undefined ? {} : { position_id: input.positionId }),
+      ...(input.managementProfile === undefined ? {} : {
+        management_profile_hash: input.managementProfile.profile_hash,
+        management_profile_id: input.managementProfile.profile_id,
+        management_profile_version: input.managementProfile.profile_version,
+        position_manager_version: 'position_manager_fsm_v1',
+      }),
     },
   });
 }
@@ -778,6 +1047,8 @@ function positionEvent(input: {
   readonly quantityOpen: number;
   readonly avgEntryPrice: number;
   readonly tsNs: UnixNs;
+  readonly positionId?: ReturnType<typeof makePositionId>;
+  readonly managementProfile?: ManagementProfile;
 }): AnyJournalEventEnvelope {
   return createJournalEventEnvelope({
     event_id: makeEventId(`evt-${input.runId}-${padSequence(input.sequence.next())}`),
@@ -786,7 +1057,7 @@ function positionEvent(input: {
     run_id: input.runId,
     session_id: input.sessionId,
     payload: {
-      position_id: makePositionId(`position-${input.candidate.candidate_id}`),
+      position_id: input.positionId ?? makePositionId(`position-${input.candidate.candidate_id}`),
       candidate_id: input.candidate.candidate_id,
       side: input.status === 'closed' ? 'flat' : input.candidate.direction,
       status: input.status,
@@ -794,6 +1065,11 @@ function positionEvent(input: {
       avg_entry_price: input.avgEntryPrice,
       updated_ts_ns: input.tsNs,
       strategy_config_hash: input.candidate.config.config_hash,
+      ...(input.managementProfile === undefined ? {} : {
+        management_profile_hash: input.managementProfile.profile_hash,
+        management_profile_id: input.managementProfile.profile_id,
+        management_profile_version: input.managementProfile.profile_version,
+      }),
     },
   }) as AnyJournalEventEnvelope;
 }
@@ -844,6 +1120,10 @@ function enrichTrades(input: {
       pnl_cents: pnl.net_pnl_cents,
       spread_bucket: entryMetadata?.spread_bucket ?? 'unknown',
       queue_ahead_bucket: entryMetadata?.queue_ahead_bucket ?? queueAheadBucketFromFill(entryFill),
+      exit_reason: entryMetadata?.exit_reason ?? 'unknown',
+      exit_bar_index: entryMetadata?.exit_bar_index ?? 0,
+      max_favorable_excursion_cents: entryMetadata?.max_favorable_excursion_cents ?? 0n,
+      max_adverse_excursion_cents: entryMetadata?.max_adverse_excursion_cents ?? 0n,
       fill_quality_metric: {
         entry_fill_probability_ppm: entryMetadata?.estimate.estimated_fill_probability_ppm
           ?? Math.round((entryFill?.payload.fill_probability ?? 0) * 1_000_000),
