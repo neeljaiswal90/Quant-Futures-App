@@ -20,12 +20,16 @@ import type {
   PassiveOrderProbe,
   QueueSynthesisOptions,
 } from '../../apps/strategy_runtime/src/data/queue-synthesis/types.js';
+import { canonicalizeReproJson } from '../../apps/backtester/src/repro-hash/index.js';
+import { mergeMonotonicSources } from '../../apps/backtester/src/real-archive-execution/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, '..', '..');
 const ARCHIVE_ROOT = 'D:/qfa-cache/databento/tier-a-feb-mar-2026';
 const OUTPUT_PATH = join(REPO_ROOT, '.tmp', 'qfa-402c-residual-analysis.json');
+const CELL_OUTPUT_PATH = join(REPO_ROOT, 'artifacts', 'regime-fidelity', 'qfa-402c-stratified-cells-v1.json');
+const REGIME_LABELS_PATH = join(REPO_ROOT, 'artifacts', 'regime', 'regime-labels.json');
 
 const ONE_SECOND_NS = 1_000_000_000n;
 const THIRTY_MINUTES_NS = 1_800_000_000_000n;
@@ -35,6 +39,7 @@ const PPM_DENOMINATOR = 1_000_000n;
 const LOCKED_MANIFEST_HASHES = Object.freeze({
   feb: '05e4ff4e2eb79586c64930e42ecc2a2dbdc5c1f281f0a5a24c6a7d5a87656f0c',
   mar: 'cf3b0ca57b43fd4c6aab57e44c3e9eca27de0902519c56922e474736dda3838f',
+  apr: 'e37d01b3a3976f2f2614c2a85171ce4cc8b6b5ad069bf782f55285b0e7721a2c',
 });
 
 const PROBABILITY_BUCKET_ORDER = Object.freeze([
@@ -49,6 +54,14 @@ const SIDE_BUCKET_ORDER = Object.freeze(['buy', 'sell']);
 const SPREAD_BUCKET_ORDER = Object.freeze(['1_tick', '2_ticks', '3_plus_ticks', 'unknown']);
 const QUEUE_BUCKET_ORDER = Object.freeze(['0', '1_5', '6_20', '21_plus', 'unknown']);
 const TIME_BUCKET_ORDER = Object.freeze(['first_30m', 'mid_session', 'last_30m', 'bounded_prefix']);
+const JSON_REGIME_ORDER = Object.freeze(['high', 'mid', 'low'] as const);
+const JSON_SPREAD_BUCKET_ORDER = Object.freeze(['1-tick', '2-tick', '3+ ticks'] as const);
+const JSON_QUEUE_AHEAD_BUCKET_ORDER = Object.freeze(['1-5', '6-20', '21+'] as const);
+const CELL_ARTIFACT_GENERATED_AT_UTC = '2026-05-10T00:00:00Z';
+
+type JsonRegime = typeof JSON_REGIME_ORDER[number];
+type JsonSpreadBucket = typeof JSON_SPREAD_BUCKET_ORDER[number];
+type JsonQueueAheadBucket = typeof JSON_QUEUE_AHEAD_BUCKET_ORDER[number];
 
 interface ManifestSessionSchema {
   readonly path: string;
@@ -136,6 +149,38 @@ interface AnalysisProbeRow {
   readonly time_bucket: string;
   readonly synthesized_probability_bucket: string;
   readonly reference_probability_bucket: string;
+}
+
+interface CrossStratifiedCell {
+  readonly spread_bucket: string;
+  readonly queue_ahead_bucket: string;
+  readonly comparable_probes: number;
+  readonly within_tolerance_probes: number;
+  readonly within_tolerance_share_ppm: number | null;
+}
+
+interface Qfa402cSessionResult {
+  readonly label: string;
+  readonly session_id: string;
+  readonly regime: string;
+  readonly analysis: {
+    readonly qfa_402c_cells: readonly CrossStratifiedCell[];
+  };
+}
+
+interface RegimeLabelsArtifact {
+  readonly labels: readonly {
+    readonly session_id: string;
+    readonly confirmed_label: string;
+  }[];
+}
+
+interface CellAccumulator {
+  regime: JsonRegime;
+  spread_bucket: JsonSpreadBucket;
+  queue_ahead_bucket: JsonQueueAheadBucket;
+  probe_count: number;
+  within_tolerance_count: number;
 }
 
 const SESSION_CONFIGS: readonly SessionConfig[] = Object.freeze([
@@ -545,8 +590,20 @@ async function computeSynthesizedResults(
   const estimatesByProbe = new Map<string, PassiveFillEstimate>();
   for await (const output of synthesizeQueue(
     [
-      boundedDbnRecords(mbp1Path, 'mbp-1', windowStart, windowEnd, mbp1Counter),
-      boundedDbnRecords(tradesPath, 'trades', windowStart, windowEnd, tradesCounter),
+      mergeMonotonicSources<DbnRecord>([
+        {
+          name: 'mbp-1',
+          records: boundedDbnRecords(mbp1Path, 'mbp-1', windowStart, windowEnd, mbp1Counter),
+          tsExtractor: (record) => BigInt(record.ts_event),
+          tieBreakRank: 0,
+        },
+        {
+          name: 'trades',
+          records: boundedDbnRecords(tradesPath, 'trades', windowStart, windowEnd, tradesCounter),
+          tsExtractor: (record) => BigInt(record.ts_event),
+          tieBreakRank: 1,
+        },
+      ]),
     ],
     options,
     asyncPassiveProbes(probes),
@@ -964,6 +1021,20 @@ function groupRows(rows: readonly AnalysisProbeRow[], key: (row: AnalysisProbeRo
   }));
 }
 
+function crossStratifiedCells(rows: readonly AnalysisProbeRow[]): readonly CrossStratifiedCell[] {
+  return Object.freeze(SPREAD_BUCKET_ORDER.flatMap((spreadBucketValue) => QUEUE_BUCKET_ORDER.map((queueBucketValue) => {
+    const bucketRows = rows.filter((row) => row.spread_bucket === spreadBucketValue && row.queue_ahead_bucket === queueBucketValue);
+    const within = bucketRows.filter((row) => row.within_tolerance).length;
+    return Object.freeze({
+      spread_bucket: spreadBucketValue,
+      queue_ahead_bucket: queueBucketValue,
+      comparable_probes: bucketRows.length,
+      within_tolerance_probes: within,
+      within_tolerance_share_ppm: withinShare(within, bucketRows.length),
+    });
+  })));
+}
+
 function calibrationTable(rows: readonly AnalysisProbeRow[]): readonly object[] {
   return Object.freeze(PROBABILITY_BUCKET_ORDER.map((bucket) => {
     const bucketRows = rows.filter((row) => row.synthesized_probability_bucket === bucket);
@@ -998,6 +1069,7 @@ function analyzeSessionResults(
       reference_probability: groupRows(rows, (row) => row.reference_probability_bucket, PROBABILITY_BUCKET_ORDER),
       time_of_day: groupRows(rows, (row) => row.time_bucket, TIME_BUCKET_ORDER),
     }),
+    qfa_402c_cells: crossStratifiedCells(rows),
     calibration_table: calibrationTable(rows),
   });
 }
@@ -1085,8 +1157,120 @@ async function runSession(config: SessionConfig, manifest: CorpusManifest): Prom
   });
 }
 
+function isJsonRegime(value: string): value is JsonRegime {
+  return JSON_REGIME_ORDER.includes(value as JsonRegime);
+}
+
+function normalizeSpreadBucketForJson(bucket: string): JsonSpreadBucket | null {
+  if (bucket === '1_tick') return '1-tick';
+  if (bucket === '2_ticks') return '2-tick';
+  if (bucket === '3_plus_ticks') return '3+ ticks';
+  return null;
+}
+
+function normalizeQueueAheadBucketForJson(bucket: string): JsonQueueAheadBucket | null {
+  if (bucket === '1_5') return '1-5';
+  if (bucket === '6_20') return '6-20';
+  if (bucket === '21_plus') return '21+';
+  return null;
+}
+
+function cellKey(regime: JsonRegime, spreadBucketValue: JsonSpreadBucket, queueBucketValue: JsonQueueAheadBucket): string {
+  return `${regime}|${spreadBucketValue}|${queueBucketValue}`;
+}
+
+function initialCellAccumulatorMap(): Map<string, CellAccumulator> {
+  const cells = new Map<string, CellAccumulator>();
+  for (const regime of JSON_REGIME_ORDER) {
+    for (const spreadBucketValue of JSON_SPREAD_BUCKET_ORDER) {
+      for (const queueBucketValue of JSON_QUEUE_AHEAD_BUCKET_ORDER) {
+        cells.set(cellKey(regime, spreadBucketValue, queueBucketValue), {
+          regime,
+          spread_bucket: spreadBucketValue,
+          queue_ahead_bucket: queueBucketValue,
+          probe_count: 0,
+          within_tolerance_count: 0,
+        });
+      }
+    }
+  }
+  return cells;
+}
+
+function readRegimeBySession(): ReadonlyMap<string, JsonRegime> {
+  const artifact = JSON.parse(readFileSync(REGIME_LABELS_PATH, 'utf8')) as RegimeLabelsArtifact;
+  const labels = new Map<string, JsonRegime>();
+  for (const label of artifact.labels) {
+    if (!isJsonRegime(label.confirmed_label)) {
+      throw new Error(`Unsupported regime label for ${label.session_id}: ${label.confirmed_label}`);
+    }
+    labels.set(label.session_id, label.confirmed_label);
+  }
+  return labels;
+}
+
+function buildCellArtifact(sessions: readonly Qfa402cSessionResult[]): object {
+  const regimeBySession = readRegimeBySession();
+  const accumulators = initialCellAccumulatorMap();
+  for (const session of sessions) {
+    const regime = regimeBySession.get(session.session_id);
+    if (regime === undefined) {
+      throw new Error(`Missing regime label for QFA-402c session ${session.session_id}`);
+    }
+    for (const cell of session.analysis.qfa_402c_cells) {
+      const spreadBucketValue = normalizeSpreadBucketForJson(cell.spread_bucket);
+      const queueBucketValue = normalizeQueueAheadBucketForJson(cell.queue_ahead_bucket);
+      if (spreadBucketValue === null || queueBucketValue === null) {
+        if (cell.comparable_probes !== 0) {
+          throw new Error(
+            `Unsupported populated QFA-402c cell bucket for ${session.session_id}: ` +
+            `${cell.spread_bucket}/${cell.queue_ahead_bucket} has ${cell.comparable_probes} probes`,
+          );
+        }
+        continue;
+      }
+      const key = cellKey(regime, spreadBucketValue, queueBucketValue);
+      const accumulator = accumulators.get(key);
+      if (accumulator === undefined) {
+        throw new Error(`Internal QFA-402c cell accumulator missing for ${key}`);
+      }
+      accumulator.probe_count += cell.comparable_probes;
+      accumulator.within_tolerance_count += cell.within_tolerance_probes;
+    }
+  }
+
+  const cells = Array.from(accumulators.values()).map((cell) => {
+    const sharePpm = cell.probe_count === 0
+      ? 0
+      : Number((BigInt(cell.within_tolerance_count) * PPM_DENOMINATOR) / BigInt(cell.probe_count));
+    return Object.freeze({
+      regime: cell.regime,
+      spread_bucket: cell.spread_bucket,
+      queue_ahead_bucket: cell.queue_ahead_bucket,
+      share_ppm: sharePpm,
+      probe_count: cell.probe_count,
+      within_tolerance_count: cell.within_tolerance_count,
+    });
+  });
+
+  return Object.freeze({
+    schema_version: 1,
+    methodology_id: 'qfa-402c-cells-v1',
+    generated_at_utc: CELL_ARTIFACT_GENERATED_AT_UTC,
+    source_manifests: Object.freeze({
+      feb: LOCKED_MANIFEST_HASHES.feb,
+      mar: LOCKED_MANIFEST_HASHES.mar,
+      apr: LOCKED_MANIFEST_HASHES.apr,
+    }),
+    input_substrate_hash: sha256File(REGIME_LABELS_PATH),
+    fidelity_threshold_ppm: DEFAULT_QUEUE_FIDELITY_POLICY_V1.min_within_tolerance_share_ppm,
+    cells: Object.freeze(cells),
+  });
+}
+
 async function main(): Promise<void> {
   mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
+  mkdirSync(dirname(CELL_OUTPUT_PATH), { recursive: true });
   const runStart = nowMs();
   const manifests = Object.freeze({
     feb: readManifest('feb'),
@@ -1118,7 +1302,9 @@ async function main(): Promise<void> {
     squared_error_note: 'mean_squared_error_ppm2 uses realized fractional fill ppm targets, not binary fill/no-fill conversion.',
   });
   writeFileSync(OUTPUT_PATH, `${JSON.stringify(result, jsonReplacer, 2)}\n`, 'utf8');
+  writeFileSync(CELL_OUTPUT_PATH, `${canonicalizeReproJson(buildCellArtifact(sessions as readonly Qfa402cSessionResult[]))}\n`, 'utf8');
   console.log(`[qfa-402c] wrote ${OUTPUT_PATH}`);
+  console.log(`[qfa-402c] wrote ${CELL_OUTPUT_PATH}`);
 }
 
 function jsonReplacer(_key: string, value: unknown): unknown {
