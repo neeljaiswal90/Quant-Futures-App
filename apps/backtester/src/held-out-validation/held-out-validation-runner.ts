@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   ACTIVE_STRATEGY_IDS,
   isStrategyId,
@@ -7,6 +8,7 @@ import {
   buildCapabilityAssessmentSet,
   type CapabilityAssessmentSet,
   type StrategyCapabilityAssessment,
+  type StrategyFeatureCapability,
   type StrategyCapabilityLimitation,
 } from '../capability-assessment/index.js';
 import {
@@ -15,9 +17,15 @@ import {
 } from '../oos-replay/index.js';
 import {
   computeStrategyFingerprintSet,
+  STRATEGY_FINGERPRINT_ALGORITHM,
   type StrategyFingerprint,
   type StrategyFingerprintSet,
 } from '../strategy-fingerprint/index.js';
+import {
+  runRealArchiveBacktest,
+  type RealArchiveBacktestResult,
+  type RealArchiveSessionSource,
+} from '../real-archive-execution/index.js';
 import {
   DEFAULT_VALIDATION_GATE_POLICY_V1,
   evaluateValidationGateSet,
@@ -32,6 +40,10 @@ import {
 } from './held-out-validation-error.js';
 import type {
   HeldOutValidationRunOptions,
+  HeldOutValidationRealArchiveOptions,
+  HeldOutValidationRealArchiveResult,
+  HeldOutValidationRealArchiveStrategyResult,
+  HeldOutValidationRealArchiveWindowResult,
   HeldOutValidationRunResult,
   HeldOutValidationWindowReason,
   HeldOutValidationWindowResult,
@@ -54,6 +66,129 @@ export async function runHeldOutValidation(
   options: HeldOutValidationRunOptions,
 ): Promise<HeldOutValidationRunResult> {
   return buildHeldOutValidationResult(options);
+}
+
+export async function executeHeldOutValidationAgainstArchive(
+  options: HeldOutValidationRealArchiveOptions,
+): Promise<HeldOutValidationRealArchiveResult> {
+  validateRealArchiveOptions(options);
+  const strategyOrder = resolveStrategyOrder(options.strategy_order);
+  const sessionsById = new Map(options.archive_sessions.map((session) => [session.session_id, session]));
+  const rawExecutionResults: RealArchiveBacktestResult[] = [];
+  const validationWindows: StrategyValidationWindowInput[] = [];
+  const perStrategy: HeldOutValidationRealArchiveStrategyResult[] = [];
+
+  for (const strategyId of strategyOrder) {
+    const windows: HeldOutValidationRealArchiveWindowResult[] = [];
+    for (const window of options.walk_forward_plan.windows) {
+      const windowSessions = sessionsForRange(
+        options.walk_forward_plan.sessions,
+        sessionsById,
+        window.test.start_session,
+        window.test.end_session,
+      );
+      if (windowSessions.length === 0) {
+        windows.push(Object.freeze({
+          result_schema_version: 1,
+          strategy_id: strategyId,
+          window_id: window.window_id,
+          window_sequence: window.sequence,
+          test_start_session: window.test.start_session,
+          test_end_session: window.test.end_session,
+          status: 'skipped_no_sessions',
+          reasons: Object.freeze(['no_archive_sessions_for_test_window']),
+          per_trade_records: Object.freeze([]),
+          trade_summary: null,
+          runtime_metrics: null,
+        }));
+        continue;
+      }
+
+      try {
+        const execution = await runRealArchiveBacktest({
+          run_id: `${options.run_id}-${strategyId}-${window.window_id}`,
+          strategy_id: strategyId,
+          sessions: windowSessions,
+          run_started_at_ns: options.run_started_at_ns,
+          fill_policy: options.fill_policy,
+          initial_equity_cents: options.initial_equity_cents,
+          strategy_generator: options.strategy_generators?.[strategyId],
+        });
+        rawExecutionResults.push(execution);
+        const fingerprintSha256 = fingerprintExecution(strategyId, [execution]);
+        validationWindows.push(validationWindowFromExecution({
+          strategyId,
+          windowId: window.window_id,
+          sequence: window.sequence,
+          startSession: window.test.start_session,
+          endSession: window.test.end_session,
+          startIndex: options.walk_forward_plan.sessions.indexOf(window.test.start_session),
+          endIndex: options.walk_forward_plan.sessions.indexOf(window.test.end_session),
+          execution,
+          fingerprintSha256,
+          initialEquityCents: options.initial_equity_cents ?? 3_000_000n,
+        }));
+        windows.push(Object.freeze({
+          result_schema_version: 1,
+          strategy_id: strategyId,
+          window_id: window.window_id,
+          window_sequence: window.sequence,
+          test_start_session: window.test.start_session,
+          test_end_session: window.test.end_session,
+          status: 'executed',
+          reasons: Object.freeze([]),
+          per_trade_records: execution.per_trade_records,
+          trade_summary: execution.trade_analysis.summary,
+          runtime_metrics: execution.runtime_metrics,
+        }));
+      } catch (error) {
+        windows.push(Object.freeze({
+          result_schema_version: 1,
+          strategy_id: strategyId,
+          window_id: window.window_id,
+          window_sequence: window.sequence,
+          test_start_session: window.test.start_session,
+          test_end_session: window.test.end_session,
+          status: 'failed',
+          reasons: Object.freeze([error instanceof Error ? error.message : String(error)]),
+          per_trade_records: Object.freeze([]),
+          trade_summary: null,
+          runtime_metrics: null,
+        }));
+      }
+    }
+    const strategyExecutions = rawExecutionResults.filter((result) => result.strategy_id === strategyId);
+    const fingerprintSha256 = fingerprintExecution(strategyId, strategyExecutions);
+    perStrategy.push(Object.freeze({
+      result_schema_version: 1,
+      strategy_id: strategyId,
+      fingerprint_sha256: fingerprintSha256,
+      windows: Object.freeze(windows),
+      total_trades: windows.reduce((sum, window) => sum + window.per_trade_records.length, 0),
+    }));
+  }
+
+  const fingerprintSet = fingerprintSetFromRealArchive(perStrategy);
+  const capabilitySet = capabilitySetFromRealArchive(perStrategy, fingerprintSet);
+  const frameworkResult = buildHeldOutValidationResult({
+    run_id: options.run_id,
+    input_spec: options.input_spec,
+    walk_forward_plan: options.walk_forward_plan,
+    strategy_order: strategyOrder,
+    validation_policy: options.validation_policy,
+    strategy_fingerprint_set: fingerprintSet,
+    capability_assessment_set: capabilitySet,
+    validation_windows: validationWindows,
+    trial_accounting: strategyOrder.map((strategyId) => trialAccounting(strategyId, strategyOrder.length)),
+  });
+
+  return Object.freeze({
+    result_schema_version: 1,
+    run_id: options.run_id,
+    framework_result: frameworkResult,
+    per_strategy_real_records: Object.freeze(perStrategy),
+    raw_execution_results: Object.freeze(rawExecutionResults),
+  });
 }
 
 export function buildHeldOutValidationResult(
@@ -146,6 +281,253 @@ function validateOptions(options: HeldOutValidationRunOptions): void {
   if (issues.length > 0) {
     throwHeldOutValidationIssues(issues);
   }
+}
+
+function validateRealArchiveOptions(options: HeldOutValidationRealArchiveOptions): void {
+  const issues: HeldOutValidationIssue[] = [];
+  if (options.archive_sessions.length === 0) {
+    issues.push({
+      path: '$.archive_sessions',
+      code: 'missing_input_spec',
+      message: 'archive_sessions must include at least one session',
+    });
+  }
+  validateOptions({
+    run_id: options.run_id,
+    input_spec: options.input_spec,
+    walk_forward_plan: options.walk_forward_plan,
+    strategy_order: options.strategy_order,
+    validation_policy: options.validation_policy,
+  });
+  if (issues.length > 0) {
+    throwHeldOutValidationIssues(issues);
+  }
+}
+
+function sessionsForRange(
+  sessionOrder: readonly string[],
+  sessionsById: ReadonlyMap<string, RealArchiveSessionSource>,
+  startSession: string,
+  endSession: string,
+): readonly RealArchiveSessionSource[] {
+  const startIndex = sessionOrder.indexOf(startSession);
+  const endIndex = sessionOrder.indexOf(endSession);
+  if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex) {
+    return Object.freeze([]);
+  }
+  return Object.freeze(
+    sessionOrder
+      .slice(startIndex, endIndex)
+      .map((sessionId) => sessionsById.get(sessionId))
+      .filter((session): session is RealArchiveSessionSource => session !== undefined),
+  );
+}
+
+function validationWindowFromExecution(input: {
+  readonly strategyId: StrategyId;
+  readonly windowId: string;
+  readonly sequence: number;
+  readonly startSession: string;
+  readonly endSession: string;
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly execution: RealArchiveBacktestResult;
+  readonly fingerprintSha256: string;
+  readonly initialEquityCents: bigint;
+}): StrategyValidationWindowInput {
+  const summary = input.execution.trade_analysis.summary;
+  return Object.freeze({
+    strategy_id: input.strategyId,
+    window_id: input.windowId,
+    sequence: input.sequence,
+    role: 'test',
+    start_session: input.startSession,
+    end_session: input.endSession,
+    start_index: input.startIndex,
+    end_index: input.endIndex,
+    total_trades: summary.total_trades,
+    gross_profit_cents: summary.gross_profit_cents,
+    gross_loss_cents: absBigint(summary.gross_loss_cents),
+    net_pnl_cents: summary.net_pnl_cents,
+    profit_factor_ppm: summary.profit_factor_ppm,
+    max_drawdown_cents: summary.max_drawdown_cents,
+    initial_equity_cents: input.initialEquityCents,
+    average_trade_pnl_cents: summary.average_trade_pnl_cents,
+    win_rate_ppm: summary.win_rate_ppm,
+    fingerprint_sha256: input.fingerprintSha256,
+    fingerprint_algorithm: STRATEGY_FINGERPRINT_ALGORITHM,
+  });
+}
+
+function fingerprintSetFromRealArchive(
+  perStrategy: readonly HeldOutValidationRealArchiveStrategyResult[],
+): StrategyFingerprintSet {
+  return Object.freeze({
+    fingerprint_set_schema_version: 1,
+    algorithm: STRATEGY_FINGERPRINT_ALGORITHM,
+    fingerprints: Object.freeze(
+      perStrategy.map((strategy) => Object.freeze({
+        fingerprint_schema_version: 1,
+        algorithm: STRATEGY_FINGERPRINT_ALGORITHM,
+        strategy_id: strategy.strategy_id,
+        decision_count: strategy.windows.reduce(
+          (sum, window) => sum + (window.runtime_metrics?.bars_processed ?? 0),
+          0,
+        ),
+        decisions_sha256: hashStable({
+          strategy_id: strategy.strategy_id,
+          windows: strategy.windows.map((window) => ({
+            window_id: window.window_id,
+            status: window.status,
+            trades: window.per_trade_records,
+          })),
+        }),
+        fingerprint_sha256: strategy.fingerprint_sha256,
+      })),
+    ),
+  });
+}
+
+function capabilitySetFromRealArchive(
+  perStrategy: readonly HeldOutValidationRealArchiveStrategyResult[],
+  fingerprints: StrategyFingerprintSet,
+): CapabilityAssessmentSet {
+  const fingerprintByStrategy = new Map(fingerprints.fingerprints.map((fingerprint) => [
+    fingerprint.strategy_id,
+    fingerprint,
+  ]));
+  return Object.freeze({
+    assessment_set_schema_version: 1,
+    assessments: Object.freeze(
+      perStrategy.map((strategy) => {
+        const fingerprint = fingerprintByStrategy.get(strategy.strategy_id) ?? null;
+        const executedWindows = strategy.windows.filter((window) => window.status === 'executed');
+        return Object.freeze({
+          assessment_schema_version: 1,
+          strategy_id: strategy.strategy_id,
+          status: executedWindows.length === 0 ? 'blocked' : 'ready_for_replay',
+          replay_evaluations: executedWindows.reduce(
+            (sum, window) => sum + (window.runtime_metrics?.bars_processed ?? 0),
+            0,
+          ),
+          fingerprint_sha256: fingerprint?.fingerprint_sha256 ?? null,
+          decision_count: fingerprint?.decision_count ?? null,
+          features: realArchiveFeatureCapabilities(fingerprint?.fingerprint_sha256 ?? null),
+          limitations: executedWindows.length === 0
+            ? Object.freeze([{
+              code: 'replay_missing' as const,
+              message: 'no real-archive held-out windows executed',
+            }])
+            : Object.freeze([]),
+        } satisfies StrategyCapabilityAssessment);
+      }),
+    ),
+  });
+}
+
+function realArchiveFeatureCapabilities(
+  fingerprintSha256: string | null,
+): readonly StrategyFeatureCapability[] {
+  return Object.freeze([
+    {
+      category: 'instrument',
+      status: 'real',
+      source: 'QFA-201c real-archive execution',
+      details: 'instrument identity is derived from archive-backed bars',
+    },
+    {
+      category: 'session',
+      status: 'real',
+      source: 'QFA-410b archive session source',
+      details: 'session id and regime are carried from archive session metadata',
+    },
+    {
+      category: 'quote',
+      status: 'real',
+      source: 'MBP-1',
+      details: 'quote values are derived from archive MBP-1 top of book',
+    },
+    {
+      category: 'bars',
+      status: 'real',
+      source: 'trades',
+      details: 'OHLCV bars are built from archive trades',
+    },
+    {
+      category: 'indicators',
+      status: 'real',
+      source: 'QFA-201c feature snapshot',
+      details: 'indicator values are computed from archive-backed bars',
+    },
+    {
+      category: 'structure',
+      status: 'real',
+      source: 'QFA-201c feature snapshot',
+      details: 'structure levels are computed from archive-backed bars',
+    },
+    {
+      category: 'microstructure',
+      status: 'real',
+      source: 'MBP-1',
+      details: 'spread and queue buckets are derived from archive MBP-1',
+    },
+    {
+      category: 'config_lineage',
+      status: 'real',
+      source: 'strategy candidate config lineage',
+      details: 'candidate config lineage is preserved in emitted events',
+    },
+    {
+      category: 'fingerprint',
+      status: fingerprintSha256 === null ? 'unavailable' : 'real',
+      source: fingerprintSha256 === null ? null : STRATEGY_FINGERPRINT_ALGORITHM,
+      details: fingerprintSha256 === null ? 'fingerprint missing' : `fingerprint_sha256=${fingerprintSha256}`,
+    },
+  ]);
+}
+
+function trialAccounting(
+  strategyId: StrategyId,
+  effectiveTrialCount: number,
+): ValidationTrialAccounting {
+  return Object.freeze({
+    trial_accounting_schema_version: 1,
+    strategy_id: strategyId,
+    campaign_id: 'qfa-410b-real-archive-execution',
+    raw_research_trials: effectiveTrialCount,
+    excluded_determinism_reruns: 0,
+    manual_declared_effective_trials: effectiveTrialCount,
+    distinct_window_fingerprint_tuples: effectiveTrialCount,
+    effective_trial_count: effectiveTrialCount,
+    effective_trial_scope: 'campaign',
+    effective_trial_method: 'max_of_manual_and_distinct_fingerprints',
+  });
+}
+
+function fingerprintExecution(
+  strategyId: StrategyId,
+  executions: readonly RealArchiveBacktestResult[],
+): string {
+  return hashStable({
+    strategy_id: strategyId,
+    executions: executions.map((execution) => ({
+      run_id: execution.run_id,
+      runtime_metrics: execution.runtime_metrics,
+      per_trade_records: execution.per_trade_records,
+    })),
+  });
+}
+
+function hashStable(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value, bigintReplacer), 'utf8').digest('hex');
+}
+
+function bigintReplacer(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? value.toString() : value;
+}
+
+function absBigint(value: bigint): bigint {
+  return value < 0n ? -value : value;
 }
 
 function validateStrategyOrder(
