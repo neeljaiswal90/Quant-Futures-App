@@ -53,8 +53,8 @@ export interface RiskPolicyConfig {
 
 export const DEFAULT_RISK_POLICY: RiskPolicyConfig = {
   account_equity_usd: 50_000,
-  max_risk_per_trade_pct: 0.5,
-  max_daily_loss_pct: 2,
+  max_risk_per_trade_pct: 0.25,
+  max_daily_loss_pct: 1.0,
   min_reward_risk: 1,
   max_net_position_per_symbol: DEFAULT_MAX_NET_POSITION_PER_SYMBOL,
   hard_cap_contracts: PHASE1_SIZING_DEFAULTS.C_abs,

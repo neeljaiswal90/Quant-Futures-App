@@ -90,15 +90,15 @@ session:
   circuit_breaker_enabled: true
   max_trades_per_session: 12
   max_open_trade_count: 3
-  max_daily_realized_loss_usd: 1000
+  max_daily_realized_loss_usd: 500
 default_n_eff: 10000
 default_regime: mixed
 sizing_mode: replay
 hard_cap_contracts: 10
 hard_position_cap: 10
 min_reward_risk: 1
-max_daily_loss_pct: 2
-max_risk_per_trade_pct: 0.5
+max_daily_loss_pct: 1.0
+max_risk_per_trade_pct: 0.25
 account_equity_usd: 50000
 `;
     const { root, fileName } = writeTempFile(reordered, 'risk-reordered.yaml');

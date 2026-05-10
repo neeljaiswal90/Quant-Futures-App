@@ -1,8 +1,8 @@
 {
   "version": 1,
   "account_equity_usd": 50000,
-  "max_risk_per_trade_pct": 0.5,
-  "max_daily_loss_pct": 2,
+  "max_risk_per_trade_pct": 0.25,
+  "max_daily_loss_pct": 1,
   "min_reward_risk": 1,
   "hard_position_cap": 10,
   "hard_cap_contracts": 10,
@@ -10,7 +10,7 @@
   "default_regime": "mixed",
   "default_n_eff": 10000,
   "session": {
-    "max_daily_realized_loss_usd": 1000,
+    "max_daily_realized_loss_usd": 500,
     "max_open_trade_count": 3,
     "max_trades_per_session": 12,
     "circuit_breaker_enabled": true,

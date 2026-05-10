@@ -291,7 +291,7 @@ describe('RISK-02 composed sizing and risk manager', () => {
       decided_ts_ns: DECIDED_TS_NS,
       state: {
         current_open_quantity: 0,
-        daily_realized_pnl_usd: -1_000,
+        daily_realized_pnl_usd: -500,
         regime: 'strong_trend',
         n_eff: 1_000,
         liquidity: FRESH_LIQUIDITY,
