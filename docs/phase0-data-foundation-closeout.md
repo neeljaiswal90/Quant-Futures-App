@@ -54,7 +54,7 @@ Path correction note: the DBN and RunSpec/lineage filters were adjusted to actua
 | Backtest run meta | `apps/strategy_runtime/src/contracts/backtest-run-meta.ts` | yes |
 | Event types | `apps/strategy_runtime/src/contracts/events/event-types.ts` | yes |
 | ADR-0007 lineage | `docs/adr/ADR-0007-backtest-lineage-block.md` | yes |
-| ADR-0016 bar builder | `docs/adr/ADR-0016-bar-builder-roll-policy.md` | yes |
+| ADR-0019 bar builder | `docs/adr/ADR-0019-bar-builder-roll-policy.md` | yes |
 | ADR-0017 queue synthesis | `docs/adr/ADR-0017-queue-synthesis-design.md` | yes |
 
 ## Merged-ticket evidence
