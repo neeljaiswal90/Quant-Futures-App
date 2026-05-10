@@ -12,6 +12,7 @@ sys.path.insert(0, str(LIB_DIR))
 from block_bootstrap import stacked_sample_matrix_sha256, stationary_bootstrap_matrix
 from effective_trials import compute_effective_trial_count
 from hac_sharpe import automatic_newey_west_lag, compute_hac_sharpe, newey_west_standard_error_of_mean
+from ledoit_wolf import studentized_sharpe_difference_ci
 from psr_dsr import compute_psr_dsr, probabilistic_sharpe_ratio
 from returns import aggregate_session_returns
 from thresholds import ADR0016_RISK_BUDGETS, ADR0016_STAGE1_THRESHOLDS, ADR0016_STAGE2_THRESHOLDS
@@ -71,6 +72,17 @@ class Qfa611StatCoreTests(unittest.TestCase):
         c = stationary_bootstrap_matrix(returns, replications=5, seed=43, mean_block_length=2)
         self.assertEqual(stacked_sample_matrix_sha256(a), stacked_sample_matrix_sha256(b))
         self.assertNotEqual(stacked_sample_matrix_sha256(a), stacked_sample_matrix_sha256(c))
+
+
+    def test_ledoit_wolf_tie_breaker_ci_behaves_on_controls(self) -> None:
+        base = [0.001, -0.001, 0.002, 0.0, 0.003, -0.002] * 20
+        identical = studentized_sharpe_difference_ci(base, list(base), replications=200, seed=42)
+        self.assertLessEqual(identical.ci_low, 0.0)
+        self.assertGreaterEqual(identical.ci_high, 0.0)
+
+        improved = [value + 0.004 for value in base]
+        separated = studentized_sharpe_difference_ci(improved, base, replications=200, seed=42)
+        self.assertGreater(separated.ci_low, 0.0)
 
     def test_effective_trials_mirror(self) -> None:
         self.assertEqual(compute_effective_trial_count(3, 7), 7)
