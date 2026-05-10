@@ -1,8 +1,10 @@
-# ADR-0016: Bar builder roll policy and contract-isolated bars
+# ADR-0019: Bar builder roll policy and contract-isolated bars
 
 ## Status
 
 Accepted
+
+Renumbered from ADR-0016 to ADR-0019 to resolve collision with ADR-0016-qfa-611-alpha-decision-criteria.md. No content changes.
 
 ## Context
 
