@@ -54,6 +54,7 @@ import {
   analyzeTradeLedger,
   type EquityMetricsOptions,
 } from '../equity-metrics/index.js';
+import { mergeMonotonicSources } from './source-merge.js';
 import type {
   QueueAheadBucket,
   RealArchiveBacktestOptions,
@@ -235,8 +236,20 @@ async function runSession(input: {
   readonly metrics: MutableRuntimeMetrics;
 }): Promise<void> {
   const sessionId = makeSessionId(input.session.session_id);
-  const mbp1Cursor = createRecordCursor(recordSource(input.session, 'mbp-1'));
-  const tradesCursor = createRecordCursor(recordSource(input.session, 'trades'));
+  const queueCursor = createRecordCursor(mergeMonotonicSources<DbnRecord>([
+    {
+      name: 'mbp-1',
+      records: recordSource(input.session, 'mbp-1'),
+      tsExtractor: (record) => BigInt(record.ts_event),
+      tieBreakRank: 0,
+    },
+    {
+      name: 'trades',
+      records: recordSource(input.session, 'trades'),
+      tsExtractor: (record) => BigInt(record.ts_event),
+      tieBreakRank: 1,
+    },
+  ]));
   const recentQueueRecords: DbnRecord[] = [];
   const history: BuiltBar[] = [];
   const quoteState: { latest: RealArchiveTopOfBook | null } = { latest: null };
@@ -257,10 +270,11 @@ async function runSession(input: {
     const bar = output as BuiltBar;
     barIndex += 1;
     lastBar = bar;
-    await advanceQueueCursor(mbp1Cursor, bar.last_record_ts_ns, recentQueueRecords, (record) => {
-      quoteState.latest = topOfBookFromMbp1(record);
+    await advanceQueueCursor(queueCursor, bar.last_record_ts_ns, recentQueueRecords, (record) => {
+      if (record.schema === 'mbp-1') {
+        quoteState.latest = topOfBookFromMbp1(record as DbnMbp1Record);
+      }
     });
-    await advanceQueueCursor(tradesCursor, bar.last_record_ts_ns, recentQueueRecords);
     pruneRecentQueueRecords(
       recentQueueRecords,
       bar.last_record_ts_ns - input.fillPolicy.depletion_lookback_ns - input.fillPolicy.fill_horizon_ns,
