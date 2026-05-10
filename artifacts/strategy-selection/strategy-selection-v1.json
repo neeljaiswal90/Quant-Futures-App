@@ -1,0 +1,510 @@
+{
+  "schema_version": 1,
+  "methodology_id": "adr-0016-v1",
+  "methodology_source": "docs/adr/ADR-0016-qfa-611-alpha-decision-criteria.md",
+  "input_substrate_hash": "f90e3e6df588a60756c675befe7fd77adf1a33ed3878fbb8900d519b79f0a41a",
+  "input_phase2_hash": "dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b",
+  "input_phase4_hash": "ad8dad3c36a5b64fa3ddbd955abec819db31b2b4c160d0152074fc6bcbb40090",
+  "input_manifest_hashes": {
+    "2026-02": "91bcfbf523b8d9129e67478c82cfebdb29bb353fa63ea1fc54bb06415cf833e9",
+    "2026-03": "1f8319cf8a40b8b4256b65499e46c8e5e6676e4f738e9a41708332a0ddfb558f",
+    "2026-04": "5ba1ec230982ae2bc409fa5f21278dd84715cab62753f20b0988b4e0ddd8e965"
+  },
+  "active_strategy_ids": [
+    "trend_pullback_long",
+    "trend_pullback_short",
+    "breakout_retest_long",
+    "breakdown_retest_short"
+  ],
+  "active_strategy_count": 4,
+  "cf29_roster_count_note": "ACTIVE_STRATEGY_IDS count is descriptive and count-agnostic; this run applies ADR-0016 to the canonical non-empty roster.",
+  "thresholds": {
+    "annualized_hurdle_rate": 0.12,
+    "min_hac_sharpe": 1.0,
+    "min_dsr": 0.0,
+    "min_psr_zero_null": 0.8,
+    "max_drawdown_pct": 0.08,
+    "min_profit_factor": 1.35,
+    "min_total_trades": 300,
+    "min_regime_trades_when_regime_contributes_ge_10pct": 30,
+    "sensitivity_concentration_fraction": 0.3,
+    "low_fidelity_cell_threshold_ppm": 750000
+  },
+  "regime_substrate_summary": {
+    "calibration_eligible_counts": {
+      "high": 43,
+      "mid": 3,
+      "low": 11
+    },
+    "quality_excluded_sessions": [
+      {
+        "session_id": "2026-03-17-rth",
+        "confirmed_label": "high",
+        "quality_exclusion_reason": "documented_h_cycle_expiry_thinning"
+      },
+      {
+        "session_id": "2026-03-18-rth",
+        "confirmed_label": "high",
+        "quality_exclusion_reason": "documented_h_cycle_expiry_thinning"
+      },
+      {
+        "session_id": "2026-03-19-rth",
+        "confirmed_label": "high",
+        "quality_exclusion_reason": "documented_h_cycle_expiry_thinning"
+      },
+      {
+        "session_id": "2026-03-20-rth",
+        "confirmed_label": "high",
+        "quality_exclusion_reason": "documented_h_cycle_expiry_migration"
+      },
+      {
+        "session_id": "2026-04-10-rth",
+        "confirmed_label": "mid",
+        "quality_exclusion_reason": "databento_condition_degraded_warning"
+      }
+    ],
+    "secondary_percentile_basis": "within_window"
+  },
+  "regime_fidelity_summary": {
+    "methodology_id": "adr-0015-v1",
+    "primary_verdict": "A",
+    "twenty_one_plus_warning_flag": false,
+    "mid_anomaly_flag": false,
+    "per_regime_equal_weight": {
+      "high": {
+        "mean": 905083,
+        "median": 908478,
+        "min": 838653,
+        "max": 936877,
+        "n": 43,
+        "sessions": [
+          "2026-02-02-rth",
+          "2026-02-03-rth",
+          "2026-02-04-rth",
+          "2026-02-05-rth",
+          "2026-02-06-rth",
+          "2026-02-09-rth",
+          "2026-02-10-rth",
+          "2026-02-11-rth",
+          "2026-02-12-rth",
+          "2026-02-13-rth",
+          "2026-02-17-rth",
+          "2026-02-18-rth",
+          "2026-02-19-rth",
+          "2026-02-20-rth",
+          "2026-02-23-rth",
+          "2026-02-24-rth",
+          "2026-02-25-rth",
+          "2026-02-26-rth",
+          "2026-02-27-rth",
+          "2026-03-02-rth",
+          "2026-03-03-rth",
+          "2026-03-04-rth",
+          "2026-03-05-rth",
+          "2026-03-06-rth",
+          "2026-03-09-rth",
+          "2026-03-10-rth",
+          "2026-03-11-rth",
+          "2026-03-12-rth",
+          "2026-03-13-rth",
+          "2026-03-16-rth",
+          "2026-03-23-rth",
+          "2026-03-24-rth",
+          "2026-03-25-rth",
+          "2026-03-26-rth",
+          "2026-03-27-rth",
+          "2026-03-30-rth",
+          "2026-03-31-rth",
+          "2026-04-01-rth",
+          "2026-04-02-rth",
+          "2026-04-06-rth",
+          "2026-04-07-rth",
+          "2026-04-08-rth",
+          "2026-04-09-rth"
+        ]
+      },
+      "mid": {
+        "mean": 884610,
+        "median": 885187,
+        "min": 881682,
+        "max": 886960,
+        "n": 3,
+        "sessions": [
+          "2026-04-13-rth",
+          "2026-04-14-rth",
+          "2026-04-15-rth"
+        ]
+      },
+      "low": {
+        "mean": 878009,
+        "median": 878798,
+        "min": 863306,
+        "max": 890315,
+        "n": 11,
+        "sessions": [
+          "2026-04-16-rth",
+          "2026-04-17-rth",
+          "2026-04-20-rth",
+          "2026-04-21-rth",
+          "2026-04-22-rth",
+          "2026-04-23-rth",
+          "2026-04-24-rth",
+          "2026-04-27-rth",
+          "2026-04-28-rth",
+          "2026-04-29-rth",
+          "2026-04-30-rth"
+        ]
+      }
+    },
+    "per_regime_probe_weighted": {
+      "high": {
+        "pooled_share": 905083,
+        "comparable_probes": 2012336,
+        "within_tolerance_probes": 1821333,
+        "n": 43
+      },
+      "mid": {
+        "pooled_share": 884610,
+        "comparable_probes": 140394,
+        "within_tolerance_probes": 124194,
+        "n": 3
+      },
+      "low": {
+        "pooled_share": 878009,
+        "comparable_probes": 514778,
+        "within_tolerance_probes": 451980,
+        "n": 11
+      }
+    }
+  },
+  "trial_accounting": {
+    "effective_trial_method": "max_of_manual_and_distinct_fingerprints",
+    "manual_declared_effective_trials": 4,
+    "distinct_window_fingerprint_tuples": null,
+    "effective_trial_count": 4,
+    "note": "No validation-grade QFA-410 window fingerprints are present; effective trial count records the actual candidate roster count for this incomplete-evidence run."
+  },
+  "per_strategy": [
+    {
+      "strategy_id": "trend_pullback_long",
+      "evidence_package_status": "incomplete",
+      "evidence_package": {
+        "qfa301_replay_sanity": "missing_validation_grade_artifact",
+        "qfa302_fingerprint": "missing_pinned_artifact",
+        "qfa303_capability": "missing_ready_capability_artifact",
+        "qfa410_held_out_validation": "missing_per_trade_held_out_artifact",
+        "qfa310_validation_gate": "missing_primary_pass_artifact",
+        "strategy_config_sha256": "912ad9d2a184e35efd598d17eecbb9022e0ba58ab9a4df7df16b36391908d9cd",
+        "missing_components": [
+          "validation_grade_qfa301_replay_sanity_artifact",
+          "pinned_qfa302_strategy_fingerprint_artifact",
+          "qfa303_ready_for_replay_or_ready_for_live_capability_artifact",
+          "qfa410_per_trade_held_out_validation_artifact",
+          "qfa310_primary_pass_artifact_for_feb_mar_apr_test_windows"
+        ]
+      },
+      "held_out_evidence": {
+        "total_trades": 0,
+        "win_rate": null,
+        "profit_factor": null,
+        "max_drawdown_pct": null,
+        "annualized_return": null,
+        "annualized_sharpe_HAC": null,
+        "hac_bandwidth_lag": null,
+        "dsr": null,
+        "psr_zero_null": null,
+        "psr_hurdle_null": null,
+        "observation_unit": "session",
+        "per_regime": {
+          "high": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          },
+          "mid": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          },
+          "low": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          }
+        }
+      },
+      "threshold_results": {
+        "hurdle_pass": false,
+        "sharpe_pass": false,
+        "dsr_pass": false,
+        "psr_zero_pass": false,
+        "drawdown_pass": false,
+        "pf_pass": false,
+        "trade_count_pass": false,
+        "regime_trade_pass": false,
+        "sensitivity_audit_pass": false
+      },
+      "sensitivity_audit": {
+        "status": "not_evaluable_no_held_out_trades",
+        "flag": false,
+        "high_residual_cell_trade_fraction": null,
+        "flagged_cells": [],
+        "reason": "No validation-grade per-trade held-out record is present, so LD-611-1 concentration audit cannot be computed."
+      },
+      "verdict": "REJECT",
+      "verdict_reason": "LD-611-1 evidence package incomplete: no validation-grade QFA-410 per-trade/session held-out evidence is present for this strategy; statistical Stage 1 thresholds are therefore not evaluable."
+    },
+    {
+      "strategy_id": "trend_pullback_short",
+      "evidence_package_status": "incomplete",
+      "evidence_package": {
+        "qfa301_replay_sanity": "missing_validation_grade_artifact",
+        "qfa302_fingerprint": "missing_pinned_artifact",
+        "qfa303_capability": "missing_ready_capability_artifact",
+        "qfa410_held_out_validation": "missing_per_trade_held_out_artifact",
+        "qfa310_validation_gate": "missing_primary_pass_artifact",
+        "strategy_config_sha256": "149cccf465b90f79832f4ddc8bd18575845130cf0c43d887140da9544d8f2684",
+        "missing_components": [
+          "validation_grade_qfa301_replay_sanity_artifact",
+          "pinned_qfa302_strategy_fingerprint_artifact",
+          "qfa303_ready_for_replay_or_ready_for_live_capability_artifact",
+          "qfa410_per_trade_held_out_validation_artifact",
+          "qfa310_primary_pass_artifact_for_feb_mar_apr_test_windows"
+        ]
+      },
+      "held_out_evidence": {
+        "total_trades": 0,
+        "win_rate": null,
+        "profit_factor": null,
+        "max_drawdown_pct": null,
+        "annualized_return": null,
+        "annualized_sharpe_HAC": null,
+        "hac_bandwidth_lag": null,
+        "dsr": null,
+        "psr_zero_null": null,
+        "psr_hurdle_null": null,
+        "observation_unit": "session",
+        "per_regime": {
+          "high": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          },
+          "mid": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          },
+          "low": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          }
+        }
+      },
+      "threshold_results": {
+        "hurdle_pass": false,
+        "sharpe_pass": false,
+        "dsr_pass": false,
+        "psr_zero_pass": false,
+        "drawdown_pass": false,
+        "pf_pass": false,
+        "trade_count_pass": false,
+        "regime_trade_pass": false,
+        "sensitivity_audit_pass": false
+      },
+      "sensitivity_audit": {
+        "status": "not_evaluable_no_held_out_trades",
+        "flag": false,
+        "high_residual_cell_trade_fraction": null,
+        "flagged_cells": [],
+        "reason": "No validation-grade per-trade held-out record is present, so LD-611-1 concentration audit cannot be computed."
+      },
+      "verdict": "REJECT",
+      "verdict_reason": "LD-611-1 evidence package incomplete: no validation-grade QFA-410 per-trade/session held-out evidence is present for this strategy; statistical Stage 1 thresholds are therefore not evaluable."
+    },
+    {
+      "strategy_id": "breakout_retest_long",
+      "evidence_package_status": "incomplete",
+      "evidence_package": {
+        "qfa301_replay_sanity": "missing_validation_grade_artifact",
+        "qfa302_fingerprint": "missing_pinned_artifact",
+        "qfa303_capability": "missing_ready_capability_artifact",
+        "qfa410_held_out_validation": "missing_per_trade_held_out_artifact",
+        "qfa310_validation_gate": "missing_primary_pass_artifact",
+        "strategy_config_sha256": "7bbda7da132056f255c5c7c46d0ef456ef6a89d842143e99a1cf555f280432e3",
+        "missing_components": [
+          "validation_grade_qfa301_replay_sanity_artifact",
+          "pinned_qfa302_strategy_fingerprint_artifact",
+          "qfa303_ready_for_replay_or_ready_for_live_capability_artifact",
+          "qfa410_per_trade_held_out_validation_artifact",
+          "qfa310_primary_pass_artifact_for_feb_mar_apr_test_windows"
+        ]
+      },
+      "held_out_evidence": {
+        "total_trades": 0,
+        "win_rate": null,
+        "profit_factor": null,
+        "max_drawdown_pct": null,
+        "annualized_return": null,
+        "annualized_sharpe_HAC": null,
+        "hac_bandwidth_lag": null,
+        "dsr": null,
+        "psr_zero_null": null,
+        "psr_hurdle_null": null,
+        "observation_unit": "session",
+        "per_regime": {
+          "high": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          },
+          "mid": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          },
+          "low": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          }
+        }
+      },
+      "threshold_results": {
+        "hurdle_pass": false,
+        "sharpe_pass": false,
+        "dsr_pass": false,
+        "psr_zero_pass": false,
+        "drawdown_pass": false,
+        "pf_pass": false,
+        "trade_count_pass": false,
+        "regime_trade_pass": false,
+        "sensitivity_audit_pass": false
+      },
+      "sensitivity_audit": {
+        "status": "not_evaluable_no_held_out_trades",
+        "flag": false,
+        "high_residual_cell_trade_fraction": null,
+        "flagged_cells": [],
+        "reason": "No validation-grade per-trade held-out record is present, so LD-611-1 concentration audit cannot be computed."
+      },
+      "verdict": "REJECT",
+      "verdict_reason": "LD-611-1 evidence package incomplete: no validation-grade QFA-410 per-trade/session held-out evidence is present for this strategy; statistical Stage 1 thresholds are therefore not evaluable."
+    },
+    {
+      "strategy_id": "breakdown_retest_short",
+      "evidence_package_status": "incomplete",
+      "evidence_package": {
+        "qfa301_replay_sanity": "missing_validation_grade_artifact",
+        "qfa302_fingerprint": "missing_pinned_artifact",
+        "qfa303_capability": "missing_ready_capability_artifact",
+        "qfa410_held_out_validation": "missing_per_trade_held_out_artifact",
+        "qfa310_validation_gate": "missing_primary_pass_artifact",
+        "strategy_config_sha256": "dad9ab150f3168090db5986987f9c15e92e78613d6329890f2ca79cfe47a7847",
+        "missing_components": [
+          "validation_grade_qfa301_replay_sanity_artifact",
+          "pinned_qfa302_strategy_fingerprint_artifact",
+          "qfa303_ready_for_replay_or_ready_for_live_capability_artifact",
+          "qfa410_per_trade_held_out_validation_artifact",
+          "qfa310_primary_pass_artifact_for_feb_mar_apr_test_windows"
+        ]
+      },
+      "held_out_evidence": {
+        "total_trades": 0,
+        "win_rate": null,
+        "profit_factor": null,
+        "max_drawdown_pct": null,
+        "annualized_return": null,
+        "annualized_sharpe_HAC": null,
+        "hac_bandwidth_lag": null,
+        "dsr": null,
+        "psr_zero_null": null,
+        "psr_hurdle_null": null,
+        "observation_unit": "session",
+        "per_regime": {
+          "high": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          },
+          "mid": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          },
+          "low": {
+            "trades": 0,
+            "session_count": 0,
+            "annualized_return": null,
+            "annualized_sharpe_HAC": null,
+            "profit_factor": null,
+            "max_drawdown_pct": null
+          }
+        }
+      },
+      "threshold_results": {
+        "hurdle_pass": false,
+        "sharpe_pass": false,
+        "dsr_pass": false,
+        "psr_zero_pass": false,
+        "drawdown_pass": false,
+        "pf_pass": false,
+        "trade_count_pass": false,
+        "regime_trade_pass": false,
+        "sensitivity_audit_pass": false
+      },
+      "sensitivity_audit": {
+        "status": "not_evaluable_no_held_out_trades",
+        "flag": false,
+        "high_residual_cell_trade_fraction": null,
+        "flagged_cells": [],
+        "reason": "No validation-grade per-trade held-out record is present, so LD-611-1 concentration audit cannot be computed."
+      },
+      "verdict": "REJECT",
+      "verdict_reason": "LD-611-1 evidence package incomplete: no validation-grade QFA-410 per-trade/session held-out evidence is present for this strategy; statistical Stage 1 thresholds are therefore not evaluable."
+    }
+  ],
+  "summary": {
+    "advance_count": 0,
+    "research_further_count": 0,
+    "reject_count": 4,
+    "phase_6_dispatch_authorized": false,
+    "primary_blocker": "missing_validation_grade_per_strategy_evidence_package",
+    "recommended_next_action": "Produce validation-grade QFA-301/QFA-302/QFA-303/QFA-410 evidence packages before re-running QFA-611."
+  },
+  "generated_at_note": "Deterministic QFA-611 selection script; no wall-clock timestamp emitted."
+}
