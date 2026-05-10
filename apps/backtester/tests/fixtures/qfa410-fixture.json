@@ -1,0 +1,88 @@
+{
+  "aggregate": {
+    "average_loss_cents": null,
+    "average_trade_pnl_cents": "75",
+    "average_win_cents": "75",
+    "final_equity_cents": "3000075",
+    "flat_trades": 0,
+    "gross_loss_cents": "0",
+    "gross_profit_cents": "75",
+    "losing_trades": 0,
+    "max_drawdown_cents": "0",
+    "net_pnl_cents": "75",
+    "peak_equity_cents": "3000075",
+    "profit_factor_ppm": null,
+    "total_trades": 1,
+    "win_rate_ppm": 1000000,
+    "winning_trades": 1
+  },
+  "capability_status": "ready_for_replay",
+  "gating_pnl_basis": "net",
+  "input_manifest_hashes": {
+    "apr": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "feb": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "mar": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "input_substrate_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "methodology_id": "qfa-410-v1",
+  "parameter_lock_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "parameter_lock_source": "test-fixture",
+  "schema_version": 1,
+  "session_returns": [
+    0.000025,
+    0,
+    0,
+    0,
+    0
+  ],
+  "strategy_family": "continuation",
+  "strategy_fingerprint_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "strategy_id": "trend_pullback_long",
+  "trades": [
+    {
+      "entry_ts_ns": "1000000000",
+      "exit_bar_index": 2,
+      "exit_reason": "target",
+      "exit_ts_ns": "121000000000",
+      "gross_pnl_cents": "100",
+      "max_adverse_excursion_cents": "-25",
+      "max_favorable_excursion_cents": "150",
+      "net_pnl_cents": "75",
+      "queue_ahead_bucket": "6-20",
+      "regime": "high",
+      "side": "long",
+      "spread_bucket": "2-tick"
+    }
+  ],
+  "walk_forward_policy": {
+    "min_required_sessions": 5,
+    "policy_version": 1,
+    "step": 1,
+    "test": 1,
+    "train": 3,
+    "validation": 1
+  },
+  "windows": [
+    {
+      "average_trade_pnl_cents": "75",
+      "end_index": 4,
+      "end_session": "2026-02-06-rth",
+      "fingerprint_algorithm": "sha256:strategy_decision_sequence:v1",
+      "fingerprint_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "gross_loss_cents": "0",
+      "gross_profit_cents": "75",
+      "initial_equity_cents": "3000000",
+      "max_drawdown_cents": "0",
+      "net_pnl_cents": "75",
+      "profit_factor_ppm": null,
+      "role": "test",
+      "sequence": 1,
+      "start_index": 0,
+      "start_session": "2026-02-02-rth",
+      "strategy_id": "trend_pullback_long",
+      "total_trades": 1,
+      "win_rate_ppm": 1000000,
+      "window_id": "wf-fixture-1"
+    }
+  ]
+}
