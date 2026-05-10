@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   ACTIVE_STRATEGY_IDS,
   isStrategyId,
@@ -7,6 +9,7 @@ import {
 import {
   buildCapabilityAssessmentSet,
   type CapabilityAssessmentSet,
+  type StrategyCapabilityStatus,
   type StrategyCapabilityAssessment,
   type StrategyFeatureCapability,
   type StrategyCapabilityLimitation,
@@ -34,11 +37,22 @@ import {
   type StrategyValidationGateResult,
   type ValidationTrialAccounting,
 } from '../validation-gate/index.js';
+import { canonicalizeReproJson } from '../repro-hash/index.js';
 import {
   throwHeldOutValidationIssues,
   type HeldOutValidationIssue,
 } from './held-out-validation-error.js';
 import type {
+  HeldOutValidationArtifactCapabilityStatus,
+  HeldOutValidationArtifactMetadata,
+  HeldOutValidationArtifactOutputOptions,
+  HeldOutValidationArtifactQueueAheadBucket,
+  HeldOutValidationArtifactRegime,
+  HeldOutValidationArtifactSpreadBucket,
+  HeldOutValidationArtifactTradeV1,
+  HeldOutValidationArtifactTradeMetricsSummaryV1,
+  HeldOutValidationArtifactV1,
+  HeldOutValidationArtifactWindowV1,
   HeldOutValidationRunOptions,
   HeldOutValidationRealArchiveOptions,
   HeldOutValidationRealArchiveResult,
@@ -48,6 +62,11 @@ import type {
   HeldOutValidationWindowReason,
   HeldOutValidationWindowResult,
 } from './types.js';
+import type { TradeMetricsSummary, TradePnl } from '../equity-metrics/index.js';
+import type {
+  RealArchiveExitReason,
+  RealArchivePerTradeRecord,
+} from '../real-archive-execution/index.js';
 
 const HELD_OUT_REASON_ORDER: readonly HeldOutValidationWindowReason[] = Object.freeze([
   'fidelity_failed',
@@ -181,6 +200,18 @@ export async function executeHeldOutValidationAgainstArchive(
     validation_windows: validationWindows,
     trial_accounting: strategyOrder.map((strategyId) => trialAccounting(strategyId, strategyOrder.length)),
   });
+  const artifactPaths = options.artifact_output === undefined
+    ? undefined
+    : writeHeldOutValidationArtifacts({
+      artifactOutput: options.artifact_output,
+      capabilitySet,
+      initialEquityCents: options.initial_equity_cents ?? 3_000_000n,
+      perStrategy,
+      rawExecutionResults,
+      sessionOrder: options.walk_forward_plan.sessions,
+      validationWindows,
+      walkForwardPolicy: options.walk_forward_plan.policy,
+    });
 
   return Object.freeze({
     result_schema_version: 1,
@@ -188,6 +219,7 @@ export async function executeHeldOutValidationAgainstArchive(
     framework_result: frameworkResult,
     per_strategy_real_records: Object.freeze(perStrategy),
     raw_execution_results: Object.freeze(rawExecutionResults),
+    ...(artifactPaths === undefined ? {} : { artifact_paths: Object.freeze(artifactPaths) }),
   });
 }
 
@@ -292,6 +324,13 @@ function validateRealArchiveOptions(options: HeldOutValidationRealArchiveOptions
       message: 'archive_sessions must include at least one session',
     });
   }
+  if (options.artifact_output !== undefined && options.artifact_output.output_dir.trim().length === 0) {
+    issues.push({
+      path: '$.artifact_output.output_dir',
+      code: 'missing_input_spec',
+      message: 'artifact_output.output_dir must be a non-empty path when provided',
+    });
+  }
   validateOptions({
     run_id: options.run_id,
     input_spec: options.input_spec,
@@ -302,6 +341,310 @@ function validateRealArchiveOptions(options: HeldOutValidationRealArchiveOptions
   if (issues.length > 0) {
     throwHeldOutValidationIssues(issues);
   }
+}
+
+function writeHeldOutValidationArtifacts(input: {
+  readonly artifactOutput: HeldOutValidationArtifactOutputOptions;
+  readonly capabilitySet: CapabilityAssessmentSet;
+  readonly initialEquityCents: bigint;
+  readonly perStrategy: readonly HeldOutValidationRealArchiveStrategyResult[];
+  readonly rawExecutionResults: readonly RealArchiveBacktestResult[];
+  readonly sessionOrder: readonly string[];
+  readonly validationWindows: readonly StrategyValidationWindowInput[];
+  readonly walkForwardPolicy: HeldOutValidationRealArchiveOptions['walk_forward_plan']['policy'];
+}): readonly string[] {
+  mkdirSync(input.artifactOutput.output_dir, { recursive: true });
+  const capabilityByStrategy = new Map(input.capabilitySet.assessments.map((assessment) => [
+    assessment.strategy_id,
+    assessment.status,
+  ]));
+  const windowsByStrategy = groupValidationWindows(input.validationWindows);
+  const executionsByStrategy = groupExecutions(input.rawExecutionResults);
+
+  return Object.freeze(input.perStrategy.map((strategy) => {
+    const metadata = artifactMetadata(input.artifactOutput, strategy.strategy_id);
+    const executions = executionsByStrategy.get(strategy.strategy_id) ?? [];
+    const artifact = buildHeldOutValidationArtifact({
+      capabilityStatus: artifactCapabilityStatus(capabilityByStrategy.get(strategy.strategy_id)),
+      executions,
+      initialEquityCents: input.initialEquityCents,
+      metadata,
+      sessionOrder: input.sessionOrder,
+      strategy,
+      validationWindows: windowsByStrategy.get(strategy.strategy_id) ?? [],
+      walkForwardPolicy: input.walkForwardPolicy,
+    });
+    const outputPath = join(
+      input.artifactOutput.output_dir,
+      `${strategy.strategy_id}-feb-mar-apr-2026.json`,
+    );
+    writeFileSync(outputPath, `${canonicalizeReproJson(artifact)}\n`, 'utf8');
+    return outputPath;
+  }));
+}
+
+function buildHeldOutValidationArtifact(input: {
+  readonly capabilityStatus: HeldOutValidationArtifactCapabilityStatus;
+  readonly executions: readonly RealArchiveBacktestResult[];
+  readonly initialEquityCents: bigint;
+  readonly metadata: HeldOutValidationArtifactMetadata;
+  readonly sessionOrder: readonly string[];
+  readonly strategy: HeldOutValidationRealArchiveStrategyResult;
+  readonly validationWindows: readonly StrategyValidationWindowInput[];
+  readonly walkForwardPolicy: HeldOutValidationRealArchiveOptions['walk_forward_plan']['policy'];
+}): HeldOutValidationArtifactV1 {
+  const pnlByTradeId = new Map<string, TradePnl>();
+  const tradePnl: TradePnl[] = [];
+  for (const execution of input.executions) {
+    for (const pnl of execution.trade_analysis.trade_pnl) {
+      pnlByTradeId.set(pnl.trade_id, pnl);
+      tradePnl.push(pnl);
+    }
+  }
+  const sourceTrades = input.strategy.windows.flatMap((window) => [...window.per_trade_records]);
+  const trades = sourceTrades.map((trade) => artifactTrade(trade, pnlByTradeId));
+  return Object.freeze({
+    schema_version: 1,
+    methodology_id: 'qfa-410-v1',
+    strategy_id: input.strategy.strategy_id,
+    strategy_family: input.metadata.strategy_family,
+    strategy_fingerprint_sha256: input.strategy.fingerprint_sha256,
+    parameter_lock_source: input.metadata.parameter_lock_source,
+    parameter_lock_hash: input.metadata.parameter_lock_hash,
+    capability_status: input.capabilityStatus,
+    walk_forward_policy: {
+      train: input.walkForwardPolicy.train_sessions,
+      validation: input.walkForwardPolicy.validation_sessions,
+      test: input.walkForwardPolicy.test_sessions,
+      step: input.walkForwardPolicy.step_sessions,
+      min_required_sessions: input.walkForwardPolicy.min_required_sessions,
+      policy_version: input.walkForwardPolicy.policy_version,
+    },
+    windows: input.validationWindows.map(artifactWindow),
+    trades,
+    session_returns: sessionReturns({
+      initialEquityCents: input.initialEquityCents,
+      sessionOrder: input.sessionOrder,
+      pnlByTradeId,
+      trades: sourceTrades,
+    }),
+    aggregate: serializeTradeMetricsSummary(
+      summarizeTradePnl(tradePnl, input.initialEquityCents),
+    ),
+    gating_pnl_basis: 'net',
+    input_substrate_hash: input.metadata.input_substrate_hash,
+    input_manifest_hashes: input.metadata.input_manifest_hashes,
+  });
+}
+
+function artifactWindow(window: StrategyValidationWindowInput): HeldOutValidationArtifactWindowV1 {
+  return Object.freeze({
+    strategy_id: window.strategy_id,
+    window_id: window.window_id,
+    sequence: window.sequence,
+    role: 'test',
+    start_session: window.start_session,
+    end_session: window.end_session,
+    start_index: window.start_index,
+    end_index: window.end_index,
+    total_trades: window.total_trades,
+    gross_profit_cents: window.gross_profit_cents.toString(),
+    gross_loss_cents: window.gross_loss_cents.toString(),
+    net_pnl_cents: window.net_pnl_cents.toString(),
+    profit_factor_ppm: window.profit_factor_ppm,
+    max_drawdown_cents: window.max_drawdown_cents.toString(),
+    initial_equity_cents: window.initial_equity_cents.toString(),
+    average_trade_pnl_cents: window.average_trade_pnl_cents?.toString() ?? null,
+    win_rate_ppm: window.win_rate_ppm ?? 0,
+    fingerprint_sha256: window.fingerprint_sha256,
+    fingerprint_algorithm: window.fingerprint_algorithm,
+  });
+}
+
+function artifactTrade(
+  trade: RealArchivePerTradeRecord,
+  pnlByTradeId: ReadonlyMap<string, TradePnl>,
+): HeldOutValidationArtifactTradeV1 {
+  const pnl = pnlByTradeId.get(trade.trade_id);
+  if (pnl === undefined) {
+    throw new Error(`missing trade pnl for artifact trade ${trade.trade_id}`);
+  }
+  return Object.freeze({
+    entry_ts_ns: trade.entry_ts_ns.toString(),
+    exit_ts_ns: trade.exit_ts_ns.toString(),
+    side: trade.side,
+    regime: knownRegime(trade.regime_label),
+    spread_bucket: knownSpreadBucket(trade.spread_bucket),
+    queue_ahead_bucket: knownQueueAheadBucket(trade.queue_ahead_bucket),
+    gross_pnl_cents: pnl.gross_pnl_cents.toString(),
+    net_pnl_cents: pnl.net_pnl_cents.toString(),
+    exit_reason: artifactExitReason(trade.exit_reason),
+    exit_bar_index: trade.exit_bar_index,
+    max_favorable_excursion_cents: trade.max_favorable_excursion_cents.toString(),
+    max_adverse_excursion_cents: trade.max_adverse_excursion_cents.toString(),
+  });
+}
+
+function sessionReturns(input: {
+  readonly initialEquityCents: bigint;
+  readonly pnlByTradeId: ReadonlyMap<string, TradePnl>;
+  readonly sessionOrder: readonly string[];
+  readonly trades: readonly RealArchivePerTradeRecord[];
+}): readonly number[] {
+  const netBySession = new Map(input.sessionOrder.map((sessionId) => [sessionId, 0n]));
+  for (const trade of input.trades) {
+    const pnl = input.pnlByTradeId.get(trade.trade_id);
+    if (pnl === undefined) {
+      throw new Error(`missing trade pnl for session return ${trade.trade_id}`);
+    }
+    netBySession.set(trade.session_id, (netBySession.get(trade.session_id) ?? 0n) + pnl.net_pnl_cents);
+  }
+  return Object.freeze(input.sessionOrder.map((sessionId) => {
+    const netPnlCents = netBySession.get(sessionId) ?? 0n;
+    return Number(netPnlCents) / Number(input.initialEquityCents);
+  }));
+}
+
+function summarizeTradePnl(
+  tradePnl: readonly TradePnl[],
+  initialEquityCents: bigint,
+): TradeMetricsSummary {
+  const ordered = [...tradePnl].sort((left, right) => {
+    if (left.closed_at_ns < right.closed_at_ns) return -1;
+    if (left.closed_at_ns > right.closed_at_ns) return 1;
+    return left.trade_id.localeCompare(right.trade_id);
+  });
+  const winningTrades = ordered.filter((pnl) => pnl.net_pnl_cents > 0n);
+  const losingTrades = ordered.filter((pnl) => pnl.net_pnl_cents < 0n);
+  const grossProfit = sumBigint(winningTrades.map((pnl) => pnl.net_pnl_cents));
+  const grossLoss = sumBigint(losingTrades.map((pnl) => pnl.net_pnl_cents));
+  const netPnl = sumBigint(ordered.map((pnl) => pnl.net_pnl_cents));
+  let equity = initialEquityCents;
+  let peakEquity = initialEquityCents;
+  let maxDrawdown = 0n;
+  for (const pnl of ordered) {
+    equity += pnl.net_pnl_cents;
+    if (equity > peakEquity) {
+      peakEquity = equity;
+    }
+    const drawdown = peakEquity - equity;
+    if (drawdown > maxDrawdown) {
+      maxDrawdown = drawdown;
+    }
+  }
+  return Object.freeze({
+    total_trades: ordered.length,
+    winning_trades: winningTrades.length,
+    losing_trades: losingTrades.length,
+    flat_trades: ordered.length - winningTrades.length - losingTrades.length,
+    gross_profit_cents: grossProfit,
+    gross_loss_cents: grossLoss,
+    net_pnl_cents: netPnl,
+    average_trade_pnl_cents: ordered.length === 0 ? null : netPnl / BigInt(ordered.length),
+    average_win_cents: winningTrades.length === 0 ? null : grossProfit / BigInt(winningTrades.length),
+    average_loss_cents: losingTrades.length === 0 ? null : grossLoss / BigInt(losingTrades.length),
+    win_rate_ppm: ordered.length === 0
+      ? 0
+      : Number((BigInt(winningTrades.length) * 1_000_000n) / BigInt(ordered.length)),
+    profit_factor_ppm: grossLoss === 0n ? null : Number((grossProfit * 1_000_000n) / absBigint(grossLoss)),
+    max_drawdown_cents: maxDrawdown,
+    final_equity_cents: equity,
+    peak_equity_cents: peakEquity,
+  });
+}
+
+function serializeTradeMetricsSummary(
+  summary: TradeMetricsSummary,
+): HeldOutValidationArtifactTradeMetricsSummaryV1 {
+  return Object.freeze({
+    total_trades: summary.total_trades,
+    winning_trades: summary.winning_trades,
+    losing_trades: summary.losing_trades,
+    flat_trades: summary.flat_trades,
+    gross_profit_cents: summary.gross_profit_cents.toString(),
+    gross_loss_cents: summary.gross_loss_cents.toString(),
+    net_pnl_cents: summary.net_pnl_cents.toString(),
+    average_trade_pnl_cents: summary.average_trade_pnl_cents?.toString() ?? null,
+    average_win_cents: summary.average_win_cents?.toString() ?? null,
+    average_loss_cents: summary.average_loss_cents?.toString() ?? null,
+    win_rate_ppm: summary.win_rate_ppm,
+    profit_factor_ppm: summary.profit_factor_ppm,
+    max_drawdown_cents: summary.max_drawdown_cents.toString(),
+    final_equity_cents: summary.final_equity_cents.toString(),
+    peak_equity_cents: summary.peak_equity_cents.toString(),
+  });
+}
+
+function groupExecutions(
+  executions: readonly RealArchiveBacktestResult[],
+): ReadonlyMap<StrategyId, readonly RealArchiveBacktestResult[]> {
+  const grouped = new Map<StrategyId, RealArchiveBacktestResult[]>();
+  for (const execution of executions) {
+    const group = grouped.get(execution.strategy_id);
+    if (group === undefined) {
+      grouped.set(execution.strategy_id, [execution]);
+      continue;
+    }
+    group.push(execution);
+  }
+  return grouped;
+}
+
+function artifactMetadata(
+  options: HeldOutValidationArtifactOutputOptions,
+  strategyId: StrategyId,
+): HeldOutValidationArtifactMetadata {
+  const metadata = options.metadata_by_strategy?.[strategyId] ?? options.default_metadata;
+  if (metadata === undefined) {
+    throw new Error(`missing held-out artifact metadata for ${strategyId}`);
+  }
+  return metadata;
+}
+
+function artifactCapabilityStatus(
+  status: StrategyCapabilityStatus | undefined,
+): HeldOutValidationArtifactCapabilityStatus {
+  if (status === 'ready_for_replay') {
+    return 'ready_for_replay';
+  }
+  if ((status as string | undefined) === 'ready_for_live') {
+    return 'ready_for_live';
+  }
+  throw new Error(`held-out artifact requires replay-ready capability status, got ${String(status)}`);
+}
+
+function knownRegime(value: string): HeldOutValidationArtifactRegime {
+  if (value === 'high' || value === 'mid' || value === 'low') {
+    return value;
+  }
+  throw new Error(`held-out artifact trade has missing regime metadata: ${value}`);
+}
+
+function knownSpreadBucket(value: string): HeldOutValidationArtifactSpreadBucket {
+  if (value === '1-tick' || value === '2-tick' || value === '3+ ticks') {
+    return value;
+  }
+  throw new Error(`held-out artifact trade has missing spread_bucket metadata: ${value}`);
+}
+
+function knownQueueAheadBucket(value: string): HeldOutValidationArtifactQueueAheadBucket {
+  if (value === '1-5' || value === '6-20' || value === '21+') {
+    return value;
+  }
+  throw new Error(`held-out artifact trade has missing queue_ahead_bucket metadata: ${value}`);
+}
+
+function artifactExitReason(value: RealArchiveExitReason) {
+  if (
+    value === 'stop_loss' ||
+    value === 'target' ||
+    value === 'time_stop' ||
+    value === 'session_close' ||
+    value === 'fail_safe'
+  ) {
+    return value;
+  }
+  throw new Error(`held-out artifact trade has unsupported exit_reason metadata: ${value}`);
 }
 
 function sessionsForRange(
@@ -528,6 +871,10 @@ function bigintReplacer(_key: string, value: unknown): unknown {
 
 function absBigint(value: bigint): bigint {
   return value < 0n ? -value : value;
+}
+
+function sumBigint(values: readonly bigint[]): bigint {
+  return values.reduce((sum, value) => sum + value, 0n);
 }
 
 function validateStrategyOrder(
