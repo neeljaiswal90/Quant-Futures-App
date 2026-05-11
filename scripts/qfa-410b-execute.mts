@@ -67,7 +67,7 @@ interface CorpusManifest {
 }
 
 interface RegimeLabelsArtifact {
-  readonly sessions?: readonly {
+  readonly labels?: readonly {
     readonly session_id: string;
     readonly confirmed_label?: string;
     readonly regime_label?: string;
@@ -292,7 +292,7 @@ function loadRegimeLabels(path: string): ReadonlyMap<string, string> {
     return new Map();
   }
   const artifact = readJson<RegimeLabelsArtifact>(path);
-  return new Map((artifact.sessions ?? []).map((session) => [
+  return new Map((artifact.labels ?? []).map((session) => [
     session.session_id,
     session.confirmed_label ?? session.regime_label ?? 'unknown',
   ]));
