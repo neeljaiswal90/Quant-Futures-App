@@ -23,6 +23,7 @@ STRATEGIES = [
     "breakout_retest_long",
     "breakdown_retest_short",
 ]
+EMITTER = REPO_ROOT / "scripts" / "strategy-selection" / "qfa-611-cycle1-emit-lock-manifest.py"
 
 
 def load_driver_module():
@@ -233,6 +234,27 @@ class Qfa611DriverTests(unittest.TestCase):
         self.assertEqual(result["execution_fragility_reasons"], [
             "alpha:verdict_reason:high_residual_cell_trade_fraction",
         ])
+    def test_cycle1_lock_manifest_emitter_uses_shared_parameter_hash(self) -> None:
+        from parameter_lock import PARAMETER_LOCK_ALGORITHM, compute_runtime_parameter_hash
+
+        module = load_emitter_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_dir = root / "strategies"
+            config_dir.mkdir()
+            (config_dir / "alpha.yaml").write_text(
+                "parameters:\n  threshold: 1.25\n  enabled: true\n",
+                encoding="utf-8",
+            )
+            manifest = module.build_manifest(["alpha"], config_dir)
+            self.assertEqual(manifest["parameter_lock_algorithm"], PARAMETER_LOCK_ALGORITHM)
+            self.assertEqual(
+                manifest["strategies"],
+                [{
+                    "strategy_id": "alpha",
+                    "parameter_lock_hash": compute_runtime_parameter_hash("alpha", config_dir),
+                }],
+            )
 
 
 def write_case(
@@ -306,6 +328,15 @@ def run_driver(
         command.append("--skip-runtime-parameter-hash")
     subprocess.run(command, cwd=REPO_ROOT, check=True, capture_output=True, text=True)
     return json_out
+
+
+def load_emitter_module():
+    spec = importlib.util.spec_from_file_location("qfa611_cycle1_emit_lock_manifest", EMITTER)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {EMITTER}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
-import hashlib
 import json
 import math
 import re
@@ -24,6 +23,7 @@ sys.path.insert(0, str(LIB_DIR))
 from artifact_writer import write_canonical_json, write_lf_text
 from decision import decide_strategy_verdict
 from hac_sharpe import compute_hac_sharpe
+from parameter_lock import compute_runtime_parameter_hash
 from psr_dsr import compute_psr_dsr
 from returns import assert_decimal_returns
 from sensitivity_audit import compute_sensitivity_audit, load_fidelity_cells
@@ -42,7 +42,6 @@ DEFAULT_LOCK_MANIFEST = Path("artifacts/strategy-selection/qfa611-cycle1-paramet
 DEFAULT_JSON_OUT = Path("artifacts/strategy-selection/strategy-selection-v1.json")
 DEFAULT_MD_OUT = Path("artifacts/strategy-selection/strategy-selection-v1.md")
 DEFAULT_STRATEGY_CONFIG_DIR = Path("config/strategies")
-PARAMETER_LOCK_ALGORITHM = "qfa611_parameter_struct_v1"
 EXECUTION_FRAGILITY_REASON_MARKERS = (
     "missing_cell_concentration",
     "low_fidelity_concentration",
@@ -70,6 +69,8 @@ class EvidenceIncomplete(Exception):
 
 
 def lf_sha256(path: Path) -> str:
+    import hashlib
+
     return hashlib.sha256(path.read_text(encoding="utf-8").replace("\r", "").encode("utf-8")).hexdigest()
 
 
@@ -86,69 +87,6 @@ def active_strategy_ids() -> list[str]:
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def parse_yaml_scalar(raw: str) -> object:
-    value = raw.strip()
-    if value == "":
-        return ""
-    lowered = value.lower()
-    if lowered == "true":
-        return True
-    if lowered == "false":
-        return False
-    try:
-        if any(token in value for token in (".", "e", "E")):
-            return float(value)
-        return int(value)
-    except ValueError:
-        return value.strip('"').strip("'")
-
-
-def load_strategy_parameter_struct(strategy_id: str, config_dir: Path) -> dict[str, object]:
-    """Load the simple Cycle1 strategy parameter YAML without adding PyYAML."""
-
-    path = config_dir / f"{strategy_id}.yaml"
-    if not path.exists():
-        raise ValueError(f"runtime parameter config missing for {strategy_id}: {path}")
-
-    parameters: dict[str, object] = {}
-    in_parameters = False
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if not line.startswith(" ") and stripped.endswith(":"):
-            in_parameters = stripped[:-1] == "parameters"
-            continue
-        if not line.startswith(" ") and ":" in stripped:
-            key, value = stripped.split(":", 1)
-            in_parameters = key == "parameters" and value.strip() == ""
-            continue
-        if in_parameters and ":" in stripped:
-            key, value = stripped.split(":", 1)
-            parameters[key.strip()] = parse_yaml_scalar(value)
-
-    if not parameters:
-        raise ValueError(f"runtime parameter config has no parameters for {strategy_id}: {path}")
-
-    return {
-        "parameter_lock_algorithm": PARAMETER_LOCK_ALGORITHM,
-        "strategy_id": strategy_id,
-        "parameters": parameters,
-    }
-
-
-def compute_runtime_parameter_hash(strategy_id: str, config_dir: Path) -> str:
-    payload = load_strategy_parameter_struct(strategy_id, config_dir)
-    encoded = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def finite_or_none(value: float) -> float | None:
