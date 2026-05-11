@@ -55,6 +55,12 @@ import {
   type EquityMetricsOptions,
 } from '../equity-metrics/index.js';
 import { mergeMonotonicSources } from './source-merge.js';
+import {
+  computeAtrSupertrend,
+  computeStructuralTrend,
+  createSnapshotFeatureState,
+  updateOfiZForBar,
+} from './snapshot-features.js';
 import type {
   QueueAheadBucket,
   RealArchiveBacktestOptions,
@@ -253,6 +259,7 @@ async function runSession(input: {
   const recentQueueRecords: DbnRecord[] = [];
   const history: BuiltBar[] = [];
   const quoteState: { latest: RealArchiveTopOfBook | null } = { latest: null };
+  const featureState = createSnapshotFeatureState();
   let openPosition: OpenExecutionPosition | null = null;
   let barIndex = 0;
   let lastBar: BuiltBar | null = null;
@@ -279,9 +286,11 @@ async function runSession(input: {
       recentQueueRecords,
       bar.last_record_ts_ns - input.fillPolicy.depletion_lookback_ns - input.fillPolicy.fill_horizon_ns,
     );
+    const barQueueRecords = recordsForWindow(recentQueueRecords, bar.first_record_ts_ns, bar.last_record_ts_ns);
 
     history.push(bar);
     input.metrics.bars_processed += 1;
+    const ofiZ = updateOfiZForBar(featureState, barQueueRecords);
 
     if (openPosition !== null) {
       updateExcursions(openPosition, bar);
@@ -336,6 +345,7 @@ async function runSession(input: {
       session: input.session,
       sourceEventId: makeEventId(`evt-${input.runId}-${padSequence(input.sequence.next())}-source`),
       latestQuote: quoteState.latest,
+      ofiZ,
     });
     const result = input.strategyGenerator({
       strategy_id: input.options.strategy_id,
@@ -792,6 +802,7 @@ function buildFeatureSnapshot(input: {
   readonly session: RealArchiveSessionSource;
   readonly sourceEventId: ReturnType<typeof makeEventId>;
   readonly latestQuote: RealArchiveTopOfBook | null;
+  readonly ofiZ: number | null;
 }): StrategyFeatureSnapshot {
   const instrument = instrumentIdentity(input.session.raw_symbol);
   const bars = input.history.map((bar) => ({
@@ -815,17 +826,15 @@ function buildFeatureSnapshot(input: {
   const ema21 = ema(closes, 21);
   const ema50 = ema(closes, 50);
   const sigmaPts = Math.max(TICK_SIZE, average(bars.map((bar) => bar.high - bar.low)) / 2);
-  const previousClose = closes.length > 1 ? closes[closes.length - 2] : undefined;
-  const trend = previousClose === undefined
-    ? 'unknown'
-    : current.close > previousClose
-      ? 'up'
-      : current.close < previousClose
-        ? 'down'
-        : 'range';
+  const trend = computeStructuralTrend(bars, sigmaPts);
+  const supertrend = computeAtrSupertrend(bars);
   const prior = bars.slice(0, -1);
   const priorHigh = prior.length === 0 ? current.high : Math.max(...prior.map((bar) => bar.high));
   const priorLow = prior.length === 0 ? current.low : Math.min(...prior.map((bar) => bar.low));
+  const longTarget1 = roundToTick(priorHigh + sigmaPts);
+  const longTarget2 = roundToTick(priorHigh + sigmaPts * 2);
+  const shortTarget1 = roundToTick(priorLow - sigmaPts);
+  const shortTarget2 = roundToTick(priorLow - sigmaPts * 2);
 
   return {
     feature_snapshot_id: makeFeatureSnapshotId(`feature-${input.bar.bar_id}-${input.strategyId}`),
@@ -855,21 +864,22 @@ function buildFeatureSnapshot(input: {
       ema_50: round4(ema50),
       pullback_ratio: round4(Math.min(1, Math.abs(current.close - ema9) / sigmaPts)),
       sigma_pts: round4(sigmaPts),
-      supertrend_direction: trend === 'down' ? 'down' : 'up',
+      supertrend_direction: supertrend.direction,
+      supertrend_value: supertrend.value,
       z_ema9: round4((current.close - ema9) / sigmaPts),
-      z_ofi_blend: 0,
+      z_ofi_blend: input.ofiZ,
     },
     structure: {
       trend,
       values: {
         breakout_level: roundToTick(priorHigh),
         broken_support: roundToTick(priorLow),
-        choch_buy: roundToTick(priorLow - sigmaPts),
-        choch_sell: roundToTick(priorHigh + sigmaPts),
-        nearest_resistance: roundToTick(priorHigh + sigmaPts),
-        nearest_support: roundToTick(priorLow - sigmaPts),
-        pivot_resistance_1: roundToTick(priorHigh + sigmaPts * 2),
-        pivot_support_1: roundToTick(priorLow - sigmaPts * 2),
+        choch_buy: shortTarget1,
+        choch_sell: longTarget1,
+        nearest_resistance: longTarget2,
+        nearest_support: shortTarget2,
+        pivot_resistance_1: longTarget2,
+        pivot_support_1: shortTarget2,
         retest_hold: current.close >= ema9,
         retest_reject: current.close <= ema9,
       },
@@ -881,11 +891,15 @@ function buildFeatureSnapshot(input: {
         spread_ticks: round4((quote.ask_px - quote.bid_px) / TICK_SIZE),
         queue_imbalance: imbalance(quote.bid_size, quote.ask_size),
         depth_imbalance: imbalance(quote.bid_size, quote.ask_size),
-        ofi_z: 0,
+        ofi_z: input.ofiZ,
       },
     },
     config: DEFAULT_CONFIG,
   };
+}
+
+function recordsForWindow(records: readonly DbnRecord[], startTsNs: UnixNs, endTsNs: UnixNs): readonly DbnRecord[] {
+  return records.filter((record) => record.ts_event >= startTsNs && record.ts_event <= endTsNs);
 }
 
 function strategyEvalEvent(input: {
