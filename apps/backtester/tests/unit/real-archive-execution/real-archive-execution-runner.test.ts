@@ -45,6 +45,8 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
     });
     expect(first.trade_analysis.summary.total_trades).toBe(1);
     expect(first.runtime_metrics.candidate_count).toBe(1);
+    const candidate = first.journal_events.find((event) => event.type === 'CANDIDATE')?.payload as Candidate | undefined;
+    expect(candidate?.targets.map((target) => target.price)).toEqual([100.75, 101.75]);
     expect(hashStable(first.per_trade_records)).toBe(hashStable(second.per_trade_records));
   });
 
