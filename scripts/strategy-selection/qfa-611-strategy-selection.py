@@ -50,6 +50,9 @@ EXECUTION_FRAGILITY_REASON_MARKERS = (
     "low_fidelity_trade_fraction",
     "unknown_cell_trade_fraction",
     "execution_fragility",
+    "execution_sensitivity_flag",
+    "queue_fidelity_concentration",
+    "slippage_or_fill_quality_proxy_failure",
 )
 REQUIRED_TRADE_FIELDS = (
     "regime",
