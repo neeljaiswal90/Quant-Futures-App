@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -105,6 +106,46 @@ class Qfa611DriverTests(unittest.TestCase):
             raw = path.read_bytes()
             self.assertNotIn(b"\r", raw)
             self.assertEqual(raw, b'{"a":[1,2,3],"b":2}\n')
+
+    def test_canonicalize_floats_rounds_to_ten_decimals(self) -> None:
+        from artifact_writer import canonicalize_floats
+
+        self.assertEqual(canonicalize_floats(1.234567890123), 1.2345678901)
+        self.assertEqual(canonicalize_floats(-1.234567890123), -1.2345678901)
+
+    def test_canonicalize_floats_preserves_non_float_scalars(self) -> None:
+        from artifact_writer import canonicalize_floats
+
+        value = {"flag": True, "count": 3, "label": "alpha", "missing": None}
+        self.assertEqual(canonicalize_floats(value), value)
+
+    def test_canonicalize_floats_recurses_nested_values(self) -> None:
+        from artifact_writer import canonicalize_floats
+
+        value = {"outer": [1.234567890123, {"inner": (2.345678901234, False)}]}
+        self.assertEqual(
+            canonicalize_floats(value),
+            {"outer": [1.2345678901, {"inner": (2.3456789012, False)}]},
+        )
+
+    def test_canonicalize_floats_rejects_non_finite_values(self) -> None:
+        from artifact_writer import canonicalize_floats
+
+        for value in (math.nan, math.inf, -math.inf):
+            with self.assertRaises(ValueError):
+                canonicalize_floats(value)
+
+    def test_canonical_json_collapses_sub_rounding_float_drift(self) -> None:
+        from artifact_writer import write_canonical_json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path_a = Path(tmp) / "a.json"
+            path_b = Path(tmp) / "b.json"
+            write_canonical_json({"sharpe": 1.234567890123 + 0.000000000001}, path_a)
+            write_canonical_json({"sharpe": 1.234567890123 - 0.000000000001}, path_b)
+            self.assertEqual(path_a.read_bytes(), path_b.read_bytes())
+            self.assertEqual(path_a.read_bytes(), b'{"sharpe":1.2345678901}\n')
+            self.assertNotIn(b"\r", path_a.read_bytes())
 
     def test_lf_text_writer_normalizes_trailing_newline(self) -> None:
         from artifact_writer import write_lf_text
