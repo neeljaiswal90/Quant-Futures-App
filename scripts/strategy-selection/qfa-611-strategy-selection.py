@@ -43,6 +43,14 @@ DEFAULT_JSON_OUT = Path("artifacts/strategy-selection/strategy-selection-v1.json
 DEFAULT_MD_OUT = Path("artifacts/strategy-selection/strategy-selection-v1.md")
 DEFAULT_STRATEGY_CONFIG_DIR = Path("config/strategies")
 PARAMETER_LOCK_ALGORITHM = "qfa611_parameter_struct_v1"
+EXECUTION_FRAGILITY_REASON_MARKERS = (
+    "missing_cell_concentration",
+    "low_fidelity_concentration",
+    "high_residual_cell_trade_fraction",
+    "low_fidelity_trade_fraction",
+    "unknown_cell_trade_fraction",
+    "execution_fragility",
+)
 REQUIRED_TRADE_FIELDS = (
     "regime",
     "spread_bucket",
@@ -379,6 +387,37 @@ def per_family_summary(per_strategy: Sequence[Mapping[str, Any]]) -> dict[str, A
     return summary
 
 
+def compute_execution_fragility(per_strategy: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    reasons: list[str] = []
+    seen: set[str] = set()
+
+    def append_reason(reason: str) -> None:
+        if reason not in seen:
+            seen.add(reason)
+            reasons.append(reason)
+
+    for entry in per_strategy:
+        if entry.get("evidence_package_status") != "complete":
+            continue
+        strategy_id = str(entry.get("strategy_id", "unknown_strategy"))
+        sensitivity = entry.get("sensitivity_audit")
+        if isinstance(sensitivity, Mapping) and sensitivity.get("flag") is True:
+            reason = str(sensitivity.get("reason") or "flagged")
+            append_reason(f"{strategy_id}:sensitivity_audit_flag:{reason}")
+            continue
+
+        verdict_reason = str(entry.get("verdict_reason") or "")
+        for marker in EXECUTION_FRAGILITY_REASON_MARKERS:
+            if marker in verdict_reason:
+                append_reason(f"{strategy_id}:verdict_reason:{marker}")
+                break
+
+    return {
+        "execution_fragility": len(reasons) > 0,
+        "execution_fragility_reasons": reasons,
+    }
+
+
 def build_selection(args: argparse.Namespace) -> dict[str, Any]:
     roster = args.strategy_ids or active_strategy_ids()
     if len(roster) == 0:
@@ -440,6 +479,7 @@ def build_selection(args: argparse.Namespace) -> dict[str, Any]:
     reject_count = sum(1 for entry in per_strategy if entry["verdict"] == "REJECT")
     partial_evidence = any(entry["evidence_package_status"] == "incomplete" for entry in per_strategy)
     run_status = "partial_evidence" if partial_evidence else "complete"
+    execution_fragility = compute_execution_fragility(per_strategy)
 
     return {
         "schema_version": 1,
@@ -454,6 +494,8 @@ def build_selection(args: argparse.Namespace) -> dict[str, Any]:
         "thresholds": ADR0016_STAGE1_THRESHOLDS,
         "run_status": run_status,
         "run_outcome": "partial_evidence" if partial_evidence else ("advance_present" if advance_count > 0 else "all_reject"),
+        "execution_fragility": execution_fragility["execution_fragility"],
+        "execution_fragility_reasons": execution_fragility["execution_fragility_reasons"],
         "per_family_summary": per_family_summary(per_strategy),
         "per_strategy": per_strategy,
         "summary": {
@@ -472,6 +514,7 @@ def write_markdown(selection: Mapping[str, Any], output: Path) -> None:
         "",
         f"- Run status: `{selection['run_status']}`",
         f"- Phase 6 dispatch authorized: `{selection['summary']['phase_6_dispatch_authorized']}`",
+        f"- Execution fragility: `{selection['execution_fragility']}`",
         "",
         "| Strategy | Verdict | Evidence status | Reason |",
         "|---|---|---|---|",

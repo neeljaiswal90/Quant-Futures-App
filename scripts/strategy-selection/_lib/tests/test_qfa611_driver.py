@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 import math
 import subprocess
@@ -22,6 +23,15 @@ STRATEGIES = [
     "breakout_retest_long",
     "breakdown_retest_short",
 ]
+
+
+def load_driver_module():
+    spec = importlib.util.spec_from_file_location("qfa611_strategy_selection", DRIVER)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load QFA-611 driver module")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class Qfa611DriverTests(unittest.TestCase):
@@ -49,6 +59,8 @@ class Qfa611DriverTests(unittest.TestCase):
             self.assertIn("dsr_probability", selection["per_strategy"][0]["held_out_evidence"])
             self.assertIn("psr_zero_null", selection["per_strategy"][0]["held_out_evidence"])
             self.assertIn("psr_hurdle_null", selection["per_strategy"][0]["held_out_evidence"])
+            self.assertFalse(selection["execution_fragility"])
+            self.assertEqual(selection["execution_fragility_reasons"], [])
 
     def test_gross_pnl_basis_is_research_further_not_reject(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -159,6 +171,68 @@ class Qfa611DriverTests(unittest.TestCase):
             self.assertEqual(path_b.read_bytes(), b"alpha\nbeta\n")
             self.assertNotIn(b"\r", path_a.read_bytes())
             self.assertNotIn(b"\r", path_b.read_bytes())
+
+    def test_execution_fragility_true_when_any_complete_strategy_has_sensitivity_flag(self) -> None:
+        driver = load_driver_module()
+        result = driver.compute_execution_fragility([
+            {
+                "strategy_id": "alpha",
+                "evidence_package_status": "complete",
+                "sensitivity_audit": {"flag": True, "reason": "missing_cell_concentration"},
+                "verdict_reason": "one_or_two_thresholds_failed_within_20pct",
+            },
+            {
+                "strategy_id": "beta",
+                "evidence_package_status": "complete",
+                "sensitivity_audit": {"flag": False, "reason": "clean"},
+                "verdict_reason": "all_stage1_thresholds_passed",
+            },
+        ])
+        self.assertTrue(result["execution_fragility"])
+        self.assertEqual(result["execution_fragility_reasons"], [
+            "alpha:sensitivity_audit_flag:missing_cell_concentration",
+        ])
+
+    def test_execution_fragility_false_when_complete_strategies_are_clean(self) -> None:
+        driver = load_driver_module()
+        result = driver.compute_execution_fragility([
+            {
+                "strategy_id": "alpha",
+                "evidence_package_status": "complete",
+                "sensitivity_audit": {"flag": False, "reason": "clean"},
+                "verdict_reason": "all_stage1_thresholds_passed",
+            },
+        ])
+        self.assertFalse(result["execution_fragility"])
+        self.assertEqual(result["execution_fragility_reasons"], [])
+
+    def test_execution_fragility_skips_incomplete_entries(self) -> None:
+        driver = load_driver_module()
+        result = driver.compute_execution_fragility([
+            {
+                "strategy_id": "alpha",
+                "evidence_package_status": "incomplete",
+                "sensitivity_audit": {"flag": True, "reason": "missing_cell_concentration"},
+                "verdict_reason": "missing_cell_concentration",
+            },
+        ])
+        self.assertFalse(result["execution_fragility"])
+        self.assertEqual(result["execution_fragility_reasons"], [])
+
+    def test_execution_fragility_supports_forward_compatible_reason_markers(self) -> None:
+        driver = load_driver_module()
+        result = driver.compute_execution_fragility([
+            {
+                "strategy_id": "alpha",
+                "evidence_package_status": "complete",
+                "sensitivity_audit": {"flag": False, "reason": "clean"},
+                "verdict_reason": "high_residual_cell_trade_fraction_exceeded",
+            },
+        ])
+        self.assertTrue(result["execution_fragility"])
+        self.assertEqual(result["execution_fragility_reasons"], [
+            "alpha:verdict_reason:high_residual_cell_trade_fraction",
+        ])
 
 
 def write_case(
