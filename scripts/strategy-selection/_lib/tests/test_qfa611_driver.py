@@ -13,6 +13,8 @@ DRIVER = REPO_ROOT / "scripts" / "strategy-selection" / "qfa-611-strategy-select
 FIXTURE = REPO_ROOT / "apps" / "backtester" / "tests" / "fixtures" / "qfa410-fixture.json"
 FIDELITY = REPO_ROOT / "artifacts" / "regime-fidelity" / "qfa-402c-stratified-cells-v1.json"
 REGIME_LABELS = REPO_ROOT / "artifacts" / "regime" / "regime-labels.json"
+LIB_DIR = REPO_ROOT / "scripts" / "strategy-selection" / "_lib"
+sys.path.insert(0, str(LIB_DIR))
 STRATEGIES = [
     "trend_pullback_long",
     "trend_pullback_short",
@@ -93,6 +95,29 @@ class Qfa611DriverTests(unittest.TestCase):
             first = selection["per_strategy"][0]
             self.assertEqual(first["verdict"], "RESEARCH_FURTHER")
             self.assertEqual(first["verdict_reason"], "missing_per_trade_metadata")
+
+    def test_canonical_json_writes_lf_only_bytes(self) -> None:
+        from artifact_writer import write_canonical_json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "out.json"
+            write_canonical_json({"b": 2, "a": [1, 2, 3]}, path)
+            raw = path.read_bytes()
+            self.assertNotIn(b"\r", raw)
+            self.assertEqual(raw, b'{"a":[1,2,3],"b":2}\n')
+
+    def test_lf_text_writer_normalizes_trailing_newline(self) -> None:
+        from artifact_writer import write_lf_text
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path_a = Path(tmp) / "with_trailing.txt"
+            path_b = Path(tmp) / "no_trailing.txt"
+            write_lf_text("alpha\nbeta\n", path_a)
+            write_lf_text("alpha\nbeta", path_b)
+            self.assertEqual(path_a.read_bytes(), b"alpha\nbeta\n")
+            self.assertEqual(path_b.read_bytes(), b"alpha\nbeta\n")
+            self.assertNotIn(b"\r", path_a.read_bytes())
+            self.assertNotIn(b"\r", path_b.read_bytes())
 
 
 def write_case(

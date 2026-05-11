@@ -21,7 +21,7 @@ from typing import Any, Mapping, Sequence
 LIB_DIR = Path(__file__).resolve().parent / "_lib"
 sys.path.insert(0, str(LIB_DIR))
 
-from artifact_writer import write_canonical_json
+from artifact_writer import write_canonical_json, write_lf_text
 from decision import decide_strategy_verdict
 from hac_sharpe import compute_hac_sharpe
 from psr_dsr import compute_psr_dsr
@@ -481,8 +481,7 @@ def write_markdown(selection: Mapping[str, Any], output: Path) -> None:
             f"| `{entry['strategy_id']}` | {entry['verdict']} | "
             f"{entry['evidence_package_status']} | {entry['verdict_reason']} |"
         )
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_lf_text("\n".join(lines), output)
 
 
 def parse_args() -> argparse.Namespace:
