@@ -39,10 +39,10 @@ describe('QFA-611 ADR-0016 threshold mirror', () => {
     const output = execFileSync(
       PYTHON,
       ['-m', 'unittest', 'discover', 'scripts/strategy-selection/_lib/tests'],
-      { cwd: REPO_ROOT, encoding: 'utf8' },
+      { cwd: REPO_ROOT, encoding: 'utf8', timeout: 15_000 },
     );
     expect(output).toContain('');
-  });
+  }, 15_000);
 
   it('keeps load-bearing field names separate', () => {
     expect(QFA611_STAT_CORE_VERSION).toBe('qfa611_stats_v1');

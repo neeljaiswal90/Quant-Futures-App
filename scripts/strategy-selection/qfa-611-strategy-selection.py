@@ -1,57 +1,65 @@
 #!/usr/bin/env python3
-"""QFA-611 strategy-selection artifact generator.
+"""QFA-611 strategy-selection driver.
 
-Applies ADR-0016 Stage 1 evidence-package gates to ACTIVE_STRATEGY_IDS.
-This script is intentionally conservative: it does not synthesize held-out
-trade evidence when QFA-410 validation-grade per-strategy artifacts are absent.
+Consumes QFA-410 held-out evidence artifacts and applies ADR-0016 Stage 1
+criteria to the active strategy roster. Missing or invalid evidence is a
+research/evidence state, not an alpha rejection.
 """
+
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import hashlib
 import json
+import math
 import re
-from collections import OrderedDict
+import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
+
+LIB_DIR = Path(__file__).resolve().parent / "_lib"
+sys.path.insert(0, str(LIB_DIR))
+
+from artifact_writer import write_canonical_json
+from decision import decide_strategy_verdict
+from hac_sharpe import compute_hac_sharpe
+from psr_dsr import compute_psr_dsr
+from returns import assert_decimal_returns
+from sensitivity_audit import compute_sensitivity_audit, load_fidelity_cells
+from thresholds import ADR0016_STAGE1_THRESHOLDS, ANNUALIZATION_SESSIONS
+from walk_forward_loader import load_held_out_artifact, load_parameter_lock_manifest
+
 
 METHODOLOGY_ID = "adr-0016-v1"
 PHASE4_HASH = "ad8dad3c36a5b64fa3ddbd955abec819db31b2b4c160d0152074fc6bcbb40090"
 PHASE2_HASH = "dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b"
-SELECTION_SCHEMA_VERSION = 1
-
 STRATEGY_IDS_PATH = Path("apps/strategy_runtime/src/contracts/strategy-ids.ts")
-REGIME_LABELS_PATH = Path("artifacts/regime/regime-labels.json")
-REGIME_FIDELITY_PATH = Path("artifacts/regime-fidelity/regime-stratified-fidelity-v1.json")
-MANIFEST_PATHS = OrderedDict([
-    ("2026-02", Path("config/research/manifests/manifest-feb-2026.json")),
-    ("2026-03", Path("config/research/manifests/manifest-mar-2026.json")),
-    ("2026-04", Path("config/research/manifests/manifest-apr-2026.json")),
-])
-ADR_PATH = Path("docs/adr/ADR-0016-qfa-611-alpha-decision-criteria.md")
-OUTPUT_JSON = Path("artifacts/strategy-selection/strategy-selection-v1.json")
-OUTPUT_MD = Path("docs/research/qfa-611-strategy-selection.md")
+DEFAULT_HELD_OUT_DIR = Path("artifacts/held-out-validation")
+DEFAULT_REGIME_LABELS = Path("artifacts/regime/regime-labels.json")
+DEFAULT_FIDELITY = Path("artifacts/regime-fidelity/qfa-402c-stratified-cells-v1.json")
+DEFAULT_LOCK_MANIFEST = Path("artifacts/strategy-selection/qfa611-cycle1-parameter-locks.json")
+DEFAULT_JSON_OUT = Path("artifacts/strategy-selection/strategy-selection-v1.json")
+DEFAULT_MD_OUT = Path("artifacts/strategy-selection/strategy-selection-v1.md")
+DEFAULT_STRATEGY_CONFIG_DIR = Path("config/strategies")
+PARAMETER_LOCK_ALGORITHM = "qfa611_parameter_struct_v1"
+REQUIRED_TRADE_FIELDS = (
+    "regime",
+    "spread_bucket",
+    "queue_ahead_bucket",
+    "gross_pnl_cents",
+    "net_pnl_cents",
+)
 
-THRESHOLDS = OrderedDict([
-    ("annualized_hurdle_rate", 0.12),
-    ("min_hac_sharpe", 1.0),
-    ("min_dsr", 0.0),
-    ("min_psr_zero_null", 0.80),
-    ("max_drawdown_pct", 0.08),
-    ("min_profit_factor", 1.35),
-    ("min_total_trades", 300),
-    ("min_regime_trades_when_regime_contributes_ge_10pct", 30),
-    ("sensitivity_concentration_fraction", 0.30),
-    ("low_fidelity_cell_threshold_ppm", 750_000),
-])
+
+class EvidenceIncomplete(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 def lf_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_text(encoding="utf-8").replace("\r", "").encode("utf-8")).hexdigest()
-
-
-def load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def active_strategy_ids() -> list[str]:
@@ -65,283 +73,443 @@ def active_strategy_ids() -> list[str]:
     return ids
 
 
-def config_hash(strategy_id: str) -> str | None:
-    path = Path("config/strategies") / f"{strategy_id}.yaml"
+def load_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def parse_yaml_scalar(raw: str) -> object:
+    value = raw.strip()
+    if value == "":
+        return ""
+    lowered = value.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    try:
+        if any(token in value for token in (".", "e", "E")):
+            return float(value)
+        return int(value)
+    except ValueError:
+        return value.strip('"').strip("'")
+
+
+def load_strategy_parameter_struct(strategy_id: str, config_dir: Path) -> dict[str, object]:
+    """Load the simple Cycle1 strategy parameter YAML without adding PyYAML."""
+
+    path = config_dir / f"{strategy_id}.yaml"
     if not path.exists():
-        return None
-    return lf_sha256(path)
+        raise ValueError(f"runtime parameter config missing for {strategy_id}: {path}")
 
-
-def regime_summary(regime_labels: dict[str, Any]) -> OrderedDict[str, Any]:
-    counts = OrderedDict((label, 0) for label in ["high", "mid", "low"])
-    excluded: list[dict[str, Any]] = []
-    for label in regime_labels.get("labels", []):
-        confirmed = label.get("confirmed_label")
-        if label.get("quality_excluded") is True:
-            excluded.append(OrderedDict([
-                ("session_id", label.get("session_id")),
-                ("confirmed_label", confirmed),
-                ("quality_exclusion_reason", label.get("quality_exclusion_reason")),
-            ]))
+    parameters: dict[str, object] = {}
+    in_parameters = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        if label.get("use_for_calibration") is False:
+        if not line.startswith(" ") and stripped.endswith(":"):
+            in_parameters = stripped[:-1] == "parameters"
             continue
-        if confirmed in counts:
-            counts[confirmed] += 1
-    return OrderedDict([
-        ("calibration_eligible_counts", counts),
-        ("quality_excluded_sessions", excluded),
-        ("secondary_percentile_basis", regime_labels.get("secondary_substrate", {}).get("percentile_basis")),
-    ])
+        if not line.startswith(" ") and ":" in stripped:
+            key, value = stripped.split(":", 1)
+            in_parameters = key == "parameters" and value.strip() == ""
+            continue
+        if in_parameters and ":" in stripped:
+            key, value = stripped.split(":", 1)
+            parameters[key.strip()] = parse_yaml_scalar(value)
+
+    if not parameters:
+        raise ValueError(f"runtime parameter config has no parameters for {strategy_id}: {path}")
+
+    return {
+        "parameter_lock_algorithm": PARAMETER_LOCK_ALGORITHM,
+        "strategy_id": strategy_id,
+        "parameters": parameters,
+    }
 
 
-def fidelity_summary(regime_fidelity: dict[str, Any]) -> OrderedDict[str, Any]:
-    return OrderedDict([
-        ("methodology_id", regime_fidelity.get("methodology_id")),
-        ("primary_verdict", regime_fidelity.get("primary_verdict")),
-        ("twenty_one_plus_warning_flag", regime_fidelity.get("twenty_one_plus_warning_flag")),
-        ("mid_anomaly_flag", regime_fidelity.get("mid_anomaly_flag")),
-        ("per_regime_equal_weight", regime_fidelity.get("per_regime_equal_weight")),
-        ("per_regime_probe_weighted", regime_fidelity.get("per_regime_probe_weighted")),
-    ])
+def compute_runtime_parameter_hash(strategy_id: str, config_dir: Path) -> str:
+    payload = load_strategy_parameter_struct(strategy_id, config_dir)
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
-def unavailable_held_out_evidence() -> OrderedDict[str, Any]:
-    per_regime = OrderedDict()
-    for regime in ["high", "mid", "low"]:
-        per_regime[regime] = OrderedDict([
-            ("trades", 0),
-            ("session_count", 0),
-            ("annualized_return", None),
-            ("annualized_sharpe_HAC", None),
-            ("profit_factor", None),
-            ("max_drawdown_pct", None),
-        ])
-    return OrderedDict([
-        ("total_trades", 0),
-        ("win_rate", None),
-        ("profit_factor", None),
-        ("max_drawdown_pct", None),
-        ("annualized_return", None),
-        ("annualized_sharpe_HAC", None),
-        ("hac_bandwidth_lag", None),
-        ("dsr", None),
-        ("psr_zero_null", None),
-        ("psr_hurdle_null", None),
-        ("observation_unit", "session"),
-        ("per_regime", per_regime),
-    ])
+def finite_or_none(value: float) -> float | None:
+    return value if math.isfinite(value) else None
 
 
-def threshold_results() -> OrderedDict[str, bool]:
-    return OrderedDict([
-        ("hurdle_pass", False),
-        ("sharpe_pass", False),
-        ("dsr_pass", False),
-        ("psr_zero_pass", False),
-        ("drawdown_pass", False),
-        ("pf_pass", False),
-        ("trade_count_pass", False),
-        ("regime_trade_pass", False),
-        ("sensitivity_audit_pass", False),
-    ])
-
-
-def sensitivity_audit_unavailable() -> OrderedDict[str, Any]:
-    return OrderedDict([
-        ("status", "not_evaluable_no_held_out_trades"),
-        ("flag", False),
-        ("high_residual_cell_trade_fraction", None),
-        ("flagged_cells", []),
-        ("reason", "No validation-grade per-trade held-out record is present, so LD-611-1 concentration audit cannot be computed."),
-    ])
-
-
-def per_strategy_entry(strategy_id: str) -> OrderedDict[str, Any]:
-    cfg_hash = config_hash(strategy_id)
-    missing = [
-        "validation_grade_qfa301_replay_sanity_artifact",
-        "pinned_qfa302_strategy_fingerprint_artifact",
-        "qfa303_ready_for_replay_or_ready_for_live_capability_artifact",
-        "qfa410_per_trade_held_out_validation_artifact",
-        "qfa310_primary_pass_artifact_for_feb_mar_apr_test_windows",
+def artifact_path_for(held_out_dir: Path, strategy_id: str) -> Path:
+    candidates = [
+        held_out_dir / f"{strategy_id}-feb-mar-apr-2026.json",
+        held_out_dir / f"{strategy_id}.json",
     ]
-    return OrderedDict([
-        ("strategy_id", strategy_id),
-        ("evidence_package_status", "incomplete"),
-        ("evidence_package", OrderedDict([
-            ("qfa301_replay_sanity", "missing_validation_grade_artifact"),
-            ("qfa302_fingerprint", "missing_pinned_artifact"),
-            ("qfa303_capability", "missing_ready_capability_artifact"),
-            ("qfa410_held_out_validation", "missing_per_trade_held_out_artifact"),
-            ("qfa310_validation_gate", "missing_primary_pass_artifact"),
-            ("strategy_config_sha256", cfg_hash),
-            ("missing_components", missing),
-        ])),
-        ("held_out_evidence", unavailable_held_out_evidence()),
-        ("threshold_results", threshold_results()),
-        ("sensitivity_audit", sensitivity_audit_unavailable()),
-        ("verdict", "REJECT"),
-        ("verdict_reason", "LD-611-1 evidence package incomplete: no validation-grade QFA-410 per-trade/session held-out evidence is present for this strategy; statistical Stage 1 thresholds are therefore not evaluable."),
-    ])
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
-def build_selection() -> OrderedDict[str, Any]:
-    for path in [ADR_PATH, REGIME_LABELS_PATH, REGIME_FIDELITY_PATH, *MANIFEST_PATHS.values()]:
-        if not path.exists():
-            raise FileNotFoundError(path)
-    strategy_ids = active_strategy_ids()
-    regime_labels = load_json(REGIME_LABELS_PATH)
-    regime_fidelity = load_json(REGIME_FIDELITY_PATH)
-    per_strategy = [per_strategy_entry(strategy_id) for strategy_id in strategy_ids]
-    advance_count = sum(1 for item in per_strategy if item["verdict"] == "ADVANCE_TO_PAPER")
-    research_count = sum(1 for item in per_strategy if item["verdict"] == "RESEARCH_FURTHER")
-    reject_count = sum(1 for item in per_strategy if item["verdict"] == "REJECT")
-    return OrderedDict([
-        ("schema_version", SELECTION_SCHEMA_VERSION),
-        ("methodology_id", METHODOLOGY_ID),
-        ("methodology_source", "docs/adr/ADR-0016-qfa-611-alpha-decision-criteria.md"),
-        ("input_substrate_hash", lf_sha256(REGIME_LABELS_PATH)),
-        ("input_phase2_hash", PHASE2_HASH),
-        ("input_phase4_hash", PHASE4_HASH),
-        ("input_manifest_hashes", OrderedDict((key, lf_sha256(path)) for key, path in MANIFEST_PATHS.items())),
-        ("active_strategy_ids", strategy_ids),
-        ("active_strategy_count", len(strategy_ids)),
-        ("cf29_roster_count_note", "ACTIVE_STRATEGY_IDS count is descriptive and count-agnostic; this run applies ADR-0016 to the canonical non-empty roster."),
-        ("thresholds", THRESHOLDS),
-        ("regime_substrate_summary", regime_summary(regime_labels)),
-        ("regime_fidelity_summary", fidelity_summary(regime_fidelity)),
-        ("trial_accounting", OrderedDict([
-            ("effective_trial_method", "max_of_manual_and_distinct_fingerprints"),
-            ("manual_declared_effective_trials", len(strategy_ids)),
-            ("distinct_window_fingerprint_tuples", None),
-            ("effective_trial_count", len(strategy_ids)),
-            ("note", "No validation-grade QFA-410 window fingerprints are present; effective trial count records the actual candidate roster count for this incomplete-evidence run."),
-        ])),
-        ("per_strategy", per_strategy),
-        ("summary", OrderedDict([
-            ("advance_count", advance_count),
-            ("research_further_count", research_count),
-            ("reject_count", reject_count),
-            ("phase_6_dispatch_authorized", advance_count > 0),
-            ("primary_blocker", "missing_validation_grade_per_strategy_evidence_package"),
-            ("recommended_next_action", "Produce validation-grade QFA-301/QFA-302/QFA-303/QFA-410 evidence packages before re-running QFA-611."),
-        ])),
-        ("generated_at_note", "Deterministic QFA-611 selection script; no wall-clock timestamp emitted."),
-    ])
+def require_artifact_completeness(artifact: Mapping[str, Any]) -> None:
+    for field in (
+        "schema_version",
+        "methodology_id",
+        "strategy_id",
+        "strategy_family",
+        "parameter_lock_hash",
+        "parameter_lock_source",
+        "capability_status",
+        "trades",
+        "session_returns",
+        "aggregate",
+        "gating_pnl_basis",
+    ):
+        if field not in artifact:
+            raise EvidenceIncomplete(f"missing_required_field:{field}")
+    if artifact.get("gating_pnl_basis") != "net":
+        raise EvidenceIncomplete("missing_or_wrong_pnl_basis")
+    if artifact.get("capability_status") not in ("ready_for_replay", "ready_for_live"):
+        raise EvidenceIncomplete("capability_not_ready")
+    trades = artifact.get("trades")
+    if not isinstance(trades, list):
+        raise EvidenceIncomplete("missing_per_trade_metadata")
+    for index, trade in enumerate(trades):
+        if not isinstance(trade, Mapping):
+            raise EvidenceIncomplete(f"invalid_trade_record:{index}")
+        missing = [field for field in REQUIRED_TRADE_FIELDS if field not in trade]
+        if missing:
+            raise EvidenceIncomplete("missing_per_trade_metadata")
+    returns = artifact.get("session_returns")
+    if not isinstance(returns, list) or len(returns) < 2:
+        raise EvidenceIncomplete("missing_session_returns")
+    try:
+        assert_decimal_returns([float(value) for value in returns])
+    except (TypeError, ValueError) as error:
+        raise EvidenceIncomplete(f"invalid_session_returns:{error}") from error
 
 
-def write_json(selection: OrderedDict[str, Any], output: Path) -> None:
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(selection, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def profit_factor_from_aggregate(aggregate: Mapping[str, Any]) -> float | None:
+    value = aggregate.get("profit_factor_ppm")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value) / 1_000_000.0
+    return None
 
 
-def fmt(value: Any) -> str:
-    if value is None:
-        return "n/a"
+def int_cents(value: Any, field: str) -> int:
     if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+        raise EvidenceIncomplete(f"invalid_money_field:{field}")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    raise EvidenceIncomplete(f"invalid_money_field:{field}")
 
 
-def write_markdown(selection: OrderedDict[str, Any], output: Path) -> None:
-    lines: list[str] = []
-    lines.append("# QFA-611 strategy selection v1")
-    lines.append("")
-    lines.append("## Status")
-    lines.append("")
-    lines.append("REJECT all current candidates because ADR-0016 LD-611-1 evidence packages are incomplete.")
-    lines.append("")
-    lines.append("This is an implementation result, not a methodology amendment. ADR-0016 is applied count-agnostically to the canonical 4-strategy roster per CF-29.")
-    lines.append("")
-    lines.append("## Inputs")
-    lines.append("")
-    lines.append(f"- Methodology: `{selection['methodology_id']}`")
-    lines.append(f"- Phase 2 hash: `{selection['input_phase2_hash']}`")
-    lines.append(f"- Phase 4 hash: `{selection['input_phase4_hash']}`")
-    lines.append(f"- Regime substrate hash: `{selection['input_substrate_hash']}`")
-    lines.append("- Active strategy roster: " + ", ".join(f"`{s}`" for s in selection["active_strategy_ids"]))
-    lines.append("")
-    lines.append("## Regime substrate context")
-    lines.append("")
-    counts = selection["regime_substrate_summary"]["calibration_eligible_counts"]
-    lines.append("| Regime | Calibration-eligible sessions |")
-    lines.append("|---|---:|")
-    for regime in ["high", "mid", "low"]:
-        lines.append(f"| {regime} | {counts[regime]} |")
-    lines.append("")
-    lines.append("QFA-420 Outcome A remains the system-level fidelity context; no regime-conditioned sizing or threshold changes are introduced.")
-    lines.append("")
-    lines.append("## Evidence-package finding")
-    lines.append("")
-    lines.append("The repository currently contains strategy source/configuration plus QFA-301/302/303/410 framework code, but it does not contain validation-grade per-strategy QFA-410 held-out trade artifacts for Feb-Mar-Apr 2026. Existing replay-sanity fixtures are diagnostics and QFA-303 explicitly treats replay-sanity placeholder features as degraded replay, which cannot pass QFA-310.")
-    lines.append("")
-    lines.append("Per ADR-0016 LD-611-1, QFA-611 must not fabricate held-out returns when this evidence package is missing. The Stage 1 statistical metrics are therefore not evaluable.")
-    lines.append("")
-    lines.append("## Per-strategy verdicts")
-    lines.append("")
-    lines.append("| Strategy | Verdict | Evidence status | Trades | Sharpe HAC | DSR | PSR zero | PSR hurdle | Max DD | PF | Reason |")
-    lines.append("|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|")
-    for item in selection["per_strategy"]:
-        ev = item["held_out_evidence"]
-        lines.append("| " + " | ".join([
-            f"`{item['strategy_id']}`",
-            item["verdict"],
-            item["evidence_package_status"],
-            fmt(ev["total_trades"]),
-            fmt(ev["annualized_sharpe_HAC"]),
-            fmt(ev["dsr"]),
-            fmt(ev["psr_zero_null"]),
-            fmt(ev["psr_hurdle_null"]),
-            fmt(ev["max_drawdown_pct"]),
-            fmt(ev["profit_factor"]),
-            item["verdict_reason"],
-        ]) + " |")
-    lines.append("")
-    lines.append("## Threshold application")
-    lines.append("")
-    lines.append("All Stage 1 quantitative threshold booleans are false because the required held-out evidence is unavailable, not because measured alpha failed. This distinction matters for next dispatch: the blocker is evidence construction, not strategy performance inference.")
-    lines.append("")
-    lines.append("## Sensitivity audit")
-    lines.append("")
-    lines.append("The LD-611-1 strategy-level execution sensitivity audit is not evaluable without per-trade held-out records containing regime / spread / queue-ahead cells. The system-level QFA-420 21+ warning flag remains false, but no strategy-specific concentration claim is made.")
-    lines.append("")
-    lines.append("## Verdict summary")
-    lines.append("")
-    summary = selection["summary"]
-    lines.append(f"- ADVANCE_TO_PAPER: {summary['advance_count']}")
-    lines.append(f"- RESEARCH_FURTHER: {summary['research_further_count']}")
-    lines.append(f"- REJECT: {summary['reject_count']}")
-    lines.append(f"- Phase 6 dispatch authorized: {fmt(summary['phase_6_dispatch_authorized'])}")
-    lines.append("")
-    lines.append("## Recommended next coordinator action")
-    lines.append("")
-    lines.append("Do not dispatch Phase 6 paper/live tickets yet. The next enabling ticket should construct validation-grade per-strategy evidence packages: QFA-410 per-trade held-out replay output, QFA-302 pinned fingerprints, QFA-303 ready capability assessments, and QFA-310 primary pass artifacts for each active strategy. Then rerun QFA-611 against those artifacts.")
-    lines.append("")
-    lines.append("## Scope discipline")
-    lines.append("")
-    lines.append("No ADR, QFA-105, QFA-402, strategy formula, RunSpec, journal, determinism-gate, VIX/VXN, regime-label, or manifest changes are made by this ticket.")
+def initial_equity_cents(artifact: Mapping[str, Any]) -> int:
+    windows = artifact.get("windows")
+    if not isinstance(windows, list) or len(windows) == 0 or not isinstance(windows[0], Mapping):
+        raise EvidenceIncomplete("missing_initial_equity")
+    return int_cents(windows[0].get("initial_equity_cents"), "initial_equity_cents")
+
+
+def regime_counts(trades: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    counts = {regime: 0 for regime in ("high", "mid", "low")}
+    for trade in trades:
+        regime = trade.get("regime")
+        if regime in counts:
+            counts[str(regime)] += 1
+    total = len(trades)
+    return {
+        regime: {
+            "trade_count": count,
+            "trade_fraction": 0.0 if total == 0 else count / total,
+        }
+        for regime, count in counts.items()
+    }
+
+
+def compute_held_out_evidence(
+    artifact: Mapping[str, Any],
+    effective_trial_count: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    returns = [float(value) for value in artifact["session_returns"]]
+    aggregate = artifact["aggregate"]
+    if not isinstance(aggregate, Mapping):
+        raise EvidenceIncomplete("invalid_aggregate")
+    trades = artifact["trades"]
+    if not isinstance(trades, list):
+        raise EvidenceIncomplete("missing_per_trade_metadata")
+
+    hac = compute_hac_sharpe(returns)
+    psr_dsr = compute_psr_dsr(returns, effective_trial_count=effective_trial_count)
+    initial_equity = initial_equity_cents(artifact)
+    annualized_return = (sum(returns) / len(returns)) * ANNUALIZATION_SESSIONS
+    max_drawdown_pct = int_cents(aggregate.get("max_drawdown_cents"), "max_drawdown_cents") / initial_equity
+    profit_factor = profit_factor_from_aggregate(aggregate)
+    win_rate_ppm = aggregate.get("win_rate_ppm")
+    win_rate = None if win_rate_ppm is None else float(win_rate_ppm) / 1_000_000.0
+    total_trades = int(aggregate.get("total_trades", len(trades)))
+
+    evidence = {
+        "total_trades": total_trades,
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "max_drawdown_pct": max_drawdown_pct,
+        "annualized_return": annualized_return,
+        "annualized_sharpe": hac.annualized_sharpe,
+        "hac_standard_error_of_mean": hac.hac_standard_error_of_mean,
+        "hac_t_stat": hac.hac_t_stat,
+        "dsr_statistic": psr_dsr.dsr_statistic,
+        "dsr_probability": psr_dsr.dsr_probability,
+        "psr_zero_null": psr_dsr.psr_zero_null,
+        "psr_hurdle_null": psr_dsr.psr_hurdle_null,
+        "observation_unit": "session",
+        "annualization_sessions": ANNUALIZATION_SESSIONS,
+        "hac_bandwidth_lag": hac.bandwidth_lag,
+        "per_regime": regime_counts(trades),
+    }
+    diagnostics = {
+        "hac": asdict(hac),
+        "psr_dsr": asdict(psr_dsr),
+    }
+    return evidence, diagnostics
+
+
+def compute_threshold_results(evidence: Mapping[str, Any], sensitivity: Mapping[str, Any]) -> dict[str, bool]:
+    thresholds = ADR0016_STAGE1_THRESHOLDS
+    total_trades = int(evidence["total_trades"])
+    per_regime = evidence["per_regime"]
+    regime_trade_pass = False
+    if total_trades > 0:
+        regime_trade_pass = all(
+            data["trade_count"] >= thresholds["per_regime_trades_min"]
+            for data in per_regime.values()
+            if data["trade_fraction"] >= thresholds["regime_trade_contribution_floor"]
+        )
+    profit_factor = evidence.get("profit_factor")
+    return {
+        "hurdle_pass": float(evidence["annualized_return"]) >= thresholds["annualized_return_min_decimal"],
+        "sharpe_pass": float(evidence["annualized_sharpe"]) >= thresholds["annualized_sharpe_min"],
+        "dsr_pass": float(evidence["dsr_statistic"]) >= thresholds["dsr_statistic_min"],
+        "psr_zero_pass": float(evidence["psr_zero_null"]) >= thresholds["psr_zero_null_min"],
+        "drawdown_pass": float(evidence["max_drawdown_pct"]) <= thresholds["max_drawdown_max_decimal"],
+        "pf_pass": profit_factor is not None and float(profit_factor) >= thresholds["profit_factor_min"],
+        "trade_count_pass": total_trades >= thresholds["total_trades_min"],
+        "regime_trade_pass": regime_trade_pass,
+        "sensitivity_audit_pass": not bool(sensitivity.get("flag")),
+    }
+
+
+def complete_strategy_entry(
+    strategy_id: str,
+    artifact: Mapping[str, Any],
+    fidelity_cells: Mapping[tuple[str, str, str], Any],
+    effective_trial_count: int,
+    runtime_parameter_hash: str | None = None,
+) -> dict[str, Any]:
+    require_artifact_completeness(artifact)
+    evidence, diagnostics = compute_held_out_evidence(artifact, effective_trial_count)
+    sensitivity = compute_sensitivity_audit(artifact["trades"], fidelity_cells)
+    thresholds = compute_threshold_results(evidence, sensitivity)
+    decision = decide_strategy_verdict(evidence, thresholds, sensitivity)
+    return {
+        "strategy_id": strategy_id,
+        "strategy_family": artifact["strategy_family"],
+        "parameter_lock_source": artifact["parameter_lock_source"],
+        "parameter_lock_hash": artifact["parameter_lock_hash"],
+        "runtime_parameter_hash": runtime_parameter_hash,
+        "evidence_package_status": "complete",
+        "run_status": "complete",
+        "held_out_evidence": evidence,
+        "statistical_diagnostics": diagnostics,
+        "threshold_results": thresholds,
+        "sensitivity_audit": sensitivity,
+        "verdict": decision["verdict"],
+        "verdict_reason": decision["reason"],
+    }
+
+
+def incomplete_strategy_entry(strategy_id: str, reason: str) -> dict[str, Any]:
+    return {
+        "strategy_id": strategy_id,
+        "strategy_family": None,
+        "parameter_lock_source": None,
+        "parameter_lock_hash": None,
+        "runtime_parameter_hash": None,
+        "evidence_package_status": "incomplete",
+        "run_status": "partial_evidence",
+        "held_out_evidence": None,
+        "statistical_diagnostics": None,
+        "threshold_results": None,
+        "sensitivity_audit": None,
+        "verdict": "RESEARCH_FURTHER",
+        "verdict_reason": reason,
+    }
+
+
+def per_family_summary(per_strategy: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    families: dict[str, list[Mapping[str, Any]]] = {}
+    for entry in per_strategy:
+        family = entry.get("strategy_family") or "unknown"
+        families.setdefault(str(family), []).append(entry)
+    summary: dict[str, Any] = {}
+    for family, entries in sorted(families.items()):
+        dsr_values = [
+            entry["held_out_evidence"]["dsr_statistic"]
+            for entry in entries
+            if isinstance(entry.get("held_out_evidence"), Mapping)
+        ]
+        dsr_values = sorted(float(value) for value in dsr_values if value is not None)
+        median_dsr = None
+        if dsr_values:
+            mid = len(dsr_values) // 2
+            median_dsr = dsr_values[mid] if len(dsr_values) % 2 else (dsr_values[mid - 1] + dsr_values[mid]) / 2
+        summary[family] = {
+            "strategy_count": len(entries),
+            "advance_count": sum(1 for entry in entries if entry["verdict"] == "ADVANCE_TO_PAPER"),
+            "reject_count": sum(1 for entry in entries if entry["verdict"] == "REJECT"),
+            "research_further_count": sum(1 for entry in entries if entry["verdict"] == "RESEARCH_FURTHER"),
+            "median_dsr_statistic": median_dsr,
+        }
+    return summary
+
+
+def build_selection(args: argparse.Namespace) -> dict[str, Any]:
+    roster = args.strategy_ids or active_strategy_ids()
+    if len(roster) == 0:
+        raise RuntimeError("ACTIVE_STRATEGY_IDS empty")
+    if args.lock_manifest.exists():
+        locks = load_parameter_lock_manifest(args.lock_manifest)
+    else:
+        locks = {}
+    fidelity_cells = load_fidelity_cells(args.fidelity)
+    per_strategy: list[dict[str, Any]] = []
+    effective_trial_count = max(len(roster), len(locks))
+
+    for strategy_id in roster:
+        path = artifact_path_for(args.held_out_dir, strategy_id)
+        if not path.exists():
+            per_strategy.append(incomplete_strategy_entry(strategy_id, "missing_held_out_artifact"))
+            continue
+        try:
+            if args.lock_manifest.exists():
+                artifact = load_held_out_artifact(path, args.lock_manifest)
+            else:
+                artifact = load_json(path)
+                if artifact.get("gating_pnl_basis") != "net":
+                    raise EvidenceIncomplete("missing_or_wrong_pnl_basis")
+            runtime_parameter_hash = None
+            if args.lock_manifest.exists() and not args.skip_runtime_parameter_hash:
+                runtime_parameter_hash = compute_runtime_parameter_hash(strategy_id, args.strategy_config_dir)
+                artifact_hash = str(artifact.get("parameter_lock_hash"))
+                manifest_hash = locks.get(strategy_id)
+                if runtime_parameter_hash != artifact_hash or (
+                    manifest_hash is not None and runtime_parameter_hash != manifest_hash
+                ):
+                    raise ValueError("parameter_lock_hash mismatch: runtime_parameter_hash")
+            per_strategy.append(
+                complete_strategy_entry(
+                    strategy_id,
+                    artifact,
+                    fidelity_cells,
+                    effective_trial_count,
+                    runtime_parameter_hash=runtime_parameter_hash,
+                )
+            )
+        except EvidenceIncomplete as error:
+            per_strategy.append(incomplete_strategy_entry(strategy_id, error.reason))
+        except ValueError as error:
+            reason = str(error)
+            if "gating_pnl_basis" in reason:
+                reason = "missing_or_wrong_pnl_basis"
+            elif "parameter_lock_hash" in reason:
+                reason = "parameter_lock_violation"
+            per_strategy.append(incomplete_strategy_entry(strategy_id, reason))
+
+    final_roster = args.strategy_ids or active_strategy_ids()
+    if final_roster != roster:
+        raise RuntimeError("ACTIVE_STRATEGY_IDS changed during QFA-611 run")
+
+    advance_count = sum(1 for entry in per_strategy if entry["verdict"] == "ADVANCE_TO_PAPER")
+    research_count = sum(1 for entry in per_strategy if entry["verdict"] == "RESEARCH_FURTHER")
+    reject_count = sum(1 for entry in per_strategy if entry["verdict"] == "REJECT")
+    partial_evidence = any(entry["evidence_package_status"] == "incomplete" for entry in per_strategy)
+    run_status = "partial_evidence" if partial_evidence else "complete"
+
+    return {
+        "schema_version": 1,
+        "methodology_id": METHODOLOGY_ID,
+        "input_substrate_hash": lf_sha256(args.regime_labels) if args.regime_labels.exists() else None,
+        "input_phase2_hash": PHASE2_HASH,
+        "input_phase4_hash": PHASE4_HASH,
+        "active_strategy_ids": roster,
+        "cf29_roster_count_note": "Methodology is count-agnostic; roster is locked at Step 0 for this run.",
+        "bootstrap_seed": args.bootstrap_seed,
+        "effective_trial_count": effective_trial_count,
+        "thresholds": ADR0016_STAGE1_THRESHOLDS,
+        "run_status": run_status,
+        "run_outcome": "partial_evidence" if partial_evidence else ("advance_present" if advance_count > 0 else "all_reject"),
+        "per_family_summary": per_family_summary(per_strategy),
+        "per_strategy": per_strategy,
+        "summary": {
+            "advance_count": advance_count,
+            "research_further_count": research_count,
+            "reject_count": reject_count,
+            "phase_6_dispatch_authorized": run_status == "complete" and advance_count > 0,
+        },
+        "generated_at_note": "Deterministic QFA-611 driver; no wall-clock timestamp emitted.",
+    }
+
+
+def write_markdown(selection: Mapping[str, Any], output: Path) -> None:
+    lines = [
+        "# QFA-611 strategy selection v1",
+        "",
+        f"- Run status: `{selection['run_status']}`",
+        f"- Phase 6 dispatch authorized: `{selection['summary']['phase_6_dispatch_authorized']}`",
+        "",
+        "| Strategy | Verdict | Evidence status | Reason |",
+        "|---|---|---|---|",
+    ]
+    for entry in selection["per_strategy"]:
+        lines.append(
+            f"| `{entry['strategy_id']}` | {entry['verdict']} | "
+            f"{entry['evidence_package_status']} | {entry['verdict_reason']} |"
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run QFA-611 strategy selection")
+    parser.add_argument("--held-out-dir", type=Path, default=DEFAULT_HELD_OUT_DIR)
+    parser.add_argument("--regime-labels", type=Path, default=DEFAULT_REGIME_LABELS)
+    parser.add_argument("--fidelity", type=Path, default=DEFAULT_FIDELITY)
+    parser.add_argument("--lock-manifest", type=Path, default=DEFAULT_LOCK_MANIFEST)
+    parser.add_argument("--bootstrap-seed", type=int, default=42)
+    parser.add_argument("--json-out", type=Path, default=DEFAULT_JSON_OUT)
+    parser.add_argument("--md-out", type=Path, default=DEFAULT_MD_OUT)
+    parser.add_argument("--strategy-ids", nargs="*", default=None)
+    parser.add_argument("--strategy-config-dir", type=Path, default=DEFAULT_STRATEGY_CONFIG_DIR)
+    parser.add_argument(
+        "--skip-runtime-parameter-hash",
+        action="store_true",
+        help="Test-only escape hatch for synthetic held-out fixtures without real strategy configs.",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate QFA-611 strategy-selection artifacts")
-    parser.add_argument("--json-out", type=Path, default=OUTPUT_JSON)
-    parser.add_argument("--md-out", type=Path, default=OUTPUT_MD)
-    args = parser.parse_args()
-    selection = build_selection()
-    write_json(selection, args.json_out)
+    args = parse_args()
+    selection = build_selection(args)
+    write_canonical_json(selection, args.json_out)
     write_markdown(selection, args.md_out)
-    print(json.dumps(OrderedDict([
-        ("json_out", str(args.json_out)),
-        ("md_out", str(args.md_out)),
-        ("active_strategy_count", selection["active_strategy_count"]),
-        ("advance_count", selection["summary"]["advance_count"]),
-        ("research_further_count", selection["summary"]["research_further_count"]),
-        ("reject_count", selection["summary"]["reject_count"]),
-        ("phase_6_dispatch_authorized", selection["summary"]["phase_6_dispatch_authorized"]),
-    ]), indent=2))
+    print(json.dumps(selection["summary"], indent=2, sort_keys=True))
     return 0
 
 
