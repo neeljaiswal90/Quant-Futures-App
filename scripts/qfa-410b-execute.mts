@@ -9,7 +9,7 @@ import {
   parseStrategyId,
   type StrategyId,
 } from '../apps/strategy_runtime/src/contracts/strategy-ids.js';
-import { getActiveStrategyGenerator } from '../apps/strategy_runtime/src/strategies/registry.js';
+import { getStrategyGenerator } from '../apps/strategy_runtime/src/strategies/registry.js';
 import {
   executeHeldOutValidationAgainstArchive,
   type HeldOutValidationArtifactMetadata,
@@ -172,7 +172,7 @@ export async function runQfa410bExecute(
         archive_sessions: sessions,
         run_started_at_ns: deterministicRunStartedAtNs(args.runId),
         initial_equity_cents: args.initialEquityCents,
-        strategy_generators: { [strategyId]: getActiveStrategyGenerator(strategyId) },
+        strategy_generators: { [strategyId]: getStrategyGenerator(strategyId) },
         artifact_output: {
           output_dir: args.outputDir,
           metadata_by_strategy: { [strategyId]: metadataByStrategy[strategyId] },

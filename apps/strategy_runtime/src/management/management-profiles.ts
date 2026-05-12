@@ -13,7 +13,7 @@ import {
 
 export interface ResolveManagementProfileOptions {
   readonly allow_fallback?: boolean;
-  readonly profiles?: Readonly<Record<StrategyId, ManagementProfile>>;
+  readonly profiles?: Readonly<Partial<Record<StrategyId, ManagementProfile>>>;
   readonly fallback_profile?: ManagementProfile;
 }
 
@@ -187,6 +187,66 @@ export const BREAKDOWN_RETEST_SHORT_MANAGEMENT_PROFILE = {
   ],
 } as const satisfies ManagementProfile;
 
+export const REGIME_MEAN_REVERSION_LONG_MANAGEMENT_PROFILE = {
+  profile_id: 'regime_mean_reversion_long_management_v1',
+  profile_version: MANAGEMENT_PROFILE_VERSION,
+  strategy_id: 'regime_mean_reversion_long',
+  setup_family: 'regime_mean_reversion',
+  display_name: 'Regime Mean Reversion Long Management V1',
+  profile_hash: MANAGEMENT_PROFILE_HASH_PLACEHOLDER,
+  initial_stop: BASE_INITIAL_STOP,
+  targets: BASE_TARGETS,
+  break_even: BASE_BREAK_EVEN,
+  trailing_stop: {
+    enabled: true,
+    mode: 'post_pt1_ticks',
+    activation: 'after_pt1',
+    distance_ticks: 8,
+    action: 'ACTIVATE_TRAIL',
+  },
+  time_stop: {
+    ...BASE_TIME_STOP,
+    max_hold_minutes: 25,
+  },
+  fail_safe: BASE_FAIL_SAFE,
+  partial_exit: BASE_PARTIAL_EXIT,
+  reasons: [
+    'management_profile:regime_mean_reversion_long',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+} as const satisfies ManagementProfile;
+
+export const REGIME_MEAN_REVERSION_SHORT_MANAGEMENT_PROFILE = {
+  profile_id: 'regime_mean_reversion_short_management_v1',
+  profile_version: MANAGEMENT_PROFILE_VERSION,
+  strategy_id: 'regime_mean_reversion_short',
+  setup_family: 'regime_mean_reversion',
+  display_name: 'Regime Mean Reversion Short Management V1',
+  profile_hash: MANAGEMENT_PROFILE_HASH_PLACEHOLDER,
+  initial_stop: BASE_INITIAL_STOP,
+  targets: BASE_TARGETS,
+  break_even: BASE_BREAK_EVEN,
+  trailing_stop: {
+    enabled: true,
+    mode: 'post_pt1_ticks',
+    activation: 'after_pt1',
+    distance_ticks: 8,
+    action: 'ACTIVATE_TRAIL',
+  },
+  time_stop: {
+    ...BASE_TIME_STOP,
+    max_hold_minutes: 25,
+  },
+  fail_safe: BASE_FAIL_SAFE,
+  partial_exit: BASE_PARTIAL_EXIT,
+  reasons: [
+    'management_profile:regime_mean_reversion_short',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+} as const satisfies ManagementProfile;
+
 export const FALLBACK_MANAGEMENT_PROFILE = {
   profile_id: 'fallback_management_v1',
   profile_version: MANAGEMENT_PROFILE_VERSION,
@@ -222,6 +282,8 @@ export const V1_MANAGEMENT_PROFILES = {
   trend_pullback_short: TREND_PULLBACK_SHORT_MANAGEMENT_PROFILE,
   breakout_retest_long: BREAKOUT_RETEST_LONG_MANAGEMENT_PROFILE,
   breakdown_retest_short: BREAKDOWN_RETEST_SHORT_MANAGEMENT_PROFILE,
+  regime_mean_reversion_long: REGIME_MEAN_REVERSION_LONG_MANAGEMENT_PROFILE,
+  regime_mean_reversion_short: REGIME_MEAN_REVERSION_SHORT_MANAGEMENT_PROFILE,
 } as const satisfies Readonly<Record<StrategyId, ManagementProfile>>;
 
 export function resolveManagementProfile(
@@ -229,7 +291,8 @@ export function resolveManagementProfile(
   options: ResolveManagementProfileOptions = {},
 ): ResolvedManagementProfile {
   const allowFallback = options.allow_fallback ?? true;
-  const profiles = options.profiles ?? V1_MANAGEMENT_PROFILES;
+  const profiles: Readonly<Partial<Record<StrategyId, ManagementProfile>>> =
+    options.profiles ?? V1_MANAGEMENT_PROFILES;
   const fallback = options.fallback_profile ?? FALLBACK_MANAGEMENT_PROFILE;
 
   if (isStrategyId(strategyId)) {
@@ -268,8 +331,8 @@ export function resolveManagementProfile(
 }
 
 export function validateAllDefaultManagementProfiles(): void {
-  for (const strategyId of ACTIVE_STRATEGY_IDS) {
-    assertValidManagementProfile(V1_MANAGEMENT_PROFILES[strategyId]);
+  for (const profile of Object.values(V1_MANAGEMENT_PROFILES)) {
+    assertValidManagementProfile(profile);
   }
   assertValidManagementProfile(FALLBACK_MANAGEMENT_PROFILE);
 }

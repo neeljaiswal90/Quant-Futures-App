@@ -11,7 +11,9 @@
       "trend_pullback_long": 10,
       "trend_pullback_short": 20,
       "breakout_retest_long": 30,
-      "breakdown_retest_short": 40
+      "breakdown_retest_short": 40,
+      "regime_mean_reversion_long": 50,
+      "regime_mean_reversion_short": 60
     }
   }
 }

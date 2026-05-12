@@ -1,7 +1,9 @@
-import { ACTIVE_STRATEGY_IDS, parseStrategyId, type StrategyId } from '../contracts/strategy-ids.js';
+import { ACTIVE_STRATEGY_IDS, ALL_STRATEGY_IDS, parseStrategyId, type StrategyId } from '../contracts/strategy-ids.js';
 import type { Direction } from '../contracts/market.js';
 import { generateBreakoutRetestLong } from './breakout_retest_long.js';
 import { generateBreakdownRetestShort } from './breakdown_retest_short.js';
+import { generateRegimeMeanReversionLong } from './regime_mean_reversion_long.js';
+import { generateRegimeMeanReversionShort } from './regime_mean_reversion_short.js';
 import { generateTrendPullbackLong } from './trend_pullback_long.js';
 import { generateTrendPullbackShort } from './trend_pullback_short.js';
 import type {
@@ -51,6 +53,26 @@ const STRATEGY_REGISTRY_ENTRIES = {
     synthetic_fixture_id: 'fixture_breakdown_retest_short',
     enabled_in_v1: true,
   },
+  regime_mean_reversion_long: {
+    strategy_id: 'regime_mean_reversion_long',
+    display_name: 'Regime Mean Reversion Long',
+    direction: 'long',
+    setup_family: 'regime_mean_reversion',
+    implementation_status: 'active',
+    extraction_ticket: 'QFA-7xx-S3',
+    synthetic_fixture_id: 'fixture_regime_mean_reversion_long',
+    enabled_in_v1: false,
+  },
+  regime_mean_reversion_short: {
+    strategy_id: 'regime_mean_reversion_short',
+    display_name: 'Regime Mean Reversion Short',
+    direction: 'short',
+    setup_family: 'regime_mean_reversion',
+    implementation_status: 'active',
+    extraction_ticket: 'QFA-7xx-S3',
+    synthetic_fixture_id: 'fixture_regime_mean_reversion_short',
+    enabled_in_v1: false,
+  },
 } as const satisfies Record<StrategyId, StrategyRegistryEntry>;
 
 export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntry>> =
@@ -63,8 +85,18 @@ const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGener
   breakdown_retest_short: generateBreakdownRetestShort,
 };
 
+const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
+  ...ACTIVE_STRATEGY_GENERATORS,
+  regime_mean_reversion_long: generateRegimeMeanReversionLong,
+  regime_mean_reversion_short: generateRegimeMeanReversionShort,
+};
+
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {
   return ACTIVE_STRATEGY_IDS.map((strategyId) => STRATEGY_REGISTRY[strategyId]);
+}
+
+export function listAllStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {
+  return ALL_STRATEGY_IDS.map((strategyId) => STRATEGY_REGISTRY[strategyId]);
 }
 
 export function getStrategyRegistryEntry(strategyId: StrategyId | string): StrategyRegistryEntry {
@@ -98,28 +130,45 @@ export function getActiveStrategyGenerator(strategyId: StrategyId | string): Act
   return generator;
 }
 
+export function getStrategyGenerator(strategyId: StrategyId | string): ActiveStrategyGenerator {
+  const parsed = parseStrategyId(strategyId);
+  const generator = STRATEGY_GENERATORS[parsed];
+  if (generator === undefined) {
+    throw new Error(`strategy ${parsed} is pending extraction and is not executable`);
+  }
+  return generator;
+}
+
 export function validateStrategyRegistry(): readonly string[] {
   const issues: string[] = [];
   const registeredIds = Object.keys(STRATEGY_REGISTRY).sort();
-  const activeIds = [...ACTIVE_STRATEGY_IDS].sort();
+  const allIds = [...ALL_STRATEGY_IDS].sort();
 
-  if (registeredIds.join('|') !== activeIds.join('|')) {
+  if (registeredIds.join('|') !== allIds.join('|')) {
     issues.push(
-      `registered strategy ids ${registeredIds.join(',')} do not match active ids ${activeIds.join(',')}`,
+      `registered strategy ids ${registeredIds.join(',')} do not match all strategy ids ${allIds.join(',')}`,
     );
   }
 
-  for (const strategyId of ACTIVE_STRATEGY_IDS) {
+  for (const strategyId of ALL_STRATEGY_IDS) {
     const entry = STRATEGY_REGISTRY[strategyId];
     if (entry.strategy_id !== strategyId) {
       issues.push(`${strategyId} registry entry has mismatched strategy_id ${entry.strategy_id}`);
     }
-    const hasGenerator = strategyId in ACTIVE_STRATEGY_GENERATORS;
+    const hasGenerator = strategyId in STRATEGY_GENERATORS;
     if (entry.implementation_status === 'active' && !hasGenerator) {
       issues.push(`${strategyId} is active but has no generator`);
     }
     if (entry.implementation_status === 'pending_extraction' && hasGenerator) {
       issues.push(`${strategyId} has a generator but is still pending_extraction`);
+    }
+    const isActiveRoster = ACTIVE_STRATEGY_IDS.includes(strategyId as never);
+    const hasActiveGenerator = strategyId in ACTIVE_STRATEGY_GENERATORS;
+    if (!isActiveRoster && hasActiveGenerator) {
+      issues.push(`${strategyId} is not in ACTIVE_STRATEGY_IDS but is in ACTIVE_STRATEGY_GENERATORS`);
+    }
+    if (entry.enabled_in_v1 !== isActiveRoster) {
+      issues.push(`${strategyId} enabled_in_v1=${entry.enabled_in_v1} does not match active roster membership`);
     }
   }
 

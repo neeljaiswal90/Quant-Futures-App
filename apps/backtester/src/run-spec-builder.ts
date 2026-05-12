@@ -39,6 +39,8 @@ const STRATEGY_CONFIG_PATHS: Readonly<Record<StrategyId, string>> = Object.freez
   trend_pullback_short: 'config/strategies/trend_pullback_short.yaml',
   breakout_retest_long: 'config/strategies/breakout_retest_long.yaml',
   breakdown_retest_short: 'config/strategies/breakdown_retest_short.yaml',
+  regime_mean_reversion_long: 'config/strategies/regime_mean_reversion_long.yaml',
+  regime_mean_reversion_short: 'config/strategies/regime_mean_reversion_short.yaml',
 });
 
 const RECOGNIZED_SCHEMAS: ReadonlySet<string> = new Set([

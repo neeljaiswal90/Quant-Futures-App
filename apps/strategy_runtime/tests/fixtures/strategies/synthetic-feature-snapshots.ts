@@ -94,6 +94,7 @@ function makeSnapshot(input: {
   readonly trend: 'up' | 'down';
   readonly structure: StrategyScalarMap;
   readonly microstructure: StrategyScalarMap;
+  readonly regimeLabel?: StrategyFeatureSnapshot['context']['regime_label'];
 }): StrategyFeatureSnapshot {
   return {
     feature_snapshot_id: makeFeatureSnapshotId(input.fixtureId),
@@ -124,7 +125,7 @@ function makeSnapshot(input: {
       today_open: input.barsStartClose,
       vix_value: null,
       vix_fresh: false,
-      regime_label: 'unknown',
+      regime_label: input.regimeLabel ?? 'unknown',
       opening_range_high: null,
       opening_range_low: null,
       opening_range_minutes_elapsed: 0,
@@ -300,6 +301,86 @@ export const STRATEGY_SYNTHETIC_FIXTURES = {
         depth_imbalance: -0.36,
         queue_imbalance: -0.21,
       },
+    }),
+  },
+  regime_mean_reversion_long: {
+    fixture_id: 'fixture_regime_mean_reversion_long',
+    strategy_id: 'regime_mean_reversion_long',
+    description: 'High-regime downside overshoot below session VWAP eligible for long mean reversion.',
+    expected_direction: 'long',
+    expected_gate_state: 'armed',
+    expected_reason_fragments: ['regime_high', 'signed_shock', 'armed'],
+    snapshot: makeSnapshot({
+      fixtureId: 'fixture_regime_mean_reversion_long',
+      sourceEventId: 'source-bar-regime-mean-reversion-long',
+      createdOffsetNs: 10n * 60_000_000_000n,
+      direction: 'long',
+      bidPx: 18591,
+      askPx: 18591.25,
+      lastTradePrice: 18591.25,
+      barsStartClose: 18600,
+      trend: 'up',
+      indicators: {
+        supertrend_direction: 'up',
+        ema_9: 18596,
+        ema_21: 18599,
+        ema_50: 18602,
+        vwap: 18603,
+        atr_14: 8,
+        sigma_pts: 6,
+        z_ema9: -0.82,
+        z_ofi_blend: -0.31,
+      },
+      structure: {
+        bos_direction: 'range',
+      },
+      microstructure: {
+        spread_pts: 0.25,
+        ofi_z: -0.34,
+        depth_imbalance: -0.18,
+        queue_imbalance: -0.16,
+      },
+      regimeLabel: 'high',
+    }),
+  },
+  regime_mean_reversion_short: {
+    fixture_id: 'fixture_regime_mean_reversion_short',
+    strategy_id: 'regime_mean_reversion_short',
+    description: 'High-regime upside overshoot above session VWAP eligible for short mean reversion.',
+    expected_direction: 'short',
+    expected_gate_state: 'armed',
+    expected_reason_fragments: ['regime_high', 'signed_shock', 'armed'],
+    snapshot: makeSnapshot({
+      fixtureId: 'fixture_regime_mean_reversion_short',
+      sourceEventId: 'source-bar-regime-mean-reversion-short',
+      createdOffsetNs: 11n * 60_000_000_000n,
+      direction: 'short',
+      bidPx: 18610.75,
+      askPx: 18611,
+      lastTradePrice: 18610.75,
+      barsStartClose: 18600,
+      trend: 'down',
+      indicators: {
+        supertrend_direction: 'down',
+        ema_9: 18606,
+        ema_21: 18603,
+        ema_50: 18600,
+        vwap: 18596,
+        atr_14: 8,
+        sigma_pts: 6,
+        z_ema9: 0.82,
+        z_ofi_blend: 0.31,
+      },
+      structure: {
+        bos_direction: 'range',
+      },
+      microstructure: {
+        spread_pts: 0.25,
+        ofi_z: 0.34,
+        depth_imbalance: 0.18,
+        queue_imbalance: 0.16,
+      },
+      regimeLabel: 'high',
     }),
   },
 } as const satisfies Record<StrategyId, SyntheticStrategyFixture>;

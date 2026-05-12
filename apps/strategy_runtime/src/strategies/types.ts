@@ -15,7 +15,7 @@ import type { FeatureSnapshotId, EventId } from '../contracts/ids.js';
 import type { StrategyId } from '../contracts/strategy-ids.js';
 import type { UnixNs } from '../contracts/time.js';
 
-export type StrategySetupFamily = 'trend_pullback' | 'breakout_retest';
+export type StrategySetupFamily = 'trend_pullback' | 'breakout_retest' | 'regime_mean_reversion';
 
 export type StrategyImplementationStatus = 'pending_extraction' | 'active';
 
@@ -58,16 +58,18 @@ export interface StrategyRegistryEntry {
   readonly direction: Direction;
   readonly setup_family: StrategySetupFamily;
   readonly implementation_status: StrategyImplementationStatus;
-  readonly extraction_ticket: 'STRAT-02' | 'STRAT-03' | 'STRAT-04' | 'STRAT-05';
+  readonly extraction_ticket: 'STRAT-02' | 'STRAT-03' | 'STRAT-04' | 'STRAT-05' | 'QFA-7xx-S3';
   readonly synthetic_fixture_id: StrategyFixtureId;
-  readonly enabled_in_v1: true;
+  readonly enabled_in_v1: boolean;
 }
 
 export type StrategyFixtureId =
   | 'fixture_trend_pullback_long'
   | 'fixture_trend_pullback_short'
   | 'fixture_breakout_retest_long'
-  | 'fixture_breakdown_retest_short';
+  | 'fixture_breakdown_retest_short'
+  | 'fixture_regime_mean_reversion_long'
+  | 'fixture_regime_mean_reversion_short';
 
 export interface StrategyFeatureSnapshot {
   readonly feature_snapshot_id: FeatureSnapshotId;

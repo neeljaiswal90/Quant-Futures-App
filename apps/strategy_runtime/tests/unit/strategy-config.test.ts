@@ -18,7 +18,7 @@ import {
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const EXPECTED_STRATEGY_CONFIG_HASH =
-  'b7fb1ef8a13c2fa094470c91d0a2a92e6df4327e279ce6640ea882144b347536';
+  '2ef057a7623bab3dbbe3c5fde24b5cec589dff9d6cd4232b90807cafacf00c42';
 
 const STRATEGY_CONFIG_FILES = [
   'shared.yaml',
@@ -26,6 +26,8 @@ const STRATEGY_CONFIG_FILES = [
   'trend_pullback_short.yaml',
   'breakout_retest_long.yaml',
   'breakdown_retest_short.yaml',
+  'regime_mean_reversion_long.yaml',
+  'regime_mean_reversion_short.yaml',
 ] as const;
 
 const tempDirs: string[] = [];
@@ -114,11 +116,15 @@ describe('STRAT-07 strategy config surface', () => {
     expect(config.version).toBe(1);
     expect(config.strategies.breakout_retest_long.max_retest_distance_sigma).toBe(0.85);
     expect(config.strategies.breakdown_retest_short.max_retest_distance_sigma).toBe(1.15);
+    expect(config.strategies.regime_mean_reversion_long.vwap_reference).toBe('session_vwap');
+    expect(config.strategies.regime_mean_reversion_short.low_shock_threshold_pos).toBe(1.75);
     expect(config.ranking.strategy_priority).toEqual({
       trend_pullback_long: 10,
       trend_pullback_short: 20,
       breakout_retest_long: 30,
       breakdown_retest_short: 40,
+      regime_mean_reversion_long: 50,
+      regime_mean_reversion_short: 60,
     });
     expect(config.lineage.strategy_config_hash).toBe(EXPECTED_STRATEGY_CONFIG_HASH);
     expect(config.lineage.canonical_strategy_config_json).toContain(
