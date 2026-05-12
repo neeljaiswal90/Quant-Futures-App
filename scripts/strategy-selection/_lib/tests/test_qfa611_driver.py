@@ -23,7 +23,7 @@ STRATEGIES = [
     "breakout_retest_long",
     "breakdown_retest_short",
 ]
-EMITTER = REPO_ROOT / "scripts" / "strategy-selection" / "qfa-611-cycle1-emit-lock-manifest.py"
+EMITTER = REPO_ROOT / "scripts" / "strategy-selection" / "qfa-611-emit-lock-manifest.py"
 
 
 def load_driver_module():
@@ -246,8 +246,9 @@ class Qfa611DriverTests(unittest.TestCase):
                 "parameters:\n  threshold: 1.25\n  enabled: true\n",
                 encoding="utf-8",
             )
-            manifest = module.build_manifest(["alpha"], config_dir)
+            manifest = module.build_manifest(["alpha"], config_dir, "qfa611-cycle1-test")
             self.assertEqual(manifest["parameter_lock_algorithm"], PARAMETER_LOCK_ALGORITHM)
+            self.assertEqual(manifest["cycle_id"], "qfa611-cycle1-test")
             self.assertEqual(
                 manifest["strategies"],
                 [{
@@ -255,6 +256,21 @@ class Qfa611DriverTests(unittest.TestCase):
                     "parameter_lock_hash": compute_runtime_parameter_hash("alpha", config_dir),
                 }],
             )
+
+    def test_lock_manifest_emitter_accepts_explicit_cycle2_id(self) -> None:
+        module = load_emitter_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_dir = root / "strategies"
+            config_dir.mkdir()
+            (config_dir / "beta.yaml").write_text(
+                "parameters:\n  threshold: 2.5\n  enabled: true\n",
+                encoding="utf-8",
+            )
+            manifest = module.build_manifest(["beta"], config_dir, "qfa611-cycle2-test")
+
+        self.assertEqual(manifest["cycle_id"], "qfa611-cycle2-test")
+        self.assertEqual(manifest["strategies"][0]["strategy_id"], "beta")
 
 
 def write_case(

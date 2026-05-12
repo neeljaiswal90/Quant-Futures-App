@@ -2,22 +2,27 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { ACTIVE_STRATEGY_IDS } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import {
-  defaultStrategyReplayIds,
   replayStrategies,
 } from '../../../src/strategy-replay/index.js';
 import { REPLAY_BARS } from './fixtures.js';
 
+const QFA_7XX_A_REGRESSION_STRATEGY_IDS = [
+  'trend_pullback_long',
+  'trend_pullback_short',
+  'breakout_retest_long',
+  'breakdown_retest_short',
+] as const satisfies readonly StrategyId[];
+
 describe('QFA-7xx-A schema-only replay regression gate', () => {
   it('preserves existing strategy behavior against the pre-ticket QFA-301 baselines', async () => {
     const result = await replayStrategies({
-      strategy_ids: defaultStrategyReplayIds(),
+      strategy_ids: QFA_7XX_A_REGRESSION_STRATEGY_IDS,
       bars: REPLAY_BARS,
     });
 
-    expect(defaultStrategyReplayIds()).toEqual(ACTIVE_STRATEGY_IDS);
-    for (const strategyId of defaultStrategyReplayIds()) {
+    for (const strategyId of QFA_7XX_A_REGRESSION_STRATEGY_IDS) {
       const baseline = readBaseline(strategyId);
       expect(extractBehavior(result.evaluations.filter((entry) => entry.strategy_id === strategyId)))
         .toEqual(baseline.evaluations);

@@ -71,7 +71,10 @@ export function buildCapabilityAssessmentSet(
   options: BuildCapabilityAssessmentOptions = {},
 ): CapabilityAssessmentSet {
   const evaluations = extractReplayEvaluations(replay);
-  const strategyOrder = resolveStrategyOrder(options.strategy_order);
+  const strategyOrder = resolveStrategyOrder(
+    options.strategy_order,
+    options.allow_partial_strategy_order ?? false,
+  );
   validateReplayStrategies(evaluations, strategyOrder);
   const fingerprintsByStrategy = indexFingerprints(fingerprints);
   const replayCounts = countReplayEvaluations(evaluations);
@@ -141,7 +144,10 @@ function extractReplayEvaluations(
   return maybeReplay.evaluations;
 }
 
-function resolveStrategyOrder(strategyOrder: readonly StrategyId[] | undefined): readonly StrategyId[] {
+function resolveStrategyOrder(
+  strategyOrder: readonly StrategyId[] | undefined,
+  allowPartialStrategyOrder: boolean,
+): readonly StrategyId[] {
   if (strategyOrder === undefined) {
     return [...ACTIVE_STRATEGY_IDS];
   }
@@ -169,13 +175,15 @@ function resolveStrategyOrder(strategyOrder: readonly StrategyId[] | undefined):
     seen.add(strategyId);
   });
 
-  const missing = ACTIVE_STRATEGY_IDS.filter((strategyId) => !seen.has(strategyId));
-  for (const strategyId of missing) {
-    issues.push({
-      path: '$.strategy_order',
-      code: 'malformed_replay_input',
-      message: `strategy_order must include ${strategyId}`,
-    });
+  if (!allowPartialStrategyOrder) {
+    const missing = ACTIVE_STRATEGY_IDS.filter((strategyId) => !seen.has(strategyId));
+    for (const strategyId of missing) {
+      issues.push({
+        path: '$.strategy_order',
+        code: 'malformed_replay_input',
+        message: `strategy_order must include ${strategyId}`,
+      });
+    }
   }
 
   if (issues.length > 0) {

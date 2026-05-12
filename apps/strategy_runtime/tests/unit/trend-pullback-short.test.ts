@@ -88,12 +88,7 @@ describe('STRAT-03 trend_pullback_short extraction', () => {
   });
 
   it('keeps trend_pullback_short available through the active registry', () => {
-    expect(listExecutableStrategyIds()).toEqual([
-      'trend_pullback_long',
-      'trend_pullback_short',
-      'breakout_retest_long',
-      'breakdown_retest_short',
-    ]);
+    expect(listExecutableStrategyIds()).toContain('trend_pullback_short');
     expect(getActiveStrategyGenerator('trend_pullback_short')({
       strategy_id: 'trend_pullback_short',
       snapshot: FIXTURE.snapshot,

@@ -10,14 +10,14 @@ import {
 import { REPLAY_BARS } from './fixtures.js';
 
 describe('strategy replay sanity harness', () => {
-  it('invokes all four existing strategy IDs', async () => {
+  it('invokes all active strategy IDs', async () => {
     const result = await replayStrategies({
       strategy_ids: defaultStrategyReplayIds(),
       bars: REPLAY_BARS,
     });
 
     expect(result.summary.map((entry) => entry.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
-    expect(result.summary).toHaveLength(4);
+    expect(result.summary).toHaveLength(ACTIVE_STRATEGY_IDS.length);
     expect(result.summary.every((entry) => entry.bars_evaluated === REPLAY_BARS.length)).toBe(true);
     expect(result.summary.every((entry) => entry.errors.length === 0)).toBe(true);
   });

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadAppConfig } from '../../src/config/index.js';
 import {
+  ACTIVE_STRATEGY_IDS,
   createJournalEventEnvelope,
   makeEventId,
   makeFeatureSnapshotId,
@@ -240,11 +241,11 @@ describe('ORCH-02 deterministic runner loop', () => {
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const result = await runner.processFeatureSnapshot(snapshot);
 
-    expect(result.strategy_evaluation_events).toHaveLength(4);
-    expect(result.candidate_events).toHaveLength(1);
-    expect(result.rank_event.payload.ranked_candidate_ids).toEqual([
-      result.candidate_events[0]!.payload.candidate_id,
-    ]);
+    expect(result.strategy_evaluation_events).toHaveLength(ACTIVE_STRATEGY_IDS.length);
+    expect(result.candidate_events.length).toBeGreaterThan(0);
+    expect([...result.rank_event.payload.ranked_candidate_ids].sort()).toEqual(
+      result.candidate_events.map((event) => event.payload.candidate_id).sort(),
+    );
     expect(result.sizing_events).toHaveLength(1);
     expect(result.risk_gate_events.map((event) => event.payload.status)).toEqual(['pass']);
     expect(result.order_intent_events).toHaveLength(1);
@@ -252,16 +253,15 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.position_events).toHaveLength(1);
     expect(result.session_risk.open_trade_count).toBe(1);
 
-    expect(published.map((event) => event.type)).toEqual([
-      'QUOTE',
-      'SESSION_PHASE',
-      'FEATURES',
-      'STRAT_EVAL',
-      'CANDIDATE',
-      'STRAT_EVAL',
-      'STRAT_EVAL',
-      'STRAT_EVAL',
-      'RANK',
+    const publishedTypes = published.map((event) => event.type);
+    expect(publishedTypes.slice(0, 3)).toEqual(['QUOTE', 'SESSION_PHASE', 'FEATURES']);
+    expect(publishedTypes.filter((type) => type === 'STRAT_EVAL')).toHaveLength(
+      ACTIVE_STRATEGY_IDS.length,
+    );
+    expect(publishedTypes.filter((type) => type === 'CANDIDATE')).toHaveLength(
+      result.candidate_events.length,
+    );
+    expect(publishedTypes.slice(-5)).toEqual([
       'SIZING',
       'RISK_GATE',
       'ORDER_INTENT',
@@ -381,7 +381,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     expect(result.session_phase_event?.ts_ns).toBe(snapshot.created_ts_ns);
     expect(result.candidate_events).toEqual([]);
     expect(result.sizing_events).toEqual([]);
-    expect(result.strategy_evaluation_events).toHaveLength(4);
+    expect(result.strategy_evaluation_events).toHaveLength(ACTIVE_STRATEGY_IDS.length);
     expect(result.strategy_evaluation_events.every((event) => (
       event.payload.gate_state === 'blocked' &&
       event.payload.reasons.includes('mnq_eligibility:outside_rth')

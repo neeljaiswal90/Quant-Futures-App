@@ -87,13 +87,8 @@ describe('STRAT-05 breakdown_retest_short extraction', () => {
     );
   });
 
-  it('activates all four V1 deterministic strategies', () => {
-    expect(listExecutableStrategyIds()).toEqual([
-      'trend_pullback_long',
-      'trend_pullback_short',
-      'breakout_retest_long',
-      'breakdown_retest_short',
-    ]);
+  it('keeps breakdown_retest_short available through the active registry', () => {
+    expect(listExecutableStrategyIds()).toContain('breakdown_retest_short');
     expect(getActiveStrategyGenerator('breakdown_retest_short')({
       strategy_id: 'breakdown_retest_short',
       snapshot: FIXTURE.snapshot,

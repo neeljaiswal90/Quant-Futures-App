@@ -63,7 +63,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S3',
     synthetic_fixture_id: 'fixture_regime_mean_reversion_long',
-    enabled_in_v1: false,
+    enabled_in_v1: true,
   },
   regime_mean_reversion_short: {
     strategy_id: 'regime_mean_reversion_short',
@@ -73,7 +73,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S3',
     synthetic_fixture_id: 'fixture_regime_mean_reversion_short',
-    enabled_in_v1: false,
+    enabled_in_v1: true,
   },
   liquidity_sweep_reversal_long: {
     strategy_id: 'liquidity_sweep_reversal_long',
@@ -83,7 +83,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S2',
     synthetic_fixture_id: 'fixture_liquidity_sweep_reversal_long',
-    enabled_in_v1: false,
+    enabled_in_v1: true,
   },
   liquidity_sweep_reversal_short: {
     strategy_id: 'liquidity_sweep_reversal_short',
@@ -93,7 +93,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S2',
     synthetic_fixture_id: 'fixture_liquidity_sweep_reversal_short',
-    enabled_in_v1: false,
+    enabled_in_v1: true,
   },
 } as const satisfies Record<StrategyId, StrategyRegistryEntry>;
 
@@ -105,14 +105,14 @@ const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGener
   trend_pullback_short: generateTrendPullbackShort,
   breakout_retest_long: generateBreakoutRetestLong,
   breakdown_retest_short: generateBreakdownRetestShort,
-};
-
-const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
-  ...ACTIVE_STRATEGY_GENERATORS,
   regime_mean_reversion_long: generateRegimeMeanReversionLong,
   regime_mean_reversion_short: generateRegimeMeanReversionShort,
   liquidity_sweep_reversal_long: generateLiquiditySweepReversalLong,
   liquidity_sweep_reversal_short: generateLiquiditySweepReversalShort,
+};
+
+const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
+  ...ACTIVE_STRATEGY_GENERATORS,
 };
 
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {

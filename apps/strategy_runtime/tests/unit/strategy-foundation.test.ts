@@ -81,33 +81,28 @@ describe('STRAT-00 synthetic feature snapshots', () => {
 });
 
 describe('STRAT-01 active strategy registry', () => {
-  it('registers exactly the four V1 baseline strategies and no shadow strategies', () => {
+  it('registers exactly the eight Cycle2 strategies and no shadow strategies', () => {
     const entries = listStrategyRegistryEntries();
 
     expect(validateStrategyRegistry()).toEqual([]);
     expect(entries.map((entry) => entry.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
     expect(entries.every((entry) => isStrategyId(entry.strategy_id))).toBe(true);
     expect(() => getStrategyRegistryEntry('shadow_lob_scalp')).toThrow('Unknown strategy_id');
-    expect(CANDIDATE_STRATEGY_IDS).toEqual([
-      'regime_mean_reversion_long',
-      'regime_mean_reversion_short',
-      'liquidity_sweep_reversal_long',
-      'liquidity_sweep_reversal_short',
-    ]);
+    expect(CANDIDATE_STRATEGY_IDS).toEqual([]);
     expect(listAllStrategyRegistryEntries().map((entry) => entry.strategy_id)).toEqual([
       ...ACTIVE_STRATEGY_IDS,
       ...CANDIDATE_STRATEGY_IDS,
     ]);
     expect(getStrategyRegistryEntry('liquidity_sweep_reversal_long')).toEqual(
       expect.objectContaining({
-        enabled_in_v1: false,
+        enabled_in_v1: true,
         extraction_ticket: 'QFA-7xx-S2',
         setup_family: 'liquidity_sweep_reversal',
       }),
     );
     expect(getStrategyRegistryEntry('regime_mean_reversion_long')).toEqual(
       expect.objectContaining({
-        enabled_in_v1: false,
+        enabled_in_v1: true,
         extraction_ticket: 'QFA-7xx-S3',
         setup_family: 'regime_mean_reversion',
       }),
@@ -118,10 +113,14 @@ describe('STRAT-01 active strategy registry', () => {
     expect(listStrategyIdsByDirection('long')).toEqual([
       'trend_pullback_long',
       'breakout_retest_long',
+      'regime_mean_reversion_long',
+      'liquidity_sweep_reversal_long',
     ]);
     expect(listStrategyIdsByDirection('short')).toEqual([
       'trend_pullback_short',
       'breakdown_retest_short',
+      'regime_mean_reversion_short',
+      'liquidity_sweep_reversal_short',
     ]);
     expect(listStrategyIdsBySetupFamily('trend_pullback')).toEqual([
       'trend_pullback_long',
@@ -131,9 +130,17 @@ describe('STRAT-01 active strategy registry', () => {
       'breakout_retest_long',
       'breakdown_retest_short',
     ]);
+    expect(listStrategyIdsBySetupFamily('regime_mean_reversion')).toEqual([
+      'regime_mean_reversion_long',
+      'regime_mean_reversion_short',
+    ]);
+    expect(listStrategyIdsBySetupFamily('liquidity_sweep_reversal')).toEqual([
+      'liquidity_sweep_reversal_long',
+      'liquidity_sweep_reversal_short',
+    ]);
   });
 
-  it('keeps only extracted strategies executable', () => {
+  it('keeps all Cycle2 strategies executable', () => {
     expect(listStrategyRegistryEntries()).toEqual([
       expect.objectContaining({
         strategy_id: 'trend_pullback_long',
@@ -155,12 +162,36 @@ describe('STRAT-01 active strategy registry', () => {
         extraction_ticket: 'STRAT-05',
         implementation_status: 'active',
       }),
+      expect.objectContaining({
+        strategy_id: 'regime_mean_reversion_long',
+        extraction_ticket: 'QFA-7xx-S3',
+        implementation_status: 'active',
+      }),
+      expect.objectContaining({
+        strategy_id: 'regime_mean_reversion_short',
+        extraction_ticket: 'QFA-7xx-S3',
+        implementation_status: 'active',
+      }),
+      expect.objectContaining({
+        strategy_id: 'liquidity_sweep_reversal_long',
+        extraction_ticket: 'QFA-7xx-S2',
+        implementation_status: 'active',
+      }),
+      expect.objectContaining({
+        strategy_id: 'liquidity_sweep_reversal_short',
+        extraction_ticket: 'QFA-7xx-S2',
+        implementation_status: 'active',
+      }),
     ]);
     expect(listExecutableStrategyIds()).toEqual([
       'trend_pullback_long',
       'trend_pullback_short',
       'breakout_retest_long',
       'breakdown_retest_short',
+      'regime_mean_reversion_long',
+      'regime_mean_reversion_short',
+      'liquidity_sweep_reversal_long',
+      'liquidity_sweep_reversal_short',
     ]);
   });
 

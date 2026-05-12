@@ -66,5 +66,6 @@ export interface CapabilityAssessmentSet {
 
 export interface BuildCapabilityAssessmentOptions {
   readonly strategy_order?: readonly StrategyId[];
+  readonly allow_partial_strategy_order?: boolean;
   readonly feature_capabilities?: readonly StrategyFeatureCapability[];
 }

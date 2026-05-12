@@ -39,7 +39,7 @@ describe('qfa-410b-execute CLI', () => {
     const summary = JSON.parse(stdout);
 
     expect(summary.strategy_ids).toEqual(ACTIVE_STRATEGY_IDS);
-    expect(summary.artifact_paths).toHaveLength(4);
+    expect(summary.artifact_paths).toHaveLength(ACTIVE_STRATEGY_IDS.length);
     for (const [index, strategyId] of ACTIVE_STRATEGY_IDS.entries()) {
       const artifact = JSON.parse(
         readFileSync(join(outputDir, `${strategyId}-feb-mar-apr-2026.json`), 'utf8'),
