@@ -177,6 +177,30 @@ function parseManagementProfilesConfig(input: unknown, sourceFile: string): Mana
       '$.profiles.breakdown_retest_short',
       issues,
     ),
+    regime_mean_reversion_long: parseProfile(
+      readRecord(profilesRecord, 'regime_mean_reversion_long', '$.profiles', issues),
+      'regime_mean_reversion_long',
+      '$.profiles.regime_mean_reversion_long',
+      issues,
+    ),
+    regime_mean_reversion_short: parseProfile(
+      readRecord(profilesRecord, 'regime_mean_reversion_short', '$.profiles', issues),
+      'regime_mean_reversion_short',
+      '$.profiles.regime_mean_reversion_short',
+      issues,
+    ),
+    liquidity_sweep_reversal_long: parseProfile(
+      readRecord(profilesRecord, 'liquidity_sweep_reversal_long', '$.profiles', issues),
+      'liquidity_sweep_reversal_long',
+      '$.profiles.liquidity_sweep_reversal_long',
+      issues,
+    ),
+    liquidity_sweep_reversal_short: parseProfile(
+      readRecord(profilesRecord, 'liquidity_sweep_reversal_short', '$.profiles', issues),
+      'liquidity_sweep_reversal_short',
+      '$.profiles.liquidity_sweep_reversal_short',
+      issues,
+    ),
   } satisfies Readonly<Record<ActiveStrategyId, ManagementProfile>>;
 
   const fallback = parseProfile(
@@ -205,6 +229,10 @@ function buildManagementProfilesConfig(
     trend_pullback_short: withProfileHash(profiles.trend_pullback_short),
     breakout_retest_long: withProfileHash(profiles.breakout_retest_long),
     breakdown_retest_short: withProfileHash(profiles.breakdown_retest_short),
+    regime_mean_reversion_long: withProfileHash(profiles.regime_mean_reversion_long),
+    regime_mean_reversion_short: withProfileHash(profiles.regime_mean_reversion_short),
+    liquidity_sweep_reversal_long: withProfileHash(profiles.liquidity_sweep_reversal_long),
+    liquidity_sweep_reversal_short: withProfileHash(profiles.liquidity_sweep_reversal_short),
   } satisfies Readonly<Record<ActiveStrategyId, ManagementProfile>>;
   const hashedFallback = withProfileHash(fallbackProfile);
   const configWithoutLineage = {
@@ -226,6 +254,10 @@ function buildManagementProfilesConfig(
         trend_pullback_short: hashedProfiles.trend_pullback_short.profile_hash,
         breakout_retest_long: hashedProfiles.breakout_retest_long.profile_hash,
         breakdown_retest_short: hashedProfiles.breakdown_retest_short.profile_hash,
+        regime_mean_reversion_long: hashedProfiles.regime_mean_reversion_long.profile_hash,
+        regime_mean_reversion_short: hashedProfiles.regime_mean_reversion_short.profile_hash,
+        liquidity_sweep_reversal_long: hashedProfiles.liquidity_sweep_reversal_long.profile_hash,
+        liquidity_sweep_reversal_short: hashedProfiles.liquidity_sweep_reversal_short.profile_hash,
         fallback: hashedFallback.profile_hash,
       },
     },

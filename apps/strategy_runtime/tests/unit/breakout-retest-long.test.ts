@@ -88,12 +88,7 @@ describe('STRAT-04 breakout_retest_long extraction', () => {
   });
 
   it('keeps breakout_retest_long available after all V1 strategies are active', () => {
-    expect(listExecutableStrategyIds()).toEqual([
-      'trend_pullback_long',
-      'trend_pullback_short',
-      'breakout_retest_long',
-      'breakdown_retest_short',
-    ]);
+    expect(listExecutableStrategyIds()).toContain('breakout_retest_long');
     expect(getActiveStrategyGenerator('breakout_retest_long')({
       strategy_id: 'breakout_retest_long',
       snapshot: FIXTURE.snapshot,

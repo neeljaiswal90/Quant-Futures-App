@@ -97,9 +97,9 @@ describe('strategy fingerprint computation', () => {
 
     const ordered = computeStrategyFingerprintSet([], ACTIVE_STRATEGY_IDS);
     expect(ordered.fingerprints).toHaveLength(ACTIVE_STRATEGY_IDS.length);
-    expect(ordered.fingerprints.map((fingerprint) => fingerprint.decision_count)).toEqual([
-      0, 0, 0, 0,
-    ]);
+    expect(ordered.fingerprints.map((fingerprint) => fingerprint.decision_count)).toEqual(
+      ACTIVE_STRATEGY_IDS.map(() => 0),
+    );
   });
 
   it('uses the versioned fingerprint algorithm marker', () => {

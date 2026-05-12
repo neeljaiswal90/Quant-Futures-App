@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit the independent QFA-611 Cycle1 parameter-lock manifest."""
+"""Emit an independent QFA-611 parameter-lock manifest."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from parameter_lock import PARAMETER_LOCK_ALGORITHM, compute_runtime_parameter_h
 
 DEFAULT_STRATEGY_IDS_PATH = Path("apps/strategy_runtime/src/contracts/strategy-ids.ts")
 DEFAULT_STRATEGY_CONFIG_DIR = Path("config/strategies")
-DEFAULT_OUTPUT = Path("artifacts/strategy-selection/qfa611-cycle1-parameter-locks.json")
 
 
 def active_strategy_ids(path: Path = DEFAULT_STRATEGY_IDS_PATH) -> list[str]:
@@ -30,10 +29,18 @@ def active_strategy_ids(path: Path = DEFAULT_STRATEGY_IDS_PATH) -> list[str]:
     return ids
 
 
-def build_manifest(strategy_ids: list[str], strategy_config_dir: Path) -> dict[str, object]:
+def default_output_for_cycle(cycle_id: str) -> Path:
+    return Path("artifacts/strategy-selection") / f"{cycle_id}-parameter-locks.json"
+
+
+def build_manifest(
+    strategy_ids: list[str],
+    strategy_config_dir: Path,
+    cycle_id: str,
+) -> dict[str, object]:
     return {
         "schema_version": 1,
-        "cycle_id": "qfa611-cycle1",
+        "cycle_id": cycle_id,
         "parameter_lock_algorithm": PARAMETER_LOCK_ALGORITHM,
         "strategies": [
             {
@@ -46,20 +53,22 @@ def build_manifest(strategy_ids: list[str], strategy_config_dir: Path) -> dict[s
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Emit QFA-611 Cycle1 parameter-lock manifest")
+    parser = argparse.ArgumentParser(description="Emit a QFA-611 parameter-lock manifest")
+    parser.add_argument("--cycle-id", required=True)
     parser.add_argument("--strategy-config-dir", type=Path, default=DEFAULT_STRATEGY_CONFIG_DIR)
     parser.add_argument("--strategy-ids", nargs="*", default=None)
     parser.add_argument("--strategy-ids-path", type=Path, default=DEFAULT_STRATEGY_IDS_PATH)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--out", type=Path, default=None)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     strategy_ids = args.strategy_ids or active_strategy_ids(args.strategy_ids_path)
-    manifest = build_manifest(strategy_ids, args.strategy_config_dir)
-    write_canonical_json(manifest, args.out)
-    print(f"wrote {args.out} ({len(strategy_ids)} strategies)")
+    manifest = build_manifest(strategy_ids, args.strategy_config_dir, args.cycle_id)
+    output_path = args.out or default_output_for_cycle(args.cycle_id)
+    write_canonical_json(manifest, output_path)
+    print(f"wrote {output_path} ({len(strategy_ids)} strategies)")
     return 0
 
 

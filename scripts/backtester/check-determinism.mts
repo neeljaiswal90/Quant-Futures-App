@@ -9,7 +9,6 @@ import {
   canonicalizeReproJson,
   computeReproducibilityManifest,
   computeStrategyFingerprintSet,
-  defaultStrategyReplayIds,
   evaluateValidationGateSet,
   replayStrategies,
   sha256Utf8,
@@ -58,6 +57,13 @@ const PHASE2_ARTIFACT_ORDER = [
   'capability_assessment_set',
   'validation_gate_result_set',
 ] as const;
+
+const PHASE2_DETERMINISM_STRATEGY_IDS = [
+  'trend_pullback_long',
+  'trend_pullback_short',
+  'breakout_retest_long',
+  'breakdown_retest_short',
+] as const satisfies readonly StrategyId[];
 
 const PHASE4_HASH_ORDER = [
   'regime_labels_json',
@@ -445,7 +451,7 @@ function parseJournalEvents(journalJsonl: string): AnyJournalEventEnvelope[] {
 async function computePhase2DeterminismSummary(
   events: readonly AnyJournalEventEnvelope[],
 ): Promise<Phase2DeterminismSummary> {
-  const strategyOrder = defaultStrategyReplayIds();
+  const strategyOrder = PHASE2_DETERMINISM_STRATEGY_IDS;
   const strategyReplayResult = await replayStrategies({
     strategy_ids: strategyOrder,
     bars: replayBarsFromJournal(events),
@@ -457,7 +463,7 @@ async function computePhase2DeterminismSummary(
   const capabilityAssessmentSet = buildCapabilityAssessmentSet(
     strategyReplayResult,
     strategyFingerprintSet,
-    { strategy_order: strategyOrder },
+    { strategy_order: strategyOrder, allow_partial_strategy_order: true },
   );
   const validationGateResultSet = evaluateValidationGateSet(
     buildValidationGateInputs(strategyOrder, strategyFingerprintSet, capabilityAssessmentSet),

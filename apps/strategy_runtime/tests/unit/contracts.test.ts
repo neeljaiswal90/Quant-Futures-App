@@ -185,12 +185,16 @@ describe('APP-02 contracts', () => {
     ).toThrow('ts_ns must be a decimal string');
   });
 
-  it('accepts only the four V1 deterministic strategy IDs', () => {
+  it('accepts only the Cycle2 deterministic strategy IDs', () => {
     expect(ACTIVE_STRATEGY_IDS).toEqual([
       'trend_pullback_long',
       'trend_pullback_short',
       'breakout_retest_long',
       'breakdown_retest_short',
+      'regime_mean_reversion_long',
+      'regime_mean_reversion_short',
+      'liquidity_sweep_reversal_long',
+      'liquidity_sweep_reversal_short',
     ]);
     expect(isStrategyId('breakout_retest_long')).toBe(true);
     expect(parseStrategyId('breakdown_retest_short')).toBe('breakdown_retest_short');
