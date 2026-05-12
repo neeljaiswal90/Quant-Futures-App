@@ -10,5 +10,6 @@ config/research/manifests/*.json text eol=lf
 apps/backtester/tests/fixtures/qfa611-dress-rehearsal/**/*.json text eol=lf
 apps/backtester/tests/fixtures/qfa-7xx-a-regression-baseline/*.json text eol=lf
 apps/backtester/tests/fixtures/qfa-7xx-s3-replay-baseline/*.json text eol=lf
+apps/backtester/tests/fixtures/qfa-7xx-s2-replay-baseline/*.json text eol=lf
 artifacts/strategy-selection/*.json text eol=lf
 artifacts/held-out-validation/*.json text eol=lf

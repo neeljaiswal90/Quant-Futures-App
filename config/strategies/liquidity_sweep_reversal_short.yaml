@@ -1,0 +1,20 @@
+version: 1
+strategy_id: liquidity_sweep_reversal_short
+# QFA-7xx-S2 PRE-COMMITTED RETIREMENT CRITERION:
+# If Cycle2 QFA-310 validation gate rejects this strategy, the strategy is
+# retired per CF-30 anti-tuning discipline. DO NOT re-tune entry/exit/sizing
+# parameters to pass the gate. Any future revisit is a research-tier ticket
+# with explicit hypothesis redesign, not in-family recalibration.
+parameters:
+  sweep_aggressor_threshold: 0.45
+  sweep_overshoot_sigma: 0.35
+  minimum_sweep_intensity_sigma: 0.45
+  maximum_post_sweep_depth_ratio: 0.75
+  snapback_window_bars: 2
+  stop_sigma_multiple: 0.75
+  target_1_rr: 1
+  target_2_rr: 1.6
+  confidence_score: 0.63
+  use_regime_co_filter: false
+  allowed_regimes: high,mid,low
+  pre_committed_retirement: true

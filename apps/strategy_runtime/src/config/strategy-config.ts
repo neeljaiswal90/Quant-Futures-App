@@ -57,6 +57,28 @@ export interface RegimeMeanReversionStrategyParameters {
   readonly minimum_target_rr: number;
 }
 
+export type LiquiditySweepRegime =
+  | 'high'
+  | 'mid'
+  | 'low'
+  | 'transition_pending'
+  | 'unknown';
+
+export interface LiquiditySweepReversalStrategyParameters {
+  readonly sweep_aggressor_threshold: number;
+  readonly sweep_overshoot_sigma: number;
+  readonly minimum_sweep_intensity_sigma: number;
+  readonly maximum_post_sweep_depth_ratio: number;
+  readonly snapback_window_bars: number;
+  readonly stop_sigma_multiple: number;
+  readonly target_1_rr: number;
+  readonly target_2_rr: number;
+  readonly confidence_score: number;
+  readonly use_regime_co_filter: boolean;
+  readonly allowed_regimes: readonly LiquiditySweepRegime[];
+  readonly pre_committed_retirement: boolean;
+}
+
 export interface CandidateRankingParameters {
   readonly method: typeof CANDIDATE_RANKING_METHOD;
   readonly confidence_weight: number;
@@ -74,6 +96,8 @@ export interface StrategyConfigById {
   readonly breakdown_retest_short: BreakoutRetestStrategyParameters;
   readonly regime_mean_reversion_long: RegimeMeanReversionStrategyParameters;
   readonly regime_mean_reversion_short: RegimeMeanReversionStrategyParameters;
+  readonly liquidity_sweep_reversal_long: LiquiditySweepReversalStrategyParameters;
+  readonly liquidity_sweep_reversal_short: LiquiditySweepReversalStrategyParameters;
 }
 
 export interface StrategyConfigLineage {
@@ -162,6 +186,26 @@ export const DEFAULT_REGIME_MEAN_REVERSION_SHORT_CONFIG: RegimeMeanReversionStra
   confidence_score_low: 0.57,
 };
 
+export const DEFAULT_LIQUIDITY_SWEEP_REVERSAL_LONG_CONFIG: LiquiditySweepReversalStrategyParameters = {
+  sweep_aggressor_threshold: 0.45,
+  sweep_overshoot_sigma: 0.35,
+  minimum_sweep_intensity_sigma: 0.45,
+  maximum_post_sweep_depth_ratio: 0.75,
+  snapback_window_bars: 2,
+  stop_sigma_multiple: 0.75,
+  target_1_rr: 1,
+  target_2_rr: 1.6,
+  confidence_score: 0.64,
+  use_regime_co_filter: false,
+  allowed_regimes: ['high', 'mid', 'low'],
+  pre_committed_retirement: true,
+};
+
+export const DEFAULT_LIQUIDITY_SWEEP_REVERSAL_SHORT_CONFIG: LiquiditySweepReversalStrategyParameters = {
+  ...DEFAULT_LIQUIDITY_SWEEP_REVERSAL_LONG_CONFIG,
+  confidence_score: 0.63,
+};
+
 export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
   method: CANDIDATE_RANKING_METHOD,
   confidence_weight: 100,
@@ -176,6 +220,8 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     breakdown_retest_short: 40,
     regime_mean_reversion_long: 50,
     regime_mean_reversion_short: 60,
+    liquidity_sweep_reversal_long: 70,
+    liquidity_sweep_reversal_short: 80,
   },
 };
 
@@ -186,6 +232,8 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   breakdown_retest_short: DEFAULT_BREAKDOWN_RETEST_SHORT_CONFIG,
   regime_mean_reversion_long: DEFAULT_REGIME_MEAN_REVERSION_LONG_CONFIG,
   regime_mean_reversion_short: DEFAULT_REGIME_MEAN_REVERSION_SHORT_CONFIG,
+  liquidity_sweep_reversal_long: DEFAULT_LIQUIDITY_SWEEP_REVERSAL_LONG_CONFIG,
+  liquidity_sweep_reversal_short: DEFAULT_LIQUIDITY_SWEEP_REVERSAL_SHORT_CONFIG,
 };
 
 export const DEFAULT_STRATEGY_RUNTIME_CONFIG = buildStrategyRuntimeConfig(
@@ -201,6 +249,8 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   breakdown_retest_short: 'breakdown_retest_short.yaml',
   regime_mean_reversion_long: 'regime_mean_reversion_long.yaml',
   regime_mean_reversion_short: 'regime_mean_reversion_short.yaml',
+  liquidity_sweep_reversal_long: 'liquidity_sweep_reversal_long.yaml',
+  liquidity_sweep_reversal_short: 'liquidity_sweep_reversal_short.yaml',
 } as const satisfies Record<StrategyId, string>;
 
 export function loadStrategyRuntimeConfig(
@@ -244,6 +294,14 @@ export function loadStrategyRuntimeConfig(
       'regime_mean_reversion_short',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_mean_reversion_short), sourceFiles),
     ),
+    liquidity_sweep_reversal_long: parseLiquiditySweepReversalConfig(
+      'liquidity_sweep_reversal_long',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.liquidity_sweep_reversal_long), sourceFiles),
+    ),
+    liquidity_sweep_reversal_short: parseLiquiditySweepReversalConfig(
+      'liquidity_sweep_reversal_short',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.liquidity_sweep_reversal_short), sourceFiles),
+    ),
   };
 
   return buildStrategyRuntimeConfig(strategies, shared.ranking, sourceFiles.sort());
@@ -275,8 +333,19 @@ export function getStrategyParameters(
 ): RegimeMeanReversionStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
+  strategyId: 'liquidity_sweep_reversal_long',
+): LiquiditySweepReversalStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'liquidity_sweep_reversal_short',
+): LiquiditySweepReversalStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
   strategyId: StrategyId,
-): TrendPullbackStrategyParameters | BreakoutRetestStrategyParameters | RegimeMeanReversionStrategyParameters {
+): TrendPullbackStrategyParameters
+  | BreakoutRetestStrategyParameters
+  | RegimeMeanReversionStrategyParameters
+  | LiquiditySweepReversalStrategyParameters {
   return (config ?? DEFAULT_STRATEGY_RUNTIME_CONFIG).strategies[strategyId];
 }
 
@@ -361,6 +430,8 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'breakdown_retest_short',
     'regime_mean_reversion_long',
     'regime_mean_reversion_short',
+    'liquidity_sweep_reversal_long',
+    'liquidity_sweep_reversal_short',
   ], issues);
 
   const parsed = {
@@ -378,6 +449,8 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         breakdown_retest_short: readNumber(strategyPriority, 'breakdown_retest_short', '$.ranking.strategy_priority', issues),
         regime_mean_reversion_long: readNumber(strategyPriority, 'regime_mean_reversion_long', '$.ranking.strategy_priority', issues),
         regime_mean_reversion_short: readNumber(strategyPriority, 'regime_mean_reversion_short', '$.ranking.strategy_priority', issues),
+        liquidity_sweep_reversal_long: readNumber(strategyPriority, 'liquidity_sweep_reversal_long', '$.ranking.strategy_priority', issues),
+        liquidity_sweep_reversal_short: readNumber(strategyPriority, 'liquidity_sweep_reversal_short', '$.ranking.strategy_priority', issues),
       },
     },
   };
@@ -529,6 +602,66 @@ function parseRegimeMeanReversionConfig(
   }
   if (parsed.target_2_rr < parsed.target_1_rr) {
     issues.push({ path: '$.parameters.target_2_rr', message: 'must be >= target_1_rr' });
+  }
+  throwIfIssues(issues);
+  return parsed;
+}
+
+function parseLiquiditySweepReversalConfig(
+  strategyId: 'liquidity_sweep_reversal_long' | 'liquidity_sweep_reversal_short',
+  input: unknown,
+): LiquiditySweepReversalStrategyParameters {
+  const issues: ConfigValidationIssue[] = [];
+  const { root, parameters } = parseStrategyConfigRoot(strategyId, input, issues);
+  void root;
+  checkUnknownKeys(parameters, '$.parameters', [
+    'sweep_aggressor_threshold',
+    'sweep_overshoot_sigma',
+    'minimum_sweep_intensity_sigma',
+    'maximum_post_sweep_depth_ratio',
+    'snapback_window_bars',
+    'stop_sigma_multiple',
+    'target_1_rr',
+    'target_2_rr',
+    'confidence_score',
+    'use_regime_co_filter',
+    'allowed_regimes',
+    'pre_committed_retirement',
+  ], issues);
+  const parsed = {
+    sweep_aggressor_threshold: readPositiveNumber(parameters, 'sweep_aggressor_threshold', '$.parameters', issues),
+    sweep_overshoot_sigma: readPositiveNumber(parameters, 'sweep_overshoot_sigma', '$.parameters', issues),
+    minimum_sweep_intensity_sigma: readPositiveNumber(parameters, 'minimum_sweep_intensity_sigma', '$.parameters', issues),
+    maximum_post_sweep_depth_ratio: readPositiveNumber(parameters, 'maximum_post_sweep_depth_ratio', '$.parameters', issues),
+    snapback_window_bars: readNonNegativeNumber(parameters, 'snapback_window_bars', '$.parameters', issues),
+    stop_sigma_multiple: readPositiveNumber(parameters, 'stop_sigma_multiple', '$.parameters', issues),
+    target_1_rr: readPositiveNumber(parameters, 'target_1_rr', '$.parameters', issues),
+    target_2_rr: readPositiveNumber(parameters, 'target_2_rr', '$.parameters', issues),
+    confidence_score: readPositiveNumber(parameters, 'confidence_score', '$.parameters', issues),
+    use_regime_co_filter: readBoolean(parameters, 'use_regime_co_filter', '$.parameters', issues),
+    allowed_regimes: readStringArray(parameters, 'allowed_regimes', '$.parameters', [
+      'high',
+      'mid',
+      'low',
+      'transition_pending',
+      'unknown',
+    ], issues) as readonly LiquiditySweepRegime[],
+    pre_committed_retirement: readBoolean(parameters, 'pre_committed_retirement', '$.parameters', issues),
+  };
+  if (parsed.maximum_post_sweep_depth_ratio > 1) {
+    issues.push({ path: '$.parameters.maximum_post_sweep_depth_ratio', message: 'must be <= 1' });
+  }
+  if (parsed.confidence_score > 1) {
+    issues.push({ path: '$.parameters.confidence_score', message: 'must be <= 1' });
+  }
+  if (parsed.target_2_rr < parsed.target_1_rr) {
+    issues.push({ path: '$.parameters.target_2_rr', message: 'must be >= target_1_rr' });
+  }
+  if (parsed.pre_committed_retirement !== true) {
+    issues.push({ path: '$.parameters.pre_committed_retirement', message: 'must be true' });
+  }
+  if (parsed.use_regime_co_filter && parsed.allowed_regimes.length === 0) {
+    issues.push({ path: '$.parameters.allowed_regimes', message: 'must not be empty when regime co-filter is enabled' });
   }
   throwIfIssues(issues);
   return parsed;
@@ -699,6 +832,55 @@ function readNumber(
     return 0;
   }
   return value;
+}
+
+function readBoolean(
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ConfigValidationIssue[],
+): boolean {
+  const value = record[key];
+  if (typeof value !== 'boolean') {
+    issues.push({ path: `${path}.${key}`, message: 'required boolean is missing or invalid' });
+    return false;
+  }
+  return value;
+}
+
+function readStringArray<const T extends readonly string[]>(
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+  allowedValues: T,
+  issues: ConfigValidationIssue[],
+): readonly T[number][] {
+  const value = record[key];
+  if (typeof value === 'string') {
+    const parsed = value.split(',').map((item) => item.trim()).filter((item) => item !== '');
+    return validateStringArray(parsed, key, path, allowedValues, issues);
+  }
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    issues.push({ path: `${path}.${key}`, message: 'required string array is missing or invalid' });
+    return [];
+  }
+  return validateStringArray(value as readonly string[], key, path, allowedValues, issues);
+}
+
+function validateStringArray<const T extends readonly string[]>(
+  parsed: readonly string[],
+  key: string,
+  path: string,
+  allowedValues: T,
+  issues: ConfigValidationIssue[],
+): readonly T[number][] {
+  const allowed = new Set<string>(allowedValues);
+  for (const item of parsed) {
+    if (!allowed.has(item)) {
+      issues.push({ path: `${path}.${key}`, message: `expected values from: ${allowedValues.join(', ')}` });
+    }
+  }
+  return parsed as readonly T[number][];
 }
 
 function readPositiveNumber(

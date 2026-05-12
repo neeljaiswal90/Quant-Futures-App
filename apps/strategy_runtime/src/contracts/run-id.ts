@@ -54,6 +54,8 @@ const STRATEGY_ID_TO_RUN_ID_ABBREV: Record<StrategyId, string> = {
   breakdown_retest_short: 'bro_short',
   regime_mean_reversion_long: 'rmr_long',
   regime_mean_reversion_short: 'rmr_short',
+  liquidity_sweep_reversal_long: 'lsr_long',
+  liquidity_sweep_reversal_short: 'lsr_short',
 };
 
 const TIME_BAR_RE = /^[1-9][0-9]*(s|m|h|d)$/u;

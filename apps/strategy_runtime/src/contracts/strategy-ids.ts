@@ -8,6 +8,8 @@ export const ACTIVE_STRATEGY_IDS = [
 export const CANDIDATE_STRATEGY_IDS = [
   'regime_mean_reversion_long',
   'regime_mean_reversion_short',
+  'liquidity_sweep_reversal_long',
+  'liquidity_sweep_reversal_short',
 ] as const;
 
 export const ALL_STRATEGY_IDS = [

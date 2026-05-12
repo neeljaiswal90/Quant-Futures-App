@@ -13,7 +13,11 @@ import type { UnixNs } from './time.js';
 export type StrategyGateState = 'armed' | 'waiting' | 'blocked';
 export type CandidateStatus = 'proposed' | 'risk_rejected' | 'sized' | 'expired';
 export type RiskGateStatus = 'pass' | 'reject';
-export type CandidateSetupFamily = 'trend_pullback' | 'breakout_retest' | 'regime_mean_reversion';
+export type CandidateSetupFamily =
+  | 'trend_pullback'
+  | 'breakout_retest'
+  | 'regime_mean_reversion'
+  | 'liquidity_sweep_reversal';
 
 export interface PriceTarget {
   readonly label: 'pt1' | 'pt2' | 'runner';

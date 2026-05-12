@@ -2,6 +2,8 @@ import { ACTIVE_STRATEGY_IDS, ALL_STRATEGY_IDS, parseStrategyId, type StrategyId
 import type { Direction } from '../contracts/market.js';
 import { generateBreakoutRetestLong } from './breakout_retest_long.js';
 import { generateBreakdownRetestShort } from './breakdown_retest_short.js';
+import { generateLiquiditySweepReversalLong } from './liquidity_sweep_reversal_long.js';
+import { generateLiquiditySweepReversalShort } from './liquidity_sweep_reversal_short.js';
 import { generateRegimeMeanReversionLong } from './regime_mean_reversion_long.js';
 import { generateRegimeMeanReversionShort } from './regime_mean_reversion_short.js';
 import { generateTrendPullbackLong } from './trend_pullback_long.js';
@@ -73,6 +75,26 @@ const STRATEGY_REGISTRY_ENTRIES = {
     synthetic_fixture_id: 'fixture_regime_mean_reversion_short',
     enabled_in_v1: false,
   },
+  liquidity_sweep_reversal_long: {
+    strategy_id: 'liquidity_sweep_reversal_long',
+    display_name: 'Liquidity Sweep Reversal Long',
+    direction: 'long',
+    setup_family: 'liquidity_sweep_reversal',
+    implementation_status: 'active',
+    extraction_ticket: 'QFA-7xx-S2',
+    synthetic_fixture_id: 'fixture_liquidity_sweep_reversal_long',
+    enabled_in_v1: false,
+  },
+  liquidity_sweep_reversal_short: {
+    strategy_id: 'liquidity_sweep_reversal_short',
+    display_name: 'Liquidity Sweep Reversal Short',
+    direction: 'short',
+    setup_family: 'liquidity_sweep_reversal',
+    implementation_status: 'active',
+    extraction_ticket: 'QFA-7xx-S2',
+    synthetic_fixture_id: 'fixture_liquidity_sweep_reversal_short',
+    enabled_in_v1: false,
+  },
 } as const satisfies Record<StrategyId, StrategyRegistryEntry>;
 
 export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntry>> =
@@ -89,6 +111,8 @@ const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> 
   ...ACTIVE_STRATEGY_GENERATORS,
   regime_mean_reversion_long: generateRegimeMeanReversionLong,
   regime_mean_reversion_short: generateRegimeMeanReversionShort,
+  liquidity_sweep_reversal_long: generateLiquiditySweepReversalLong,
+  liquidity_sweep_reversal_short: generateLiquiditySweepReversalShort,
 };
 
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {
