@@ -29,6 +29,30 @@ export type StrategyScalarMap = Readonly<Record<string, StrategyScalarValue>>;
 
 export const OPENING_RANGE_MINUTES = 30 as const;
 
+export type SignedShockAnchorType = 'vwap' | 'prior_close';
+export type SignedShockSigmaBasis = 'atr_14' | 'sigma_pts';
+
+export interface SignedShockMeasurement {
+  readonly value: number | null;
+  readonly anchor_type: SignedShockAnchorType;
+  readonly anchor_value: number | null;
+  readonly sigma_basis: SignedShockSigmaBasis;
+  readonly sigma_basis_value: number | null;
+}
+
+export function createNullSignedShockMeasurement(
+  anchorType: SignedShockAnchorType,
+  sigmaBasis: SignedShockSigmaBasis = 'atr_14',
+): SignedShockMeasurement {
+  return {
+    value: null,
+    anchor_type: anchorType,
+    anchor_value: null,
+    sigma_basis: sigmaBasis,
+    sigma_basis_value: null,
+  };
+}
+
 export type StrategyFeatureSnapshotRegime =
   | 'high'
   | 'mid'
@@ -54,6 +78,11 @@ export interface StrategyFeatureSnapshotContext {
   readonly opening_range_high: number | null;
   readonly opening_range_low: number | null;
   readonly opening_range_minutes_elapsed: number;
+  readonly session_vwap: number | null;
+  readonly session_vwap_band_sigma_pts: number | null;
+  readonly overnight_return_bps: number | null;
+  readonly signed_shock_vwap: SignedShockMeasurement;
+  readonly signed_shock_prior_close: SignedShockMeasurement;
 }
 
 export interface StrategyRegistryEntry {

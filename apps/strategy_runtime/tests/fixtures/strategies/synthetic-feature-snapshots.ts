@@ -14,6 +14,7 @@ import type {
   StrategyFixtureId,
   StrategyScalarMap,
 } from '../../../src/strategies/index.js';
+import { createNullSignedShockMeasurement } from '../../../src/strategies/index.js';
 
 export const STRATEGY_SYNTHETIC_FIXTURE_VERSION = 1 as const;
 
@@ -129,6 +130,11 @@ function makeSnapshot(input: {
       opening_range_high: null,
       opening_range_low: null,
       opening_range_minutes_elapsed: 0,
+      session_vwap: null,
+      session_vwap_band_sigma_pts: null,
+      overnight_return_bps: null,
+      signed_shock_vwap: createNullSignedShockMeasurement('vwap'),
+      signed_shock_prior_close: createNullSignedShockMeasurement('prior_close'),
     },
     config: CONFIG,
   };

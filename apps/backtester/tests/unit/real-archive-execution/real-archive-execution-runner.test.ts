@@ -73,6 +73,27 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
       opening_range_high: 100,
       opening_range_low: 100,
       opening_range_minutes_elapsed: 0,
+      session_vwap: 100,
+      session_vwap_band_sigma_pts: null,
+      overnight_return_bps: 50.2513,
+      signed_shock_vwap: {
+        value: null,
+        anchor_type: 'vwap',
+        anchor_value: 100,
+        sigma_basis: 'atr_14',
+        sigma_basis_value: null,
+      },
+      signed_shock_prior_close: {
+        value: null,
+        anchor_type: 'prior_close',
+        anchor_value: 99.5,
+        sigma_basis: 'atr_14',
+        sigma_basis_value: null,
+      },
+    });
+    expect(snapshots[0]?.indicators).toMatchObject({
+      adx_14: null,
+      atr_14_pts: null,
     });
     expect(typeof snapshots[0]?.context.vix_fresh).toBe('boolean');
   });

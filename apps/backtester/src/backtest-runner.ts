@@ -22,6 +22,7 @@ import {
   type BuiltBar,
 } from '../../strategy_runtime/src/data/bar-builder/index.js';
 import {
+  createNullSignedShockMeasurement,
   getActiveStrategyGenerator,
   type StrategyFeatureSnapshot,
 } from '../../strategy_runtime/src/strategies/index.js';
@@ -213,7 +214,10 @@ function createNeutralStrategySnapshot(
         volume: toSafeNumber(bar.volume, 'bar.volume'),
       },
     ],
-    indicators: {},
+    indicators: {
+      adx_14: null,
+      atr_14_pts: null,
+    },
     structure: {
       trend: 'unknown',
       values: {},
@@ -233,6 +237,11 @@ function createNeutralStrategySnapshot(
       opening_range_high: null,
       opening_range_low: null,
       opening_range_minutes_elapsed: 0,
+      session_vwap: null,
+      session_vwap_band_sigma_pts: null,
+      overnight_return_bps: null,
+      signed_shock_vwap: createNullSignedShockMeasurement('vwap'),
+      signed_shock_prior_close: createNullSignedShockMeasurement('prior_close'),
     },
     config: strategyConfigRef(resolved, resolved.strategy_id),
   };
