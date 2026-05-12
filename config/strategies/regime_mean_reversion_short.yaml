@@ -1,0 +1,15 @@
+version: 1
+strategy_id: regime_mean_reversion_short
+parameters:
+  vwap_reference: session_vwap
+  opening_window_minutes: 30
+  high_shock_threshold_neg: 1.4
+  high_shock_threshold_pos: 1.25
+  low_shock_threshold_neg: 1.9
+  low_shock_threshold_pos: 1.75
+  stop_sigma_multiple: 0.8
+  target_1_rr: 1.2
+  target_2_rr: 2
+  confidence_score_high: 0.71
+  confidence_score_low: 0.57
+  minimum_target_rr: 1

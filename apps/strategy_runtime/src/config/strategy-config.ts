@@ -37,6 +37,26 @@ export interface BreakoutRetestStrategyParameters {
   readonly confidence_score: number;
 }
 
+export type RegimeMeanReversionVwapReference =
+  | 'session_vwap'
+  | 'opening_window_vwap'
+  | 'prior_day_close';
+
+export interface RegimeMeanReversionStrategyParameters {
+  readonly vwap_reference: RegimeMeanReversionVwapReference;
+  readonly opening_window_minutes: number;
+  readonly high_shock_threshold_neg: number;
+  readonly high_shock_threshold_pos: number;
+  readonly low_shock_threshold_neg: number;
+  readonly low_shock_threshold_pos: number;
+  readonly stop_sigma_multiple: number;
+  readonly target_1_rr: number;
+  readonly target_2_rr: number;
+  readonly confidence_score_high: number;
+  readonly confidence_score_low: number;
+  readonly minimum_target_rr: number;
+}
+
 export interface CandidateRankingParameters {
   readonly method: typeof CANDIDATE_RANKING_METHOD;
   readonly confidence_weight: number;
@@ -52,6 +72,8 @@ export interface StrategyConfigById {
   readonly trend_pullback_short: TrendPullbackStrategyParameters;
   readonly breakout_retest_long: BreakoutRetestStrategyParameters;
   readonly breakdown_retest_short: BreakoutRetestStrategyParameters;
+  readonly regime_mean_reversion_long: RegimeMeanReversionStrategyParameters;
+  readonly regime_mean_reversion_short: RegimeMeanReversionStrategyParameters;
 }
 
 export interface StrategyConfigLineage {
@@ -115,6 +137,31 @@ export const DEFAULT_BREAKDOWN_RETEST_SHORT_CONFIG: BreakoutRetestStrategyParame
   confidence_score: 8.05,
 };
 
+export const DEFAULT_REGIME_MEAN_REVERSION_LONG_CONFIG: RegimeMeanReversionStrategyParameters = {
+  vwap_reference: 'session_vwap',
+  opening_window_minutes: 30,
+  high_shock_threshold_neg: 1.25,
+  high_shock_threshold_pos: 1.4,
+  low_shock_threshold_neg: 1.75,
+  low_shock_threshold_pos: 1.9,
+  stop_sigma_multiple: 0.8,
+  target_1_rr: 1.2,
+  target_2_rr: 2,
+  confidence_score_high: 0.72,
+  confidence_score_low: 0.58,
+  minimum_target_rr: 1,
+};
+
+export const DEFAULT_REGIME_MEAN_REVERSION_SHORT_CONFIG: RegimeMeanReversionStrategyParameters = {
+  ...DEFAULT_REGIME_MEAN_REVERSION_LONG_CONFIG,
+  high_shock_threshold_neg: 1.4,
+  high_shock_threshold_pos: 1.25,
+  low_shock_threshold_neg: 1.9,
+  low_shock_threshold_pos: 1.75,
+  confidence_score_high: 0.71,
+  confidence_score_low: 0.57,
+};
+
 export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
   method: CANDIDATE_RANKING_METHOD,
   confidence_weight: 100,
@@ -127,6 +174,8 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     trend_pullback_short: 20,
     breakout_retest_long: 30,
     breakdown_retest_short: 40,
+    regime_mean_reversion_long: 50,
+    regime_mean_reversion_short: 60,
   },
 };
 
@@ -135,6 +184,8 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   trend_pullback_short: DEFAULT_TREND_PULLBACK_SHORT_CONFIG,
   breakout_retest_long: DEFAULT_BREAKOUT_RETEST_LONG_CONFIG,
   breakdown_retest_short: DEFAULT_BREAKDOWN_RETEST_SHORT_CONFIG,
+  regime_mean_reversion_long: DEFAULT_REGIME_MEAN_REVERSION_LONG_CONFIG,
+  regime_mean_reversion_short: DEFAULT_REGIME_MEAN_REVERSION_SHORT_CONFIG,
 };
 
 export const DEFAULT_STRATEGY_RUNTIME_CONFIG = buildStrategyRuntimeConfig(
@@ -148,6 +199,8 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   trend_pullback_short: 'trend_pullback_short.yaml',
   breakout_retest_long: 'breakout_retest_long.yaml',
   breakdown_retest_short: 'breakdown_retest_short.yaml',
+  regime_mean_reversion_long: 'regime_mean_reversion_long.yaml',
+  regime_mean_reversion_short: 'regime_mean_reversion_short.yaml',
 } as const satisfies Record<StrategyId, string>;
 
 export function loadStrategyRuntimeConfig(
@@ -183,6 +236,14 @@ export function loadStrategyRuntimeConfig(
       'breakdown_retest_short',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.breakdown_retest_short), sourceFiles),
     ),
+    regime_mean_reversion_long: parseRegimeMeanReversionConfig(
+      'regime_mean_reversion_long',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_mean_reversion_long), sourceFiles),
+    ),
+    regime_mean_reversion_short: parseRegimeMeanReversionConfig(
+      'regime_mean_reversion_short',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_mean_reversion_short), sourceFiles),
+    ),
   };
 
   return buildStrategyRuntimeConfig(strategies, shared.ranking, sourceFiles.sort());
@@ -206,8 +267,16 @@ export function getStrategyParameters(
 ): BreakoutRetestStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
+  strategyId: 'regime_mean_reversion_long',
+): RegimeMeanReversionStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'regime_mean_reversion_short',
+): RegimeMeanReversionStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
   strategyId: StrategyId,
-): TrendPullbackStrategyParameters | BreakoutRetestStrategyParameters {
+): TrendPullbackStrategyParameters | BreakoutRetestStrategyParameters | RegimeMeanReversionStrategyParameters {
   return (config ?? DEFAULT_STRATEGY_RUNTIME_CONFIG).strategies[strategyId];
 }
 
@@ -290,6 +359,8 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'trend_pullback_short',
     'breakout_retest_long',
     'breakdown_retest_short',
+    'regime_mean_reversion_long',
+    'regime_mean_reversion_short',
   ], issues);
 
   const parsed = {
@@ -305,6 +376,8 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         trend_pullback_short: readNumber(strategyPriority, 'trend_pullback_short', '$.ranking.strategy_priority', issues),
         breakout_retest_long: readNumber(strategyPriority, 'breakout_retest_long', '$.ranking.strategy_priority', issues),
         breakdown_retest_short: readNumber(strategyPriority, 'breakdown_retest_short', '$.ranking.strategy_priority', issues),
+        regime_mean_reversion_long: readNumber(strategyPriority, 'regime_mean_reversion_long', '$.ranking.strategy_priority', issues),
+        regime_mean_reversion_short: readNumber(strategyPriority, 'regime_mean_reversion_short', '$.ranking.strategy_priority', issues),
       },
     },
   };
@@ -387,6 +460,76 @@ function parseBreakoutRetestConfig(
     default_target_2_rr: readPositiveNumber(parameters, 'default_target_2_rr', '$.parameters', issues),
     confidence_score: readPositiveNumber(parameters, 'confidence_score', '$.parameters', issues),
   };
+  throwIfIssues(issues);
+  return parsed;
+}
+
+function parseRegimeMeanReversionConfig(
+  strategyId: 'regime_mean_reversion_long' | 'regime_mean_reversion_short',
+  input: unknown,
+): RegimeMeanReversionStrategyParameters {
+  const issues: ConfigValidationIssue[] = [];
+  const { root, parameters } = parseStrategyConfigRoot(strategyId, input, issues);
+  void root;
+  checkUnknownKeys(parameters, '$.parameters', [
+    'vwap_reference',
+    'opening_window_minutes',
+    'high_shock_threshold_neg',
+    'high_shock_threshold_pos',
+    'low_shock_threshold_neg',
+    'low_shock_threshold_pos',
+    'stop_sigma_multiple',
+    'target_1_rr',
+    'target_2_rr',
+    'confidence_score_high',
+    'confidence_score_low',
+    'minimum_target_rr',
+  ], issues);
+  const parsed = {
+    vwap_reference: readLiteral(parameters, 'vwap_reference', '$.parameters', [
+      'session_vwap',
+      'opening_window_vwap',
+      'prior_day_close',
+    ], issues),
+    opening_window_minutes: readPositiveNumber(parameters, 'opening_window_minutes', '$.parameters', issues),
+    high_shock_threshold_neg: readPositiveNumber(parameters, 'high_shock_threshold_neg', '$.parameters', issues),
+    high_shock_threshold_pos: readPositiveNumber(parameters, 'high_shock_threshold_pos', '$.parameters', issues),
+    low_shock_threshold_neg: readPositiveNumber(parameters, 'low_shock_threshold_neg', '$.parameters', issues),
+    low_shock_threshold_pos: readPositiveNumber(parameters, 'low_shock_threshold_pos', '$.parameters', issues),
+    stop_sigma_multiple: readPositiveNumber(parameters, 'stop_sigma_multiple', '$.parameters', issues),
+    target_1_rr: readPositiveNumber(parameters, 'target_1_rr', '$.parameters', issues),
+    target_2_rr: readPositiveNumber(parameters, 'target_2_rr', '$.parameters', issues),
+    confidence_score_high: readPositiveNumber(parameters, 'confidence_score_high', '$.parameters', issues),
+    confidence_score_low: readPositiveNumber(parameters, 'confidence_score_low', '$.parameters', issues),
+    minimum_target_rr: readPositiveNumber(parameters, 'minimum_target_rr', '$.parameters', issues),
+  };
+  if (!Number.isInteger(parsed.opening_window_minutes)) {
+    issues.push({ path: '$.parameters.opening_window_minutes', message: 'must be an integer' });
+  }
+  if (parsed.low_shock_threshold_neg <= parsed.high_shock_threshold_neg) {
+    issues.push({
+      path: '$.parameters.low_shock_threshold_neg',
+      message: 'must be > high_shock_threshold_neg',
+    });
+  }
+  if (parsed.low_shock_threshold_pos <= parsed.high_shock_threshold_pos) {
+    issues.push({
+      path: '$.parameters.low_shock_threshold_pos',
+      message: 'must be > high_shock_threshold_pos',
+    });
+  }
+  if (parsed.confidence_score_low >= parsed.confidence_score_high) {
+    issues.push({
+      path: '$.parameters.confidence_score_low',
+      message: 'must be < confidence_score_high',
+    });
+  }
+  if (parsed.target_1_rr < parsed.minimum_target_rr) {
+    issues.push({ path: '$.parameters.target_1_rr', message: 'must be >= minimum_target_rr' });
+  }
+  if (parsed.target_2_rr < parsed.target_1_rr) {
+    issues.push({ path: '$.parameters.target_2_rr', message: 'must be >= target_1_rr' });
+  }
   throwIfIssues(issues);
   return parsed;
 }

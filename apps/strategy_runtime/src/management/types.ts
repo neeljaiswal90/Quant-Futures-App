@@ -30,6 +30,8 @@ export type ManagementProfileId =
   | 'trend_pullback_short_management_v1'
   | 'breakout_retest_long_management_v1'
   | 'breakdown_retest_short_management_v1'
+  | 'regime_mean_reversion_long_management_v1'
+  | 'regime_mean_reversion_short_management_v1'
   | 'fallback_management_v1';
 
 export interface InitialStopBehavior {

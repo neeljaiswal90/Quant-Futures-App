@@ -16,7 +16,7 @@ import {
   throwIfIssues,
 } from '../config/simple-yaml.js';
 import { CONFIG_HASH_ALGORITHM, type ConfigValidationIssue } from '../config/types.js';
-import { ACTIVE_STRATEGY_IDS, type StrategyId } from '../contracts/strategy-ids.js';
+import { ACTIVE_STRATEGY_IDS, type ActiveStrategyId } from '../contracts/strategy-ids.js';
 import {
   FALLBACK_MANAGEMENT_PROFILE,
   V1_MANAGEMENT_PROFILES,
@@ -45,12 +45,12 @@ export interface ManagementConfigLineage {
   readonly management_config_hash: string;
   readonly management_config_hash_algorithm: typeof MANAGEMENT_CONFIG_HASH_ALGORITHM;
   readonly canonical_management_config_json: string;
-  readonly profile_hashes: Readonly<Record<ManagementProfileStrategyId, string>>;
+  readonly profile_hashes: Readonly<Record<ActiveStrategyId | 'fallback', string>>;
 }
 
 export interface ManagementProfilesConfig {
   readonly version: typeof MANAGEMENT_CONFIG_SCHEMA_VERSION;
-  readonly profiles: Readonly<Record<StrategyId, ManagementProfile>>;
+  readonly profiles: Readonly<Record<ActiveStrategyId, ManagementProfile>>;
   readonly fallback_profile: ManagementProfile;
   readonly lineage: ManagementConfigLineage;
   readonly source_file: string;
@@ -173,7 +173,7 @@ function parseManagementProfilesConfig(input: unknown, sourceFile: string): Mana
       '$.profiles.breakdown_retest_short',
       issues,
     ),
-  } satisfies Readonly<Record<StrategyId, ManagementProfile>>;
+  } satisfies Readonly<Record<ActiveStrategyId, ManagementProfile>>;
 
   const fallback = parseProfile(
     readRecord(root, 'fallback_profile', '$', issues),
@@ -192,7 +192,7 @@ function parseManagementProfilesConfig(input: unknown, sourceFile: string): Mana
 }
 
 function buildManagementProfilesConfig(
-  profiles: Readonly<Record<StrategyId, ManagementProfile>>,
+  profiles: Readonly<Record<ActiveStrategyId, ManagementProfile>>,
   fallbackProfile: ManagementProfile,
   sourceFile: string,
 ): ManagementProfilesConfig {
@@ -201,7 +201,7 @@ function buildManagementProfilesConfig(
     trend_pullback_short: withProfileHash(profiles.trend_pullback_short),
     breakout_retest_long: withProfileHash(profiles.breakout_retest_long),
     breakdown_retest_short: withProfileHash(profiles.breakdown_retest_short),
-  } satisfies Readonly<Record<StrategyId, ManagementProfile>>;
+  } satisfies Readonly<Record<ActiveStrategyId, ManagementProfile>>;
   const hashedFallback = withProfileHash(fallbackProfile);
   const configWithoutLineage = {
     version: MANAGEMENT_CONFIG_SCHEMA_VERSION,

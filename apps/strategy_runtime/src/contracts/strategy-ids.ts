@@ -5,12 +5,24 @@ export const ACTIVE_STRATEGY_IDS = [
   'breakdown_retest_short',
 ] as const;
 
-export type StrategyId = (typeof ACTIVE_STRATEGY_IDS)[number];
+export const CANDIDATE_STRATEGY_IDS = [
+  'regime_mean_reversion_long',
+  'regime_mean_reversion_short',
+] as const;
 
-const ACTIVE_STRATEGY_ID_SET = new Set<string>(ACTIVE_STRATEGY_IDS);
+export const ALL_STRATEGY_IDS = [
+  ...ACTIVE_STRATEGY_IDS,
+  ...CANDIDATE_STRATEGY_IDS,
+] as const;
+
+export type ActiveStrategyId = (typeof ACTIVE_STRATEGY_IDS)[number];
+export type CandidateStrategyId = (typeof CANDIDATE_STRATEGY_IDS)[number];
+export type StrategyId = (typeof ALL_STRATEGY_IDS)[number];
+
+const STRATEGY_ID_SET = new Set<string>(ALL_STRATEGY_IDS);
 
 export function isStrategyId(value: string): value is StrategyId {
-  return ACTIVE_STRATEGY_ID_SET.has(value);
+  return STRATEGY_ID_SET.has(value);
 }
 
 export function parseStrategyId(value: string): StrategyId {

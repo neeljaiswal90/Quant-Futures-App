@@ -1,6 +1,6 @@
 import { ACTIVE_STRATEGY_IDS, parseStrategyId, type StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { BuiltBar } from '../../../strategy_runtime/src/data/bar-builder/index.js';
-import { getActiveStrategyGenerator } from '../../../strategy_runtime/src/strategies/index.js';
+import { getStrategyGenerator } from '../../../strategy_runtime/src/strategies/index.js';
 import { buildReplayFeatureSnapshot } from './feature-bridge.js';
 import type {
   StrategyReplayEvaluation,
@@ -40,7 +40,7 @@ export async function replayStrategies(
       summary.bars_evaluated += 1;
 
       try {
-        const result = getActiveStrategyGenerator(strategyId)({
+        const result = getStrategyGenerator(strategyId)({
           strategy_id: strategyId,
           snapshot: bridged.snapshot,
         });
