@@ -12,6 +12,7 @@ import type {
   StrategyFeatureSnapshot,
   StrategyScalarMap,
 } from '../../../strategy_runtime/src/strategies/index.js';
+import { createNullSignedShockMeasurement } from '../../../strategy_runtime/src/strategies/index.js';
 import {
   REPLAY_SANITY_PLACEHOLDER_FIELDS,
   STRATEGY_REPLAY_FEATURE_SOURCE,
@@ -68,6 +69,8 @@ export function buildReplayFeatureSnapshot(
     ema_9: round4(ema9),
     ema_21: round4(ema21),
     ema_50: round4(ema50),
+    adx_14: null,
+    atr_14_pts: null,
     pullback_ratio: round4(Math.min(1, Math.abs(currentBar.close - ema9) / sigmaPts)),
     sigma_pts: round4(sigmaPts),
     supertrend_direction: trend === 'down' ? 'down' : 'up',
@@ -133,6 +136,11 @@ export function buildReplayFeatureSnapshot(
       opening_range_high: null,
       opening_range_low: null,
       opening_range_minutes_elapsed: 0,
+      session_vwap: null,
+      session_vwap_band_sigma_pts: null,
+      overnight_return_bps: null,
+      signed_shock_vwap: createNullSignedShockMeasurement('vwap'),
+      signed_shock_prior_close: createNullSignedShockMeasurement('prior_close'),
     },
     config: DEFAULT_CONFIG,
   };

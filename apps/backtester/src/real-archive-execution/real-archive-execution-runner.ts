@@ -60,7 +60,10 @@ import {
 import { mergeMonotonicSources } from './source-merge.js';
 import {
   computeAtrSupertrend,
+  computeAdx14,
+  computeAtr14,
   computeStructuralTrend,
+  createSignedShockMeasurement,
   createSnapshotContextState,
   createSnapshotFeatureState,
   updateSnapshotContextForBar,
@@ -312,6 +315,7 @@ async function runSession(input: {
         high: priceNumber(bar.high),
         low: priceNumber(bar.low),
         close: priceNumber(bar.close),
+        volume: Number(bar.volume),
         start_ts_ns: bar.bucket_start_ts_ns ?? bar.first_record_ts_ns,
       },
       rth_start_ts_ns: input.session.rth_start_ts_ns === undefined ? null : ns(input.session.rth_start_ts_ns),
@@ -945,6 +949,8 @@ function buildFeatureSnapshot(input: {
   const sigmaPts = Math.max(TICK_SIZE, average(bars.map((bar) => bar.high - bar.low)) / 2);
   const trend = computeStructuralTrend(bars, sigmaPts);
   const supertrend = computeAtrSupertrend(bars);
+  const atr14Pts = computeAtr14(bars);
+  const adx14 = computeAdx14(bars);
   const prior = bars.slice(0, -1);
   const priorHigh = prior.length === 0 ? current.high : Math.max(...prior.map((bar) => bar.high));
   const priorLow = prior.length === 0 ? current.low : Math.min(...prior.map((bar) => bar.low));
@@ -952,6 +958,24 @@ function buildFeatureSnapshot(input: {
   const longTarget2 = roundToTick(priorHigh + sigmaPts * 2);
   const shortTarget1 = roundToTick(priorLow - sigmaPts);
   const shortTarget2 = roundToTick(priorLow - sigmaPts * 2);
+  const midPx = round4((quote.bid_px + quote.ask_px) / 2);
+  const context = {
+    ...input.context,
+    signed_shock_vwap: createSignedShockMeasurement({
+      price: midPx,
+      anchor_type: 'vwap',
+      anchor_value: input.context.session_vwap,
+      sigma_basis: 'atr_14',
+      sigma_basis_value: atr14Pts,
+    }),
+    signed_shock_prior_close: createSignedShockMeasurement({
+      price: midPx,
+      anchor_type: 'prior_close',
+      anchor_value: input.context.prior_day_close,
+      sigma_basis: 'atr_14',
+      sigma_basis_value: atr14Pts,
+    }),
+  };
 
   return {
     feature_snapshot_id: makeFeatureSnapshotId(`feature-${input.bar.bar_id}-${input.strategyId}`),
@@ -971,7 +995,7 @@ function buildFeatureSnapshot(input: {
     quote: {
       bid_px: quote.bid_px,
       ask_px: quote.ask_px,
-      mid_px: round4((quote.bid_px + quote.ask_px) / 2),
+      mid_px: midPx,
     },
     last_trade_price: current.close,
     bars,
@@ -979,6 +1003,8 @@ function buildFeatureSnapshot(input: {
       ema_9: round4(ema9),
       ema_21: round4(ema21),
       ema_50: round4(ema50),
+      adx_14: adx14,
+      atr_14_pts: atr14Pts,
       pullback_ratio: round4(Math.min(1, Math.abs(current.close - ema9) / sigmaPts)),
       sigma_pts: round4(sigmaPts),
       supertrend_direction: supertrend.direction,
@@ -1011,7 +1037,7 @@ function buildFeatureSnapshot(input: {
         ofi_z: input.ofiZ,
       },
     },
-    context: input.context,
+    context,
     config: DEFAULT_CONFIG,
   };
 }

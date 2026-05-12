@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { ns } from '../../../../strategy_runtime/src/contracts/time.js';
 import type { DbnMbp1Record, DbnTradesRecord } from '../../../../strategy_runtime/src/data/dbn-types.js';
 import {
+  computeAdx14,
+  computeAtr14,
   computeAtrSupertrend,
   computeStructuralTrend,
+  createSignedShockMeasurement,
   createSnapshotContextState,
   createSnapshotFeatureState,
   updateSnapshotContextForBar,
@@ -48,6 +51,18 @@ describe('QFA-410c real-archive snapshot features', () => {
     expect(computeAtrSupertrend(reversal).direction).toBe('down');
   });
 
+  it('emits ATR14 and ADX14 only after the warmup horizon', () => {
+    const uptrend = Array.from({ length: 15 }, (_, index) => bar(100 + index, {
+      high: 101 + index,
+      low: 99 + index,
+    }));
+
+    expect(computeAtr14(uptrend.slice(0, 14))).toBeNull();
+    expect(computeAdx14(uptrend.slice(0, 14))).toBeNull();
+    expect(computeAtr14(uptrend)).toBeGreaterThan(0);
+    expect(computeAdx14(uptrend)).toBeGreaterThan(0);
+  });
+
   it('classifies structural trend from a multi-bar regression slope', () => {
     expect(computeStructuralTrend(Array.from({ length: 20 }, (_, index) => bar(100 + index)), 1)).toBe('up');
     expect(computeStructuralTrend(Array.from({ length: 20 }, (_, index) => bar(120 - index)), 1)).toBe('down');
@@ -81,6 +96,92 @@ describe('QFA-410c real-archive snapshot features', () => {
       opening_range_high: 102,
       opening_range_low: 98,
       opening_range_minutes_elapsed: 0,
+      session_vwap: null,
+      session_vwap_band_sigma_pts: null,
+      overnight_return_bps: -99.0099,
+      signed_shock_vwap: {
+        value: null,
+        anchor_type: 'vwap',
+        anchor_value: null,
+        sigma_basis: 'atr_14',
+        sigma_basis_value: null,
+      },
+      signed_shock_prior_close: {
+        value: null,
+        anchor_type: 'prior_close',
+        anchor_value: null,
+        sigma_basis: 'atr_14',
+        sigma_basis_value: null,
+      },
+    });
+  });
+
+  it('tracks session VWAP and VWAP-band sigma at session scope', () => {
+    const state = createSnapshotContextState({ prior_day_close: 100 });
+    let context = updateSnapshotContextForBar(state, {
+      bar: contextBar(0n, { open: 101, high: 101, low: 101, close: 101, volume: 10 }),
+      rth_start_ts_ns: 0n,
+    });
+    expect(context.session_vwap).toBe(101);
+    expect(context.overnight_return_bps).toBe(100);
+    expect(context.session_vwap_band_sigma_pts).toBeNull();
+
+    for (let index = 1; index < 30; index += 1) {
+      context = updateSnapshotContextForBar(state, {
+        bar: contextBar(BigInt(index) * 60_000_000_000n, {
+          open: 100 + index,
+          high: 101 + index,
+          low: 99 + index,
+          close: 100 + index,
+          volume: 10,
+        }),
+        rth_start_ts_ns: 0n,
+      });
+    }
+
+    expect(context.session_vwap).toBe(114.5333);
+    expect(context.session_vwap_band_sigma_pts).toBeGreaterThan(0);
+  });
+
+  it('enforces ADR-0023 SignedShockMeasurement invariants', () => {
+    expect(createSignedShockMeasurement({
+      price: 104,
+      anchor_type: 'vwap',
+      anchor_value: 100,
+      sigma_basis: 'atr_14',
+      sigma_basis_value: 2,
+    })).toEqual({
+      value: 2,
+      anchor_type: 'vwap',
+      anchor_value: 100,
+      sigma_basis: 'atr_14',
+      sigma_basis_value: 2,
+    });
+    expect(createSignedShockMeasurement({
+      price: 104,
+      anchor_type: 'prior_close',
+      anchor_value: null,
+      sigma_basis: 'atr_14',
+      sigma_basis_value: 2,
+    })).toEqual({
+      value: null,
+      anchor_type: 'prior_close',
+      anchor_value: null,
+      sigma_basis: 'atr_14',
+      sigma_basis_value: 2,
+    });
+    expect(createSignedShockMeasurement({
+      price: 104,
+      anchor_type: 'vwap',
+      anchor_value: 100,
+      sigma_basis: 'atr_14',
+      sigma_basis_value: 0,
+    })).toEqual({
+      value: null,
+      anchor_type: 'vwap',
+      anchor_value: 100,
+      sigma_basis: 'atr_14',
+      sigma_basis_value: null,
     });
   });
 
@@ -177,8 +278,14 @@ function bar(close: number, overrides: Partial<SnapshotPriceBar> = {}): Snapshot
 
 function contextBar(
   startTsNs: bigint,
-  prices: { readonly open: number; readonly high: number; readonly low: number; readonly close: number },
-): SnapshotPriceBar & { readonly open: number; readonly start_ts_ns: bigint } {
+  prices: {
+    readonly open: number;
+    readonly high: number;
+    readonly low: number;
+    readonly close: number;
+    readonly volume?: number;
+  },
+): SnapshotPriceBar & { readonly open: number; readonly start_ts_ns: bigint; readonly volume?: number } {
   return {
     start_ts_ns: startTsNs,
     ...prices,

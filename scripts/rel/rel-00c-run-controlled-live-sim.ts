@@ -57,6 +57,7 @@ import type {
   StrategyFeatureSnapshot,
   StrategyScalarMap,
 } from '../../apps/strategy_runtime/src/strategies/index.js';
+import { createNullSignedShockMeasurement } from '../../apps/strategy_runtime/src/strategies/index.js';
 import {
   sha256File,
   forEachJsonlLine,
@@ -546,6 +547,8 @@ function buildFeatureSnapshot(
     ema_9: round4(ema9),
     ema_21: round4(ema21),
     ema_50: round4(ema50),
+    adx_14: null,
+    atr_14_pts: null,
     vwap: round4(mean(builder.priceHistory.slice(-50))),
     atr_14: sigmaPts,
     sigma_pts: sigmaPts,
@@ -646,6 +649,11 @@ function buildFeatureSnapshot(
       opening_range_high: null,
       opening_range_low: null,
       opening_range_minutes_elapsed: 0,
+      session_vwap: null,
+      session_vwap_band_sigma_pts: null,
+      overnight_return_bps: null,
+      signed_shock_vwap: createNullSignedShockMeasurement('vwap'),
+      signed_shock_prior_close: createNullSignedShockMeasurement('prior_close'),
     },
     config: {
       config_hash: makeConfigHash(configHash),
