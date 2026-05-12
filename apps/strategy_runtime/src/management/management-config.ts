@@ -16,7 +16,11 @@ import {
   throwIfIssues,
 } from '../config/simple-yaml.js';
 import { CONFIG_HASH_ALGORITHM, type ConfigValidationIssue } from '../config/types.js';
-import { ACTIVE_STRATEGY_IDS, type ActiveStrategyId } from '../contracts/strategy-ids.js';
+import {
+  ACTIVE_STRATEGY_IDS,
+  type ActiveStrategyId,
+  type StrategyId,
+} from '../contracts/strategy-ids.js';
 import {
   FALLBACK_MANAGEMENT_PROFILE,
   V1_MANAGEMENT_PROFILES,
@@ -192,7 +196,7 @@ function parseManagementProfilesConfig(input: unknown, sourceFile: string): Mana
 }
 
 function buildManagementProfilesConfig(
-  profiles: Readonly<Record<ActiveStrategyId, ManagementProfile>>,
+  profiles: Readonly<Record<StrategyId, ManagementProfile>> | Readonly<Record<ActiveStrategyId, ManagementProfile>>,
   fallbackProfile: ManagementProfile,
   sourceFile: string,
 ): ManagementProfilesConfig {
@@ -265,7 +269,7 @@ function parseProfile(
       record,
       'setup_family',
       path,
-      ['trend_pullback', 'breakout_retest', 'fallback'],
+      ['trend_pullback', 'breakout_retest', 'regime_mean_reversion', 'liquidity_sweep_reversal', 'fallback'],
       issues,
     ),
     display_name: readString(record, 'display_name', path, issues),

@@ -3,12 +3,14 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_STRATEGY_IDS,
+  CANDIDATE_STRATEGY_IDS,
   isStrategyId,
   stableJsonStringify,
   type JsonValue,
 } from '../../src/contracts/index.js';
 import {
   getStrategyRegistryEntry,
+  listAllStrategyRegistryEntries,
   listExecutableStrategyIds,
   listStrategyIdsByDirection,
   listStrategyIdsBySetupFamily,
@@ -86,6 +88,30 @@ describe('STRAT-01 active strategy registry', () => {
     expect(entries.map((entry) => entry.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
     expect(entries.every((entry) => isStrategyId(entry.strategy_id))).toBe(true);
     expect(() => getStrategyRegistryEntry('shadow_lob_scalp')).toThrow('Unknown strategy_id');
+    expect(CANDIDATE_STRATEGY_IDS).toEqual([
+      'regime_mean_reversion_long',
+      'regime_mean_reversion_short',
+      'liquidity_sweep_reversal_long',
+      'liquidity_sweep_reversal_short',
+    ]);
+    expect(listAllStrategyRegistryEntries().map((entry) => entry.strategy_id)).toEqual([
+      ...ACTIVE_STRATEGY_IDS,
+      ...CANDIDATE_STRATEGY_IDS,
+    ]);
+    expect(getStrategyRegistryEntry('liquidity_sweep_reversal_long')).toEqual(
+      expect.objectContaining({
+        enabled_in_v1: false,
+        extraction_ticket: 'QFA-7xx-S2',
+        setup_family: 'liquidity_sweep_reversal',
+      }),
+    );
+    expect(getStrategyRegistryEntry('regime_mean_reversion_long')).toEqual(
+      expect.objectContaining({
+        enabled_in_v1: false,
+        extraction_ticket: 'QFA-7xx-S3',
+        setup_family: 'regime_mean_reversion',
+      }),
+    );
   });
 
   it('groups strategies by direction and setup family deterministically', () => {

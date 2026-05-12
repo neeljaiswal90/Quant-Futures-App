@@ -32,6 +32,8 @@ export type ManagementProfileId =
   | 'breakdown_retest_short_management_v1'
   | 'regime_mean_reversion_long_management_v1'
   | 'regime_mean_reversion_short_management_v1'
+  | 'liquidity_sweep_reversal_long_management_v1'
+  | 'liquidity_sweep_reversal_short_management_v1'
   | 'fallback_management_v1';
 
 export interface InitialStopBehavior {

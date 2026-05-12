@@ -1,0 +1,44 @@
+{
+  "evaluations": [
+    {
+      "bar_id": "bar-001",
+      "candidate": null,
+      "gate_state": "blocked",
+      "reasons": [
+        "liquidity_sweep_reversal_short:no_sweep_detected"
+      ],
+      "strategy_id": "liquidity_sweep_reversal_short",
+      "ts_ns": "119000000000"
+    },
+    {
+      "bar_id": "bar-002",
+      "candidate": null,
+      "gate_state": "blocked",
+      "reasons": [
+        "liquidity_sweep_reversal_short:depth_ratio_unavailable_warmup"
+      ],
+      "strategy_id": "liquidity_sweep_reversal_short",
+      "ts_ns": "179000000000"
+    },
+    {
+      "bar_id": "bar-003",
+      "candidate": null,
+      "gate_state": "blocked",
+      "reasons": [
+        "liquidity_sweep_reversal_short:depth_ratio_unavailable_warmup"
+      ],
+      "strategy_id": "liquidity_sweep_reversal_short",
+      "ts_ns": "239000000000"
+    },
+    {
+      "bar_id": "bar-004",
+      "candidate": null,
+      "gate_state": "blocked",
+      "reasons": [
+        "liquidity_sweep_reversal_short:wrong_sweep_direction_for_short_reversal"
+      ],
+      "strategy_id": "liquidity_sweep_reversal_short",
+      "ts_ns": "299000000000"
+    }
+  ]
+}

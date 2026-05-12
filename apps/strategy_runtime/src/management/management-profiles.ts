@@ -247,6 +247,72 @@ export const REGIME_MEAN_REVERSION_SHORT_MANAGEMENT_PROFILE = {
   ],
 } as const satisfies ManagementProfile;
 
+export const LIQUIDITY_SWEEP_REVERSAL_LONG_MANAGEMENT_PROFILE = {
+  profile_id: 'liquidity_sweep_reversal_long_management_v1',
+  profile_version: MANAGEMENT_PROFILE_VERSION,
+  strategy_id: 'liquidity_sweep_reversal_long',
+  setup_family: 'liquidity_sweep_reversal',
+  display_name: 'Liquidity Sweep Reversal Long Management V1',
+  profile_hash: MANAGEMENT_PROFILE_HASH_PLACEHOLDER,
+  initial_stop: {
+    ...BASE_INITIAL_STOP,
+    min_stop_distance_ticks: 2,
+  },
+  targets: BASE_TARGETS,
+  break_even: BASE_BREAK_EVEN,
+  trailing_stop: {
+    enabled: true,
+    mode: 'post_pt1_ticks',
+    activation: 'after_pt1',
+    distance_ticks: 6,
+    action: 'ACTIVATE_TRAIL',
+  },
+  time_stop: {
+    ...BASE_TIME_STOP,
+    max_hold_minutes: 20,
+  },
+  fail_safe: BASE_FAIL_SAFE,
+  partial_exit: BASE_PARTIAL_EXIT,
+  reasons: [
+    'management_profile:liquidity_sweep_reversal_long',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+} as const satisfies ManagementProfile;
+
+export const LIQUIDITY_SWEEP_REVERSAL_SHORT_MANAGEMENT_PROFILE = {
+  profile_id: 'liquidity_sweep_reversal_short_management_v1',
+  profile_version: MANAGEMENT_PROFILE_VERSION,
+  strategy_id: 'liquidity_sweep_reversal_short',
+  setup_family: 'liquidity_sweep_reversal',
+  display_name: 'Liquidity Sweep Reversal Short Management V1',
+  profile_hash: MANAGEMENT_PROFILE_HASH_PLACEHOLDER,
+  initial_stop: {
+    ...BASE_INITIAL_STOP,
+    min_stop_distance_ticks: 2,
+  },
+  targets: BASE_TARGETS,
+  break_even: BASE_BREAK_EVEN,
+  trailing_stop: {
+    enabled: true,
+    mode: 'post_pt1_ticks',
+    activation: 'after_pt1',
+    distance_ticks: 6,
+    action: 'ACTIVATE_TRAIL',
+  },
+  time_stop: {
+    ...BASE_TIME_STOP,
+    max_hold_minutes: 20,
+  },
+  fail_safe: BASE_FAIL_SAFE,
+  partial_exit: BASE_PARTIAL_EXIT,
+  reasons: [
+    'management_profile:liquidity_sweep_reversal_short',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+} as const satisfies ManagementProfile;
+
 export const FALLBACK_MANAGEMENT_PROFILE = {
   profile_id: 'fallback_management_v1',
   profile_version: MANAGEMENT_PROFILE_VERSION,
@@ -284,6 +350,8 @@ export const V1_MANAGEMENT_PROFILES = {
   breakdown_retest_short: BREAKDOWN_RETEST_SHORT_MANAGEMENT_PROFILE,
   regime_mean_reversion_long: REGIME_MEAN_REVERSION_LONG_MANAGEMENT_PROFILE,
   regime_mean_reversion_short: REGIME_MEAN_REVERSION_SHORT_MANAGEMENT_PROFILE,
+  liquidity_sweep_reversal_long: LIQUIDITY_SWEEP_REVERSAL_LONG_MANAGEMENT_PROFILE,
+  liquidity_sweep_reversal_short: LIQUIDITY_SWEEP_REVERSAL_SHORT_MANAGEMENT_PROFILE,
 } as const satisfies Readonly<Record<StrategyId, ManagementProfile>>;
 
 export function resolveManagementProfile(

@@ -13,3 +13,5 @@ ranking:
     breakdown_retest_short: 40
     regime_mean_reversion_long: 50
     regime_mean_reversion_short: 60
+    liquidity_sweep_reversal_long: 70
+    liquidity_sweep_reversal_short: 80
