@@ -39,6 +39,9 @@ export interface RealArchiveSessionSource {
   readonly trading_date: string;
   readonly raw_symbol: string;
   readonly regime_label?: RealArchiveRegimeLabel;
+  readonly prior_day_close?: number | null;
+  readonly prior_day_high?: number | null;
+  readonly prior_day_low?: number | null;
   readonly rth_start_ts_ns?: UnixNsInput;
   readonly rth_end_ts_ns?: UnixNsInput;
   readonly trades_path?: string;
@@ -66,6 +69,8 @@ export interface RealArchiveBacktestOptions {
   readonly initial_equity_cents?: bigint;
   readonly valuation?: InstrumentValuationSpec;
   readonly strategy_generator?: RealArchiveStrategyGenerator;
+  readonly vix_daily_paths?: readonly string[];
+  readonly regime_labels_path?: string;
 }
 
 export interface RealArchiveStrategyGeneratorInput {

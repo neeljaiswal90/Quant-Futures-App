@@ -222,6 +222,18 @@ function createNeutralStrategySnapshot(
       l3_authority: 'unavailable',
       values: {},
     },
+    context: {
+      prior_day_close: null,
+      prior_day_high: null,
+      prior_day_low: null,
+      today_open: toSafeNumber(bar.open, 'bar.open'),
+      vix_value: null,
+      vix_fresh: false,
+      regime_label: 'unknown',
+      opening_range_high: null,
+      opening_range_low: null,
+      opening_range_minutes_elapsed: 0,
+    },
     config: strategyConfigRef(resolved, resolved.strategy_id),
   };
 }

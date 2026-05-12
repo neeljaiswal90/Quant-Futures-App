@@ -117,6 +117,18 @@ function makeSnapshot(input: {
       l3_authority: 'authoritative',
       values: input.microstructure,
     },
+    context: {
+      prior_day_close: null,
+      prior_day_high: null,
+      prior_day_low: null,
+      today_open: input.barsStartClose,
+      vix_value: null,
+      vix_fresh: false,
+      regime_label: 'unknown',
+      opening_range_high: null,
+      opening_range_low: null,
+      opening_range_minutes_elapsed: 0,
+    },
     config: CONFIG,
   };
 }
