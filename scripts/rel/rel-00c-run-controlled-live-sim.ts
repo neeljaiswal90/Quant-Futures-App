@@ -635,6 +635,18 @@ function buildFeatureSnapshot(
         ofi_z: clamp(zFlow, 0.25, 1),
       },
     },
+    context: {
+      prior_day_close: null,
+      prior_day_high: null,
+      prior_day_low: null,
+      today_open: bars[0] === undefined ? null : round4(bars[0].open),
+      vix_value: null,
+      vix_fresh: false,
+      regime_label: 'unknown',
+      opening_range_high: null,
+      opening_range_low: null,
+      opening_range_minutes_elapsed: 0,
+    },
     config: {
       config_hash: makeConfigHash(configHash),
       config_version: configVersion,

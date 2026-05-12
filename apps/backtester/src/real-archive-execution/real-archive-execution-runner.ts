@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   createJournalEventEnvelope,
   makeCausationId,
@@ -37,6 +39,7 @@ import {
 import {
   getActiveStrategyGenerator,
   type StrategyFeatureSnapshot,
+  type StrategyFeatureSnapshotRegime,
 } from '../../../strategy_runtime/src/strategies/index.js';
 import {
   applyInitialFillToTargetPosition,
@@ -58,7 +61,10 @@ import { mergeMonotonicSources } from './source-merge.js';
 import {
   computeAtrSupertrend,
   computeStructuralTrend,
+  createSnapshotContextState,
   createSnapshotFeatureState,
+  updateSnapshotContextForBar,
+  type SnapshotContextSeed,
   updateOfiZForBar,
 } from './snapshot-features.js';
 import type {
@@ -136,6 +142,11 @@ interface EventSequence {
   next(): number;
 }
 
+interface SnapshotContextInputs {
+  readonly vixByDate: ReadonlyMap<string, number>;
+  readonly regimeBySession: ReadonlyMap<string, StrategyFeatureSnapshotRegime>;
+}
+
 export async function runRealArchiveBacktest(
   options: RealArchiveBacktestOptions,
 ): Promise<RealArchiveBacktestResult> {
@@ -179,6 +190,7 @@ export async function runRealArchiveBacktest(
     }) as AnyJournalEventEnvelope,
   ];
   const strategyGenerator = options.strategy_generator ?? getActiveStrategyGenerator(options.strategy_id);
+  const snapshotContextInputs = loadSnapshotContextInputs(options);
   const entryMetadataByOrderIntentId = new Map<string, EntryMetadata>();
   const metrics: MutableRuntimeMetrics = {
     sessions_processed: 0,
@@ -200,6 +212,7 @@ export async function runRealArchiveBacktest(
       entryMetadataByOrderIntentId,
       strategyGenerator,
       metrics,
+      snapshotContextInputs,
     });
     metrics.sessions_processed += 1;
   }
@@ -240,6 +253,7 @@ async function runSession(input: {
   readonly entryMetadataByOrderIntentId: Map<string, EntryMetadata>;
   readonly strategyGenerator: RealArchiveStrategyGenerator;
   readonly metrics: MutableRuntimeMetrics;
+  readonly snapshotContextInputs: SnapshotContextInputs;
 }): Promise<void> {
   const sessionId = makeSessionId(input.session.session_id);
   const queueCursor = createRecordCursor(mergeMonotonicSources<DbnRecord>([
@@ -260,6 +274,7 @@ async function runSession(input: {
   const history: BuiltBar[] = [];
   const quoteState: { latest: RealArchiveTopOfBook | null } = { latest: null };
   const featureState = createSnapshotFeatureState();
+  const contextState = createSnapshotContextState(contextSeed(input.session, input.snapshotContextInputs));
   let openPosition: OpenExecutionPosition | null = null;
   let barIndex = 0;
   let lastBar: BuiltBar | null = null;
@@ -291,6 +306,16 @@ async function runSession(input: {
     history.push(bar);
     input.metrics.bars_processed += 1;
     const ofiZ = updateOfiZForBar(featureState, barQueueRecords);
+    const context = updateSnapshotContextForBar(contextState, {
+      bar: {
+        open: priceNumber(bar.open),
+        high: priceNumber(bar.high),
+        low: priceNumber(bar.low),
+        close: priceNumber(bar.close),
+        start_ts_ns: bar.bucket_start_ts_ns ?? bar.first_record_ts_ns,
+      },
+      rth_start_ts_ns: input.session.rth_start_ts_ns === undefined ? null : ns(input.session.rth_start_ts_ns),
+    });
 
     if (openPosition !== null) {
       updateExcursions(openPosition, bar);
@@ -346,6 +371,7 @@ async function runSession(input: {
       sourceEventId: makeEventId(`evt-${input.runId}-${padSequence(input.sequence.next())}-source`),
       latestQuote: quoteState.latest,
       ofiZ,
+      context,
     });
     const result = input.strategyGenerator({
       strategy_id: input.options.strategy_id,
@@ -795,6 +821,96 @@ async function estimateFill(input: {
     output.type === 'passive_fill_estimate') ?? null;
 }
 
+function loadSnapshotContextInputs(options: RealArchiveBacktestOptions): SnapshotContextInputs {
+  return {
+    vixByDate: loadVixDailyValues(options.vix_daily_paths),
+    regimeBySession: loadRegimeLabels(options.regime_labels_path),
+  };
+}
+
+function contextSeed(
+  session: RealArchiveSessionSource,
+  inputs: SnapshotContextInputs,
+): SnapshotContextSeed {
+  const vixValue = inputs.vixByDate.get(session.trading_date) ?? null;
+  return {
+    prior_day_close: session.prior_day_close ?? null,
+    prior_day_high: session.prior_day_high ?? null,
+    prior_day_low: session.prior_day_low ?? null,
+    vix_value: vixValue,
+    vix_fresh: vixValue !== null,
+    regime_label: knownSnapshotRegime(session.regime_label)
+      ?? inputs.regimeBySession.get(session.session_id)
+      ?? 'unknown',
+  };
+}
+
+function loadVixDailyValues(paths: readonly string[] | undefined): ReadonlyMap<string, number> {
+  const values = new Map<string, number>();
+  for (const filePath of paths ?? discoverVixDailyPaths()) {
+    if (!existsSync(filePath)) {
+      continue;
+    }
+    const artifact = JSON.parse(readFileSync(filePath, 'utf8')) as {
+      readonly series?: {
+        readonly VIXCLS?: readonly { readonly date?: string; readonly value?: number | null }[];
+      };
+    };
+    for (const observation of artifact.series?.VIXCLS ?? []) {
+      if (typeof observation.date === 'string' && typeof observation.value === 'number' && Number.isFinite(observation.value)) {
+        values.set(observation.date, observation.value);
+      }
+    }
+  }
+  return values;
+}
+
+function discoverVixDailyPaths(): readonly string[] {
+  const directory = join(process.cwd(), 'config', 'research');
+  if (!existsSync(directory)) {
+    return [];
+  }
+  return readdirSync(directory)
+    .filter((name) => /^vix-vxn-daily-.*\.json$/u.test(name))
+    .sort()
+    .map((name) => join(directory, name));
+}
+
+function loadRegimeLabels(path: string | undefined): ReadonlyMap<string, StrategyFeatureSnapshotRegime> {
+  const filePath = path ?? join(process.cwd(), 'artifacts', 'regime', 'regime-labels.json');
+  if (!existsSync(filePath)) {
+    return new Map();
+  }
+  const artifact = JSON.parse(readFileSync(filePath, 'utf8')) as {
+    readonly labels?: readonly {
+      readonly session_id?: string;
+      readonly confirmed_label?: string;
+      readonly regime_label?: string;
+    }[];
+  };
+  return new Map((artifact.labels ?? [])
+    .map((label): readonly [string, StrategyFeatureSnapshotRegime] | null => {
+      if (typeof label.session_id !== 'string') {
+        return null;
+      }
+      return [label.session_id, knownSnapshotRegime(label.confirmed_label ?? label.regime_label) ?? 'unknown'];
+    })
+    .filter((entry): entry is readonly [string, StrategyFeatureSnapshotRegime] => entry !== null));
+}
+
+function knownSnapshotRegime(value: unknown): StrategyFeatureSnapshotRegime | null {
+  if (
+    value === 'high'
+    || value === 'mid'
+    || value === 'low'
+    || value === 'transition_pending'
+    || value === 'unknown'
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function buildFeatureSnapshot(input: {
   readonly strategyId: StrategyId;
   readonly bar: BuiltBar;
@@ -803,6 +919,7 @@ function buildFeatureSnapshot(input: {
   readonly sourceEventId: ReturnType<typeof makeEventId>;
   readonly latestQuote: RealArchiveTopOfBook | null;
   readonly ofiZ: number | null;
+  readonly context: StrategyFeatureSnapshot['context'];
 }): StrategyFeatureSnapshot {
   const instrument = instrumentIdentity(input.session.raw_symbol);
   const bars = input.history.map((bar) => ({
@@ -894,6 +1011,7 @@ function buildFeatureSnapshot(input: {
         ofi_z: input.ofiZ,
       },
     },
+    context: input.context,
     config: DEFAULT_CONFIG,
   };
 }

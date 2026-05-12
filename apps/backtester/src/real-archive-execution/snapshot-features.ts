@@ -1,4 +1,9 @@
 import type { DbnLevel, DbnMbp1Record, DbnRecord, DbnTradesRecord } from '../../../strategy_runtime/src/data/dbn-types.js';
+import {
+  OPENING_RANGE_MINUTES,
+  type StrategyFeatureSnapshotContext,
+  type StrategyFeatureSnapshotRegime,
+} from '../../../strategy_runtime/src/strategies/index.js';
 import { computeLevelOfiContribution } from '../fidelity/ofi/index.js';
 
 export type SnapshotTrend = 'up' | 'down' | 'range' | 'unknown';
@@ -12,6 +17,36 @@ export interface SnapshotPriceBar {
 export interface SnapshotFeatureState {
   readonly previous_mbp1_by_instrument: Map<number, DbnLevel>;
   readonly bar_ofi_values: number[];
+}
+
+export interface SnapshotContextSeed {
+  readonly prior_day_close?: number | null;
+  readonly prior_day_high?: number | null;
+  readonly prior_day_low?: number | null;
+  readonly vix_value?: number | null;
+  readonly vix_fresh?: boolean;
+  readonly regime_label?: StrategyFeatureSnapshotRegime;
+}
+
+export interface SnapshotContextState {
+  today_open: number | null;
+  opening_range_high: number | null;
+  opening_range_low: number | null;
+  readonly prior_day_close: number | null;
+  readonly prior_day_high: number | null;
+  readonly prior_day_low: number | null;
+  readonly vix_value: number | null;
+  readonly vix_fresh: boolean;
+  readonly regime_label: StrategyFeatureSnapshotRegime;
+  effective_rth_start_ts_ns: bigint | null;
+}
+
+export interface SnapshotContextBarInput {
+  readonly bar: SnapshotPriceBar & {
+    readonly open: number;
+    readonly start_ts_ns: bigint;
+  };
+  readonly rth_start_ts_ns?: bigint | null;
 }
 
 export interface SupertrendSnapshot {
@@ -28,6 +63,62 @@ export function createSnapshotFeatureState(): SnapshotFeatureState {
   return {
     previous_mbp1_by_instrument: new Map(),
     bar_ofi_values: [],
+  };
+}
+
+export function createSnapshotContextState(seed: SnapshotContextSeed = {}): SnapshotContextState {
+  return {
+    today_open: null,
+    opening_range_high: null,
+    opening_range_low: null,
+    prior_day_close: seed.prior_day_close ?? null,
+    prior_day_high: seed.prior_day_high ?? null,
+    prior_day_low: seed.prior_day_low ?? null,
+    vix_value: seed.vix_value ?? null,
+    vix_fresh: seed.vix_value === null || seed.vix_value === undefined ? false : (seed.vix_fresh ?? false),
+    regime_label: seed.regime_label ?? 'unknown',
+    effective_rth_start_ts_ns: null,
+  };
+}
+
+export function updateSnapshotContextForBar(
+  state: SnapshotContextState,
+  input: SnapshotContextBarInput,
+): StrategyFeatureSnapshotContext {
+  const rthStart = input.rth_start_ts_ns ?? state.effective_rth_start_ts_ns ?? input.bar.start_ts_ns;
+  state.effective_rth_start_ts_ns ??= rthStart;
+
+  const elapsedNs = input.bar.start_ts_ns - rthStart;
+  if (elapsedNs >= 0n && state.today_open === null) {
+    state.today_open = input.bar.open;
+  }
+
+  const minuteNs = 60_000_000_000n;
+  const openingRangeNs = BigInt(OPENING_RANGE_MINUTES) * minuteNs;
+  const elapsedMinutes = elapsedNs <= 0n
+    ? 0
+    : Math.min(OPENING_RANGE_MINUTES, Number(elapsedNs / minuteNs));
+
+  if (elapsedNs >= 0n && elapsedNs < openingRangeNs) {
+    state.opening_range_high = state.opening_range_high === null
+      ? input.bar.high
+      : Math.max(state.opening_range_high, input.bar.high);
+    state.opening_range_low = state.opening_range_low === null
+      ? input.bar.low
+      : Math.min(state.opening_range_low, input.bar.low);
+  }
+
+  return {
+    prior_day_close: state.prior_day_close,
+    prior_day_high: state.prior_day_high,
+    prior_day_low: state.prior_day_low,
+    today_open: state.today_open,
+    vix_value: state.vix_value,
+    vix_fresh: state.vix_fresh,
+    regime_label: state.regime_label,
+    opening_range_high: state.opening_range_high,
+    opening_range_low: state.opening_range_low,
+    opening_range_minutes_elapsed: elapsedMinutes,
   };
 }
 

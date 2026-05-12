@@ -23,6 +23,35 @@ export type StrategyScalarValue = number | string | boolean | null;
 
 export type StrategyScalarMap = Readonly<Record<string, StrategyScalarValue>>;
 
+export const OPENING_RANGE_MINUTES = 30 as const;
+
+export type StrategyFeatureSnapshotRegime =
+  | 'high'
+  | 'mid'
+  | 'low'
+  | 'transition_pending'
+  | 'unknown';
+
+/**
+ * Producer-side context extension for QFA-7xx-A / ADR-0022.
+ *
+ * OPENING_RANGE_MINUTES defaults to 30. Strategy variants that need a
+ * different opening-range horizon must lock that choice in their own
+ * parameter manifest; the shared snapshot producer remains schema-only.
+ */
+export interface StrategyFeatureSnapshotContext {
+  readonly prior_day_close: number | null;
+  readonly prior_day_high: number | null;
+  readonly prior_day_low: number | null;
+  readonly today_open: number | null;
+  readonly vix_value: number | null;
+  readonly vix_fresh: boolean;
+  readonly regime_label: StrategyFeatureSnapshotRegime;
+  readonly opening_range_high: number | null;
+  readonly opening_range_low: number | null;
+  readonly opening_range_minutes_elapsed: number;
+}
+
 export interface StrategyRegistryEntry {
   readonly strategy_id: StrategyId;
   readonly display_name: string;
@@ -62,6 +91,7 @@ export interface StrategyFeatureSnapshot {
     readonly l3_authority: L3AuthorityState;
     readonly values: StrategyScalarMap;
   };
+  readonly context: StrategyFeatureSnapshotContext;
   readonly config: ConfigLineageRef;
 }
 

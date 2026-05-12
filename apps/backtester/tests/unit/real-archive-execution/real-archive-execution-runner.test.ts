@@ -17,6 +17,7 @@ import {
   runRealArchiveBacktest,
   type RealArchiveStrategyGenerator,
 } from '../../../src/real-archive-execution/index.js';
+import type { StrategyFeatureSnapshot } from '../../../../strategy_runtime/src/strategies/index.js';
 
 const PRICE_SCALE = 1_000_000_000n;
 const CONFIG = {
@@ -58,9 +59,26 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
     expect(result.journal_events.map((event) => event.type)).toContain('MGMT_TICK');
     expect(result.journal_events.map((event) => event.type)).toContain('MGMT_ACTION');
   });
+
+  it('populates QFA-7xx-A context fields without changing strategy behavior', async () => {
+    const snapshots: StrategyFeatureSnapshot[] = [];
+    await runFixture(capturingGenerator(snapshots));
+
+    expect(snapshots[0]?.context).toMatchObject({
+      prior_day_close: 99.5,
+      prior_day_high: 101,
+      prior_day_low: 98,
+      today_open: 100,
+      regime_label: 'high',
+      opening_range_high: 100,
+      opening_range_low: 100,
+      opening_range_minutes_elapsed: 0,
+    });
+    expect(typeof snapshots[0]?.context.vix_fresh).toBe('boolean');
+  });
 });
 
-async function runFixture() {
+async function runFixture(strategyGenerator: RealArchiveStrategyGenerator = deterministicGenerator()) {
   return runRealArchiveBacktest({
     run_id: 'run-qfa-201b-fixture',
     strategy_id: 'trend_pullback_long',
@@ -69,13 +87,17 @@ async function runFixture() {
       minimum_fill_probability_ppm: 0,
       order_quantity: 1,
     },
-    strategy_generator: deterministicGenerator(),
+    strategy_generator: strategyGenerator,
     sessions: [
       {
         session_id: '2026-02-02-rth',
         trading_date: '2026-02-02',
         raw_symbol: 'MNQH6',
         regime_label: 'high',
+        prior_day_close: 99.5,
+        prior_day_high: 101,
+        prior_day_low: 98,
+        rth_start_ts_ns: ns(0n),
         trades_records: [
           trade(1_000_000_000n, 100),
           trade(61_000_000_000n, 100.5),
@@ -89,6 +111,14 @@ async function runFixture() {
       },
     ],
   });
+}
+
+function capturingGenerator(snapshots: StrategyFeatureSnapshot[]): RealArchiveStrategyGenerator {
+  const generator = deterministicGenerator();
+  return (input) => {
+    snapshots.push(input.snapshot);
+    return generator(input);
+  };
 }
 
 function deterministicGenerator(): RealArchiveStrategyGenerator {
