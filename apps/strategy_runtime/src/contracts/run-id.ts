@@ -56,6 +56,8 @@ const STRATEGY_ID_TO_RUN_ID_ABBREV: Record<StrategyId, string> = {
   regime_mean_reversion_short: 'rmr_short',
   liquidity_sweep_reversal_long: 'lsr_long',
   liquidity_sweep_reversal_short: 'lsr_short',
+  vwap_overnight_reversal_long: 'vor_long',
+  vwap_overnight_reversal_short: 'vor_short',
 };
 
 const TIME_BAR_RE = /^[1-9][0-9]*(s|m|h|d)$/u;

@@ -72,12 +72,12 @@ export function buildVwapOvernightReversalTargets(input: {
   if (vwap === null) {
     return null;
   }
-  const pt1 = roundToTick(vwap, input.tickSize);
+  const pt1 = roundToTickVwapOvernight(vwap, input.tickSize);
   const sign = input.direction === 'long' ? 1 : -1;
   if (sign * (pt1 - input.entryPrice) <= 0) {
     return null;
   }
-  const pt2 = roundToTick(pt1 + sign * input.parameters.target_2_rr * input.riskPts, input.tickSize);
+  const pt2 = roundToTickVwapOvernight(pt1 + sign * input.parameters.target_2_rr * input.riskPts, input.tickSize);
   if (sign * (pt2 - pt1) <= 0) {
     return null;
   }
@@ -95,7 +95,7 @@ export function buildVwapOvernightReversalTargets(input: {
   ];
 }
 
-export function rewardRisk(
+export function rewardRiskVwapOvernight(
   targetPrice: number,
   entryPrice: number,
   riskPts: number,
@@ -107,14 +107,14 @@ export function rewardRisk(
   const rewardPts = direction === 'long'
     ? targetPrice - entryPrice
     : entryPrice - targetPrice;
-  return round4(rewardPts / riskPts);
+  return round4VwapOvernight(rewardPts / riskPts);
 }
 
-export function roundToTick(value: number, tickSize: number): number {
-  return round4(Math.round(value / tickSize) * tickSize);
+export function roundToTickVwapOvernight(value: number, tickSize: number): number {
+  return round4VwapOvernight(Math.round(value / tickSize) * tickSize);
 }
 
-export function round4(value: number): number {
+export function round4VwapOvernight(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 

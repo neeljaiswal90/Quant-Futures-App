@@ -14,9 +14,9 @@ import {
   clamp,
   getAtr14Pts,
   isVwapOvernightTradingRegime,
-  rewardRisk,
-  round4,
-  roundToTick,
+  rewardRiskVwapOvernight,
+  round4VwapOvernight,
+  roundToTickVwapOvernight,
   selectVwapSignedShockValue,
   thresholdForRegime,
   validateVwapOvernightReversalParameters,
@@ -56,8 +56,8 @@ export function generateVwapOvernightReversalShort(
     };
   }
 
-  const entryPrice = roundToTick(snapshot.quote.mid_px, snapshot.instrument.tick_size);
-  const stopPrice = roundToTick(
+  const entryPrice = roundToTickVwapOvernight(snapshot.quote.mid_px, snapshot.instrument.tick_size);
+  const stopPrice = roundToTickVwapOvernight(
     entryPrice + atr14 * parameters.stop_atr_multiple,
     snapshot.instrument.tick_size,
   );
@@ -88,7 +88,7 @@ export function generateVwapOvernightReversalShort(
     };
   }
 
-  const confidence = clamp(round4(parameters.confidence_score), 0, 1);
+  const confidence = clamp(round4VwapOvernight(parameters.confidence_score), 0, 1);
   const candidate: Candidate = {
     candidate_id: makeCandidateId(`candidate-${snapshot.feature_snapshot_id}-vwap_overnight_reversal_short`),
     strategy_id: 'vwap_overnight_reversal_short',
@@ -101,11 +101,11 @@ export function generateVwapOvernightReversalShort(
     proposed_ts_ns: snapshot.created_ts_ns,
     entry_price: entryPrice,
     stop_price: stopPrice,
-    risk_points: round4(riskPts),
+    risk_points: round4VwapOvernight(riskPts),
     targets,
     reward_risk: targets.map((target) => ({
       label: target.label,
-      reward_risk: rewardRisk(target.price, entryPrice, riskPts, 'short'),
+      reward_risk: rewardRiskVwapOvernight(target.price, entryPrice, riskPts, 'short'),
     })),
     confidence,
     config: snapshot.config,
@@ -161,7 +161,7 @@ export function firstVwapOvernightReversalShortRejection(
   if (overnightBps === null) {
     return 'vwap_overnight_reversal_short:missing_overnight_data';
   }
-  reasons.push(`overnight_return_bps:${round4(overnightBps)}`);
+  reasons.push(`overnight_return_bps:${round4VwapOvernight(overnightBps)}`);
   if (overnightBps < parameters.min_abs_overnight_return_bps) {
     return 'vwap_overnight_reversal_short:overnight_magnitude_below_threshold';
   }
@@ -170,7 +170,7 @@ export function firstVwapOvernightReversalShortRejection(
   if (signedShock === null) {
     return 'vwap_overnight_reversal_short:signed_shock_unavailable_warmup';
   }
-  reasons.push(`signed_shock_vwap:${round4(signedShock)}`);
+  reasons.push(`signed_shock_vwap:${round4VwapOvernight(signedShock)}`);
   if (signedShock < thresholdForRegime(regime, parameters)) {
     return 'vwap_overnight_reversal_short:signed_shock_below_threshold';
   }
