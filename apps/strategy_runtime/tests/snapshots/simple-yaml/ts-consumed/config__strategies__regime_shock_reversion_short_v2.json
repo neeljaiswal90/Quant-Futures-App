@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "strategy_id": "regime_shock_reversion_short_v2",
+  "parameters": {
+    "vwap_reference": "session_vwap",
+    "opening_window_minutes": 30,
+    "high_shock_threshold_neg": 2.2,
+    "high_shock_threshold_pos": 2,
+    "low_shock_threshold_neg": 2.9,
+    "low_shock_threshold_pos": 2.7,
+    "stop_sigma_multiple": 0.8,
+    "target_1_rr": 1.2,
+    "target_2_rr": 2,
+    "confidence_score_high": 0.72,
+    "confidence_score_low": 0.58,
+    "minimum_target_rr": 1
+  }
+}
