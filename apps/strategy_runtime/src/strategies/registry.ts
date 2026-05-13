@@ -8,6 +8,8 @@ import { generateRegimeMeanReversionLong } from './regime_mean_reversion_long.js
 import { generateRegimeMeanReversionShort } from './regime_mean_reversion_short.js';
 import { generateTrendPullbackLong } from './trend_pullback_long.js';
 import { generateTrendPullbackShort } from './trend_pullback_short.js';
+import { generateVwapOvernightReversalLong } from './vwap_overnight_reversal_long.js';
+import { generateVwapOvernightReversalShort } from './vwap_overnight_reversal_short.js';
 import type {
   ActiveStrategyGenerator,
   StrategyRegistryEntry,
@@ -95,6 +97,26 @@ const STRATEGY_REGISTRY_ENTRIES = {
     synthetic_fixture_id: 'fixture_liquidity_sweep_reversal_short',
     enabled_in_v1: true,
   },
+  vwap_overnight_reversal_long: {
+    strategy_id: 'vwap_overnight_reversal_long',
+    display_name: 'VWAP Overnight Reversal Long',
+    direction: 'long',
+    setup_family: 'vwap_overnight_reversal',
+    implementation_status: 'active',
+    extraction_ticket: 'QFA-7xx-S1',
+    synthetic_fixture_id: 'fixture_vwap_overnight_reversal_long',
+    enabled_in_v1: false,
+  },
+  vwap_overnight_reversal_short: {
+    strategy_id: 'vwap_overnight_reversal_short',
+    display_name: 'VWAP Overnight Reversal Short',
+    direction: 'short',
+    setup_family: 'vwap_overnight_reversal',
+    implementation_status: 'active',
+    extraction_ticket: 'QFA-7xx-S1',
+    synthetic_fixture_id: 'fixture_vwap_overnight_reversal_short',
+    enabled_in_v1: false,
+  },
 } as const satisfies Record<StrategyId, StrategyRegistryEntry>;
 
 export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntry>> =
@@ -113,6 +135,8 @@ const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGener
 
 const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
   ...ACTIVE_STRATEGY_GENERATORS,
+  vwap_overnight_reversal_long: generateVwapOvernightReversalLong,
+  vwap_overnight_reversal_short: generateVwapOvernightReversalShort,
 };
 
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {

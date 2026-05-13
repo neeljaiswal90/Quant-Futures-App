@@ -1,0 +1,44 @@
+{
+  "evaluations": [
+    {
+      "bar_id": "bar-001",
+      "candidate": null,
+      "gate_state": "blocked",
+      "reasons": [
+        "vwap_overnight_reversal_long:missing_regime_label"
+      ],
+      "strategy_id": "vwap_overnight_reversal_long",
+      "ts_ns": "119000000000"
+    },
+    {
+      "bar_id": "bar-002",
+      "candidate": null,
+      "gate_state": "blocked",
+      "reasons": [
+        "vwap_overnight_reversal_long:missing_regime_label"
+      ],
+      "strategy_id": "vwap_overnight_reversal_long",
+      "ts_ns": "179000000000"
+    },
+    {
+      "bar_id": "bar-003",
+      "candidate": null,
+      "gate_state": "blocked",
+      "reasons": [
+        "vwap_overnight_reversal_long:missing_regime_label"
+      ],
+      "strategy_id": "vwap_overnight_reversal_long",
+      "ts_ns": "239000000000"
+    },
+    {
+      "bar_id": "bar-004",
+      "candidate": null,
+      "gate_state": "blocked",
+      "reasons": [
+        "vwap_overnight_reversal_long:missing_regime_label"
+      ],
+      "strategy_id": "vwap_overnight_reversal_long",
+      "ts_ns": "299000000000"
+    }
+  ]
+}

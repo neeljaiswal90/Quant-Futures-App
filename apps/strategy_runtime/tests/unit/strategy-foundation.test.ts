@@ -88,7 +88,10 @@ describe('STRAT-01 active strategy registry', () => {
     expect(entries.map((entry) => entry.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
     expect(entries.every((entry) => isStrategyId(entry.strategy_id))).toBe(true);
     expect(() => getStrategyRegistryEntry('shadow_lob_scalp')).toThrow('Unknown strategy_id');
-    expect(CANDIDATE_STRATEGY_IDS).toEqual([]);
+    expect(CANDIDATE_STRATEGY_IDS).toEqual([
+      'vwap_overnight_reversal_long',
+      'vwap_overnight_reversal_short',
+    ]);
     expect(listAllStrategyRegistryEntries().map((entry) => entry.strategy_id)).toEqual([
       ...ACTIVE_STRATEGY_IDS,
       ...CANDIDATE_STRATEGY_IDS,
@@ -105,6 +108,13 @@ describe('STRAT-01 active strategy registry', () => {
         enabled_in_v1: true,
         extraction_ticket: 'QFA-7xx-S3',
         setup_family: 'regime_mean_reversion',
+      }),
+    );
+    expect(getStrategyRegistryEntry('vwap_overnight_reversal_long')).toEqual(
+      expect.objectContaining({
+        enabled_in_v1: false,
+        extraction_ticket: 'QFA-7xx-S1',
+        setup_family: 'vwap_overnight_reversal',
       }),
     );
   });

@@ -307,6 +307,8 @@ describe('QFA-114 simple-yaml block sequences', () => {
         'strategies/shared.yaml',
         'strategies/trend_pullback_long.yaml',
         'strategies/trend_pullback_short.yaml',
+        'strategies/vwap_overnight_reversal_long.yaml',
+        'strategies/vwap_overnight_reversal_short.yaml',
       ];
       for (const file of expected) {
         expect(relativeFiles).toContain(file);
@@ -332,6 +334,8 @@ describe('QFA-114 simple-yaml block sequences', () => {
       'config/strategies/breakdown_retest_short.yaml',
       'config/strategies/trend_pullback_long.yaml',
       'config/strategies/trend_pullback_short.yaml',
+      'config/strategies/vwap_overnight_reversal_long.yaml',
+      'config/strategies/vwap_overnight_reversal_short.yaml',
       'config/risk/risk-policy.yaml',
       'config/management/profiles.yaml',
       'config/session/mnq-roll-calendar.yaml',
