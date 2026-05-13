@@ -35,6 +35,8 @@ export {
   DEFAULT_STRATEGY_RUNTIME_CONFIG,
   DEFAULT_TREND_PULLBACK_LONG_CONFIG,
   DEFAULT_TREND_PULLBACK_SHORT_CONFIG,
+  DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG,
+  DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG,
   STRATEGY_CONFIG_HASH_ALGORITHM,
   STRATEGY_CONFIG_SCHEMA_VERSION,
   canonicalizeStrategyRuntimeConfig,
@@ -53,6 +55,7 @@ export {
   type StrategyConfigLineage,
   type StrategyRuntimeConfig,
   type TrendPullbackStrategyParameters,
+  type VwapOvernightReversalStrategyParameters,
 } from './strategy-config.js';
 export {
   CONFIG_HASH_ALGORITHM,

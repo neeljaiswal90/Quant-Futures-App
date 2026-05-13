@@ -79,6 +79,21 @@ export interface LiquiditySweepReversalStrategyParameters {
   readonly pre_committed_retirement: boolean;
 }
 
+export type VwapOvernightReversalTarget1Anchor = 'vwap_touch';
+
+export interface VwapOvernightReversalStrategyParameters {
+  readonly min_abs_overnight_return_bps: number;
+  readonly high_regime_z_entry_sigma: number;
+  readonly low_regime_z_entry_sigma: number;
+  readonly adx_max: number;
+  readonly exclude_first_minutes: number;
+  readonly stop_atr_multiple: number;
+  readonly target_1_anchor: VwapOvernightReversalTarget1Anchor;
+  readonly target_2_rr: number;
+  readonly time_stop_minutes: number;
+  readonly confidence_score: number;
+}
+
 export interface CandidateRankingParameters {
   readonly method: typeof CANDIDATE_RANKING_METHOD;
   readonly confidence_weight: number;
@@ -98,6 +113,8 @@ export interface StrategyConfigById {
   readonly regime_mean_reversion_short: RegimeMeanReversionStrategyParameters;
   readonly liquidity_sweep_reversal_long: LiquiditySweepReversalStrategyParameters;
   readonly liquidity_sweep_reversal_short: LiquiditySweepReversalStrategyParameters;
+  readonly vwap_overnight_reversal_long: VwapOvernightReversalStrategyParameters;
+  readonly vwap_overnight_reversal_short: VwapOvernightReversalStrategyParameters;
 }
 
 export interface StrategyConfigLineage {
@@ -206,6 +223,23 @@ export const DEFAULT_LIQUIDITY_SWEEP_REVERSAL_SHORT_CONFIG: LiquiditySweepRevers
   confidence_score: 0.63,
 };
 
+export const DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG: VwapOvernightReversalStrategyParameters = {
+  min_abs_overnight_return_bps: 15,
+  high_regime_z_entry_sigma: 1.5,
+  low_regime_z_entry_sigma: 2,
+  adx_max: 20,
+  exclude_first_minutes: 15,
+  stop_atr_multiple: 0.75,
+  target_1_anchor: 'vwap_touch',
+  target_2_rr: 1,
+  time_stop_minutes: 30,
+  confidence_score: 0.65,
+};
+
+export const DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG: VwapOvernightReversalStrategyParameters = {
+  ...DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG,
+};
+
 export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
   method: CANDIDATE_RANKING_METHOD,
   confidence_weight: 100,
@@ -222,6 +256,8 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     regime_mean_reversion_short: 60,
     liquidity_sweep_reversal_long: 70,
     liquidity_sweep_reversal_short: 80,
+    vwap_overnight_reversal_long: 90,
+    vwap_overnight_reversal_short: 100,
   },
 };
 
@@ -234,6 +270,8 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   regime_mean_reversion_short: DEFAULT_REGIME_MEAN_REVERSION_SHORT_CONFIG,
   liquidity_sweep_reversal_long: DEFAULT_LIQUIDITY_SWEEP_REVERSAL_LONG_CONFIG,
   liquidity_sweep_reversal_short: DEFAULT_LIQUIDITY_SWEEP_REVERSAL_SHORT_CONFIG,
+  vwap_overnight_reversal_long: DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG,
+  vwap_overnight_reversal_short: DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG,
 };
 
 export const DEFAULT_STRATEGY_RUNTIME_CONFIG = buildStrategyRuntimeConfig(
@@ -251,6 +289,8 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   regime_mean_reversion_short: 'regime_mean_reversion_short.yaml',
   liquidity_sweep_reversal_long: 'liquidity_sweep_reversal_long.yaml',
   liquidity_sweep_reversal_short: 'liquidity_sweep_reversal_short.yaml',
+  vwap_overnight_reversal_long: 'vwap_overnight_reversal_long.yaml',
+  vwap_overnight_reversal_short: 'vwap_overnight_reversal_short.yaml',
 } as const satisfies Record<StrategyId, string>;
 
 export function loadStrategyRuntimeConfig(
@@ -302,6 +342,14 @@ export function loadStrategyRuntimeConfig(
       'liquidity_sweep_reversal_short',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.liquidity_sweep_reversal_short), sourceFiles),
     ),
+    vwap_overnight_reversal_long: parseVwapOvernightReversalConfig(
+      'vwap_overnight_reversal_long',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.vwap_overnight_reversal_long), sourceFiles),
+    ),
+    vwap_overnight_reversal_short: parseVwapOvernightReversalConfig(
+      'vwap_overnight_reversal_short',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.vwap_overnight_reversal_short), sourceFiles),
+    ),
   };
 
   return buildStrategyRuntimeConfig(strategies, shared.ranking, sourceFiles.sort());
@@ -341,11 +389,20 @@ export function getStrategyParameters(
 ): LiquiditySweepReversalStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
+  strategyId: 'vwap_overnight_reversal_long',
+): VwapOvernightReversalStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'vwap_overnight_reversal_short',
+): VwapOvernightReversalStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
   strategyId: StrategyId,
 ): TrendPullbackStrategyParameters
   | BreakoutRetestStrategyParameters
   | RegimeMeanReversionStrategyParameters
-  | LiquiditySweepReversalStrategyParameters {
+  | LiquiditySweepReversalStrategyParameters
+  | VwapOvernightReversalStrategyParameters {
   return (config ?? DEFAULT_STRATEGY_RUNTIME_CONFIG).strategies[strategyId];
 }
 
@@ -432,6 +489,8 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'regime_mean_reversion_short',
     'liquidity_sweep_reversal_long',
     'liquidity_sweep_reversal_short',
+    'vwap_overnight_reversal_long',
+    'vwap_overnight_reversal_short',
   ], issues);
 
   const parsed = {
@@ -451,6 +510,8 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         regime_mean_reversion_short: readNumber(strategyPriority, 'regime_mean_reversion_short', '$.ranking.strategy_priority', issues),
         liquidity_sweep_reversal_long: readNumber(strategyPriority, 'liquidity_sweep_reversal_long', '$.ranking.strategy_priority', issues),
         liquidity_sweep_reversal_short: readNumber(strategyPriority, 'liquidity_sweep_reversal_short', '$.ranking.strategy_priority', issues),
+        vwap_overnight_reversal_long: readNumber(strategyPriority, 'vwap_overnight_reversal_long', '$.ranking.strategy_priority', issues),
+        vwap_overnight_reversal_short: readNumber(strategyPriority, 'vwap_overnight_reversal_short', '$.ranking.strategy_priority', issues),
       },
     },
   };
@@ -662,6 +723,56 @@ function parseLiquiditySweepReversalConfig(
   }
   if (parsed.use_regime_co_filter && parsed.allowed_regimes.length === 0) {
     issues.push({ path: '$.parameters.allowed_regimes', message: 'must not be empty when regime co-filter is enabled' });
+  }
+  throwIfIssues(issues);
+  return parsed;
+}
+
+function parseVwapOvernightReversalConfig(
+  strategyId: 'vwap_overnight_reversal_long' | 'vwap_overnight_reversal_short',
+  input: unknown,
+): VwapOvernightReversalStrategyParameters {
+  const issues: ConfigValidationIssue[] = [];
+  const { root, parameters } = parseStrategyConfigRoot(strategyId, input, issues);
+  void root;
+  checkUnknownKeys(parameters, '$.parameters', [
+    'min_abs_overnight_return_bps',
+    'high_regime_z_entry_sigma',
+    'low_regime_z_entry_sigma',
+    'adx_max',
+    'exclude_first_minutes',
+    'stop_atr_multiple',
+    'target_1_anchor',
+    'target_2_rr',
+    'time_stop_minutes',
+    'confidence_score',
+  ], issues);
+  const parsed = {
+    min_abs_overnight_return_bps: readPositiveNumber(parameters, 'min_abs_overnight_return_bps', '$.parameters', issues),
+    high_regime_z_entry_sigma: readPositiveNumber(parameters, 'high_regime_z_entry_sigma', '$.parameters', issues),
+    low_regime_z_entry_sigma: readPositiveNumber(parameters, 'low_regime_z_entry_sigma', '$.parameters', issues),
+    adx_max: readPositiveNumber(parameters, 'adx_max', '$.parameters', issues),
+    exclude_first_minutes: readNonNegativeNumber(parameters, 'exclude_first_minutes', '$.parameters', issues),
+    stop_atr_multiple: readPositiveNumber(parameters, 'stop_atr_multiple', '$.parameters', issues),
+    target_1_anchor: readLiteral(parameters, 'target_1_anchor', '$.parameters', ['vwap_touch'], issues),
+    target_2_rr: readPositiveNumber(parameters, 'target_2_rr', '$.parameters', issues),
+    time_stop_minutes: readPositiveNumber(parameters, 'time_stop_minutes', '$.parameters', issues),
+    confidence_score: readPositiveNumber(parameters, 'confidence_score', '$.parameters', issues),
+  };
+  if (!Number.isInteger(parsed.exclude_first_minutes)) {
+    issues.push({ path: '$.parameters.exclude_first_minutes', message: 'must be an integer' });
+  }
+  if (!Number.isInteger(parsed.time_stop_minutes)) {
+    issues.push({ path: '$.parameters.time_stop_minutes', message: 'must be an integer' });
+  }
+  if (parsed.low_regime_z_entry_sigma <= parsed.high_regime_z_entry_sigma) {
+    issues.push({
+      path: '$.parameters.low_regime_z_entry_sigma',
+      message: 'must be > high_regime_z_entry_sigma',
+    });
+  }
+  if (parsed.confidence_score > 1) {
+    issues.push({ path: '$.parameters.confidence_score', message: 'must be <= 1' });
   }
   throwIfIssues(issues);
   return parsed;

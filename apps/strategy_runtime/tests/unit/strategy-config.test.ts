@@ -18,7 +18,7 @@ import {
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const EXPECTED_STRATEGY_CONFIG_HASH =
-  '900acf6353ae11127ae967936ae4175548783865ba5e9473e1889dc2791f0e90';
+  '7633e683afac929c9d432dee84f6d0be4519413d627b6f8a925e36f716701f03';
 
 const STRATEGY_CONFIG_FILES = [
   'shared.yaml',
@@ -30,6 +30,8 @@ const STRATEGY_CONFIG_FILES = [
   'regime_mean_reversion_short.yaml',
   'liquidity_sweep_reversal_long.yaml',
   'liquidity_sweep_reversal_short.yaml',
+  'vwap_overnight_reversal_long.yaml',
+  'vwap_overnight_reversal_short.yaml',
 ] as const;
 
 const tempDirs: string[] = [];
@@ -126,6 +128,8 @@ describe('STRAT-07 strategy config surface', () => {
       'mid',
       'low',
     ]);
+    expect(config.strategies.vwap_overnight_reversal_long.target_1_anchor).toBe('vwap_touch');
+    expect(config.strategies.vwap_overnight_reversal_short.exclude_first_minutes).toBe(15);
     expect(config.ranking.strategy_priority).toEqual({
       trend_pullback_long: 10,
       trend_pullback_short: 20,
@@ -135,6 +139,8 @@ describe('STRAT-07 strategy config surface', () => {
       regime_mean_reversion_short: 60,
       liquidity_sweep_reversal_long: 70,
       liquidity_sweep_reversal_short: 80,
+      vwap_overnight_reversal_long: 90,
+      vwap_overnight_reversal_short: 100,
     });
     expect(config.lineage.strategy_config_hash).toBe(EXPECTED_STRATEGY_CONFIG_HASH);
     expect(config.lineage.canonical_strategy_config_json).toContain(

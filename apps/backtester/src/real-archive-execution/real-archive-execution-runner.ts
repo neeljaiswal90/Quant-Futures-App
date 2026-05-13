@@ -131,6 +131,12 @@ interface MutableRuntimeMetrics {
   closed_trade_count: number;
 }
 
+interface SessionDailyOhl {
+  readonly close: number;
+  readonly high: number;
+  readonly low: number;
+}
+
 interface EntryMetadata {
   readonly spread_bucket: SpreadBucket;
   readonly queue_ahead_bucket: QueueAheadBucket;
@@ -203,9 +209,10 @@ export async function runRealArchiveBacktest(
     fill_count: 0,
     closed_trade_count: 0,
   };
+  let priorSessionDailyOhl: SessionDailyOhl | null = null;
 
   for (const session of options.sessions) {
-    await runSession({
+    const sessionDailyOhl = await runSession({
       options,
       session,
       fillPolicy,
@@ -216,8 +223,10 @@ export async function runRealArchiveBacktest(
       strategyGenerator,
       metrics,
       snapshotContextInputs,
+      priorSessionDailyOhl,
     });
     metrics.sessions_processed += 1;
+    priorSessionDailyOhl = sessionDailyOhl ?? priorSessionDailyOhl;
   }
 
   const ledger = buildTradeLedger(events, {
@@ -257,7 +266,8 @@ async function runSession(input: {
   readonly strategyGenerator: RealArchiveStrategyGenerator;
   readonly metrics: MutableRuntimeMetrics;
   readonly snapshotContextInputs: SnapshotContextInputs;
-}): Promise<void> {
+  readonly priorSessionDailyOhl: SessionDailyOhl | null;
+}): Promise<SessionDailyOhl | null> {
   const sessionId = makeSessionId(input.session.session_id);
   const queueCursor = createRecordCursor(mergeMonotonicSources<DbnRecord>([
     {
@@ -277,10 +287,15 @@ async function runSession(input: {
   const history: BuiltBar[] = [];
   const quoteState: { latest: RealArchiveTopOfBook | null } = { latest: null };
   const featureState = createSnapshotFeatureState();
-  const contextState = createSnapshotContextState(contextSeed(input.session, input.snapshotContextInputs));
+  const contextState = createSnapshotContextState(contextSeed(
+    input.session,
+    input.snapshotContextInputs,
+    input.priorSessionDailyOhl,
+  ));
   let openPosition: OpenExecutionPosition | null = null;
   let barIndex = 0;
   let lastBar: BuiltBar | null = null;
+  let sessionDailyOhl: SessionDailyOhl | null = null;
 
   for await (const output of buildBars(recordSource(input.session, 'trades'), {
     bar_spec: input.options.bar_spec ?? '1m',
@@ -295,6 +310,16 @@ async function runSession(input: {
     const bar = output as BuiltBar;
     barIndex += 1;
     lastBar = bar;
+    const barHigh = priceNumber(bar.high);
+    const barLow = priceNumber(bar.low);
+    const barClose = priceNumber(bar.close);
+    sessionDailyOhl = sessionDailyOhl === null
+      ? { close: barClose, high: barHigh, low: barLow }
+      : {
+        close: barClose,
+        high: Math.max(sessionDailyOhl.high, barHigh),
+        low: Math.min(sessionDailyOhl.low, barLow),
+      };
     await advanceQueueCursor(queueCursor, bar.last_record_ts_ns, recentQueueRecords, (record) => {
       if (record.schema === 'mbp-1') {
         quoteState.latest = topOfBookFromMbp1(record as DbnMbp1Record);
@@ -515,6 +540,7 @@ async function runSession(input: {
     });
     input.metrics.fill_count += closed.exitFillCount;
   }
+  return sessionDailyOhl;
 }
 
 function validateOptions(options: RealArchiveBacktestOptions): void {
@@ -835,12 +861,13 @@ function loadSnapshotContextInputs(options: RealArchiveBacktestOptions): Snapsho
 function contextSeed(
   session: RealArchiveSessionSource,
   inputs: SnapshotContextInputs,
+  priorSessionDailyOhl: SessionDailyOhl | null,
 ): SnapshotContextSeed {
   const vixValue = inputs.vixByDate.get(session.trading_date) ?? null;
   return {
-    prior_day_close: session.prior_day_close ?? null,
-    prior_day_high: session.prior_day_high ?? null,
-    prior_day_low: session.prior_day_low ?? null,
+    prior_day_close: session.prior_day_close ?? priorSessionDailyOhl?.close ?? null,
+    prior_day_high: session.prior_day_high ?? priorSessionDailyOhl?.high ?? null,
+    prior_day_low: session.prior_day_low ?? priorSessionDailyOhl?.low ?? null,
     vix_value: vixValue,
     vix_fresh: vixValue !== null,
     regime_label: knownSnapshotRegime(session.regime_label)

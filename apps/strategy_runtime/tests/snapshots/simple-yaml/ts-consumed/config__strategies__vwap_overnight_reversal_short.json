@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "strategy_id": "vwap_overnight_reversal_short",
+  "parameters": {
+    "min_abs_overnight_return_bps": 15,
+    "high_regime_z_entry_sigma": 1.5,
+    "low_regime_z_entry_sigma": 2,
+    "adx_max": 20,
+    "exclude_first_minutes": 15,
+    "stop_atr_multiple": 0.75,
+    "target_1_anchor": "vwap_touch",
+    "target_2_rr": 1,
+    "time_stop_minutes": 30,
+    "confidence_score": 0.65
+  }
+}

@@ -43,6 +43,8 @@ const STRATEGY_CONFIG_PATHS: Readonly<Record<StrategyId, string>> = Object.freez
   regime_mean_reversion_short: 'config/strategies/regime_mean_reversion_short.yaml',
   liquidity_sweep_reversal_long: 'config/strategies/liquidity_sweep_reversal_long.yaml',
   liquidity_sweep_reversal_short: 'config/strategies/liquidity_sweep_reversal_short.yaml',
+  vwap_overnight_reversal_long: 'config/strategies/vwap_overnight_reversal_long.yaml',
+  vwap_overnight_reversal_short: 'config/strategies/vwap_overnight_reversal_short.yaml',
 });
 
 const RECOGNIZED_SCHEMAS: ReadonlySet<string> = new Set([

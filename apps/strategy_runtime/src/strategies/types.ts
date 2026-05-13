@@ -19,7 +19,8 @@ export type StrategySetupFamily =
   | 'trend_pullback'
   | 'breakout_retest'
   | 'regime_mean_reversion'
-  | 'liquidity_sweep_reversal';
+  | 'liquidity_sweep_reversal'
+  | 'vwap_overnight_reversal';
 
 export type StrategyImplementationStatus = 'pending_extraction' | 'active';
 
@@ -97,7 +98,8 @@ export interface StrategyRegistryEntry {
     | 'STRAT-04'
     | 'STRAT-05'
     | 'QFA-7xx-S3'
-    | 'QFA-7xx-S2';
+    | 'QFA-7xx-S2'
+    | 'QFA-7xx-S1';
   readonly synthetic_fixture_id: StrategyFixtureId;
   readonly enabled_in_v1: boolean;
 }
@@ -110,7 +112,9 @@ export type StrategyFixtureId =
   | 'fixture_regime_mean_reversion_long'
   | 'fixture_regime_mean_reversion_short'
   | 'fixture_liquidity_sweep_reversal_long'
-  | 'fixture_liquidity_sweep_reversal_short';
+  | 'fixture_liquidity_sweep_reversal_short'
+  | 'fixture_vwap_overnight_reversal_long'
+  | 'fixture_vwap_overnight_reversal_short';
 
 export interface StrategyFeatureSnapshot {
   readonly feature_snapshot_id: FeatureSnapshotId;
