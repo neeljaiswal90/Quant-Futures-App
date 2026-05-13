@@ -12,6 +12,7 @@ export const ACTIVE_STRATEGY_IDS = [
 export const CANDIDATE_STRATEGY_IDS = [
   'vwap_overnight_reversal_long',
   'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
 ] as const;
 
 export const ALL_STRATEGY_IDS = [

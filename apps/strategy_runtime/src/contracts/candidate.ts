@@ -17,6 +17,7 @@ export type CandidateSetupFamily =
   | 'trend_pullback'
   | 'breakout_retest'
   | 'regime_mean_reversion'
+  | 'regime_shock_reversion'
   | 'liquidity_sweep_reversal'
   | 'vwap_overnight_reversal';
 

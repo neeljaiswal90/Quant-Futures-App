@@ -375,6 +375,36 @@ export const VWAP_OVERNIGHT_REVERSAL_SHORT_MANAGEMENT_PROFILE = {
   ],
 } as const satisfies ManagementProfile;
 
+export const REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE = {
+  profile_id: 'regime_shock_reversion_short_v2_management_v1',
+  profile_version: MANAGEMENT_PROFILE_VERSION,
+  strategy_id: 'regime_shock_reversion_short_v2',
+  setup_family: 'regime_shock_reversion',
+  display_name: 'Regime Shock Reversion Short V2 Management V1',
+  profile_hash: MANAGEMENT_PROFILE_HASH_PLACEHOLDER,
+  initial_stop: BASE_INITIAL_STOP,
+  targets: BASE_TARGETS,
+  break_even: BASE_BREAK_EVEN,
+  trailing_stop: {
+    enabled: true,
+    mode: 'post_pt1_ticks',
+    activation: 'after_pt1',
+    distance_ticks: 8,
+    action: 'ACTIVATE_TRAIL',
+  },
+  time_stop: {
+    ...BASE_TIME_STOP,
+    max_hold_minutes: 25,
+  },
+  fail_safe: BASE_FAIL_SAFE,
+  partial_exit: BASE_PARTIAL_EXIT,
+  reasons: [
+    'management_profile:regime_shock_reversion_short_v2',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+} as const satisfies ManagementProfile;
+
 export const FALLBACK_MANAGEMENT_PROFILE = {
   profile_id: 'fallback_management_v1',
   profile_version: MANAGEMENT_PROFILE_VERSION,
@@ -416,6 +446,7 @@ export const V1_MANAGEMENT_PROFILES = {
   liquidity_sweep_reversal_short: LIQUIDITY_SWEEP_REVERSAL_SHORT_MANAGEMENT_PROFILE,
   vwap_overnight_reversal_long: VWAP_OVERNIGHT_REVERSAL_LONG_MANAGEMENT_PROFILE,
   vwap_overnight_reversal_short: VWAP_OVERNIGHT_REVERSAL_SHORT_MANAGEMENT_PROFILE,
+  regime_shock_reversion_short_v2: REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
 } as const satisfies Readonly<Record<StrategyId, ManagementProfile>>;
 
 export function resolveManagementProfile(

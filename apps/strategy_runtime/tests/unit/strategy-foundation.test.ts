@@ -91,6 +91,7 @@ describe('STRAT-01 active strategy registry', () => {
     expect(CANDIDATE_STRATEGY_IDS).toEqual([
       'vwap_overnight_reversal_long',
       'vwap_overnight_reversal_short',
+      'regime_shock_reversion_short_v2',
     ]);
     expect(listAllStrategyRegistryEntries().map((entry) => entry.strategy_id)).toEqual([
       ...ACTIVE_STRATEGY_IDS,
@@ -115,6 +116,13 @@ describe('STRAT-01 active strategy registry', () => {
         enabled_in_v1: false,
         extraction_ticket: 'QFA-7xx-S1',
         setup_family: 'vwap_overnight_reversal',
+      }),
+    );
+    expect(getStrategyRegistryEntry('regime_shock_reversion_short_v2')).toEqual(
+      expect.objectContaining({
+        enabled_in_v1: false,
+        extraction_ticket: 'QFA-7xx-S3-v2',
+        setup_family: 'regime_shock_reversion',
       }),
     );
   });

@@ -115,6 +115,7 @@ export interface StrategyConfigById {
   readonly liquidity_sweep_reversal_short: LiquiditySweepReversalStrategyParameters;
   readonly vwap_overnight_reversal_long: VwapOvernightReversalStrategyParameters;
   readonly vwap_overnight_reversal_short: VwapOvernightReversalStrategyParameters;
+  readonly regime_shock_reversion_short_v2: RegimeMeanReversionStrategyParameters;
 }
 
 export interface StrategyConfigLineage {
@@ -203,6 +204,21 @@ export const DEFAULT_REGIME_MEAN_REVERSION_SHORT_CONFIG: RegimeMeanReversionStra
   confidence_score_low: 0.57,
 };
 
+export const DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG: RegimeMeanReversionStrategyParameters = {
+  vwap_reference: 'session_vwap',
+  opening_window_minutes: 30,
+  high_shock_threshold_neg: 2.2,
+  high_shock_threshold_pos: 2,
+  low_shock_threshold_neg: 2.9,
+  low_shock_threshold_pos: 2.7,
+  stop_sigma_multiple: 0.8,
+  target_1_rr: 1.2,
+  target_2_rr: 2,
+  confidence_score_high: 0.72,
+  confidence_score_low: 0.58,
+  minimum_target_rr: 1,
+};
+
 export const DEFAULT_LIQUIDITY_SWEEP_REVERSAL_LONG_CONFIG: LiquiditySweepReversalStrategyParameters = {
   sweep_aggressor_threshold: 0.45,
   sweep_overshoot_sigma: 0.35,
@@ -258,6 +274,7 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     liquidity_sweep_reversal_short: 80,
     vwap_overnight_reversal_long: 90,
     vwap_overnight_reversal_short: 100,
+    regime_shock_reversion_short_v2: 110,
   },
 };
 
@@ -272,6 +289,7 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   liquidity_sweep_reversal_short: DEFAULT_LIQUIDITY_SWEEP_REVERSAL_SHORT_CONFIG,
   vwap_overnight_reversal_long: DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG,
   vwap_overnight_reversal_short: DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG,
+  regime_shock_reversion_short_v2: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
 };
 
 export const DEFAULT_STRATEGY_RUNTIME_CONFIG = buildStrategyRuntimeConfig(
@@ -291,6 +309,7 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   liquidity_sweep_reversal_short: 'liquidity_sweep_reversal_short.yaml',
   vwap_overnight_reversal_long: 'vwap_overnight_reversal_long.yaml',
   vwap_overnight_reversal_short: 'vwap_overnight_reversal_short.yaml',
+  regime_shock_reversion_short_v2: 'regime_shock_reversion_short_v2.yaml',
 } as const satisfies Record<StrategyId, string>;
 
 export function loadStrategyRuntimeConfig(
@@ -350,6 +369,10 @@ export function loadStrategyRuntimeConfig(
       'vwap_overnight_reversal_short',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.vwap_overnight_reversal_short), sourceFiles),
     ),
+    regime_shock_reversion_short_v2: parseRegimeMeanReversionConfig(
+      'regime_shock_reversion_short_v2',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v2), sourceFiles),
+    ),
   };
 
   return buildStrategyRuntimeConfig(strategies, shared.ranking, sourceFiles.sort());
@@ -395,6 +418,10 @@ export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
   strategyId: 'vwap_overnight_reversal_short',
 ): VwapOvernightReversalStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'regime_shock_reversion_short_v2',
+): RegimeMeanReversionStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
   strategyId: StrategyId,
@@ -491,6 +518,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'liquidity_sweep_reversal_short',
     'vwap_overnight_reversal_long',
     'vwap_overnight_reversal_short',
+    'regime_shock_reversion_short_v2',
   ], issues);
 
   const parsed = {
@@ -512,6 +540,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         liquidity_sweep_reversal_short: readNumber(strategyPriority, 'liquidity_sweep_reversal_short', '$.ranking.strategy_priority', issues),
         vwap_overnight_reversal_long: readNumber(strategyPriority, 'vwap_overnight_reversal_long', '$.ranking.strategy_priority', issues),
         vwap_overnight_reversal_short: readNumber(strategyPriority, 'vwap_overnight_reversal_short', '$.ranking.strategy_priority', issues),
+        regime_shock_reversion_short_v2: readNumber(strategyPriority, 'regime_shock_reversion_short_v2', '$.ranking.strategy_priority', issues),
       },
     },
   };
@@ -599,7 +628,7 @@ function parseBreakoutRetestConfig(
 }
 
 function parseRegimeMeanReversionConfig(
-  strategyId: 'regime_mean_reversion_long' | 'regime_mean_reversion_short',
+  strategyId: 'regime_mean_reversion_long' | 'regime_mean_reversion_short' | 'regime_shock_reversion_short_v2',
   input: unknown,
 ): RegimeMeanReversionStrategyParameters {
   const issues: ConfigValidationIssue[] = [];
