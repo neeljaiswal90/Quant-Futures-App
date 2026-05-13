@@ -421,7 +421,7 @@ async function sha256File(path: string): Promise<string> {
 function backtestOptions(outputDir: string, cacheRoot: string): BacktestRunnerOptions {
   return {
     corpus_manifest_path: MANIFEST_PATH,
-    strategy_id: 'trend_pullback_long',
+    strategy_id: 'vwap_overnight_reversal_long',
     bar_spec: '1m',
     backtest_window: {
       start: '2026-02-02T14:30:00Z',

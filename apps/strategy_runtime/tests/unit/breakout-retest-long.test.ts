@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BREAKOUT_RETEST_LONG_DEFAULTS,
   generateBreakoutRetestLong,
-  getActiveStrategyGenerator,
-  listExecutableStrategyIds,
+  getStrategyGenerator,
   type StrategyFeatureSnapshot,
   type StrategyScalarMap,
 } from '../../src/strategies/index.js';
@@ -87,9 +86,8 @@ describe('STRAT-04 breakout_retest_long extraction', () => {
     );
   });
 
-  it('keeps breakout_retest_long available after all V1 strategies are active', () => {
-    expect(listExecutableStrategyIds()).toContain('breakout_retest_long');
-    expect(getActiveStrategyGenerator('breakout_retest_long')({
+  it('keeps breakout_retest_long available through the registered inactive registry', () => {
+    expect(getStrategyGenerator('breakout_retest_long')({
       strategy_id: 'breakout_retest_long',
       snapshot: FIXTURE.snapshot,
     }).candidate?.strategy_id).toBe('breakout_retest_long');

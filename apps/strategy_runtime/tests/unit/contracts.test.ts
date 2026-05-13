@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_STRATEGY_IDS,
+  REGISTERED_INACTIVE_STRATEGY_IDS,
   channelsForEventType,
   createJournalEventEnvelope,
   isStrategyId,
@@ -185,8 +186,13 @@ describe('APP-02 contracts', () => {
     ).toThrow('ts_ns must be a decimal string');
   });
 
-  it('accepts only the Cycle2 deterministic strategy IDs', () => {
+  it('accepts the Cycle3 active IDs while preserving inactive registered lineage', () => {
     expect(ACTIVE_STRATEGY_IDS).toEqual([
+      'vwap_overnight_reversal_long',
+      'vwap_overnight_reversal_short',
+      'regime_shock_reversion_short_v2',
+    ]);
+    expect(REGISTERED_INACTIVE_STRATEGY_IDS).toEqual([
       'trend_pullback_long',
       'trend_pullback_short',
       'breakout_retest_long',
@@ -196,6 +202,7 @@ describe('APP-02 contracts', () => {
       'liquidity_sweep_reversal_long',
       'liquidity_sweep_reversal_short',
     ]);
+    expect(isStrategyId('vwap_overnight_reversal_long')).toBe(true);
     expect(isStrategyId('breakout_retest_long')).toBe(true);
     expect(parseStrategyId('breakdown_retest_short')).toBe('breakdown_retest_short');
     expect(isStrategyId('shadow_lob_scalp')).toBe(false);

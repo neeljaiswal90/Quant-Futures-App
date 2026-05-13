@@ -190,7 +190,6 @@ describe('strategy capability assessment', () => {
             ACTIVE_STRATEGY_IDS[0]!,
             ACTIVE_STRATEGY_IDS[1]!,
             ACTIVE_STRATEGY_IDS[2]!,
-            ACTIVE_STRATEGY_IDS[3]!,
           ],
         }),
       'duplicate_strategy_id',

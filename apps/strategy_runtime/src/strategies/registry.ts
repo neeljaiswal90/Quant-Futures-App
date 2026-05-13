@@ -26,7 +26,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'STRAT-02',
     synthetic_fixture_id: 'fixture_trend_pullback_long',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   trend_pullback_short: {
     strategy_id: 'trend_pullback_short',
@@ -36,7 +36,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'STRAT-03',
     synthetic_fixture_id: 'fixture_trend_pullback_short',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   breakout_retest_long: {
     strategy_id: 'breakout_retest_long',
@@ -46,7 +46,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'STRAT-04',
     synthetic_fixture_id: 'fixture_breakout_retest_long',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   breakdown_retest_short: {
     strategy_id: 'breakdown_retest_short',
@@ -56,7 +56,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'STRAT-05',
     synthetic_fixture_id: 'fixture_breakdown_retest_short',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   regime_mean_reversion_long: {
     strategy_id: 'regime_mean_reversion_long',
@@ -66,7 +66,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S3',
     synthetic_fixture_id: 'fixture_regime_mean_reversion_long',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   regime_mean_reversion_short: {
     strategy_id: 'regime_mean_reversion_short',
@@ -76,7 +76,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S3',
     synthetic_fixture_id: 'fixture_regime_mean_reversion_short',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   liquidity_sweep_reversal_long: {
     strategy_id: 'liquidity_sweep_reversal_long',
@@ -86,7 +86,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S2',
     synthetic_fixture_id: 'fixture_liquidity_sweep_reversal_long',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   liquidity_sweep_reversal_short: {
     strategy_id: 'liquidity_sweep_reversal_short',
@@ -96,7 +96,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S2',
     synthetic_fixture_id: 'fixture_liquidity_sweep_reversal_short',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   vwap_overnight_reversal_long: {
     strategy_id: 'vwap_overnight_reversal_long',
@@ -106,7 +106,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S1',
     synthetic_fixture_id: 'fixture_vwap_overnight_reversal_long',
-    enabled_in_v1: false,
+    enabled_in_v1: true,
   },
   vwap_overnight_reversal_short: {
     strategy_id: 'vwap_overnight_reversal_short',
@@ -116,7 +116,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S1',
     synthetic_fixture_id: 'fixture_vwap_overnight_reversal_short',
-    enabled_in_v1: false,
+    enabled_in_v1: true,
   },
   regime_shock_reversion_short_v2: {
     strategy_id: 'regime_shock_reversion_short_v2',
@@ -126,7 +126,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S3-v2',
     synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v2',
-    enabled_in_v1: false,
+    enabled_in_v1: true,
   },
 } as const satisfies Record<StrategyId, StrategyRegistryEntry>;
 
@@ -134,6 +134,12 @@ export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntr
   STRATEGY_REGISTRY_ENTRIES;
 
 const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
+  vwap_overnight_reversal_long: generateVwapOvernightReversalLong,
+  vwap_overnight_reversal_short: generateVwapOvernightReversalShort,
+  regime_shock_reversion_short_v2: generateRegimeShockReversionShortV2,
+};
+
+const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
   trend_pullback_long: generateTrendPullbackLong,
   trend_pullback_short: generateTrendPullbackShort,
   breakout_retest_long: generateBreakoutRetestLong,
@@ -142,13 +148,7 @@ const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGener
   regime_mean_reversion_short: generateRegimeMeanReversionShort,
   liquidity_sweep_reversal_long: generateLiquiditySweepReversalLong,
   liquidity_sweep_reversal_short: generateLiquiditySweepReversalShort,
-};
-
-const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
   ...ACTIVE_STRATEGY_GENERATORS,
-  vwap_overnight_reversal_long: generateVwapOvernightReversalLong,
-  vwap_overnight_reversal_short: generateVwapOvernightReversalShort,
-  regime_shock_reversion_short_v2: generateRegimeShockReversionShortV2,
 };
 
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {
@@ -183,7 +183,7 @@ export function listExecutableStrategyIds(): readonly StrategyId[] {
 
 export function getActiveStrategyGenerator(strategyId: StrategyId | string): ActiveStrategyGenerator {
   const parsed = parseStrategyId(strategyId);
-  const generator = ACTIVE_STRATEGY_GENERATORS[parsed];
+  const generator = STRATEGY_GENERATORS[parsed];
   if (generator === undefined) {
     throw new Error(`strategy ${parsed} is pending extraction and is not executable`);
   }

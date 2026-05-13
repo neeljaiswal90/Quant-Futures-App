@@ -119,9 +119,9 @@ account_equity_usd: 50000
       required: true,
     });
 
-    expect(loaded.profiles.trend_pullback_long.profile_hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(loaded.lineage.profile_hashes.trend_pullback_long).toBe(
-      loaded.profiles.trend_pullback_long.profile_hash,
+    expect(loaded.profiles.vwap_overnight_reversal_long.profile_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(loaded.lineage.profile_hashes.vwap_overnight_reversal_long).toBe(
+      loaded.profiles.vwap_overnight_reversal_long.profile_hash,
     );
     expect(loaded.lineage.management_config_hash).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -155,7 +155,7 @@ account_equity_usd: 50000
     } catch (error) {
       expect(error).toBeInstanceOf(ConfigValidationError);
       expect((error as ConfigValidationError).issues).toContainEqual({
-        path: '$.profiles.trend_pullback_long.trailing_stop.mode',
+        path: '$.profiles.regime_shock_reversion_short_v2.trailing_stop.mode',
         message: 'expected one of: disabled, post_pt1_ticks, post_pt1_sigma',
       });
     }
@@ -174,7 +174,7 @@ account_equity_usd: 50000
     } catch (error) {
       expect(error).toBeInstanceOf(ConfigValidationError);
       expect((error as ConfigValidationError).issues).toContainEqual({
-        path: '$.profiles.trend_pullback_long.targets',
+        path: '$.profiles.vwap_overnight_reversal_long.targets',
         message: 'pt2 minimum_reward_risk must be >= pt1 minimum_reward_risk',
       });
     }
@@ -186,7 +186,7 @@ account_equity_usd: 50000
       path: 'config/management/profiles.yaml',
       required: true,
     });
-    const profile = loaded.profiles.breakout_retest_long;
+    const profile = loaded.profiles.vwap_overnight_reversal_long;
     const reordered = {
       reasons: profile.reasons,
       partial_exit: profile.partial_exit,

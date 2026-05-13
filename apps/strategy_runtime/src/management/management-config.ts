@@ -152,56 +152,17 @@ function parseManagementProfilesConfig(input: unknown, sourceFile: string): Mana
   const profilesRecord = readRecord(root, 'profiles', '$', issues);
   checkUnknownKeys(profilesRecord, '$.profiles', ACTIVE_STRATEGY_IDS, issues);
 
-  const profiles = {
-    trend_pullback_long: parseProfile(
-      readRecord(profilesRecord, 'trend_pullback_long', '$.profiles', issues),
-      'trend_pullback_long',
-      '$.profiles.trend_pullback_long',
-      issues,
-    ),
-    trend_pullback_short: parseProfile(
-      readRecord(profilesRecord, 'trend_pullback_short', '$.profiles', issues),
-      'trend_pullback_short',
-      '$.profiles.trend_pullback_short',
-      issues,
-    ),
-    breakout_retest_long: parseProfile(
-      readRecord(profilesRecord, 'breakout_retest_long', '$.profiles', issues),
-      'breakout_retest_long',
-      '$.profiles.breakout_retest_long',
-      issues,
-    ),
-    breakdown_retest_short: parseProfile(
-      readRecord(profilesRecord, 'breakdown_retest_short', '$.profiles', issues),
-      'breakdown_retest_short',
-      '$.profiles.breakdown_retest_short',
-      issues,
-    ),
-    regime_mean_reversion_long: parseProfile(
-      readRecord(profilesRecord, 'regime_mean_reversion_long', '$.profiles', issues),
-      'regime_mean_reversion_long',
-      '$.profiles.regime_mean_reversion_long',
-      issues,
-    ),
-    regime_mean_reversion_short: parseProfile(
-      readRecord(profilesRecord, 'regime_mean_reversion_short', '$.profiles', issues),
-      'regime_mean_reversion_short',
-      '$.profiles.regime_mean_reversion_short',
-      issues,
-    ),
-    liquidity_sweep_reversal_long: parseProfile(
-      readRecord(profilesRecord, 'liquidity_sweep_reversal_long', '$.profiles', issues),
-      'liquidity_sweep_reversal_long',
-      '$.profiles.liquidity_sweep_reversal_long',
-      issues,
-    ),
-    liquidity_sweep_reversal_short: parseProfile(
-      readRecord(profilesRecord, 'liquidity_sweep_reversal_short', '$.profiles', issues),
-      'liquidity_sweep_reversal_short',
-      '$.profiles.liquidity_sweep_reversal_short',
-      issues,
-    ),
-  } satisfies Readonly<Record<ActiveStrategyId, ManagementProfile>>;
+  const profiles = Object.fromEntries(
+    ACTIVE_STRATEGY_IDS.map((strategyId) => [
+      strategyId,
+      parseProfile(
+        readRecord(profilesRecord, strategyId, '$.profiles', issues),
+        strategyId,
+        `$.profiles.${strategyId}`,
+        issues,
+      ),
+    ]),
+  ) as Readonly<Record<ActiveStrategyId, ManagementProfile>>;
 
   const fallback = parseProfile(
     readRecord(root, 'fallback_profile', '$', issues),
@@ -220,20 +181,16 @@ function parseManagementProfilesConfig(input: unknown, sourceFile: string): Mana
 }
 
 function buildManagementProfilesConfig(
-  profiles: Readonly<Record<StrategyId, ManagementProfile>> | Readonly<Record<ActiveStrategyId, ManagementProfile>>,
+  profiles: Readonly<Partial<Record<StrategyId, ManagementProfile>>> & Readonly<Record<ActiveStrategyId, ManagementProfile>>,
   fallbackProfile: ManagementProfile,
   sourceFile: string,
 ): ManagementProfilesConfig {
-  const hashedProfiles = {
-    trend_pullback_long: withProfileHash(profiles.trend_pullback_long),
-    trend_pullback_short: withProfileHash(profiles.trend_pullback_short),
-    breakout_retest_long: withProfileHash(profiles.breakout_retest_long),
-    breakdown_retest_short: withProfileHash(profiles.breakdown_retest_short),
-    regime_mean_reversion_long: withProfileHash(profiles.regime_mean_reversion_long),
-    regime_mean_reversion_short: withProfileHash(profiles.regime_mean_reversion_short),
-    liquidity_sweep_reversal_long: withProfileHash(profiles.liquidity_sweep_reversal_long),
-    liquidity_sweep_reversal_short: withProfileHash(profiles.liquidity_sweep_reversal_short),
-  } satisfies Readonly<Record<ActiveStrategyId, ManagementProfile>>;
+  const hashedProfiles = Object.fromEntries(
+    ACTIVE_STRATEGY_IDS.map((strategyId) => [
+      strategyId,
+      withProfileHash(profiles[strategyId]),
+    ]),
+  ) as Readonly<Record<ActiveStrategyId, ManagementProfile>>;
   const hashedFallback = withProfileHash(fallbackProfile);
   const configWithoutLineage = {
     version: MANAGEMENT_CONFIG_SCHEMA_VERSION,
@@ -250,16 +207,14 @@ function buildManagementProfilesConfig(
       management_config_hash_algorithm: MANAGEMENT_CONFIG_HASH_ALGORITHM,
       canonical_management_config_json: canonical,
       profile_hashes: {
-        trend_pullback_long: hashedProfiles.trend_pullback_long.profile_hash,
-        trend_pullback_short: hashedProfiles.trend_pullback_short.profile_hash,
-        breakout_retest_long: hashedProfiles.breakout_retest_long.profile_hash,
-        breakdown_retest_short: hashedProfiles.breakdown_retest_short.profile_hash,
-        regime_mean_reversion_long: hashedProfiles.regime_mean_reversion_long.profile_hash,
-        regime_mean_reversion_short: hashedProfiles.regime_mean_reversion_short.profile_hash,
-        liquidity_sweep_reversal_long: hashedProfiles.liquidity_sweep_reversal_long.profile_hash,
-        liquidity_sweep_reversal_short: hashedProfiles.liquidity_sweep_reversal_short.profile_hash,
+        ...Object.fromEntries(
+          ACTIVE_STRATEGY_IDS.map((strategyId) => [
+            strategyId,
+            hashedProfiles[strategyId].profile_hash,
+          ]),
+        ),
         fallback: hashedFallback.profile_hash,
-      },
+      } as Readonly<Record<ActiveStrategyId | 'fallback', string>>,
     },
     source_file: sourceFile,
   };
@@ -301,7 +256,15 @@ function parseProfile(
       record,
       'setup_family',
       path,
-      ['trend_pullback', 'breakout_retest', 'regime_mean_reversion', 'liquidity_sweep_reversal', 'fallback'],
+      [
+        'trend_pullback',
+        'breakout_retest',
+        'regime_mean_reversion',
+        'liquidity_sweep_reversal',
+        'vwap_overnight_reversal',
+        'regime_shock_reversion',
+        'fallback',
+      ],
       issues,
     ),
     display_name: readString(record, 'display_name', path, issues),

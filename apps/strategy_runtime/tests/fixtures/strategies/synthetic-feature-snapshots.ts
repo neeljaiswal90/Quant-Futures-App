@@ -641,13 +641,8 @@ export const STRATEGY_SYNTHETIC_FIXTURES = {
 
 export function listSyntheticStrategyFixtures(): readonly SyntheticStrategyFixture[] {
   return [
-    STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long,
-    STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_short,
-    STRATEGY_SYNTHETIC_FIXTURES.breakout_retest_long,
-    STRATEGY_SYNTHETIC_FIXTURES.breakdown_retest_short,
-    STRATEGY_SYNTHETIC_FIXTURES.regime_mean_reversion_long,
-    STRATEGY_SYNTHETIC_FIXTURES.regime_mean_reversion_short,
-    STRATEGY_SYNTHETIC_FIXTURES.liquidity_sweep_reversal_long,
-    STRATEGY_SYNTHETIC_FIXTURES.liquidity_sweep_reversal_short,
+    STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long,
+    STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_short,
+    STRATEGY_SYNTHETIC_FIXTURES.regime_shock_reversion_short_v2,
   ];
 }
