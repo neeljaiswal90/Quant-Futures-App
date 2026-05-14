@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   generateTrendPullbackShort,
-  getActiveStrategyGenerator,
-  listExecutableStrategyIds,
+  getStrategyGenerator,
   TREND_PULLBACK_SHORT_DEFAULTS,
   type StrategyFeatureSnapshot,
   type StrategyScalarMap,
@@ -87,9 +86,8 @@ describe('STRAT-03 trend_pullback_short extraction', () => {
     );
   });
 
-  it('keeps trend_pullback_short available through the active registry', () => {
-    expect(listExecutableStrategyIds()).toContain('trend_pullback_short');
-    expect(getActiveStrategyGenerator('trend_pullback_short')({
+  it('keeps trend_pullback_short available through the registered inactive registry', () => {
+    expect(getStrategyGenerator('trend_pullback_short')({
       strategy_id: 'trend_pullback_short',
       snapshot: FIXTURE.snapshot,
     }).candidate?.strategy_id).toBe('trend_pullback_short');

@@ -304,7 +304,7 @@ async function runDeterministicRuntimeFixture(
       venue_costs: loadVenueCostTable(),
     }),
   });
-  const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+  const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
   await runner.publishExternalEvent(sourceQuoteEvent(snapshot, String(snapshot.source_event_id)));
   const cycle = await runner.processFeatureSnapshot(snapshot);
   const openPosition = cycle.open_positions[0];

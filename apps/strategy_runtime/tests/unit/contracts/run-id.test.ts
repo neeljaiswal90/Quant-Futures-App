@@ -12,6 +12,7 @@ import {
 import type { BacktestWindow } from '../../../src/contracts/run-spec.js';
 import {
   ACTIVE_STRATEGY_IDS,
+  ALL_STRATEGY_IDS,
   type StrategyId,
 } from '../../../src/contracts/strategy-ids.js';
 import { buildBacktestWindow, buildMinimalRunSpec } from './helpers/run-spec-builder.js';
@@ -181,7 +182,6 @@ describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
   it.each([
     [2, 'multi2'],
     [3, 'multi3'],
-    [4, 'multi4'],
   ])('multi-strategy with count %d -> %s', (count, expected) => {
     const ids = ACTIVE_STRATEGY_IDS.slice(0, count) as readonly StrategyId[];
     expect(deriveStrategyToken(ids)).toBe(expected);
@@ -193,8 +193,8 @@ describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
   // (Record<StrategyId, string> requires complete keying) and at runtime
   // (the abbreviation lookup throws). Both signals point future contributors
   // at the right place.
-  it('every active StrategyId has a run-id abbreviation', () => {
-    for (const id of ACTIVE_STRATEGY_IDS) {
+  it('every registered StrategyId has a run-id abbreviation', () => {
+    for (const id of ALL_STRATEGY_IDS) {
       expect(() => deriveStrategyToken([id as StrategyId])).not.toThrow();
     }
   });

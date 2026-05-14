@@ -41,7 +41,7 @@ import type { StrategyFeatureSnapshot } from '../../src/strategies/index.js';
 
 const RUN_ID = makeRunId('run-orch-02');
 const SESSION_ID = makeSessionId('2026-04-23-rth');
-const RTH_TS = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot.created_ts_ns;
+const RTH_TS = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot.created_ts_ns;
 const ETH_TS = ns('1776983400000000000');
 const MAINTENANCE_TS = ns('1776979800000000000');
 const ROLL_BLOCK_TS = ns('1781271600000000000');
@@ -63,7 +63,7 @@ function createRunner(options: {
   const executionAdapter = options.executionAdapter ?? createSimulatedExecutionAdapter({
     venue_costs: loadVenueCostTable(),
   });
-  const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+  const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
   let initial: SessionRiskState | undefined;
   if (options.initialOpenTradeCount !== undefined) {
     initial = createSessionRiskState({
@@ -143,10 +143,10 @@ function rejectedOrderResult(
 
 function sourceQuoteEvent(
   eventId: string,
-  tsNs = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot.created_ts_ns,
+  tsNs = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot.created_ts_ns,
   overrides: Partial<JournalEventPayloadFor<'QUOTE'>> = {},
 ): JournalEventEnvelope<'QUOTE', JournalEventPayloadFor<'QUOTE'>> {
-  const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+  const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
   return createJournalEventEnvelope({
     event_id: makeEventId(eventId),
     type: 'QUOTE',
@@ -174,7 +174,7 @@ function snapshotAt(input: {
   readonly isRth?: boolean;
   readonly isRollBlock?: boolean;
 }): StrategyFeatureSnapshot {
-  const base = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+  const base = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
   return {
     ...base,
     feature_snapshot_id: makeFeatureSnapshotId(input.id),
@@ -236,7 +236,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     container.eventBus.subscribe({}, (delivery) => {
       published.push(delivery.event);
     });
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
 
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const result = await runner.processFeatureSnapshot(snapshot);
@@ -296,7 +296,7 @@ describe('ORCH-02 deterministic runner loop', () => {
       container.config.riskConfig?.lineage.risk_config_hash,
     );
     expect(result.position_events[0]!.payload.management_profile_hash).toBe(
-      container.config.managementProfiles?.profiles.trend_pullback_long.profile_hash,
+      container.config.managementProfiles?.profiles.vwap_overnight_reversal_long.profile_hash,
     );
   });
 
@@ -306,7 +306,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     container.eventBus.subscribe({}, (delivery) => {
       published.push(delivery.event);
     });
-    const base = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const base = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     const snapshot = {
       ...base,
       microstructure: {
@@ -326,7 +326,7 @@ describe('ORCH-02 deterministic runner loop', () => {
   });
 
   it('refuses non-authoritative MBO or shadow fields laundered into decision maps', () => {
-    const base = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const base = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     const snapshot = {
       ...base,
       indicators: {
@@ -481,7 +481,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     const { runner } = createRunner();
     const opening = await openPositionFromSnapshot(
       runner,
-      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot,
     );
     const openPosition = opening.open_positions[0]!;
 
@@ -539,7 +539,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     const { runner } = createRunner();
     const opening = await openPositionFromSnapshot(
       runner,
-      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_short.snapshot,
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_short.snapshot,
     );
     const openPosition = opening.open_positions[0]!;
 
@@ -564,7 +564,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     });
     const opening = await openPositionFromSnapshot(
       runner,
-      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot,
     );
     const openPosition = opening.open_positions[0]!;
 
@@ -595,11 +595,11 @@ describe('ORCH-02 deterministic runner loop', () => {
     const { runner } = createRunner();
     await openPositionFromSnapshot(
       runner,
-      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot,
     );
     await openPositionFromSnapshot(
       runner,
-      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_short.snapshot,
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_short.snapshot,
     );
     const expectedOrder = runner.snapshot().open_positions
       .map((position) => String(position.position_id))
@@ -636,7 +636,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     const { runner } = createRunner();
     await openPositionFromSnapshot(
       runner,
-      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot,
     );
     const rollBlock = snapshotAt({
       id: 'fixture-roll-block-no-flatten',
@@ -668,7 +668,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     const { runner } = createRunner();
     await openPositionFromSnapshot(
       runner,
-      STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot,
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot,
     );
 
     const first = await processRollFlattenSnapshot(runner, { id: 'fixture-roll-flatten-duplicate-1' });
@@ -687,7 +687,7 @@ describe('ORCH-02 deterministic runner loop', () => {
   it('produces deterministic roll forced-flatten output across repeated equivalent runs', async () => {
     const first = createRunner();
     const second = createRunner();
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     await openPositionFromSnapshot(first.runner, snapshot);
     await openPositionFromSnapshot(second.runner, snapshot);
 
@@ -705,7 +705,7 @@ describe('ORCH-02 deterministic runner loop', () => {
 
   it('keeps existing-position management active while new entries are blocked', async () => {
     const { runner } = createRunner();
-    const openingSnapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const openingSnapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     await runner.publishExternalEvent(sourceQuoteEvent(String(openingSnapshot.source_event_id)));
     const opening = await runner.processFeatureSnapshot(openingSnapshot);
     const openPosition = opening.open_positions[0]!;
@@ -766,7 +766,7 @@ describe('ORCH-02 deterministic runner loop', () => {
 
   it('routes risk rejection without submitting simulated orders', async () => {
     const { runner } = createRunner({ initialOpenTradeCount: 3 });
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
 
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const result = await runner.processFeatureSnapshot(snapshot);
@@ -785,7 +785,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     const { runner } = createRunner({
       executionAdapter: createRejectingExecutionAdapter('sim_reject:no_liquidity'),
     });
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
 
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const result = await runner.processFeatureSnapshot(snapshot);
@@ -812,7 +812,7 @@ describe('ORCH-02 deterministic runner loop', () => {
 
   it('drives open positions through management ticks with causation-safe timestamps', async () => {
     const { runner } = createRunner();
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const cycle = await runner.processFeatureSnapshot(snapshot);
     const openPosition = cycle.open_positions[0]!;
@@ -891,7 +891,7 @@ describe('ORCH-02 deterministic runner loop', () => {
         },
       },
     });
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const cycle = await runner.processFeatureSnapshot(snapshot);
     const openedPosition = cycle.open_positions[0]!;
@@ -947,7 +947,7 @@ describe('ORCH-02 deterministic runner loop', () => {
 
   it('executes fail-safe exits through simulated close fills', async () => {
     const { runner } = createRunner();
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const cycle = await runner.processFeatureSnapshot(snapshot);
     const openPosition = cycle.open_positions[0]!;
@@ -984,7 +984,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     const { runner } = createRunner({
       executionAdapter: createFillThenRejectExecutionAdapter('sim_reject:failsafe_no_fill'),
     });
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const cycle = await runner.processFeatureSnapshot(snapshot);
     const openPosition = cycle.open_positions[0]!;
@@ -1021,7 +1021,7 @@ describe('ORCH-02 deterministic runner loop', () => {
 
   it('executes time-stop exits through simulated close fills', async () => {
     const { runner } = createRunner();
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const cycle = await runner.processFeatureSnapshot(snapshot);
     const openPosition = cycle.open_positions[0]!;
@@ -1053,7 +1053,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     const { runner } = createRunner({
       executionAdapter: createFillThenRejectExecutionAdapter('sim_reject:timestop_no_fill'),
     });
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const cycle = await runner.processFeatureSnapshot(snapshot);
     const openPosition = cycle.open_positions[0]!;
@@ -1133,7 +1133,7 @@ describe('ORCH-02 deterministic runner loop', () => {
   it('produces byte-stable runner snapshots across repeated equivalent cycles', async () => {
     const first = createRunner();
     const second = createRunner();
-    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.trend_pullback_long.snapshot;
+    const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
 
     await first.runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     await second.runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));

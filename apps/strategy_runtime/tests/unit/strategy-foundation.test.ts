@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_STRATEGY_IDS,
   CANDIDATE_STRATEGY_IDS,
+  REGISTERED_INACTIVE_STRATEGY_IDS,
   isStrategyId,
   stableJsonStringify,
   type JsonValue,
@@ -35,7 +36,7 @@ function listStrategySourceFiles(directory = join(process.cwd(), 'apps/strategy_
 }
 
 describe('STRAT-00 synthetic feature snapshots', () => {
-  it('provides one deterministic fixture for each active V1 strategy', () => {
+  it('provides one deterministic fixture for each active Cycle3 strategy', () => {
     const fixtures = listSyntheticStrategyFixtures();
 
     expect(fixtures.map((fixture) => fixture.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
@@ -75,52 +76,59 @@ describe('STRAT-00 synthetic feature snapshots', () => {
     const second = stableJsonStringify(fixtures);
 
     expect(first).toBe(second);
-    expect(first).toContain('"strategy_id":"trend_pullback_long"');
-    expect(first).toContain('"created_ts_ns":"1776957960000000000"');
+    expect(first).toContain('"strategy_id":"vwap_overnight_reversal_long"');
+    expect(first).toContain('"created_ts_ns":"1776958440000000000"');
   });
 });
 
 describe('STRAT-01 active strategy registry', () => {
-  it('registers exactly the eight Cycle2 strategies and no shadow strategies', () => {
+  it('registers the three active Cycle3 strategies and preserves inactive lineage', () => {
     const entries = listStrategyRegistryEntries();
 
     expect(validateStrategyRegistry()).toEqual([]);
     expect(entries.map((entry) => entry.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
     expect(entries.every((entry) => isStrategyId(entry.strategy_id))).toBe(true);
     expect(() => getStrategyRegistryEntry('shadow_lob_scalp')).toThrow('Unknown strategy_id');
-    expect(CANDIDATE_STRATEGY_IDS).toEqual([
-      'vwap_overnight_reversal_long',
-      'vwap_overnight_reversal_short',
-      'regime_shock_reversion_short_v2',
+    expect(CANDIDATE_STRATEGY_IDS).toEqual([]);
+    expect(REGISTERED_INACTIVE_STRATEGY_IDS).toEqual([
+      'trend_pullback_long',
+      'trend_pullback_short',
+      'breakout_retest_long',
+      'breakdown_retest_short',
+      'regime_mean_reversion_long',
+      'regime_mean_reversion_short',
+      'liquidity_sweep_reversal_long',
+      'liquidity_sweep_reversal_short',
     ]);
     expect(listAllStrategyRegistryEntries().map((entry) => entry.strategy_id)).toEqual([
       ...ACTIVE_STRATEGY_IDS,
       ...CANDIDATE_STRATEGY_IDS,
+      ...REGISTERED_INACTIVE_STRATEGY_IDS,
     ]);
     expect(getStrategyRegistryEntry('liquidity_sweep_reversal_long')).toEqual(
       expect.objectContaining({
-        enabled_in_v1: true,
+        enabled_in_v1: false,
         extraction_ticket: 'QFA-7xx-S2',
         setup_family: 'liquidity_sweep_reversal',
       }),
     );
     expect(getStrategyRegistryEntry('regime_mean_reversion_long')).toEqual(
       expect.objectContaining({
-        enabled_in_v1: true,
+        enabled_in_v1: false,
         extraction_ticket: 'QFA-7xx-S3',
         setup_family: 'regime_mean_reversion',
       }),
     );
     expect(getStrategyRegistryEntry('vwap_overnight_reversal_long')).toEqual(
       expect.objectContaining({
-        enabled_in_v1: false,
+        enabled_in_v1: true,
         extraction_ticket: 'QFA-7xx-S1',
         setup_family: 'vwap_overnight_reversal',
       }),
     );
     expect(getStrategyRegistryEntry('regime_shock_reversion_short_v2')).toEqual(
       expect.objectContaining({
-        enabled_in_v1: false,
+        enabled_in_v1: true,
         extraction_ticket: 'QFA-7xx-S3-v2',
         setup_family: 'regime_shock_reversion',
       }),
@@ -129,87 +137,51 @@ describe('STRAT-01 active strategy registry', () => {
 
   it('groups strategies by direction and setup family deterministically', () => {
     expect(listStrategyIdsByDirection('long')).toEqual([
-      'trend_pullback_long',
-      'breakout_retest_long',
-      'regime_mean_reversion_long',
-      'liquidity_sweep_reversal_long',
+      'vwap_overnight_reversal_long',
     ]);
     expect(listStrategyIdsByDirection('short')).toEqual([
-      'trend_pullback_short',
-      'breakdown_retest_short',
-      'regime_mean_reversion_short',
-      'liquidity_sweep_reversal_short',
+      'vwap_overnight_reversal_short',
+      'regime_shock_reversion_short_v2',
     ]);
     expect(listStrategyIdsBySetupFamily('trend_pullback')).toEqual([
-      'trend_pullback_long',
-      'trend_pullback_short',
     ]);
     expect(listStrategyIdsBySetupFamily('breakout_retest')).toEqual([
-      'breakout_retest_long',
-      'breakdown_retest_short',
     ]);
     expect(listStrategyIdsBySetupFamily('regime_mean_reversion')).toEqual([
-      'regime_mean_reversion_long',
-      'regime_mean_reversion_short',
     ]);
     expect(listStrategyIdsBySetupFamily('liquidity_sweep_reversal')).toEqual([
-      'liquidity_sweep_reversal_long',
-      'liquidity_sweep_reversal_short',
+    ]);
+    expect(listStrategyIdsBySetupFamily('vwap_overnight_reversal')).toEqual([
+      'vwap_overnight_reversal_long',
+      'vwap_overnight_reversal_short',
+    ]);
+    expect(listStrategyIdsBySetupFamily('regime_shock_reversion')).toEqual([
+      'regime_shock_reversion_short_v2',
     ]);
   });
 
-  it('keeps all Cycle2 strategies executable', () => {
+  it('keeps all Cycle3 active strategies executable', () => {
     expect(listStrategyRegistryEntries()).toEqual([
       expect.objectContaining({
-        strategy_id: 'trend_pullback_long',
-        extraction_ticket: 'STRAT-02',
+        strategy_id: 'vwap_overnight_reversal_long',
+        extraction_ticket: 'QFA-7xx-S1',
         implementation_status: 'active',
       }),
       expect.objectContaining({
-        strategy_id: 'trend_pullback_short',
-        extraction_ticket: 'STRAT-03',
+        strategy_id: 'vwap_overnight_reversal_short',
+        extraction_ticket: 'QFA-7xx-S1',
         implementation_status: 'active',
       }),
       expect.objectContaining({
-        strategy_id: 'breakout_retest_long',
-        extraction_ticket: 'STRAT-04',
-        implementation_status: 'active',
-      }),
-      expect.objectContaining({
-        strategy_id: 'breakdown_retest_short',
-        extraction_ticket: 'STRAT-05',
-        implementation_status: 'active',
-      }),
-      expect.objectContaining({
-        strategy_id: 'regime_mean_reversion_long',
-        extraction_ticket: 'QFA-7xx-S3',
-        implementation_status: 'active',
-      }),
-      expect.objectContaining({
-        strategy_id: 'regime_mean_reversion_short',
-        extraction_ticket: 'QFA-7xx-S3',
-        implementation_status: 'active',
-      }),
-      expect.objectContaining({
-        strategy_id: 'liquidity_sweep_reversal_long',
-        extraction_ticket: 'QFA-7xx-S2',
-        implementation_status: 'active',
-      }),
-      expect.objectContaining({
-        strategy_id: 'liquidity_sweep_reversal_short',
-        extraction_ticket: 'QFA-7xx-S2',
+        strategy_id: 'regime_shock_reversion_short_v2',
+        extraction_ticket: 'QFA-7xx-S3-v2',
         implementation_status: 'active',
       }),
     ]);
     expect(listExecutableStrategyIds()).toEqual([
-      'trend_pullback_long',
-      'trend_pullback_short',
-      'breakout_retest_long',
-      'breakdown_retest_short',
-      'regime_mean_reversion_long',
-      'regime_mean_reversion_short',
-      'liquidity_sweep_reversal_long',
-      'liquidity_sweep_reversal_short',
+      'vwap_overnight_reversal_long',
+      'vwap_overnight_reversal_short',
+      'regime_shock_reversion_short_v2',
     ]);
   });
 

@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BREAKDOWN_RETEST_SHORT_DEFAULTS,
   generateBreakdownRetestShort,
-  getActiveStrategyGenerator,
-  listExecutableStrategyIds,
+  getStrategyGenerator,
   type StrategyFeatureSnapshot,
   type StrategyScalarMap,
 } from '../../src/strategies/index.js';
@@ -87,9 +86,8 @@ describe('STRAT-05 breakdown_retest_short extraction', () => {
     );
   });
 
-  it('keeps breakdown_retest_short available through the active registry', () => {
-    expect(listExecutableStrategyIds()).toContain('breakdown_retest_short');
-    expect(getActiveStrategyGenerator('breakdown_retest_short')({
+  it('keeps breakdown_retest_short available through the registered inactive registry', () => {
+    expect(getStrategyGenerator('breakdown_retest_short')({
       strategy_id: 'breakdown_retest_short',
       snapshot: FIXTURE.snapshot,
     }).candidate?.strategy_id).toBe('breakdown_retest_short');

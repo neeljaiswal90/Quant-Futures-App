@@ -4,7 +4,7 @@ import {
   isRuntimeEventType,
   type RuntimeEventType,
 } from './event-types.js';
-import { ACTIVE_STRATEGY_IDS } from '../strategy-ids.js';
+import { ALL_STRATEGY_IDS } from '../strategy-ids.js';
 
 export type JournalEventSchemaIssueCode =
   | 'invalid_envelope'
@@ -32,7 +32,7 @@ type Validator = (
   path: string,
 ) => void;
 
-const STRATEGY_IDS = ACTIVE_STRATEGY_IDS;
+const STRATEGY_IDS = ALL_STRATEGY_IDS;
 
 const PAYLOAD_VALIDATORS = {
   CONN: validateConnectionPayload,
