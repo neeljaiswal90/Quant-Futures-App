@@ -1,0 +1,14 @@
+{
+  "name": "qfa-612-direct-websocket-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spike:01": "npx tsx spike-01-session.ts",
+    "spike:02": "npx tsx spike-02-framing.ts",
+    "spike:03": "npx tsx spike-03-keepalive.ts",
+    "spike:04": "npx tsx spike-04-reconnect.ts",
+    "spike:05": "npx tsx spike-05-order.ts",
+    "spike:06": "npx tsx spike-06-shutdown.ts",
+    "spike:all": "npm run spike:01 && npm run spike:02 && npm run spike:03 && npm run spike:04 && npm run spike:05 && npm run spike:06"
+  }
+}
