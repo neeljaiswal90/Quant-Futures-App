@@ -25,7 +25,7 @@ function buildValidEnvelope(): AnyJournalEventEnvelope {
     run_started_at_ns: ns(1_801_000_000_000_000_000n),
   };
   return {
-    schema_version: 1,
+    schema_version: 2,
     event_id: 'evt-bt-0' as AnyJournalEventEnvelope['event_id'],
     type: 'BACKTEST_RUN_META',
     ts_ns: ns(1_801_000_000_000_000_000n),

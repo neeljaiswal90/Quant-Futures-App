@@ -339,8 +339,8 @@ function runJournalSchemaChecks(
   const checks: Rel00aCheck[] = [];
   checks.push(validateEventSet('runtime_a_schema_valid', runtimeA));
   checks.push(validateEventSet('runtime_b_schema_valid', runtimeB));
-  checks.push(checkBoolean('runtime_a_schema_version_v1', runtimeA.every((event) => event.schema_version === 1)));
-  checks.push(checkBoolean('runtime_b_schema_version_v1', runtimeB.every((event) => event.schema_version === 1)));
+  checks.push(checkBoolean('runtime_a_schema_version_v2', runtimeA.every((event) => event.schema_version === 2)));
+  checks.push(checkBoolean('runtime_b_schema_version_v2', runtimeB.every((event) => event.schema_version === 2)));
   return group(checks);
 }
 
