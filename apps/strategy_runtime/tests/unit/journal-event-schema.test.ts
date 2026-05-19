@@ -119,13 +119,13 @@ describe('OBS-01 journal event schema validation', () => {
   });
 
   it('rejects unsupported schema versions', () => {
-    const result = validateJournalEventEnvelope({ ...quoteEvent(), schema_version: 2 });
+    const result = validateJournalEventEnvelope({ ...quoteEvent(), schema_version: 3 });
 
     expect(result.ok).toBe(false);
     expect(result.issues).toContainEqual({
       path: '$.schema_version',
       code: 'unsupported_schema_version',
-      message: 'must be 1',
+      message: 'must be one of: 1, 2',
     });
   });
 

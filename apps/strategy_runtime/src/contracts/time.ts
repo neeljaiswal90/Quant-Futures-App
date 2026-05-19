@@ -27,6 +27,7 @@ export const TIMESTAMP_NS_FIELD_NAMES = [
   'start_ts_ns',
   'end_ts_ns',
   'ts_ns',
+  'ts_ns_local',
 ] as const;
 
 const TIMESTAMP_NS_FIELD_NAME_SET = new Set<string>(TIMESTAMP_NS_FIELD_NAMES);

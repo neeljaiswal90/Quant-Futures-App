@@ -18,6 +18,10 @@ export const RUNTIME_EVENT_TYPES = [
   'RANK',
   'RISK_GATE',
   'SIZING',
+  'ORDER_ACK_CANCEL',
+  'ORDER_ACK_FILL',
+  'ORDER_ACK_SUBMISSION',
+  'ORDER_BROKER_REJECT',
   'ORDER_INTENT',
   'SIM_FILL',
   'EXEC_REJECT',
@@ -30,7 +34,11 @@ export const RUNTIME_EVENT_TYPES = [
 
 export type RuntimeEventType = (typeof RUNTIME_EVENT_TYPES)[number];
 
-export type JournalEventTimestampCategory = 'source_market_data' | 'derived' | 'system_control';
+export type JournalEventTimestampCategory =
+  | 'source_market_data'
+  | 'broker_originated'
+  | 'derived'
+  | 'system_control';
 
 export const SOURCE_MARKET_DATA_EVENT_TYPES = [
   'QUOTE',
@@ -50,6 +58,15 @@ export const SYSTEM_CONTROL_EVENT_TYPES = [
   'CONFIG',
   'BACKTEST_RUN_META',
 ] as const satisfies readonly RuntimeEventType[];
+
+export const BROKER_ORIGINATED_EVENT_TYPES = [
+  'ORDER_ACK_SUBMISSION',
+  'ORDER_ACK_FILL',
+  'ORDER_ACK_CANCEL',
+  'ORDER_BROKER_REJECT',
+] as const satisfies readonly RuntimeEventType[];
+
+export type BrokerOriginatedEventType = (typeof BROKER_ORIGINATED_EVENT_TYPES)[number];
 
 export const DERIVED_EVENT_TYPES = [
   'FEATURES',
@@ -71,6 +88,7 @@ export const DERIVED_EVENT_TYPES = [
 const RUNTIME_EVENT_TYPE_SET = new Set<string>(RUNTIME_EVENT_TYPES);
 const SOURCE_MARKET_DATA_EVENT_TYPE_SET = new Set<RuntimeEventType>(SOURCE_MARKET_DATA_EVENT_TYPES);
 const SYSTEM_CONTROL_EVENT_TYPE_SET = new Set<RuntimeEventType>(SYSTEM_CONTROL_EVENT_TYPES);
+const BROKER_ORIGINATED_EVENT_TYPE_SET = new Set<RuntimeEventType>(BROKER_ORIGINATED_EVENT_TYPES);
 const DERIVED_EVENT_TYPE_SET = new Set<RuntimeEventType>(DERIVED_EVENT_TYPES);
 
 export function isRuntimeEventType(value: string): value is RuntimeEventType {
@@ -84,9 +102,16 @@ export function parseRuntimeEventType(value: string): RuntimeEventType {
   return value;
 }
 
+export function isBrokerOriginatedEventType(value: RuntimeEventType): value is BrokerOriginatedEventType {
+  return BROKER_ORIGINATED_EVENT_TYPE_SET.has(value);
+}
+
 export function categorizeRuntimeEventType(type: RuntimeEventType): JournalEventTimestampCategory {
   if (SOURCE_MARKET_DATA_EVENT_TYPE_SET.has(type)) {
     return 'source_market_data';
+  }
+  if (BROKER_ORIGINATED_EVENT_TYPE_SET.has(type)) {
+    return 'broker_originated';
   }
   if (SYSTEM_CONTROL_EVENT_TYPE_SET.has(type)) {
     return 'system_control';

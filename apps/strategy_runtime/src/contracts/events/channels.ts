@@ -211,7 +211,15 @@ export const EVENT_CHANNEL_CONTRACTS: readonly EventChannelContract[] = [
   },
   {
     channel: 'ORDERS',
-    event_types: ['ORDER_INTENT', 'SIM_FILL', 'EXEC_REJECT'],
+    event_types: [
+      'ORDER_ACK_CANCEL',
+      'ORDER_ACK_FILL',
+      'ORDER_ACK_SUBMISSION',
+      'ORDER_BROKER_REJECT',
+      'ORDER_INTENT',
+      'SIM_FILL',
+      'EXEC_REJECT',
+    ],
     emission_cadence: 'event_driven',
     throttle: { kind: 'none' },
     default_subscribers: EVENT_DRIVEN_SUBSCRIBERS,

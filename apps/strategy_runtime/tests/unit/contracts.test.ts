@@ -93,7 +93,7 @@ describe('APP-02 contracts', () => {
     });
 
     expect(event).toEqual({
-      schema_version: 1,
+      schema_version: 2,
       event_id: 'evt-1',
       type: 'CANDIDATE',
       ts_ns: 1_700_000_000_000_000_000n,
@@ -128,7 +128,7 @@ describe('APP-02 contracts', () => {
     });
 
     expect(journalEventToJsonLine(event)).toBe(
-      '{"event_id":"evt-quote-1","payload":{"a":{"ask_px":18000.5,"bid_px":18000.25},"z":3},"run_id":"run-1","schema_version":1,"session_id":"session-1","ts_ns":"42","type":"QUOTE"}\n',
+      '{"event_id":"evt-quote-1","payload":{"a":{"ask_px":18000.5,"bid_px":18000.25},"z":3},"run_id":"run-1","schema_version":2,"session_id":"session-1","ts_ns":"42","type":"QUOTE"}\n',
     );
     expect(stableJsonStringify({ b: 1, a: { d: 4, c: 3 } })).toBe(
       '{"a":{"c":3,"d":4},"b":1}',

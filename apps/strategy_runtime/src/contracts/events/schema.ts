@@ -1,6 +1,7 @@
 import { JOURNAL_EVENT_SCHEMA_VERSION, type JournalEventEnvelope } from './envelope.js';
 import {
   categorizeRuntimeEventType,
+  isBrokerOriginatedEventType,
   isRuntimeEventType,
   type RuntimeEventType,
 } from './event-types.js';
@@ -33,6 +34,7 @@ type Validator = (
 ) => void;
 
 const STRATEGY_IDS = ALL_STRATEGY_IDS;
+const SUPPORTED_JOURNAL_EVENT_SCHEMA_VERSIONS = [1, JOURNAL_EVENT_SCHEMA_VERSION] as const;
 
 const PAYLOAD_VALIDATORS = {
   CONN: validateConnectionPayload,
@@ -54,6 +56,10 @@ const PAYLOAD_VALIDATORS = {
   RANK: validateRankPayload,
   RISK_GATE: validateRiskGatePayload,
   SIZING: validateSizingPayload,
+  ORDER_ACK_CANCEL: validateOrderAckCancelPayload,
+  ORDER_ACK_FILL: validateOrderAckFillPayload,
+  ORDER_ACK_SUBMISSION: validateOrderAckSubmissionPayload,
+  ORDER_BROKER_REJECT: validateOrderBrokerRejectPayload,
   ORDER_INTENT: validateOrderIntentPayload,
   SIM_FILL: validateSimFillPayload,
   EXEC_REJECT: validateExecutionRejectPayload,
@@ -71,12 +77,17 @@ export function validateJournalEventEnvelope(value: unknown): JournalEventSchema
     return { ok: false, issues };
   }
 
-  if (envelope.schema_version !== JOURNAL_EVENT_SCHEMA_VERSION) {
+  if (
+    typeof envelope.schema_version !== 'number' ||
+    !SUPPORTED_JOURNAL_EVENT_SCHEMA_VERSIONS.includes(
+      envelope.schema_version as (typeof SUPPORTED_JOURNAL_EVENT_SCHEMA_VERSIONS)[number],
+    )
+  ) {
     addIssue(
       issues,
       '$.schema_version',
       'unsupported_schema_version',
-      `must be ${JOURNAL_EVENT_SCHEMA_VERSION}`,
+      `must be one of: ${SUPPORTED_JOURNAL_EVENT_SCHEMA_VERSIONS.join(', ')}`,
     );
   }
 
@@ -96,6 +107,11 @@ export function validateJournalEventEnvelope(value: unknown): JournalEventSchema
     );
   } else {
     runtimeType = type;
+  }
+  if (runtimeType !== undefined && isBrokerOriginatedEventType(runtimeType)) {
+    requireTimestamp(envelope.ts_ns_local, '$.ts_ns_local', issues);
+  } else {
+    optionalTimestamp(envelope.ts_ns_local, '$.ts_ns_local', issues);
   }
 
   if (envelope.causation_id !== undefined) {
@@ -676,6 +692,73 @@ function validateOrderIntentPayload(
   optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
   optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
   optionalNonEmptyString(record.position_manager_version, `${path}.position_manager_version`, issues);
+}
+
+function validateOrderAckSubmissionPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.intent_id, `${path}.intent_id`, issues);
+  requireNonEmptyString(record.submission_ack_id, `${path}.submission_ack_id`, issues);
+  requireNonEmptyString(record.broker_order_id, `${path}.broker_order_id`, issues);
+  requireNonEmptyString(record.broker_account_id, `${path}.broker_account_id`, issues);
+  requireNonEmptyString(record.instrument_symbol, `${path}.instrument_symbol`, issues);
+}
+
+function validateOrderAckFillPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.intent_id, `${path}.intent_id`, issues);
+  requireNonEmptyString(record.submission_ack_id, `${path}.submission_ack_id`, issues);
+  requireNonEmptyString(record.fill_ack_id, `${path}.fill_ack_id`, issues);
+  requireNonEmptyString(record.broker_order_id, `${path}.broker_order_id`, issues);
+  requireNonEmptyString(record.broker_account_id, `${path}.broker_account_id`, issues);
+  requireNonEmptyString(record.instrument_symbol, `${path}.instrument_symbol`, issues);
+  requireNumber(record.fill_qty, `${path}.fill_qty`, issues);
+  requireNumber(record.fill_price, `${path}.fill_price`, issues);
+  requireEnum(record.fill_kind, `${path}.fill_kind`, issues, ['PARTIAL', 'FULL']);
+}
+
+function validateOrderAckCancelPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.intent_id, `${path}.intent_id`, issues);
+  requireNonEmptyString(record.submission_ack_id, `${path}.submission_ack_id`, issues);
+  requireNonEmptyString(record.cancel_ack_id, `${path}.cancel_ack_id`, issues);
+  requireNonEmptyString(record.broker_order_id, `${path}.broker_order_id`, issues);
+  requireNonEmptyString(record.broker_account_id, `${path}.broker_account_id`, issues);
+  requireEnum(record.cancel_reason, `${path}.cancel_reason`, issues, [
+    'CLIENT_REQUESTED',
+    'BROKER_INITIATED',
+    'EXCHANGE_INITIATED',
+    'UNKNOWN',
+  ]);
+}
+
+function validateOrderBrokerRejectPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.intent_id, `${path}.intent_id`, issues);
+  optionalNonEmptyString(record.broker_order_id, `${path}.broker_order_id`, issues);
+  requireNonEmptyString(record.broker_account_id, `${path}.broker_account_id`, issues);
+  requireNonEmptyString(record.reject_reason_code, `${path}.reject_reason_code`, issues);
+  optionalNonEmptyString(record.reject_subreason, `${path}.reject_subreason`, issues);
+  requireNonEmptyString(record.reject_message_redacted, `${path}.reject_message_redacted`, issues);
 }
 
 function validateSimFillPayload(

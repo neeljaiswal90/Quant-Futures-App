@@ -97,6 +97,10 @@ describe('TUI-01 operator event-bus contract', () => {
       'SIZING',
     ]);
     expect(eventTypesForChannel('ORDERS')).toEqual([
+      'ORDER_ACK_CANCEL',
+      'ORDER_ACK_FILL',
+      'ORDER_ACK_SUBMISSION',
+      'ORDER_BROKER_REJECT',
       'ORDER_INTENT',
       'SIM_FILL',
       'EXEC_REJECT',

@@ -247,6 +247,48 @@ export interface OrderIntentEventPayload {
   readonly position_manager_version?: string;
 }
 
+export interface OrderAckSubmissionPayload {
+  readonly intent_id: EventId;
+  readonly submission_ack_id: EventId;
+  readonly broker_order_id: string;
+  readonly broker_account_id: string;
+  readonly instrument_symbol: string;
+}
+
+export interface OrderAckFillPayload {
+  readonly intent_id: EventId;
+  readonly submission_ack_id: EventId;
+  readonly fill_ack_id: EventId;
+  readonly broker_order_id: string;
+  readonly broker_account_id: string;
+  readonly instrument_symbol: string;
+  readonly fill_qty: number;
+  readonly fill_price: number;
+  readonly fill_kind: 'PARTIAL' | 'FULL';
+}
+
+export interface OrderAckCancelPayload {
+  readonly intent_id: EventId;
+  readonly submission_ack_id: EventId;
+  readonly cancel_ack_id: EventId;
+  readonly broker_order_id: string;
+  readonly broker_account_id: string;
+  readonly cancel_reason: 'CLIENT_REQUESTED' | 'BROKER_INITIATED' | 'EXCHANGE_INITIATED' | 'UNKNOWN';
+}
+
+export interface OrderBrokerRejectPayload {
+  readonly intent_id: EventId;
+  readonly broker_order_id?: string;
+  readonly broker_account_id: string;
+  readonly reject_reason_code: string;
+  readonly reject_subreason?: string;
+  /**
+   * Broker reject text MUST be redacted before emission. The redactor
+   * implementation is owned by the QFA-624/QFA-616 follow-on work.
+   */
+  readonly reject_message_redacted: string;
+}
+
 export interface SimFillEventPayload {
   readonly fill_id: FillId;
   readonly order_intent_id: OrderIntentId;
@@ -364,6 +406,10 @@ export interface JournalEventPayloadByType {
   readonly RANK: RankEventPayload;
   readonly RISK_GATE: RiskGateEventPayload;
   readonly SIZING: SizingEventPayload;
+  readonly ORDER_ACK_CANCEL: OrderAckCancelPayload;
+  readonly ORDER_ACK_FILL: OrderAckFillPayload;
+  readonly ORDER_ACK_SUBMISSION: OrderAckSubmissionPayload;
+  readonly ORDER_BROKER_REJECT: OrderBrokerRejectPayload;
   readonly ORDER_INTENT: OrderIntentEventPayload;
   readonly SIM_FILL: SimFillEventPayload;
   readonly EXEC_REJECT: ExecutionRejectEventPayload;

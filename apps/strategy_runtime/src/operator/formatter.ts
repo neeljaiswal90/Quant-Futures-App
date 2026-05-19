@@ -366,6 +366,37 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
         `status=${stringField(payload, 'status')}`,
         `reason=${stringField(payload, 'reason')}`,
       ]);
+    case 'ORDER_ACK_SUBMISSION':
+      return compactParts([
+        `intent=${stringField(payload, 'intent_id')}`,
+        `submission_ack=${stringField(payload, 'submission_ack_id')}`,
+        `broker_order=${stringField(payload, 'broker_order_id')}`,
+        `account=${stringField(payload, 'broker_account_id')}`,
+      ]);
+    case 'ORDER_ACK_FILL':
+      return compactParts([
+        `intent=${stringField(payload, 'intent_id')}`,
+        `submission_ack=${stringField(payload, 'submission_ack_id')}`,
+        `fill_ack=${stringField(payload, 'fill_ack_id')}`,
+        `broker_order=${stringField(payload, 'broker_order_id')}`,
+        `qty=${numberField(payload, 'fill_qty')}`,
+        `price=${numberField(payload, 'fill_price')}`,
+      ]);
+    case 'ORDER_ACK_CANCEL':
+      return compactParts([
+        `intent=${stringField(payload, 'intent_id')}`,
+        `submission_ack=${stringField(payload, 'submission_ack_id')}`,
+        `cancel_ack=${stringField(payload, 'cancel_ack_id')}`,
+        `broker_order=${stringField(payload, 'broker_order_id')}`,
+        `reason=${stringField(payload, 'cancel_reason')}`,
+      ]);
+    case 'ORDER_BROKER_REJECT':
+      return compactParts([
+        `intent=${stringField(payload, 'intent_id')}`,
+        `broker_order=${stringField(payload, 'broker_order_id')}`,
+        `account=${stringField(payload, 'broker_account_id')}`,
+        `reason_code=${stringField(payload, 'reject_reason_code')}`,
+      ]);
     case 'POSITION':
       return compactParts([
         `position=${stringField(payload, 'position_id')}`,
