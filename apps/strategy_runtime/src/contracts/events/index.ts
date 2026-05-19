@@ -67,6 +67,8 @@ export type {
   OrderAckSubmissionPayload,
   OrderBrokerRejectPayload,
   OrderIntentEventPayload,
+  OrderQuarantineClearedPayload,
+  OrderQuarantineEnteredPayload,
   PositionEventPayload,
   PriceTargetEventPayload,
   QuoteEventPayload,
