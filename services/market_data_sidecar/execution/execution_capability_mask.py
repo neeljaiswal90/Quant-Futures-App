@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from typing import Any, Literal
 
 ExecutionCapability = Literal[
@@ -221,6 +222,8 @@ EXECUTION_CAPABILITY_MASK = build_execution_capability_mask()
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1:] != ["--export-json"]:
+        raise SystemExit("usage: python -m services.market_data_sidecar.execution.execution_capability_mask [--export-json]")
     print(
         json.dumps(
             build_execution_capability_mask(),

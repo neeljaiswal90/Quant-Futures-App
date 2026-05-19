@@ -260,6 +260,15 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
       ]);
     case 'HALT':
       return compactParts([`state=${stringField(payload, 'state')}`, optionalField(payload, 'reason')]);
+    case 'VALIDATOR_ISSUE':
+      return compactParts([
+        `validator=${stringField(payload, 'validator_id')}`,
+        `severity=${stringField(payload, 'severity')}`,
+        `code=${stringField(payload, 'code')}`,
+        `message=${stringField(payload, 'message')}`,
+        optionalField(payload, 'source_event_id'),
+        optionalField(payload, 'source_event_type'),
+      ]);
     case 'QUOTE':
       return compactParts([
         `bid=${numberField(payload, 'bid_px')}x${numberField(payload, 'bid_qty')}`,
@@ -568,7 +577,7 @@ function colorize(value: string, color: string, enabled: boolean): string {
 }
 
 function colorForEventType(type: RuntimeEventType): string {
-  if (['GAP', 'HALT', 'EXEC_REJECT', 'ORDER_QUARANTINE_ENTERED'].includes(type)) {
+  if (['GAP', 'HALT', 'EXEC_REJECT', 'ORDER_QUARANTINE_ENTERED', 'VALIDATOR_ISSUE'].includes(type)) {
     return RED;
   }
   if (['RISK_GATE', 'MGMT_ACTION', 'ROLL_ADVISORY'].includes(type)) {
