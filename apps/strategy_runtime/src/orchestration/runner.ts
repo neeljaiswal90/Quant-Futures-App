@@ -88,6 +88,8 @@ import {
 import {
   BoundedAckLatencyObserver,
   getDefaultLatencySliRegistry,
+  startDefaultEventLoopLagSamplerWhenMetricsEnabled,
+  type LatencyMetricsEndpointConfig,
 } from '../observability/latency-sli.js';
 
 export const STRATEGY_RUNNER_VERSION = 'strategy_runner_loop_v1' as const;
@@ -124,6 +126,7 @@ export interface StrategyRuntimeRunnerOptions {
   readonly max_candidates_per_cycle?: number;
   readonly initial_session_risk_state?: SessionRiskState;
   readonly strategy_config?: StrategyRuntimeConfig;
+  readonly latency_metrics_endpoint?: LatencyMetricsEndpointConfig;
 }
 
 export interface StrategyRuntimeRunnerSnapshot {
@@ -235,6 +238,9 @@ export class StrategyRuntimeRunner {
       config_hash: makeConfigHash(options.container.config.lineage.config_hash),
       config_version: options.container.config.lineage.config_version,
     };
+    startDefaultEventLoopLagSamplerWhenMetricsEnabled({
+      metrics_endpoint: options.latency_metrics_endpoint,
+    });
   }
 
   snapshot(): StrategyRuntimeRunnerSnapshot {

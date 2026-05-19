@@ -92,6 +92,13 @@ export interface EventLoopLagSamplerOptions {
   readonly resolution_ms?: number;
 }
 
+export interface StartDefaultEventLoopLagSamplerOptions {
+  readonly env?: Record<string, string | undefined>;
+  readonly interval_ms?: number;
+  readonly metrics_endpoint?: LatencyMetricsEndpointConfig;
+  readonly resolution_ms?: number;
+}
+
 export interface EventLoopLagSampler {
   readonly stop: () => void;
 }
@@ -128,6 +135,8 @@ type OrderAckFillEnvelope = BrokerJournalEventEnvelope<
 
 const DEFAULT_METRICS_PORT = 9_469;
 const DEFAULT_ACK_CACHE_ENTRIES = 4_096;
+// Event-loop lag sampling intentionally runs at a short internal cadence
+// independent of Prometheus scrape cadence; scrapes aggregate these samples.
 const DEFAULT_EVENT_LOOP_LAG_INTERVAL_MS = 1_000;
 const DEFAULT_EVENT_LOOP_LAG_RESOLUTION_MS = 20;
 
@@ -486,6 +495,7 @@ export class BoundedAckLatencyObserver {
 }
 
 let defaultLatencySliRegistry = new LatencySliRegistry();
+let defaultEventLoopLagSampler: EventLoopLagSampler | undefined;
 
 export function getDefaultLatencySliRegistry(): LatencySliRegistry {
   return defaultLatencySliRegistry;
@@ -494,6 +504,7 @@ export function getDefaultLatencySliRegistry(): LatencySliRegistry {
 export function resetDefaultLatencySliRegistryForTests(
   config: LatencyHistogramConfig = {},
 ): LatencySliRegistry {
+  stopDefaultEventLoopLagSamplerForTests();
   defaultLatencySliRegistry = new LatencySliRegistry(config);
   return defaultLatencySliRegistry;
 }
@@ -588,6 +599,32 @@ export function startEventLoopLagSampler(
       histogram.disable();
     },
   };
+}
+
+export function startDefaultEventLoopLagSamplerWhenMetricsEnabled(
+  options: StartDefaultEventLoopLagSamplerOptions = {},
+): EventLoopLagSampler | undefined {
+  const resolved = resolveLatencyMetricsEndpointConfig({
+    env: options.env,
+    config: options.metrics_endpoint,
+  });
+  if (!resolved.enabled) {
+    return undefined;
+  }
+  if (defaultEventLoopLagSampler !== undefined) {
+    return defaultEventLoopLagSampler;
+  }
+  defaultEventLoopLagSampler = startEventLoopLagSampler({
+    registry: getDefaultLatencySliRegistry(),
+    interval_ms: options.interval_ms,
+    resolution_ms: options.resolution_ms,
+  });
+  return defaultEventLoopLagSampler;
+}
+
+export function stopDefaultEventLoopLagSamplerForTests(): void {
+  defaultEventLoopLagSampler?.stop();
+  defaultEventLoopLagSampler = undefined;
 }
 
 function normalizeBuckets(buckets: readonly number[]): readonly number[] {

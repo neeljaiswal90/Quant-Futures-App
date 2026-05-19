@@ -1,5 +1,5 @@
 import { get } from 'node:http';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   BoundedAckLatencyObserver,
   LATENCY_HISTOGRAM_METRIC_NAMES,
@@ -8,7 +8,9 @@ import {
   PROVISIONAL_LATENCY_BUCKET_MARKER,
   PROVISIONAL_LATENCY_HISTOGRAM_BUCKETS_MS,
   resolveLatencyMetricsEndpointConfig,
+  startDefaultEventLoopLagSamplerWhenMetricsEnabled,
   startLatencyMetricsEndpoint,
+  stopDefaultEventLoopLagSamplerForTests,
 } from '../../src/observability/latency-sli.js';
 import { captureLocalTimestampNs } from '../../src/observability/local-timestamp.js';
 import {
@@ -31,6 +33,10 @@ const SESSION_ID = makeSessionId('2026-05-19-rth');
 const BASE_TS_NS = ns(1_800_000_000_000_000_000n);
 
 describe('QFA-626 latency SLI instrumentation', () => {
+  afterEach(() => {
+    stopDefaultEventLoopLagSamplerForTests();
+  });
+
   it('records configurable Prometheus histogram buckets', () => {
     const registry = new LatencySliRegistry({
       buckets_ms_by_metric: {
@@ -210,6 +216,22 @@ describe('QFA-626 latency SLI instrumentation', () => {
     }
     const markerCount = metrics.split(PROVISIONAL_LATENCY_BUCKET_MARKER).length - 1;
     expect(markerCount).toBe(LATENCY_HISTOGRAM_METRIC_NAMES.length);
+  });
+
+  it('starts the default event-loop sampler only when metrics are enabled', () => {
+    expect(startDefaultEventLoopLagSamplerWhenMetricsEnabled({ env: {} })).toBeUndefined();
+
+    const sampler = startDefaultEventLoopLagSamplerWhenMetricsEnabled({
+      env: {},
+      metrics_endpoint: { enabled: true, port: 0 },
+      interval_ms: 10,
+    });
+
+    expect(sampler).toBeDefined();
+    expect(startDefaultEventLoopLagSamplerWhenMetricsEnabled({
+      env: { QFA_METRICS_ENABLED: 'true' },
+      interval_ms: 10,
+    })).toBe(sampler);
   });
 });
 
