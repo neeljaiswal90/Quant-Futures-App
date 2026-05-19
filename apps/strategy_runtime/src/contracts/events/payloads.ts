@@ -289,6 +289,22 @@ export interface OrderBrokerRejectPayload {
   readonly reject_message_redacted: string;
 }
 
+export interface OrderQuarantineEnteredPayload {
+  readonly intent_id: EventId;
+  readonly previous_state: 'pending_ack' | 'acked_resting' | 'partial_fill';
+  readonly quarantine_reason: 'submission_ack_timeout' | 'cancel_ack_timeout';
+  readonly open_quarantine_count: number;
+  readonly broker_order_id?: string;
+  readonly broker_account_id?: string;
+  readonly instrument_symbol?: string;
+}
+
+export interface OrderQuarantineClearedPayload {
+  readonly clear_reason: 'all_quarantines_resolved' | 'operator_close';
+  readonly open_quarantine_count: 0;
+  readonly resolved_intent_ids: readonly EventId[];
+}
+
 export interface SimFillEventPayload {
   readonly fill_id: FillId;
   readonly order_intent_id: OrderIntentId;
@@ -410,6 +426,8 @@ export interface JournalEventPayloadByType {
   readonly ORDER_ACK_FILL: OrderAckFillPayload;
   readonly ORDER_ACK_SUBMISSION: OrderAckSubmissionPayload;
   readonly ORDER_BROKER_REJECT: OrderBrokerRejectPayload;
+  readonly ORDER_QUARANTINE_ENTERED: OrderQuarantineEnteredPayload;
+  readonly ORDER_QUARANTINE_CLEARED: OrderQuarantineClearedPayload;
   readonly ORDER_INTENT: OrderIntentEventPayload;
   readonly SIM_FILL: SimFillEventPayload;
   readonly EXEC_REJECT: ExecutionRejectEventPayload;

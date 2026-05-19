@@ -101,6 +101,8 @@ describe('TUI-01 operator event-bus contract', () => {
       'ORDER_ACK_FILL',
       'ORDER_ACK_SUBMISSION',
       'ORDER_BROKER_REJECT',
+      'ORDER_QUARANTINE_ENTERED',
+      'ORDER_QUARANTINE_CLEARED',
       'ORDER_INTENT',
       'SIM_FILL',
       'EXEC_REJECT',

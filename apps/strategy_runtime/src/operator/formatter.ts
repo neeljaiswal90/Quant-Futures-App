@@ -397,6 +397,19 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
         `account=${stringField(payload, 'broker_account_id')}`,
         `reason_code=${stringField(payload, 'reject_reason_code')}`,
       ]);
+    case 'ORDER_QUARANTINE_ENTERED':
+      return compactParts([
+        `intent=${stringField(payload, 'intent_id')}`,
+        `previous=${stringField(payload, 'previous_state')}`,
+        `reason=${stringField(payload, 'quarantine_reason')}`,
+        `open=${numberField(payload, 'open_quarantine_count')}`,
+      ]);
+    case 'ORDER_QUARANTINE_CLEARED':
+      return compactParts([
+        `reason=${stringField(payload, 'clear_reason')}`,
+        `open=${numberField(payload, 'open_quarantine_count')}`,
+        `resolved=${arrayLength(payload.resolved_intent_ids)}`,
+      ]);
     case 'POSITION':
       return compactParts([
         `position=${stringField(payload, 'position_id')}`,
@@ -555,13 +568,13 @@ function colorize(value: string, color: string, enabled: boolean): string {
 }
 
 function colorForEventType(type: RuntimeEventType): string {
-  if (['GAP', 'HALT', 'EXEC_REJECT'].includes(type)) {
+  if (['GAP', 'HALT', 'EXEC_REJECT', 'ORDER_QUARANTINE_ENTERED'].includes(type)) {
     return RED;
   }
   if (['RISK_GATE', 'MGMT_ACTION', 'ROLL_ADVISORY'].includes(type)) {
     return YELLOW;
   }
-  if (['SIM_FILL', 'POSITION', 'CANDIDATE'].includes(type)) {
+  if (['SIM_FILL', 'POSITION', 'CANDIDATE', 'ORDER_QUARANTINE_CLEARED'].includes(type)) {
     return GREEN;
   }
   return CYAN;

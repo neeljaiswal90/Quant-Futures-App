@@ -60,6 +60,8 @@ const PAYLOAD_VALIDATORS = {
   ORDER_ACK_FILL: validateOrderAckFillPayload,
   ORDER_ACK_SUBMISSION: validateOrderAckSubmissionPayload,
   ORDER_BROKER_REJECT: validateOrderBrokerRejectPayload,
+  ORDER_QUARANTINE_ENTERED: validateOrderQuarantineEnteredPayload,
+  ORDER_QUARANTINE_CLEARED: validateOrderQuarantineClearedPayload,
   ORDER_INTENT: validateOrderIntentPayload,
   SIM_FILL: validateSimFillPayload,
   EXEC_REJECT: validateExecutionRejectPayload,
@@ -759,6 +761,52 @@ function validateOrderBrokerRejectPayload(
   requireNonEmptyString(record.reject_reason_code, `${path}.reject_reason_code`, issues);
   optionalNonEmptyString(record.reject_subreason, `${path}.reject_subreason`, issues);
   requireNonEmptyString(record.reject_message_redacted, `${path}.reject_message_redacted`, issues);
+}
+
+function validateOrderQuarantineEnteredPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.intent_id, `${path}.intent_id`, issues);
+  requireEnum(record.previous_state, `${path}.previous_state`, issues, [
+    'pending_ack',
+    'acked_resting',
+    'partial_fill',
+  ]);
+  requireEnum(record.quarantine_reason, `${path}.quarantine_reason`, issues, [
+    'submission_ack_timeout',
+    'cancel_ack_timeout',
+  ]);
+  requireNumber(record.open_quarantine_count, `${path}.open_quarantine_count`, issues);
+  optionalNonEmptyString(record.broker_order_id, `${path}.broker_order_id`, issues);
+  optionalNonEmptyString(record.broker_account_id, `${path}.broker_account_id`, issues);
+  optionalNonEmptyString(record.instrument_symbol, `${path}.instrument_symbol`, issues);
+}
+
+function validateOrderQuarantineClearedPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireEnum(record.clear_reason, `${path}.clear_reason`, issues, [
+    'all_quarantines_resolved',
+    'operator_close',
+  ]);
+  requireNumber(record.open_quarantine_count, `${path}.open_quarantine_count`, issues);
+  if (record.open_quarantine_count !== 0) {
+    addIssue(
+      issues,
+      `${path}.open_quarantine_count`,
+      'invalid_field_value',
+      'must be 0',
+    );
+  }
+  requireStringArray(record.resolved_intent_ids, `${path}.resolved_intent_ids`, issues);
 }
 
 function validateSimFillPayload(
