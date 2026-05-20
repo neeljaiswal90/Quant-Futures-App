@@ -15,7 +15,7 @@ import {
   type CurrentOperatorConsoleEventType,
   type OperatorConsoleState,
 } from './console-state.js';
-import { bold } from './ansi-renderer.js';
+import { AnsiFrameDiffer, bold } from './ansi-renderer.js';
 
 export const DEFAULT_OPERATOR_CONSOLE_REFRESH_INTERVAL_MS = 1_000;
 export const QFA_CONSOLE_REFRESH_INTERVAL_MS_ENV = 'QFA_CONSOLE_REFRESH_INTERVAL_MS' as const;
@@ -104,6 +104,7 @@ export class OperatorConsole {
   private readonly writer: OperatorConsoleWriter;
   private readonly refreshIntervalMs: number;
   private readonly clearScreen: boolean;
+  private readonly frameDiffer = new AnsiFrameDiffer();
   private eventSubscription: OperatorConsoleSubscription | undefined;
   private sloUnsubscribe: (() => void) | undefined;
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -155,9 +156,17 @@ export class OperatorConsole {
     return renderOperatorConsoleDashboard(this.stateStore.getState());
   }
 
+  forceFullPaint(): void {
+    this.frameDiffer.forceFullPaint();
+  }
+
   refresh(): string {
     const output = this.renderOnce();
-    this.writer.write(`${this.clearScreen ? '\u001bc' : ''}${output}`);
+    if (this.clearScreen) {
+      this.writer.write(this.frameDiffer.render(output.trimEnd().split('\n')).ansi);
+    } else {
+      this.writer.write(output);
+    }
     return output;
   }
 }

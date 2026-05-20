@@ -12,6 +12,42 @@ export const ANSI_CYAN = '\u001b[36m';
 
 export type OperatorPanelTone = 'neutral' | 'pass' | 'warn' | 'breach' | 'fatal' | 'dim';
 
+export interface FrameRenderResult {
+  readonly ansi: string;
+  readonly is_full_paint: boolean;
+}
+
+export class AnsiFrameDiffer {
+  private previousLines: readonly string[] | undefined;
+
+  render(currentLines: readonly string[]): FrameRenderResult {
+    if (this.previousLines === undefined) {
+      this.previousLines = currentLines;
+      return {
+        ansi: `\u001bc${currentLines.join('\n')}`,
+        is_full_paint: true,
+      };
+    }
+    const segments: string[] = [];
+    for (let i = 0; i < Math.max(currentLines.length, this.previousLines.length); i += 1) {
+      const curr = currentLines[i] ?? '';
+      const prev = this.previousLines[i] ?? '';
+      if (curr !== prev) {
+        segments.push(`\u001b[${i + 1};1H\u001b[2K${curr}`);
+      }
+    }
+    this.previousLines = currentLines;
+    return {
+      ansi: segments.join(''),
+      is_full_paint: false,
+    };
+  }
+
+  forceFullPaint(): void {
+    this.previousLines = undefined;
+  }
+}
+
 export function ansiEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env.NO_COLOR === undefined && env.FORCE_COLOR !== '0';
 }

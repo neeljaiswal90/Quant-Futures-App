@@ -51,6 +51,10 @@ describe('QFA-630 operator console integration', () => {
     });
     const source = new ManualOperatorConsoleEventSource();
     const writes: string[] = [];
+    const submissionGate = {
+      open_quarantine_count: 1,
+      active_block_sources: ['quarantine_active'],
+    };
     const console = new OperatorConsole({
       event_source: source,
       state_store: new OperatorConsoleStateStore({
@@ -59,10 +63,7 @@ describe('QFA-630 operator console integration', () => {
         strategy_id: 'regime_shock_reversion_short_v2',
         burn_rate_evaluator: burnRateEvaluator,
         latency_registry: latencyRegistry,
-        submission_gate: {
-          open_quarantine_count: 1,
-          active_block_sources: ['quarantine_active'],
-        },
+        submission_gate: submissionGate,
       }),
       writer: { write: (chunk) => writes.push(chunk) },
       refresh_interval_ms: 1_000,
@@ -70,6 +71,7 @@ describe('QFA-630 operator console integration', () => {
     });
 
     console.start();
+    expect(source.subscribedEventTypes()).toEqual(OPERATOR_CONSOLE_CURRENT_EVENT_TYPES);
     source.publish(event('SESSION_MANIFEST', {
       mask_id: 'execution-capability-mask-v1-adr0018-paper-only-order-plant',
       mask_version: 1,
@@ -96,6 +98,11 @@ describe('QFA-630 operator console integration', () => {
       state: 'halted',
       reason: 'slo_breach:qfa_strategy_decision_ms',
     }));
+    source.publish(event('HALT', {
+      state: 'halted',
+      reason: 'operator_console_manual_halt',
+      resolved: false,
+    }));
     source.publish(event('VALIDATOR_ISSUE', {
       validator_id: 'EXEC-VALIDATOR-07',
       severity: 'fatal',
@@ -103,6 +110,13 @@ describe('QFA-630 operator console integration', () => {
       code: 'execution_mask_drift',
       message: 'live execution capability mask differs from filesystem/artifact mask',
       source_event_type: 'CONFIG',
+    }));
+    submissionGate.open_quarantine_count = 0;
+    submissionGate.active_block_sources = ['slo_halt'];
+    source.publish(event('ORDER_QUARANTINE_CLEARED', {
+      clear_reason: 'all_quarantines_resolved',
+      open_quarantine_count: 0,
+      resolved_intent_ids: [makeEventId('intent-1')],
     }));
 
     nowMs = 1;
@@ -112,6 +126,9 @@ describe('QFA-630 operator console integration', () => {
     console.stop();
 
     expect(writes[0]).toContain('Quant Futures Operator Console');
+    expect(rendered).toContain('type=WOULD_HALT state=halted reason=slo_breach:qfa_strategy_decision_ms');
+    expect(rendered).toContain('type=HALT state=halted reason=operator_console_manual_halt');
+    expect(rendered).toContain('[Quarantine]\n  open_quarantine_count=0 escalation_required=false\n  orders=none');
     expect(rendered).toMatchInlineSnapshot(`
       "Quant Futures Operator Console
       mode=read_only source=journal_events+observability_snapshots panels=7 future_slots=liveness,kill_switch,anomalies
@@ -125,12 +142,13 @@ describe('QFA-630 operator console integration', () => {
         metric=qfa_strategy_decision_ms state=breach last_transition_ts_ns=1800000000001000000 provisional=true eligibility=eligible windows=[5m:breach:samples=1/1:p95_ms=<=35:budget_ms=20]
       
       [Quarantine]
-        open_quarantine_count=1 escalation_required=true
-        intent_id=intent-1 reason=submission_ack_timeout previous_state=pending_ack broker_order_id=broker-1 instrument=MNQM6 open_count=1 escalation_required=true provisional=true entered_ts_ns=1800000000000000000
+        open_quarantine_count=0 escalation_required=false
+        orders=none
       
       [Halt]
-        current_block_sources=quarantine_active
+        current_block_sources=slo_halt
         type=WOULD_HALT state=halted reason=slo_breach:qfa_strategy_decision_ms resolved=-- ts_ns=1800000000000000000
+        type=HALT state=halted reason=operator_console_manual_halt resolved=false ts_ns=1800000000000000000
       
       [Validators]
         severity=fatal validator=EXEC-VALIDATOR-07 code=execution_mask_drift source=CONFIG emitted_ts_ns=1800000000002000000 message=\"live execution capability mask differs from filesystem/artifact mask\"
@@ -183,6 +201,10 @@ class ManualOperatorConsoleEventSource implements OperatorConsoleEventSource {
         void subscriber.handler(eventToPublish);
       }
     }
+  }
+
+  subscribedEventTypes(): readonly CurrentOperatorConsoleEventType[] {
+    return [...this.subscribers[0]!.eventTypes];
   }
 }
 
