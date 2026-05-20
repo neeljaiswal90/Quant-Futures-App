@@ -1,5 +1,9 @@
 import { ns, type JournalEventPayloadFor, type UnixNs } from '../../contracts/index.js';
-import type { HistogramSeries, LatencySliRegistry } from '../../observability/latency-sli.js';
+import {
+  PROVISIONAL_LATENCY_HISTOGRAM_BUCKETS_MS,
+  type HistogramSeries,
+  type LatencySliRegistry,
+} from '../../observability/latency-sli.js';
 import type { KillSwitchController } from '../kill-switch/kill-switch-controller.js';
 
 export type LivenessComponentState = 'live' | 'degraded' | 'dead';
@@ -223,19 +227,68 @@ export class DualLivenessMonitor {
 export function eventLoopLagProviderFromLatencyRegistry(
   registry: Pick<LatencySliRegistry, 'histogramSnapshot'>,
 ): EventLoopLagSnapshotProvider {
+  let previousCount = 0;
+  let lastCountChangedAtMs: number | undefined;
+
   return {
     snapshotEventLoopLag: (nowMs) => {
       const snapshot = registry.histogramSnapshot('qfa_event_loop_lag_ms') as HistogramSeries | undefined;
-      if (snapshot === undefined || snapshot.count === 0) {
+      if (snapshot === undefined) {
+        return { observation_count: 0, sampler_stopped: true };
+      }
+      if (snapshot.count > previousCount) {
+        lastCountChangedAtMs = nowMs;
+        previousCount = snapshot.count;
+      }
+      if (snapshot.count === 0) {
         return { observation_count: 0, latest_observed_at_ms: undefined };
       }
       return {
         observation_count: snapshot.count,
-        p95_ms: snapshot.sum / snapshot.count,
-        latest_observed_at_ms: nowMs,
+        p95_ms: percentileFromHistogram(snapshot, PROVISIONAL_LATENCY_HISTOGRAM_BUCKETS_MS, 0.95),
+        latest_observed_at_ms: lastCountChangedAtMs,
       };
     },
   };
+}
+
+function percentileFromHistogram(
+  snapshot: HistogramSeries,
+  bucketsMs: readonly number[],
+  percentile: number,
+): number | undefined {
+  if (snapshot.count === 0) {
+    return undefined;
+  }
+  const target = Math.ceil(snapshot.count * percentile);
+  if (hasCumulativeBucketCounts(snapshot, bucketsMs)) {
+    for (let i = 0; i < bucketsMs.length; i += 1) {
+      if ((snapshot.bucketCounts[i] ?? 0) >= target) {
+        return bucketsMs[i];
+      }
+    }
+    return bucketsMs[bucketsMs.length - 1];
+  }
+  let cumulative = 0;
+  for (let i = 0; i < bucketsMs.length; i += 1) {
+    cumulative += snapshot.bucketCounts[i] ?? 0;
+    if (cumulative >= target) {
+      return bucketsMs[i];
+    }
+  }
+  return bucketsMs[bucketsMs.length - 1];
+}
+
+function hasCumulativeBucketCounts(snapshot: HistogramSeries, bucketsMs: readonly number[]): boolean {
+  if ((snapshot.bucketCounts[bucketsMs.length] ?? snapshot.count) !== snapshot.count) {
+    return false;
+  }
+  for (let i = 1; i < bucketsMs.length; i += 1) {
+    if ((snapshot.bucketCounts[i] ?? 0) < (snapshot.bucketCounts[i - 1] ?? 0)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function stoppedEventLoopLagProvider(): EventLoopLagSnapshotProvider {

@@ -3,10 +3,12 @@ import { ns } from '../../src/contracts/index.js';
 import { KillSwitchController } from '../../src/execution/kill-switch/kill-switch-controller.js';
 import {
   DualLivenessMonitor,
+  eventLoopLagProviderFromLatencyRegistry,
   type EventLoopLagSnapshotProvider,
   type LivenessMonitorEvent,
 } from '../../src/execution/liveness/dual-liveness-monitor.js';
 import { SubmissionGate } from '../../src/execution/order-lifecycle-state-machine.js';
+import { LatencySliRegistry } from '../../src/observability/latency-sli.js';
 
 describe('DualLivenessMonitor', () => {
   it('derives process liveness from QFA-626 event-loop-lag p95 thresholds', () => {
@@ -67,6 +69,65 @@ describe('DualLivenessMonitor', () => {
       overall_state: 'dead',
     });
     expect(fixture.events.at(-1)).toMatchObject({ payload: { reason: 'operator_test' } });
+  });
+
+  it('uses real QFA-626 bucket counts for p95 instead of the event-loop-lag mean', () => {
+    const registry = new LatencySliRegistry();
+    for (let i = 0; i < 94; i += 1) {
+      registry.recordEventLoopLagMs(10);
+    }
+    for (let i = 0; i < 6; i += 1) {
+      registry.recordEventLoopLagMs(1_000);
+    }
+    const arithmeticMeanMs = (94 * 10 + 6 * 1_000) / 100;
+    expect(arithmeticMeanMs).toBeLessThan(100);
+
+    const gate = new SubmissionGate();
+    const monitor = new DualLivenessMonitor({
+      kill_switch: new KillSwitchController({
+        submission_gate: gate,
+        now_ns: () => ns(1_800_000_000_000_000_000n),
+      }),
+      latency_registry: registry,
+      now_ms: () => 5_000,
+      now_ns: () => ns(1_800_000_000_000_000_000n),
+    });
+    monitor.recordBrokerHeartbeat({ local_received_ms: 5_000 });
+
+    expect(monitor.evaluate(5_000)).toMatchObject({
+      process_state: 'dead',
+      overall_state: 'dead',
+    });
+    expect(gate.acquire()).toMatchObject({ allowed: false, reason: 'kill_switch_active' });
+  });
+
+  it('detects a stale real QFA-626 event-loop-lag sampler by count-change timestamp', () => {
+    const registry = new LatencySliRegistry();
+    const provider = eventLoopLagProviderFromLatencyRegistry(registry);
+    registry.recordEventLoopLagMs(50);
+
+    const first = provider.snapshotEventLoopLag(10_000);
+    expect(first.latest_observed_at_ms).toBe(10_000);
+    const stale = provider.snapshotEventLoopLag(41_000);
+    expect(stale.latest_observed_at_ms).toBe(10_000);
+
+    const gate = new SubmissionGate();
+    const monitor = new DualLivenessMonitor({
+      kill_switch: new KillSwitchController({
+        submission_gate: gate,
+        now_ns: () => ns(1_800_000_000_000_000_000n),
+      }),
+      event_loop_lag_provider: provider,
+      now_ms: () => 41_000,
+      now_ns: () => ns(1_800_000_000_000_000_000n),
+    });
+    monitor.recordBrokerHeartbeat({ local_received_ms: 41_000 });
+
+    expect(monitor.evaluate(41_000)).toMatchObject({
+      process_state: 'dead',
+      overall_state: 'dead',
+    });
+    expect(gate.acquire()).toMatchObject({ allowed: false, reason: 'kill_switch_active' });
   });
 });
 
