@@ -135,6 +135,12 @@ export interface SessionManifestEventPayload {
   readonly timestamp_anchor: 'broker_exchange_ts_ns' | 'local_monotonic_unix_anchor' | 'dual';
   readonly broker_session_id: string;
   readonly adapter_kind: 'MOCK_ORDER_PLANT';
+  readonly session_phase?: 'starting' | 'closing';
+  readonly session_duration_ms?: number;
+  readonly final_quarantine_count?: number;
+  readonly intents_emitted_total?: number;
+  readonly acks_received_total?: number;
+  readonly would_halt_emissions_total?: number;
 }
 
 export interface HaltEventPayload {

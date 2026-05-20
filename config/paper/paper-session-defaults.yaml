@@ -1,0 +1,26 @@
+session:
+  strategy_id: regime_shock_reversion_short_v2
+  mode: paper
+  adapter_kind: mock
+  app_config_path: config/app.example.json
+  journal_dir: journals/paper
+
+execution:
+  plant_scope: ORDER_PLANT
+  capability_mask_id: execution-capability-mask-v1-adr0018-paper-only-order-plant
+  capability_mask_version: 1
+  reconnect_policy:
+    max_attempts: 3
+    initial_delay_ms: 250
+    max_delay_ms: 2000
+    retry_budget_ms: 10000
+    jitter: seeded
+  shutdown_quarantine_timeout_ms: 30000
+
+observability:
+  metrics:
+    enabled: true
+    host: 127.0.0.1
+    port: 9469
+  slo_budgets_source: qfa-627-provisional-registry
+  slo_budget_overrides: {}
