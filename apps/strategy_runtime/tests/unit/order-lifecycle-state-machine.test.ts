@@ -90,12 +90,13 @@ describe('QFA-628 order lifecycle state machine', () => {
     });
     expect(events).toContainEqual({
       type: 'ORDER_QUARANTINE_ENTERED',
-      payload: {
+      payload: expect.objectContaining({
         intent_id: INTENT_1,
         previous_state: 'pending_ack',
         quarantine_reason: 'submission_ack_timeout',
         open_quarantine_count: 1,
-      },
+        timeout_ms: 2_000,
+      }),
     });
   });
 
