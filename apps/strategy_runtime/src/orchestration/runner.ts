@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import type { LoadedAppConfig, StrategyRuntimeConfig } from '../config/index.js';
 import {
   createJournalEventEnvelope,
@@ -84,6 +85,12 @@ import {
   type MnqSessionEligibility,
   type MnqSessionPhase,
 } from '../session/index.js';
+import {
+  BoundedAckLatencyObserver,
+  getDefaultLatencySliRegistry,
+  startDefaultEventLoopLagSamplerWhenMetricsEnabled,
+  type LatencyMetricsEndpointConfig,
+} from '../observability/latency-sli.js';
 
 export const STRATEGY_RUNNER_VERSION = 'strategy_runner_loop_v1' as const;
 
@@ -119,6 +126,7 @@ export interface StrategyRuntimeRunnerOptions {
   readonly max_candidates_per_cycle?: number;
   readonly initial_session_risk_state?: SessionRiskState;
   readonly strategy_config?: StrategyRuntimeConfig;
+  readonly latency_metrics_endpoint?: LatencyMetricsEndpointConfig;
 }
 
 export interface StrategyRuntimeRunnerSnapshot {
@@ -184,6 +192,10 @@ export class StrategyRuntimeRunner {
   private readonly appConfigRef: ConfigLineageRef;
   private readonly strategyConfig: StrategyRuntimeConfig;
   private readonly strategyConfigHash: string;
+  private readonly latencySli = getDefaultLatencySliRegistry();
+  private readonly ackLatencyObserver = new BoundedAckLatencyObserver({
+    registry: this.latencySli,
+  });
   private sessionRisk: SessionRiskState | undefined;
   private openPositions: TargetPosition[] = [];
   private lastSessionTransition: RunnerSessionTransition | undefined;
@@ -226,6 +238,9 @@ export class StrategyRuntimeRunner {
       config_hash: makeConfigHash(options.container.config.lineage.config_hash),
       config_version: options.container.config.lineage.config_version,
     };
+    startDefaultEventLoopLagSamplerWhenMetricsEnabled({
+      metrics_endpoint: options.latency_metrics_endpoint,
+    });
   }
 
   snapshot(): StrategyRuntimeRunnerSnapshot {
@@ -240,6 +255,7 @@ export class StrategyRuntimeRunner {
     event: JournalEventEnvelope<TType, JournalEventPayloadFor<TType>>,
   ): Promise<JournalEventEnvelope<TType, JournalEventPayloadFor<TType>>> {
     await this.container.eventBus.publish(event as JournalEventEnvelope);
+    this.ackLatencyObserver.observe(event as AnyJournalEventEnvelope);
     return event;
   }
 
@@ -410,6 +426,8 @@ export class StrategyRuntimeRunner {
         correlation_id: makeCorrelationId(`corr-${candidate.candidate_id}`),
       });
       orderIntentEvents.push(intentEvent);
+      this.ackLatencyObserver.observe(intentEvent);
+      this.latencySli.recordSnapshotToSubmitNs(snapshot.created_ts_ns, intentEvent.ts_ns);
 
       const orderResult = await this.executionAdapter.submit({
         intent,
@@ -908,6 +926,7 @@ export class StrategyRuntimeRunner {
         correlation_id: makeCorrelationId(`corr-${position.candidate_id}`),
       });
       orderIntentEvents.push(intentEvent);
+      this.ackLatencyObserver.observe(intentEvent);
 
       const orderResult = await this.executionAdapter.submit({
         intent,
@@ -1218,6 +1237,7 @@ function evaluateStrategySafely(
   snapshot: StrategyFeatureSnapshot,
   strategyConfig: StrategyRuntimeConfig,
 ): { readonly evaluation: StrategyEvaluation; readonly candidate?: Candidate } {
+  const decisionStartMs = performance.now();
   try {
     return getActiveStrategyGenerator(strategyId)({
       strategy_id: strategyId,
@@ -1240,6 +1260,11 @@ function evaluateStrategySafely(
         config: snapshot.config,
       },
     };
+  } finally {
+    getDefaultLatencySliRegistry().recordStrategyDecisionMs(
+      strategyId,
+      performance.now() - decisionStartMs,
+    );
   }
 }
 
