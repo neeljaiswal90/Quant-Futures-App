@@ -130,7 +130,7 @@ function isTimeoutError(error: Error): boolean {
   return 'code' in error && error.code === 'ETIMEDOUT';
 }
 
-class PythonMaskExportTimeoutError extends Error {
+export class PythonMaskExportTimeoutError extends Error {
   constructor(timeoutMs: number, stdout: string | Buffer, stderr: string | Buffer) {
     super(
       `Python execution capability mask export timed out after ${timeoutMs}ms\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`,

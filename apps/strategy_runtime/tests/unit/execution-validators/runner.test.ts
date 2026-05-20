@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   channelsForEventType,
   formatJournalEventSchemaValidationErrors,
+  journalEventFromJsonLine,
+  journalEventToJsonLine,
   validateJournalEventEnvelope,
   type AnyJournalEventEnvelope,
 } from '../../../src/contracts/index.js';
@@ -97,5 +99,25 @@ describe('execution validator runner integration', () => {
     expect(validation.ok, formatJournalEventSchemaValidationErrors(validation.issues)).toBe(true);
     expect(channelsForEventType('VALIDATOR_ISSUE')).toContain('SESSION');
     expect(formatJournalEvent(validatorIssueEvent)).toContain('validator=EXEC-VALIDATOR-07');
+  });
+
+  it('round-trips VALIDATOR_ISSUE emitted_ts_ns through JSONL revival', () => {
+    const validatorIssueEvent = event('VALIDATOR_ISSUE', {
+      validator_id: 'EXEC-VALIDATOR-02',
+      severity: 'error',
+      emitted_ts_ns: 1_700_000_000_000_000_123n,
+      code: 'dual_timestamp_implausible',
+      message: 'broker-originated event dual timestamp is implausible',
+      source_event_id: 'evt-source',
+      source_event_type: 'ORDER_ACK_SUBMISSION',
+    });
+
+    const revived = journalEventFromJsonLine(journalEventToJsonLine(validatorIssueEvent));
+    const payload = revived.payload as Record<string, unknown>;
+    const validation = validateJournalEventEnvelope(revived);
+
+    expect(typeof payload.emitted_ts_ns).toBe('bigint');
+    expect(validation.ok, formatJournalEventSchemaValidationErrors(validation.issues)).toBe(true);
+    expect(validation.issues).toEqual([]);
   });
 });
