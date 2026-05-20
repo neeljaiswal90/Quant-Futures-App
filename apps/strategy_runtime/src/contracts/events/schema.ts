@@ -820,6 +820,11 @@ function validateOrderQuarantineEnteredPayload(
     'cancel_ack_timeout',
   ]);
   requireNumber(record.open_quarantine_count, `${path}.open_quarantine_count`, issues);
+  optionalNumber(record.timeout_ms, `${path}.timeout_ms`, issues);
+  optionalNumber(record.cancel_attempt_count, `${path}.cancel_attempt_count`, issues);
+  optionalNumber(record.max_cancel_attempts, `${path}.max_cancel_attempts`, issues);
+  optionalBoolean(record.escalation_required, `${path}.escalation_required`, issues);
+  optionalBoolean(record.is_provisional, `${path}.is_provisional`, issues);
   optionalNonEmptyString(record.broker_order_id, `${path}.broker_order_id`, issues);
   optionalNonEmptyString(record.broker_account_id, `${path}.broker_account_id`, issues);
   optionalNonEmptyString(record.instrument_symbol, `${path}.instrument_symbol`, issues);

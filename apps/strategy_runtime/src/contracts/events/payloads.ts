@@ -318,6 +318,11 @@ export interface OrderQuarantineEnteredPayload {
   readonly previous_state: 'pending_ack' | 'acked_resting' | 'partial_fill';
   readonly quarantine_reason: 'submission_ack_timeout' | 'cancel_ack_timeout';
   readonly open_quarantine_count: number;
+  readonly timeout_ms?: number;
+  readonly cancel_attempt_count?: number;
+  readonly max_cancel_attempts?: number;
+  readonly escalation_required?: boolean;
+  readonly is_provisional?: boolean;
   readonly broker_order_id?: string;
   readonly broker_account_id?: string;
   readonly instrument_symbol?: string;

@@ -23,14 +23,52 @@ export type OrderLifecycleState = (typeof ORDER_LIFECYCLE_STATES)[number];
 export type QuarantineReason = 'submission_ack_timeout' | 'cancel_ack_timeout';
 export type QuarantineSourceState = 'pending_ack' | 'acked_resting' | 'partial_fill';
 
+export const DEFAULT_SUBMISSION_ACK_TIMEOUT_MS = 2_000;
+export const DEFAULT_CANCEL_ACK_TIMEOUT_MS = 1_000;
+export const DEFAULT_MAX_CANCEL_ATTEMPTS = 3;
+
+export interface ProvisionalCancelAckSloDefinition {
+  readonly metric_name: 'qfa_order_ack_cancel_ms';
+  readonly windows: readonly {
+    readonly window_id: '5m' | '1h';
+    readonly window_duration_ms: number;
+    readonly sample_count_floor: number;
+    readonly p95_budget_ms: number;
+  }[];
+  readonly is_provisional: true;
+  readonly breach_eligibility: 'not_applicable_until_phase_6_ack';
+}
+
+// TODO(QFA-627): consolidate this structural type with SloDefinition once the
+// burn-rate evaluator branch is merged.
+export const PROVISIONAL_CANCEL_ACK_SLO: ProvisionalCancelAckSloDefinition = {
+  metric_name: 'qfa_order_ack_cancel_ms',
+  windows: [
+    {
+      window_id: '5m',
+      window_duration_ms: 300_000,
+      sample_count_floor: 0,
+      p95_budget_ms: 500,
+    },
+    {
+      window_id: '1h',
+      window_duration_ms: 3_600_000,
+      sample_count_floor: 0,
+      p95_budget_ms: 500,
+    },
+  ],
+  is_provisional: true,
+  breach_eligibility: 'not_applicable_until_phase_6_ack',
+};
+
 export const ORDER_LIFECYCLE_TRANSITIONS = {
   pending_intent: ['pending_ack'],
-  pending_ack: ['acked_resting', 'quarantined', 'broker_rejected'],
-  acked_resting: ['partial_fill', 'filled', 'cancelled', 'quarantined'],
-  partial_fill: ['partial_fill', 'filled', 'cancelled', 'quarantined'],
+  pending_ack: ['acked_resting', 'cancelled', 'quarantined', 'broker_rejected'],
+  acked_resting: ['pending_ack', 'partial_fill', 'filled', 'cancelled', 'quarantined'],
+  partial_fill: ['pending_ack', 'partial_fill', 'filled', 'cancelled', 'quarantined'],
   filled: [],
   cancelled: [],
-  quarantined: ['partial_fill', 'filled', 'cancelled', 'broker_rejected'],
+  quarantined: ['pending_ack', 'partial_fill', 'filled', 'cancelled', 'broker_rejected'],
   broker_rejected: [],
 } as const satisfies Record<OrderLifecycleState, readonly OrderLifecycleState[]>;
 
@@ -199,6 +237,9 @@ export interface OrderCancelIntentPayload {
   readonly broker_order_id: string;
   readonly broker_account_id: string;
   readonly instrument_symbol?: string;
+  readonly cancel_attempt_count: number;
+  readonly max_cancel_attempts: number;
+  readonly is_provisional: true;
   readonly cancel_reason: 'quarantine_reconciliation_pending';
 }
 
@@ -235,13 +276,16 @@ export type OrderLifecycleEmittedEvent =
 export interface PendingBrokerCancelRequest extends OrderCancelIntentPayload {}
 export type PendingBrokerCancelHandler = (
   request: PendingBrokerCancelRequest,
-) => OrderAckCancelPayload;
+) => OrderAckCancelPayload | undefined;
 
 export interface OrderLifecycleStateMachineOptions {
   readonly submission_gate?: SubmissionGate;
   readonly quarantine_counter?: QuarantineCounter;
   readonly reconciliation_client?: BrokerReconciliationClient;
   readonly cancel_pending_order?: PendingBrokerCancelHandler;
+  readonly submission_ack_timeout_ms?: number;
+  readonly cancel_ack_timeout_ms?: number;
+  readonly max_cancel_attempts?: number;
   readonly emit?: (event: OrderLifecycleEmittedEvent) => void;
 }
 
@@ -257,6 +301,8 @@ export interface OrderLifecycleSnapshot {
   readonly broker_account_id?: string;
   readonly instrument_symbol?: string;
   readonly cancel_requested: boolean;
+  readonly cancel_attempt_count: number;
+  readonly escalation_required: boolean;
   readonly quarantine_reason?: QuarantineReason;
   readonly state_before_quarantine?: QuarantineSourceState;
 }
@@ -269,6 +315,8 @@ interface OrderLifecycleRecord {
   broker_account_id?: string;
   instrument_symbol?: string;
   cancel_requested: boolean;
+  cancel_attempt_count: number;
+  escalation_required: boolean;
   quarantine_reason?: QuarantineReason;
   state_before_quarantine?: QuarantineSourceState;
 }
@@ -281,6 +329,9 @@ export class OrderLifecycleStateMachine {
   private readonly resolvedSinceLastClear: EventId[] = [];
   private readonly reconciliationClient?: BrokerReconciliationClient;
   private readonly cancelPendingOrder?: PendingBrokerCancelHandler;
+  private readonly submissionAckTimeoutMs: number;
+  private readonly cancelAckTimeoutMs: number;
+  private readonly maxCancelAttempts: number;
   private readonly emitEvent: (event: OrderLifecycleEmittedEvent) => void;
 
   constructor(options: OrderLifecycleStateMachineOptions = {}) {
@@ -288,6 +339,21 @@ export class OrderLifecycleStateMachine {
       options.submission_gate ?? new SubmissionGate(options.quarantine_counter);
     this.reconciliationClient = options.reconciliation_client;
     this.cancelPendingOrder = options.cancel_pending_order;
+    this.submissionAckTimeoutMs = positiveSafeIntegerOrDefault(
+      options.submission_ack_timeout_ms,
+      DEFAULT_SUBMISSION_ACK_TIMEOUT_MS,
+      'submission_ack_timeout_ms',
+    );
+    this.cancelAckTimeoutMs = positiveSafeIntegerOrDefault(
+      options.cancel_ack_timeout_ms,
+      DEFAULT_CANCEL_ACK_TIMEOUT_MS,
+      'cancel_ack_timeout_ms',
+    );
+    this.maxCancelAttempts = positiveSafeIntegerOrDefault(
+      options.max_cancel_attempts,
+      DEFAULT_MAX_CANCEL_ATTEMPTS,
+      'max_cancel_attempts',
+    );
     this.emitEvent = options.emit ?? (() => undefined);
   }
 
@@ -300,6 +366,8 @@ export class OrderLifecycleStateMachine {
       intent_id: input.intent_id,
       state: 'pending_intent',
       cancel_requested: false,
+      cancel_attempt_count: 0,
+      escalation_required: false,
     };
     this.orders.set(input.intent_id, order);
     return snapshot(order);
@@ -322,11 +390,14 @@ export class OrderLifecycleStateMachine {
   ackFill(payload: OrderAckFillPayload): OrderLifecycleSnapshot {
     const order = this.requireOrder(payload.intent_id);
     const nextState = payload.fill_kind === 'FULL' ? 'filled' : 'partial_fill';
-    const wasQuarantined = order.state === 'quarantined';
+    const wasUnderQuarantine = this.quarantinedIntentIds.has(order.intent_id);
     this.transition(order, nextState);
     applyBrokerIdentity(order, payload);
+    if (wasUnderQuarantine) {
+      order.cancel_requested = false;
+    }
     this.emitEvent({ type: 'ORDER_ACK_FILL', payload });
-    if (wasQuarantined) {
+    if (wasUnderQuarantine) {
       this.releaseQuarantine(order, 'all_quarantines_resolved');
     }
     return snapshot(order);
@@ -338,17 +409,19 @@ export class OrderLifecycleStateMachine {
       throw illegalTransitionError(order, order.state);
     }
     order.cancel_requested = true;
+    order.cancel_attempt_count += 1;
+    this.transition(order, 'pending_ack');
     return snapshot(order);
   }
 
   ackCancel(payload: OrderAckCancelPayload): OrderLifecycleSnapshot {
     const order = this.requireOrder(payload.intent_id);
-    const wasQuarantined = order.state === 'quarantined';
+    const wasUnderQuarantine = this.quarantinedIntentIds.has(order.intent_id);
     this.transition(order, 'cancelled');
     applyBrokerIdentity(order, payload);
     order.cancel_requested = false;
     this.emitEvent({ type: 'ORDER_ACK_CANCEL', payload });
-    if (wasQuarantined) {
+    if (wasUnderQuarantine) {
       this.releaseQuarantine(order, 'all_quarantines_resolved');
     }
     return snapshot(order);
@@ -356,11 +429,12 @@ export class OrderLifecycleStateMachine {
 
   brokerReject(payload: OrderBrokerRejectPayload): OrderLifecycleSnapshot {
     const order = this.requireOrder(payload.intent_id);
-    const wasQuarantined = order.state === 'quarantined';
+    const wasUnderQuarantine = this.quarantinedIntentIds.has(order.intent_id);
     this.transition(order, 'broker_rejected');
     applyBrokerIdentity(order, payload);
+    order.cancel_requested = false;
     this.emitEvent({ type: 'ORDER_BROKER_REJECT', payload });
-    if (wasQuarantined) {
+    if (wasUnderQuarantine) {
       this.releaseQuarantine(order, 'all_quarantines_resolved');
     }
     return snapshot(order);
@@ -374,6 +448,24 @@ export class OrderLifecycleStateMachine {
   cancelAckTimeout(intentId: EventId): OrderLifecycleSnapshot {
     const order = this.requireOrder(intentId);
     return this.enterQuarantine(order, 'cancel_ack_timeout');
+  }
+
+  pendingAckTimeoutMs(intentId: EventId): number {
+    const order = this.requireOrder(intentId);
+    if (order.state !== 'pending_ack') {
+      throw illegalTransitionError(order, order.state);
+    }
+    return order.cancel_requested ? this.cancelAckTimeoutMs : this.submissionAckTimeoutMs;
+  }
+
+  ackTimeout(intentId: EventId): OrderLifecycleSnapshot {
+    const order = this.requireOrder(intentId);
+    if (order.state !== 'pending_ack') {
+      throw illegalTransitionError(order, 'quarantined');
+    }
+    return order.cancel_requested
+      ? this.enterQuarantine(order, 'cancel_ack_timeout')
+      : this.enterQuarantine(order, 'submission_ack_timeout');
   }
 
   reconcileQuarantinedOrder(intentId: EventId): OrderLifecycleSnapshot {
@@ -429,6 +521,18 @@ export class OrderLifecycleStateMachine {
     return this.submission_gate.open_quarantine_count;
   }
 
+  get submission_ack_timeout_ms(): number {
+    return this.submissionAckTimeoutMs;
+  }
+
+  get cancel_ack_timeout_ms(): number {
+    return this.cancelAckTimeoutMs;
+  }
+
+  get max_cancel_attempts(): number {
+    return this.maxCancelAttempts;
+  }
+
   private enterQuarantine(
     order: OrderLifecycleRecord,
     reason: QuarantineReason,
@@ -441,14 +545,20 @@ export class OrderLifecycleStateMachine {
     this.transition(order, 'quarantined');
     order.quarantine_reason = reason;
     order.state_before_quarantine = previousState;
-    const openQuarantineCount = this.submission_gate.blockFromQuarantine({
-      intent_id: order.intent_id,
-      reason,
-    });
+    if (reason === 'cancel_ack_timeout' && order.cancel_attempt_count >= this.maxCancelAttempts) {
+      order.escalation_required = true;
+    }
+    const alreadyQuarantined = this.quarantinedIntentIds.has(order.intent_id);
+    const openQuarantineCount = alreadyQuarantined
+      ? this.submission_gate.open_quarantine_count
+      : this.submission_gate.blockFromQuarantine({
+          intent_id: order.intent_id,
+          reason,
+        });
     this.quarantinedIntentIds.add(order.intent_id);
     this.emitEvent({
       type: 'ORDER_QUARANTINE_ENTERED',
-      payload: quarantineEnteredPayload(order, previousState, reason, openQuarantineCount),
+      payload: this.quarantineEnteredPayload(order, previousState, reason, openQuarantineCount),
     });
     return snapshot(order);
   }
@@ -460,16 +570,24 @@ export class OrderLifecycleStateMachine {
     if (!isNonEmptyString(result.broker_order_id)) {
       return snapshot(order);
     }
+    if (order.cancel_attempt_count >= this.maxCancelAttempts) {
+      order.escalation_required = true;
+      return snapshot(order);
+    }
 
     const submissionAckId = result.submission_ack_id
       ?? order.submission_ack_id
       ?? syntheticSubmissionAckIdForReconciliation(order.intent_id);
+    order.cancel_attempt_count += 1;
     const cancelIntent: OrderCancelIntentPayload = {
       intent_id: order.intent_id,
       submission_ack_id: submissionAckId,
       broker_order_id: result.broker_order_id,
       broker_account_id: result.broker_account_id,
       ...(result.instrument_symbol === undefined ? {} : { instrument_symbol: result.instrument_symbol }),
+      cancel_attempt_count: order.cancel_attempt_count,
+      max_cancel_attempts: this.maxCancelAttempts,
+      is_provisional: true,
       cancel_reason: 'quarantine_reconciliation_pending',
     };
 
@@ -481,14 +599,21 @@ export class OrderLifecycleStateMachine {
     }
 
     this.emitEvent({ type: 'ORDER_CANCEL_INTENT', payload: cancelIntent });
-    const cancelAck = this.cancelPendingOrder?.(cancelIntent) ?? {
-      intent_id: order.intent_id,
-      submission_ack_id: submissionAckId,
-      cancel_ack_id: syntheticCancelAckIdForReconciliation(order.intent_id),
-      broker_order_id: result.broker_order_id,
-      broker_account_id: result.broker_account_id,
-      cancel_reason: 'CLIENT_REQUESTED',
-    };
+    order.cancel_requested = true;
+    this.transition(order, 'pending_ack');
+    const cancelAck = this.cancelPendingOrder === undefined
+      ? {
+          intent_id: order.intent_id,
+          submission_ack_id: submissionAckId,
+          cancel_ack_id: syntheticCancelAckIdForReconciliation(order.intent_id),
+          broker_order_id: result.broker_order_id,
+          broker_account_id: result.broker_account_id,
+          cancel_reason: 'CLIENT_REQUESTED',
+        } satisfies OrderAckCancelPayload
+      : this.cancelPendingOrder(cancelIntent);
+    if (cancelAck === undefined) {
+      return snapshot(order);
+    }
     return this.ackCancel(cancelAck);
   }
 
@@ -557,6 +682,35 @@ export class OrderLifecycleStateMachine {
     }
   }
 
+  private quarantineEnteredPayload(
+    order: OrderLifecycleRecord,
+    previousState: QuarantineSourceState,
+    reason: QuarantineReason,
+    openQuarantineCount: number,
+  ): OrderQuarantineEnteredPayload {
+    const timeoutMs = reason === 'cancel_ack_timeout'
+      ? this.cancelAckTimeoutMs
+      : this.submissionAckTimeoutMs;
+    return {
+      intent_id: order.intent_id,
+      previous_state: previousState,
+      quarantine_reason: reason,
+      open_quarantine_count: openQuarantineCount,
+      timeout_ms: timeoutMs,
+      ...(reason === 'cancel_ack_timeout'
+        ? {
+            cancel_attempt_count: order.cancel_attempt_count,
+            max_cancel_attempts: this.maxCancelAttempts,
+            escalation_required: order.escalation_required,
+            is_provisional: true,
+          }
+        : {}),
+      ...(order.broker_order_id === undefined ? {} : { broker_order_id: order.broker_order_id }),
+      ...(order.broker_account_id === undefined ? {} : { broker_account_id: order.broker_account_id }),
+      ...(order.instrument_symbol === undefined ? {} : { instrument_symbol: order.instrument_symbol }),
+    };
+  }
+
   private requireOrder(intentId: EventId): OrderLifecycleRecord {
     const order = this.orders.get(intentId);
     if (order === undefined) {
@@ -615,6 +769,8 @@ function snapshot(order: OrderLifecycleRecord): OrderLifecycleSnapshot {
     intent_id: order.intent_id,
     state: order.state,
     cancel_requested: order.cancel_requested,
+    cancel_attempt_count: order.cancel_attempt_count,
+    escalation_required: order.escalation_required,
     ...(order.submission_ack_id === undefined ? {} : { submission_ack_id: order.submission_ack_id }),
     ...(order.broker_order_id === undefined ? {} : { broker_order_id: order.broker_order_id }),
     ...(order.broker_account_id === undefined ? {} : { broker_account_id: order.broker_account_id }),
@@ -649,29 +805,24 @@ function applyBrokerIdentity(
   }
 }
 
-function quarantineEnteredPayload(
-  order: OrderLifecycleRecord,
-  previousState: QuarantineSourceState,
-  reason: QuarantineReason,
-  openQuarantineCount: number,
-): OrderQuarantineEnteredPayload {
-  return {
-    intent_id: order.intent_id,
-    previous_state: previousState,
-    quarantine_reason: reason,
-    open_quarantine_count: openQuarantineCount,
-    ...(order.broker_order_id === undefined ? {} : { broker_order_id: order.broker_order_id }),
-    ...(order.broker_account_id === undefined ? {} : { broker_account_id: order.broker_account_id }),
-    ...(order.instrument_symbol === undefined ? {} : { instrument_symbol: order.instrument_symbol }),
-  };
-}
-
 function isQuarantineSourceState(state: OrderLifecycleState): state is QuarantineSourceState {
   return state === 'pending_ack' || state === 'acked_resting' || state === 'partial_fill';
 }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+function positiveSafeIntegerOrDefault(
+  value: number | undefined,
+  defaultValue: number,
+  fieldName: string,
+): number {
+  const resolved = value ?? defaultValue;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0) {
+    throw new Error(`${fieldName} must be a positive safe integer`);
+  }
+  return resolved;
 }
 
 function illegalTransitionError(
