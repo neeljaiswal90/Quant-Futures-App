@@ -82,6 +82,9 @@ export type {
   StrategyEvaluationEventPayload,
   StructureEventPayload,
   TradeEventPayload,
+  ValidatorIssueEventPayload,
+  ValidatorIssueEventValidatorId,
+  ValidatorIssueSeverity,
 } from './payloads.js';
 export {
   formatJournalEventSchemaValidationErrors,

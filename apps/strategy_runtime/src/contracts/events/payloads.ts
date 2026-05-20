@@ -130,6 +130,30 @@ export interface HaltEventPayload {
   readonly reason?: string;
 }
 
+export type ValidatorIssueSeverity = 'info' | 'warning' | 'error' | 'fatal';
+
+export type ValidatorIssueEventValidatorId =
+  | 'EXEC-VALIDATOR-01'
+  | 'EXEC-VALIDATOR-02'
+  | 'EXEC-VALIDATOR-03'
+  | 'EXEC-VALIDATOR-04'
+  | 'EXEC-VALIDATOR-05'
+  | 'EXEC-VALIDATOR-06'
+  | 'EXEC-VALIDATOR-07'
+  | 'EXEC-VALIDATOR-08';
+
+export interface ValidatorIssueEventPayload {
+  readonly validator_id: ValidatorIssueEventValidatorId;
+  readonly severity: ValidatorIssueSeverity;
+  readonly emitted_ts_ns: UnixNs;
+  readonly code: string;
+  readonly message: string;
+  readonly source_event_id?: EventId;
+  readonly source_event_type?: RuntimeEventType;
+  readonly session_family_id?: string;
+  readonly details?: FeatureScalarMap;
+}
+
 export interface ConfigEventPayload {
   readonly config_hash: string;
   readonly config_version: number;
@@ -410,6 +434,7 @@ export interface JournalEventPayloadByType {
   readonly SESSION_PHASE: SessionPhaseEventPayload;
   readonly ROLL_ADVISORY: RollAdvisoryEventPayload;
   readonly HALT: HaltEventPayload;
+  readonly VALIDATOR_ISSUE: ValidatorIssueEventPayload;
   readonly QUOTE: QuoteEventPayload;
   readonly TRADE: TradeEventPayload;
   readonly BAR_CLOSE: BarCloseEventPayload;

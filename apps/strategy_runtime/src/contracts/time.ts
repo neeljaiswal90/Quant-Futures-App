@@ -16,6 +16,7 @@ export const TIMESTAMP_NS_FIELD_NAMES = [
   'sidecar_recv_ts_ns',
   'runtime_consume_ts_ns',
   'created_ts_ns',
+  'emitted_ts_ns',
   'evaluated_ts_ns',
   'proposed_ts_ns',
   'decided_ts_ns',

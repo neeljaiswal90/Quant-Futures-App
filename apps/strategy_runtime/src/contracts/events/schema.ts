@@ -35,6 +35,17 @@ type Validator = (
 
 const STRATEGY_IDS = ALL_STRATEGY_IDS;
 const SUPPORTED_JOURNAL_EVENT_SCHEMA_VERSIONS = [1, JOURNAL_EVENT_SCHEMA_VERSION] as const;
+const VALIDATOR_IDS = [
+  'EXEC-VALIDATOR-01',
+  'EXEC-VALIDATOR-02',
+  'EXEC-VALIDATOR-03',
+  'EXEC-VALIDATOR-04',
+  'EXEC-VALIDATOR-05',
+  'EXEC-VALIDATOR-06',
+  'EXEC-VALIDATOR-07',
+  'EXEC-VALIDATOR-08',
+] as const;
+const VALIDATOR_SEVERITIES = ['info', 'warning', 'error', 'fatal'] as const;
 
 const PAYLOAD_VALIDATORS = {
   CONN: validateConnectionPayload,
@@ -44,6 +55,7 @@ const PAYLOAD_VALIDATORS = {
   SESSION_PHASE: validateSessionPhasePayload,
   ROLL_ADVISORY: validateRollAdvisoryPayload,
   HALT: validateHaltPayload,
+  VALIDATOR_ISSUE: validateValidatorIssuePayload,
   QUOTE: validateQuotePayload,
   TRADE: validateTradePayload,
   BAR_CLOSE: validateBarClosePayload,
@@ -401,6 +413,33 @@ function validateHaltPayload(
   if (record === undefined) return;
   requireEnum(record.state, `${path}.state`, issues, ['halted', 'resumed']);
   optionalNonEmptyString(record.reason, `${path}.reason`, issues);
+}
+
+function validateValidatorIssuePayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireEnum(record.validator_id, `${path}.validator_id`, issues, VALIDATOR_IDS);
+  requireEnum(record.severity, `${path}.severity`, issues, VALIDATOR_SEVERITIES);
+  requireTimestamp(record.emitted_ts_ns, `${path}.emitted_ts_ns`, issues);
+  requireNonEmptyString(record.code, `${path}.code`, issues);
+  requireNonEmptyString(record.message, `${path}.message`, issues);
+  optionalNonEmptyString(record.source_event_id, `${path}.source_event_id`, issues);
+  optionalNonEmptyString(record.session_family_id, `${path}.session_family_id`, issues);
+  if (record.source_event_type !== undefined) {
+    if (typeof record.source_event_type !== 'string' || !isRuntimeEventType(record.source_event_type)) {
+      addIssue(
+        issues,
+        `${path}.source_event_type`,
+        'invalid_field_value',
+        `unsupported runtime event type: ${String(record.source_event_type)}`,
+      );
+    }
+  }
+  optionalScalarMap(record.details, `${path}.details`, issues);
 }
 
 function validateConfigPayload(

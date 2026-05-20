@@ -8,6 +8,7 @@ export const RUNTIME_EVENT_TYPES = [
   'HALT',
   'ORDER_QUARANTINE_ENTERED',
   'ORDER_QUARANTINE_CLEARED',
+  'VALIDATOR_ISSUE',
   'QUOTE',
   'TRADE',
   'BAR_CLOSE',
@@ -59,6 +60,7 @@ export const SYSTEM_CONTROL_EVENT_TYPES = [
   'HALT',
   'ORDER_QUARANTINE_ENTERED',
   'ORDER_QUARANTINE_CLEARED',
+  'VALIDATOR_ISSUE',
   'CONFIG',
   'BACKTEST_RUN_META',
 ] as const satisfies readonly RuntimeEventType[];
