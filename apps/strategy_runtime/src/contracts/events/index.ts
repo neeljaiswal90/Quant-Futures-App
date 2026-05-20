@@ -75,6 +75,7 @@ export type {
   RankEventPayload,
   RiskGateEventPayload,
   RollAdvisoryEventPayload,
+  SessionManifestEventPayload,
   SessionPhaseEventPayload,
   SimFillEventPayload,
   SizingEventPayload,

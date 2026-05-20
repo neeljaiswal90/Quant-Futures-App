@@ -125,6 +125,18 @@ export interface RollAdvisoryEventPayload {
   readonly minutes_to_cutover?: number;
 }
 
+export interface SessionManifestEventPayload {
+  readonly mask_id: string;
+  readonly mask_version: number;
+  readonly mask_hash: string;
+  readonly reconnect_policy_config: FeatureScalarMap;
+  readonly plant_scope: 'ORDER_PLANT';
+  readonly mode: 'paper' | 'live';
+  readonly timestamp_anchor: 'broker_exchange_ts_ns' | 'local_monotonic_unix_anchor' | 'dual';
+  readonly broker_session_id: string;
+  readonly adapter_kind: 'MOCK_ORDER_PLANT';
+}
+
 export interface HaltEventPayload {
   readonly state: 'halted' | 'resumed';
   readonly reason?: string;
@@ -439,6 +451,7 @@ export interface JournalEventPayloadByType {
   readonly BOOK_REBUILD: BookRebuildEventPayload;
   readonly SESSION_PHASE: SessionPhaseEventPayload;
   readonly ROLL_ADVISORY: RollAdvisoryEventPayload;
+  readonly SESSION_MANIFEST: SessionManifestEventPayload;
   readonly HALT: HaltEventPayload;
   readonly WOULD_HALT: HaltEventPayload;
   readonly VALIDATOR_ISSUE: ValidatorIssueEventPayload;
