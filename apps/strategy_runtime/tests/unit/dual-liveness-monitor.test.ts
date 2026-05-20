@@ -3,71 +3,101 @@ import { ns } from '../../src/contracts/index.js';
 import { KillSwitchController } from '../../src/execution/kill-switch/kill-switch-controller.js';
 import {
   DualLivenessMonitor,
+  type EventLoopLagSnapshotProvider,
   type LivenessMonitorEvent,
 } from '../../src/execution/liveness/dual-liveness-monitor.js';
 import { SubmissionGate } from '../../src/execution/order-lifecycle-state-machine.js';
 
 describe('DualLivenessMonitor', () => {
-  it('combines process and broker liveness into alive, degraded, and dead states', () => {
-    let nowMs = 0;
-    const gate = new SubmissionGate();
-    const events: LivenessMonitorEvent[] = [];
-    const killSwitch = new KillSwitchController({
-      submission_gate: gate,
-      now_ms: () => nowMs,
-      now_ns: () => ns(BigInt(nowMs) * 1_000_000n),
-    });
-    const monitor = new DualLivenessMonitor({
-      kill_switch: killSwitch,
-      process_stale_after_ms: 10,
-      broker_stale_after_ms: 10,
-      process_dead_after_ms: 30,
-      broker_dead_after_ms: 30,
-      now_ms: () => nowMs,
-      now_ns: () => ns(BigInt(nowMs) * 1_000_000n),
-      emit: (event) => events.push(event),
+  it('derives process liveness from QFA-626 event-loop-lag p95 thresholds', () => {
+    const live = monitorFixture({ p95_ms: 50, observation_count: 3, latest_observed_at_ms: 1_000 });
+    live.monitor.recordBrokerHeartbeat({ local_received_ms: 1_000 });
+    expect(live.monitor.evaluate(1_000)).toMatchObject({ process_state: 'live', overall_state: 'live' });
+
+    const degraded = monitorFixture({ p95_ms: 150, observation_count: 3, latest_observed_at_ms: 1_000 });
+    degraded.monitor.recordBrokerHeartbeat({ local_received_ms: 1_000 });
+    expect(degraded.monitor.evaluate(1_000)).toMatchObject({
+      process_state: 'degraded',
+      overall_state: 'degraded',
     });
 
-    monitor.recordProcessHeartbeat();
-    monitor.recordBrokerHeartbeat();
-    expect(monitor.evaluate()).toEqual({
-      process_state: 'alive',
-      broker_state: 'alive',
-      overall_state: 'alive',
-    });
-
-    nowMs = 12;
-    expect(monitor.evaluate()).toMatchObject({ overall_state: 'degraded' });
-    nowMs = 30;
-    expect(monitor.evaluate()).toMatchObject({ overall_state: 'dead' });
-
-    expect(killSwitch.isEngaged()).toBe(true);
-    expect(gate.acquire()).toMatchObject({ allowed: false, reason: 'kill_switch_active' });
-    expect(events.at(-1)).toMatchObject({
-      payload: {
-        overall_state: 'dead',
-        kill_switch_engaged: true,
-      },
-    });
+    const dead = monitorFixture({ p95_ms: 600, observation_count: 3, latest_observed_at_ms: 1_000 });
+    dead.monitor.recordBrokerHeartbeat({ local_received_ms: 1_000 });
+    expect(dead.monitor.evaluate(1_000)).toMatchObject({ process_state: 'dead', overall_state: 'dead' });
+    expect(dead.gate.acquire()).toMatchObject({ allowed: false, reason: 'kill_switch_active' });
   });
 
-  it('marks explicit broker death and emits reasoned liveness state', () => {
-    const gate = new SubmissionGate();
-    const events: LivenessMonitorEvent[] = [];
-    const killSwitch = new KillSwitchController({ submission_gate: gate });
-    const monitor = new DualLivenessMonitor({
-      kill_switch: killSwitch,
-      emit: (event) => events.push(event),
+  it('marks process dead when the sampler stopped or has no observations in the 30s window', () => {
+    const stopped = monitorFixture({ observation_count: 0, sampler_stopped: true });
+    stopped.monitor.recordBrokerHeartbeat({ local_received_ms: 1_000 });
+    expect(stopped.monitor.evaluate(1_000)).toMatchObject({ process_state: 'dead' });
+
+    const stale = monitorFixture({ p95_ms: 50, observation_count: 1, latest_observed_at_ms: 0 });
+    stale.monitor.recordBrokerHeartbeat({ local_received_ms: 31_000 });
+    expect(stale.monitor.evaluate(31_000)).toMatchObject({ process_state: 'dead' });
+  });
+
+  it('applies broker heartbeat degraded and dead thresholds from 5s cadence', () => {
+    const degraded = monitorFixture({ p95_ms: 50, observation_count: 3, latest_observed_at_ms: 0 });
+    degraded.monitor.recordBrokerHeartbeat({ local_received_ms: 0 });
+    expect(degraded.monitor.evaluate(10_000)).toMatchObject({
+      broker_state: 'degraded',
+      overall_state: 'degraded',
     });
 
-    expect(monitor.markBrokerDead('broker_socket_closed')).toMatchObject({
+    const dead = monitorFixture({ p95_ms: 50, observation_count: 3, latest_observed_at_ms: 0 });
+    dead.monitor.recordBrokerHeartbeat({ local_received_ms: 0 });
+    expect(dead.monitor.evaluate(20_000)).toMatchObject({ broker_state: 'dead', overall_state: 'dead' });
+    expect(dead.gate.acquire()).toMatchObject({ allowed: false, reason: 'kill_switch_active' });
+  });
+
+  it('locks the combined-state matrix', () => {
+    expect(combinedFor(50, 0)).toEqual({ process_state: 'live', broker_state: 'live', overall_state: 'live' });
+    expect(combinedFor(150, 0)).toMatchObject({ process_state: 'degraded', overall_state: 'degraded' });
+    expect(combinedFor(50, 10_000)).toMatchObject({ broker_state: 'degraded', overall_state: 'degraded' });
+    expect(combinedFor(600, 0)).toMatchObject({ process_state: 'dead', overall_state: 'dead' });
+    expect(combinedFor(50, 20_000)).toMatchObject({ broker_state: 'dead', overall_state: 'dead' });
+  });
+
+  it('keeps forced-dead hooks clearly test/operator scoped', () => {
+    const fixture = monitorFixture({ p95_ms: 50, observation_count: 3, latest_observed_at_ms: 0 });
+    fixture.monitor.recordBrokerHeartbeat({ local_received_ms: 0 });
+    expect(fixture.monitor.forceBrokerDeadForTests('operator_test')).toMatchObject({
       broker_state: 'dead',
       overall_state: 'dead',
     });
-    expect(events[0]).toMatchObject({
-      payload: {
-        reason: 'broker_socket_closed',
-      },
-    });
+    expect(fixture.events.at(-1)).toMatchObject({ payload: { reason: 'operator_test' } });
   });
 });
+
+function combinedFor(processP95Ms: number, brokerAgeMs: number) {
+  const fixture = monitorFixture({ p95_ms: processP95Ms, observation_count: 3, latest_observed_at_ms: 0 });
+  fixture.monitor.recordBrokerHeartbeat({ local_received_ms: 0 });
+  return fixture.monitor.evaluate(brokerAgeMs);
+}
+
+function monitorFixture(snapshot: ReturnType<EventLoopLagSnapshotProvider['snapshotEventLoopLag']>): {
+  readonly monitor: DualLivenessMonitor;
+  readonly gate: SubmissionGate;
+  readonly events: LivenessMonitorEvent[];
+} {
+  const gate = new SubmissionGate();
+  const events: LivenessMonitorEvent[] = [];
+  const killSwitch = new KillSwitchController({
+    submission_gate: gate,
+    now_ns: () => ns(1_800_000_000_000_000_000n),
+  });
+  return {
+    gate,
+    events,
+    monitor: new DualLivenessMonitor({
+      kill_switch: killSwitch,
+      event_loop_lag_provider: {
+        snapshotEventLoopLag: () => snapshot,
+      },
+      now_ms: () => 0,
+      now_ns: () => ns(1_800_000_000_000_000_000n),
+      emit: (event) => events.push(event),
+    }),
+  };
+}

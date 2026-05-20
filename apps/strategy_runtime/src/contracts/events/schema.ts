@@ -506,20 +506,18 @@ function validateLivenessStatePayload(
   const record = requireRecord(payload, path, issues);
   if (record === undefined) return;
   requireEnum(record.process_state, `${path}.process_state`, issues, [
-    'unknown',
-    'alive',
-    'stale',
+    'live',
+    'degraded',
     'dead',
   ]);
   requireEnum(record.broker_state, `${path}.broker_state`, issues, [
-    'unknown',
-    'alive',
-    'stale',
+    'live',
+    'degraded',
     'dead',
   ]);
-  requireEnum(record.overall_state, `${path}.overall_state`, issues, ['alive', 'degraded', 'dead']);
+  requireEnum(record.overall_state, `${path}.overall_state`, issues, ['live', 'degraded', 'dead']);
   requireBoolean(record.kill_switch_engaged, `${path}.kill_switch_engaged`, issues);
-  optionalNumber(record.process_last_heartbeat_age_ms, `${path}.process_last_heartbeat_age_ms`, issues);
+  optionalNumber(record.process_event_loop_lag_p95_ms, `${path}.process_event_loop_lag_p95_ms`, issues);
   optionalNumber(record.broker_last_heartbeat_age_ms, `${path}.broker_last_heartbeat_age_ms`, issues);
   optionalNonEmptyString(record.reason, `${path}.reason`, issues);
 }
@@ -561,21 +559,19 @@ function validateAnomalyDetectedPayload(
 ): void {
   const record = requireRecord(payload, path, issues);
   if (record === undefined) return;
-  requireNonEmptyString(record.anomaly_id, `${path}.anomaly_id`, issues);
-  requireEnum(record.rule, `${path}.rule`, issues, [
-    'rapid_quarantine',
+  requireEnum(record.rule_id, `${path}.rule_id`, issues, [
+    'rapid_quarantine_accumulation',
     'auth_reject_burst',
     'heartbeat_skew',
     'reconnect_storm',
   ]);
   requireEnum(record.severity, `${path}.severity`, issues, ['low', 'medium', 'high']);
-  requireTimestamp(record.observed_at_ts_ns, `${path}.observed_at_ts_ns`, issues);
-  requireNonEmptyString(record.message, `${path}.message`, issues);
-  requireBoolean(record.auto_engaged_kill_switch, `${path}.auto_engaged_kill_switch`, issues);
-  optionalNumber(record.count, `${path}.count`, issues);
-  optionalNumber(record.threshold, `${path}.threshold`, issues);
-  optionalNumber(record.window_ms, `${path}.window_ms`, issues);
-  optionalScalarMap(record.details, `${path}.details`, issues);
+  requireTimestamp(record.triggered_ts_ns, `${path}.triggered_ts_ns`, issues);
+  requireNonEmptyString(record.evidence_summary, `${path}.evidence_summary`, issues);
+  requireEnum(record.auto_action, `${path}.auto_action`, issues, [
+    'kill_switch_engaged',
+    'alert_only',
+  ]);
 }
 
 function validateValidatorIssuePayload(

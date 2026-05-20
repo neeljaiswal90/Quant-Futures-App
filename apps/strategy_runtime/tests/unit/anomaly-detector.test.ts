@@ -8,60 +8,76 @@ import { KillSwitchController } from '../../src/execution/kill-switch/kill-switc
 import { SubmissionGate } from '../../src/execution/order-lifecycle-state-machine.js';
 
 describe('AnomalyDetector', () => {
-  it('detects rapid quarantine and auto-engages the kill switch for high severity', () => {
+  it('requires 3 rapid quarantines in 60s and emits high kill-switch action with new payload names', () => {
     const { detector, gate, events } = detectorFixture();
 
     detector.recordQuarantine(0);
     detector.recordQuarantine(10);
+    expect(events).toHaveLength(0);
     detector.recordQuarantine(20);
 
-    expect(events.at(-1)).toMatchObject({
-      payload: {
-        rule: 'rapid_quarantine',
-        severity: 'high',
-        auto_engaged_kill_switch: true,
-      },
+    expect(events.at(-1)?.payload).toMatchObject({
+      rule_id: 'rapid_quarantine_accumulation',
+      severity: 'high',
+      auto_action: 'kill_switch_engaged',
+      evidence_summary: expect.stringContaining('3 quarantines') as unknown as string,
+    });
+    expect(Object.keys(events.at(-1)?.payload ?? {}).sort()).toEqual([
+      'auto_action',
+      'evidence_summary',
+      'rule_id',
+      'severity',
+      'triggered_ts_ns',
+    ]);
+    expect(gate.acquire()).toMatchObject({ allowed: false, reason: 'kill_switch_active' });
+  });
+
+  it('requires 5 auth rejects in 60s before high kill-switch action', () => {
+    const { detector, gate, events } = detectorFixture();
+
+    for (let index = 0; index < 4; index += 1) {
+      detector.recordBrokerReject('AUTH_INVALID_CREDENTIALS', 'auth.invalid_credentials', index);
+    }
+    expect(events).toHaveLength(0);
+
+    detector.recordBrokerReject('AUTH_INVALID_CREDENTIALS', 'auth.invalid_credentials', 4);
+    expect(events.at(-1)?.payload).toMatchObject({
+      rule_id: 'auth_reject_burst',
+      severity: 'high',
+      auto_action: 'kill_switch_engaged',
     });
     expect(gate.acquire()).toMatchObject({ allowed: false, reason: 'kill_switch_active' });
   });
 
-  it('detects auth reject bursts using the failure taxonomy', () => {
-    const { detector, events } = detectorFixture();
+  it('uses heartbeat skew >5s as medium alert-only without high escalation', () => {
+    const { detector, gate, events } = detectorFixture();
 
-    detector.recordBrokerReject('MOCK_AUTH_REJECT', 'auth.invalid_credentials', 0);
-    detector.recordBrokerReject('MOCK_AUTH_REJECT', 'auth.invalid_credentials', 1);
-    detector.recordBrokerReject('MOCK_AUTH_REJECT', 'auth.invalid_credentials', 2);
+    detector.recordHeartbeatSkew(100, 5_000);
+    expect(events).toHaveLength(0);
 
-    expect(events.at(-1)).toMatchObject({
-      payload: {
-        rule: 'auth_reject_burst',
-        details: {
-          canonical_subreason: 'auth.invalid_credentials',
-        },
-      },
+    detector.recordHeartbeatSkew(100, 5_200);
+    expect(events.at(-1)?.payload).toMatchObject({
+      rule_id: 'heartbeat_skew',
+      severity: 'medium',
+      auto_action: 'alert_only',
     });
+    expect(gate.acquire()).toEqual({ allowed: true });
   });
 
-  it('detects heartbeat skew and reconnect storms', () => {
-    const { detector, events } = detectorFixture();
+  it('requires 3 reconnect attempts in 5min and remains medium alert-only', () => {
+    const { detector, gate, events } = detectorFixture();
 
-    detector.recordHeartbeatSkew(0, 6_000);
-    expect(events.at(-1)).toMatchObject({
-      payload: {
-        rule: 'heartbeat_skew',
-        severity: 'medium',
-      },
-    });
+    detector.recordReconnectState({ phase: 'attempt' }, 0);
+    detector.recordReconnectState({ phase: 'attempt' }, 1);
+    expect(events).toHaveLength(0);
 
-    for (let index = 0; index < 5; index += 1) {
-      detector.recordReconnectState({ phase: 'attempt' }, index);
-    }
-    expect(events.at(-1)).toMatchObject({
-      payload: {
-        rule: 'reconnect_storm',
-        severity: 'high',
-      },
+    detector.recordReconnectState({ phase: 'attempt' }, 2);
+    expect(events.at(-1)?.payload).toMatchObject({
+      rule_id: 'reconnect_storm',
+      severity: 'medium',
+      auto_action: 'alert_only',
     });
+    expect(gate.acquire()).toEqual({ allowed: true });
   });
 });
 

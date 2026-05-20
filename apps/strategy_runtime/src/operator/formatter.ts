@@ -300,10 +300,10 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
       ]);
     case 'ANOMALY_DETECTED':
       return compactParts([
-        `rule=${stringField(payload, 'rule')}`,
+        `rule_id=${stringField(payload, 'rule_id')}`,
         `severity=${stringField(payload, 'severity')}`,
-        `message=${stringField(payload, 'message')}`,
-        `auto_kill=${payload.auto_engaged_kill_switch}`,
+        `evidence=${stringField(payload, 'evidence_summary')}`,
+        `auto_action=${stringField(payload, 'auto_action')}`,
       ]);
     case 'HALT':
       return compactParts([

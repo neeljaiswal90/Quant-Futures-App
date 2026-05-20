@@ -30,7 +30,7 @@ describe('operational safety event contracts', () => {
         blocked_submission_gate: true,
       }),
       event('LIVENESS_STATE', {
-        process_state: 'alive',
+        process_state: 'live',
         broker_state: 'dead',
         overall_state: 'dead',
         kill_switch_engaged: true,
@@ -52,12 +52,11 @@ describe('operational safety event contracts', () => {
         persistence_enabled: false,
       }),
       event('ANOMALY_DETECTED', {
-        anomaly_id: 'anomaly-1',
-        rule: 'rapid_quarantine',
+        rule_id: 'rapid_quarantine_accumulation',
         severity: 'high',
-        observed_at_ts_ns: TS_NS,
-        message: 'fixture',
-        auto_engaged_kill_switch: true,
+        triggered_ts_ns: TS_NS,
+        evidence_summary: 'fixture',
+        auto_action: 'kill_switch_engaged',
       }),
       event('SESSION_MANIFEST', {
         mask_id: 'mask',
@@ -96,7 +95,7 @@ describe('operational safety event contracts', () => {
 
 function event(type: RuntimeEventType, payload: Record<string, unknown>) {
   return createJournalEventEnvelope({
-    event_id: makeEventId(`event-${type}-${String(payload.session_phase ?? payload.state ?? payload.rule ?? 'x')}`),
+    event_id: makeEventId(`event-${type}-${String(payload.session_phase ?? payload.state ?? payload.rule_id ?? 'x')}`),
     type,
     ts_ns: TS_NS,
     run_id: RUN_ID,

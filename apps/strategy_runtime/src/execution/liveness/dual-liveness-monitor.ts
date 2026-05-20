@@ -1,18 +1,37 @@
 import { ns, type JournalEventPayloadFor, type UnixNs } from '../../contracts/index.js';
+import type { HistogramSeries, LatencySliRegistry } from '../../observability/latency-sli.js';
 import type { KillSwitchController } from '../kill-switch/kill-switch-controller.js';
 
-export type LivenessComponentState = 'unknown' | 'alive' | 'stale' | 'dead';
-export type LivenessOverallState = 'alive' | 'degraded' | 'dead';
+export type LivenessComponentState = 'live' | 'degraded' | 'dead';
+export type LivenessOverallState = 'live' | 'degraded' | 'dead';
+
+export interface EventLoopLagWindowSnapshot {
+  readonly p95_ms?: number;
+  readonly observation_count: number;
+  readonly latest_observed_at_ms?: number;
+  readonly sampler_stopped?: boolean;
+}
+
+export interface EventLoopLagSnapshotProvider {
+  snapshotEventLoopLag(nowMs: number): EventLoopLagWindowSnapshot;
+}
 
 export interface DualLivenessMonitorOptions {
   readonly kill_switch: Pick<KillSwitchController, 'engage' | 'isEngaged'>;
+  readonly event_loop_lag_provider?: EventLoopLagSnapshotProvider;
+  readonly latency_registry?: Pick<LatencySliRegistry, 'histogramSnapshot'>;
   readonly emit?: (event: LivenessMonitorEvent) => void;
-  readonly process_stale_after_ms?: number;
-  readonly broker_stale_after_ms?: number;
-  readonly process_dead_after_ms?: number;
-  readonly broker_dead_after_ms?: number;
   readonly now_ms?: () => number;
   readonly now_ns?: () => UnixNs;
+  readonly process_window_ms?: number;
+  readonly process_degraded_p95_ms?: number;
+  readonly process_dead_p95_ms?: number;
+  readonly broker_heartbeat_cadence_ms?: number;
+}
+
+export interface BrokerHeartbeatInput {
+  readonly broker_ts_ns?: UnixNs;
+  readonly local_received_ms?: number;
 }
 
 export interface LivenessMonitorEvent {
@@ -27,19 +46,21 @@ export interface LivenessSnapshot {
   readonly overall_state: LivenessOverallState;
 }
 
-const DEFAULT_STALE_AFTER_MS = 5_000;
-const DEFAULT_DEAD_AFTER_MS = 15_000;
+const DEFAULT_PROCESS_WINDOW_MS = 30_000;
+const DEFAULT_PROCESS_DEGRADED_P95_MS = 100;
+const DEFAULT_PROCESS_DEAD_P95_MS = 500;
+const DEFAULT_BROKER_HEARTBEAT_CADENCE_MS = 5_000;
 
 export class DualLivenessMonitor {
   private readonly killSwitch: Pick<KillSwitchController, 'engage' | 'isEngaged'>;
+  private readonly eventLoopLagProvider: EventLoopLagSnapshotProvider;
   private readonly emitEvent: (event: LivenessMonitorEvent) => void;
-  private readonly processStaleAfterMs: number;
-  private readonly brokerStaleAfterMs: number;
-  private readonly processDeadAfterMs: number;
-  private readonly brokerDeadAfterMs: number;
   private readonly nowMs: () => number;
   private readonly nowNs: () => UnixNs;
-  private processLastHeartbeatMs: number | undefined;
+  private readonly processWindowMs: number;
+  private readonly processDegradedP95Ms: number;
+  private readonly processDeadP95Ms: number;
+  private readonly brokerHeartbeatCadenceMs: number;
   private brokerLastHeartbeatMs: number | undefined;
   private processForcedDeadReason: string | undefined;
   private brokerForcedDeadReason: string | undefined;
@@ -47,61 +68,48 @@ export class DualLivenessMonitor {
 
   constructor(options: DualLivenessMonitorOptions) {
     this.killSwitch = options.kill_switch;
-    this.emitEvent = options.emit ?? (() => undefined);
-    this.processStaleAfterMs = options.process_stale_after_ms ?? DEFAULT_STALE_AFTER_MS;
-    this.brokerStaleAfterMs = options.broker_stale_after_ms ?? DEFAULT_STALE_AFTER_MS;
-    this.processDeadAfterMs = options.process_dead_after_ms ?? DEFAULT_DEAD_AFTER_MS;
-    this.brokerDeadAfterMs = options.broker_dead_after_ms ?? DEFAULT_DEAD_AFTER_MS;
     this.nowMs = options.now_ms ?? (() => Date.now());
     this.nowNs = options.now_ns ?? (() => ns(BigInt(this.nowMs()) * 1_000_000n));
+    this.processWindowMs = options.process_window_ms ?? DEFAULT_PROCESS_WINDOW_MS;
+    this.processDegradedP95Ms = options.process_degraded_p95_ms ?? DEFAULT_PROCESS_DEGRADED_P95_MS;
+    this.processDeadP95Ms = options.process_dead_p95_ms ?? DEFAULT_PROCESS_DEAD_P95_MS;
+    this.brokerHeartbeatCadenceMs = options.broker_heartbeat_cadence_ms ?? DEFAULT_BROKER_HEARTBEAT_CADENCE_MS;
+    this.emitEvent = options.emit ?? (() => undefined);
+    this.eventLoopLagProvider =
+      options.event_loop_lag_provider ??
+      (options.latency_registry === undefined
+        ? stoppedEventLoopLagProvider()
+        : eventLoopLagProviderFromLatencyRegistry(options.latency_registry));
   }
 
-  recordProcessHeartbeat(atMs: number = this.nowMs()): LivenessSnapshot {
-    this.processLastHeartbeatMs = atMs;
-    this.processForcedDeadReason = undefined;
-    return this.snapshot(atMs);
-  }
-
-  recordBrokerHeartbeat(atMs: number = this.nowMs()): LivenessSnapshot {
-    this.brokerLastHeartbeatMs = atMs;
+  recordBrokerHeartbeat(input: BrokerHeartbeatInput = {}): LivenessSnapshot {
+    this.brokerLastHeartbeatMs = input.local_received_ms ?? this.nowMs();
     this.brokerForcedDeadReason = undefined;
-    return this.snapshot(atMs);
+    return this.snapshot(this.brokerLastHeartbeatMs);
   }
 
-  markProcessDead(reason = 'process_liveness_dead', atMs: number = this.nowMs()): LivenessSnapshot {
+  forceProcessDeadForTests(reason = 'process_liveness_forced_dead'): LivenessSnapshot {
     this.processForcedDeadReason = reason;
-    return this.evaluate(atMs);
+    return this.evaluate();
   }
 
-  markBrokerDead(reason = 'broker_liveness_dead', atMs: number = this.nowMs()): LivenessSnapshot {
+  forceBrokerDeadForTests(reason = 'broker_liveness_forced_dead'): LivenessSnapshot {
     this.brokerForcedDeadReason = reason;
-    return this.evaluate(atMs);
+    return this.evaluate();
   }
 
   evaluate(atMs: number = this.nowMs()): LivenessSnapshot {
-    const process = this.componentState(
-      this.processLastHeartbeatMs,
-      atMs,
-      this.processStaleAfterMs,
-      this.processDeadAfterMs,
-      this.processForcedDeadReason,
-    );
-    const broker = this.componentState(
-      this.brokerLastHeartbeatMs,
-      atMs,
-      this.brokerStaleAfterMs,
-      this.brokerDeadAfterMs,
-      this.brokerForcedDeadReason,
-    );
-    const overall = overallState(process.state, broker.state);
-    const reason = this.reasonFor(process.state, broker.state);
+    const process = this.processState(atMs);
+    const broker = this.brokerState(atMs);
+    const overall = combinedState(process.state, broker.state);
+    const reason = this.reasonFor(process.state, broker.state, process.reason, broker.reason);
 
     if (overall === 'dead' && !this.deadKillSwitchEngaged) {
       this.deadKillSwitchEngaged = true;
       if (!this.killSwitch.isEngaged()) {
         this.killSwitch.engage({
           reason: `liveness_dead:${reason ?? 'unknown'}`,
-          source: 'dual_liveness_monitor',
+          source: 'auto_liveness',
         });
       }
     }
@@ -115,7 +123,7 @@ export class DualLivenessMonitor {
         broker_state: broker.state,
         overall_state: overall,
         kill_switch_engaged: this.killSwitch.isEngaged(),
-        ...(process.age_ms === undefined ? {} : { process_last_heartbeat_age_ms: process.age_ms }),
+        ...(process.p95_ms === undefined ? {} : { process_event_loop_lag_p95_ms: process.p95_ms }),
         ...(broker.age_ms === undefined ? {} : { broker_last_heartbeat_age_ms: broker.age_ms }),
         ...(reason === undefined ? {} : { reason }),
       },
@@ -128,85 +136,123 @@ export class DualLivenessMonitor {
   }
 
   private snapshot(atMs: number): LivenessSnapshot {
-    const process = this.componentState(
-      this.processLastHeartbeatMs,
-      atMs,
-      this.processStaleAfterMs,
-      this.processDeadAfterMs,
-      this.processForcedDeadReason,
-    );
-    const broker = this.componentState(
-      this.brokerLastHeartbeatMs,
-      atMs,
-      this.brokerStaleAfterMs,
-      this.brokerDeadAfterMs,
-      this.brokerForcedDeadReason,
-    );
+    const process = this.processState(atMs);
+    const broker = this.brokerState(atMs);
     return {
       process_state: process.state,
       broker_state: broker.state,
-      overall_state: overallState(process.state, broker.state),
+      overall_state: combinedState(process.state, broker.state),
     };
   }
 
-  private componentState(
-    lastHeartbeatMs: number | undefined,
-    nowMs: number,
-    staleAfterMs: number,
-    deadAfterMs: number,
-    forcedDeadReason: string | undefined,
-  ): { readonly state: LivenessComponentState; readonly age_ms?: number } {
-    if (forcedDeadReason !== undefined) {
-      return { state: 'dead' };
+  private processState(atMs: number): {
+    readonly state: LivenessComponentState;
+    readonly reason?: string;
+    readonly p95_ms?: number;
+  } {
+    if (this.processForcedDeadReason !== undefined) {
+      return { state: 'dead', reason: this.processForcedDeadReason };
     }
-    if (lastHeartbeatMs === undefined) {
-      return { state: 'unknown' };
+    const snapshot = this.eventLoopLagProvider.snapshotEventLoopLag(atMs);
+    if (snapshot.sampler_stopped === true || snapshot.observation_count === 0) {
+      return { state: 'dead', reason: 'event_loop_lag_sampler_stopped_or_empty' };
     }
-    const ageMs = Math.max(0, nowMs - lastHeartbeatMs);
-    if (ageMs >= deadAfterMs) {
-      return { state: 'dead', age_ms: ageMs };
+    if (
+      snapshot.latest_observed_at_ms !== undefined &&
+      atMs - snapshot.latest_observed_at_ms > this.processWindowMs
+    ) {
+      return { state: 'dead', reason: 'event_loop_lag_no_recent_observations' };
     }
-    if (ageMs >= staleAfterMs) {
-      return { state: 'stale', age_ms: ageMs };
+    const p95Ms = snapshot.p95_ms;
+    if (p95Ms === undefined) {
+      return { state: 'dead', reason: 'event_loop_lag_p95_unavailable' };
     }
-    return { state: 'alive', age_ms: ageMs };
+    if (p95Ms > this.processDeadP95Ms) {
+      return { state: 'dead', reason: 'event_loop_lag_p95_dead', p95_ms: p95Ms };
+    }
+    if (p95Ms > this.processDegradedP95Ms) {
+      return { state: 'degraded', reason: 'event_loop_lag_p95_degraded', p95_ms: p95Ms };
+    }
+    return { state: 'live', p95_ms: p95Ms };
+  }
+
+  private brokerState(atMs: number): {
+    readonly state: LivenessComponentState;
+    readonly reason?: string;
+    readonly age_ms?: number;
+  } {
+    if (this.brokerForcedDeadReason !== undefined) {
+      return { state: 'dead', reason: this.brokerForcedDeadReason };
+    }
+    if (this.brokerLastHeartbeatMs === undefined) {
+      return { state: 'dead', reason: 'broker_heartbeat_missing' };
+    }
+    const ageMs = Math.max(0, atMs - this.brokerLastHeartbeatMs);
+    const missedHeartbeatCount = Math.max(0, Math.floor(ageMs / this.brokerHeartbeatCadenceMs) - 1);
+    if (missedHeartbeatCount >= 3 || ageMs > 30_000) {
+      return { state: 'dead', reason: 'broker_heartbeat_dead', age_ms: ageMs };
+    }
+    if (missedHeartbeatCount >= 1) {
+      return { state: 'degraded', reason: 'broker_heartbeat_degraded', age_ms: ageMs };
+    }
+    return { state: 'live', age_ms: ageMs };
   }
 
   private reasonFor(
     processState: LivenessComponentState,
     brokerState: LivenessComponentState,
+    processReason: string | undefined,
+    brokerReason: string | undefined,
   ): string | undefined {
-    if (this.processForcedDeadReason !== undefined) {
-      return this.processForcedDeadReason;
-    }
-    if (this.brokerForcedDeadReason !== undefined) {
-      return this.brokerForcedDeadReason;
-    }
     if (processState === 'dead') {
-      return 'process_dead';
+      return processReason ?? 'process_dead';
     }
     if (brokerState === 'dead') {
-      return 'broker_dead';
+      return brokerReason ?? 'broker_dead';
     }
-    if (processState === 'stale' || brokerState === 'stale') {
-      return 'heartbeat_stale';
+    if (processState === 'degraded') {
+      return processReason ?? 'process_degraded';
     }
-    if (processState === 'unknown' || brokerState === 'unknown') {
-      return 'heartbeat_unknown';
+    if (brokerState === 'degraded') {
+      return brokerReason ?? 'broker_degraded';
     }
     return undefined;
   }
 }
 
-function overallState(
+export function eventLoopLagProviderFromLatencyRegistry(
+  registry: Pick<LatencySliRegistry, 'histogramSnapshot'>,
+): EventLoopLagSnapshotProvider {
+  return {
+    snapshotEventLoopLag: (nowMs) => {
+      const snapshot = registry.histogramSnapshot('qfa_event_loop_lag_ms') as HistogramSeries | undefined;
+      if (snapshot === undefined || snapshot.count === 0) {
+        return { observation_count: 0, latest_observed_at_ms: undefined };
+      }
+      return {
+        observation_count: snapshot.count,
+        p95_ms: snapshot.sum / snapshot.count,
+        latest_observed_at_ms: nowMs,
+      };
+    },
+  };
+}
+
+function stoppedEventLoopLagProvider(): EventLoopLagSnapshotProvider {
+  return {
+    snapshotEventLoopLag: () => ({ observation_count: 0, sampler_stopped: true }),
+  };
+}
+
+function combinedState(
   processState: LivenessComponentState,
   brokerState: LivenessComponentState,
 ): LivenessOverallState {
   if (processState === 'dead' || brokerState === 'dead') {
     return 'dead';
   }
-  if (processState === 'alive' && brokerState === 'alive') {
-    return 'alive';
+  if (processState === 'live' && brokerState === 'live') {
+    return 'live';
   }
   return 'degraded';
 }

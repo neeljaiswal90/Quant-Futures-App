@@ -13,7 +13,6 @@ export interface AnomalyDetectorThresholds {
   readonly auth_reject_window_ms?: number;
   readonly auth_reject_count?: number;
   readonly heartbeat_skew_ms?: number;
-  readonly critical_heartbeat_skew_ms?: number;
   readonly reconnect_storm_window_ms?: number;
   readonly reconnect_storm_count?: number;
 }
@@ -36,11 +35,10 @@ const DEFAULT_THRESHOLDS = {
   rapid_quarantine_window_ms: 60_000,
   rapid_quarantine_count: 3,
   auth_reject_window_ms: 60_000,
-  auth_reject_count: 3,
+  auth_reject_count: 5,
   heartbeat_skew_ms: 5_000,
-  critical_heartbeat_skew_ms: 30_000,
-  reconnect_storm_window_ms: 120_000,
-  reconnect_storm_count: 5,
+  reconnect_storm_window_ms: 300_000,
+  reconnect_storm_count: 3,
 } as const satisfies Required<AnomalyDetectorThresholds>;
 
 export class AnomalyDetector {
@@ -51,8 +49,7 @@ export class AnomalyDetector {
   private readonly nowNs: () => UnixNs;
   private readonly quarantineTimesMs: number[] = [];
   private readonly authRejectTimesMs: number[] = [];
-  private readonly reconnectTimesMs: number[] = [];
-  private anomalySequence = 0;
+  private readonly reconnectAttemptTimesMs: number[] = [];
 
   constructor(options: AnomalyDetectorOptions) {
     this.killSwitch = options.kill_switch;
@@ -80,20 +77,6 @@ export class AnomalyDetector {
         this.recordReconnectState(payload, nsToMs(event.ts_ns));
         return;
       }
-      case 'LIVENESS_STATE': {
-        const payload = event.payload as JournalEventPayloadFor<'LIVENESS_STATE'>;
-        if (
-          payload.process_last_heartbeat_age_ms !== undefined &&
-          payload.broker_last_heartbeat_age_ms !== undefined
-        ) {
-          this.recordHeartbeatSkew(
-            payload.process_last_heartbeat_age_ms,
-            payload.broker_last_heartbeat_age_ms,
-            nsToMs(event.ts_ns),
-          );
-        }
-        return;
-      }
       default:
         return;
     }
@@ -104,12 +87,9 @@ export class AnomalyDetector {
     trimWindow(this.quarantineTimesMs, atMs, this.thresholds.rapid_quarantine_window_ms);
     if (this.quarantineTimesMs.length >= this.thresholds.rapid_quarantine_count) {
       this.emitAnomaly({
-        rule: 'rapid_quarantine',
+        rule_id: 'rapid_quarantine_accumulation',
         severity: 'high',
-        message: 'rapid order quarantine burst detected',
-        count: this.quarantineTimesMs.length,
-        threshold: this.thresholds.rapid_quarantine_count,
-        window_ms: this.thresholds.rapid_quarantine_window_ms,
+        evidence_summary: `${this.quarantineTimesMs.length} quarantines within ${this.thresholds.rapid_quarantine_window_ms}ms`,
       });
     }
   }
@@ -127,39 +107,25 @@ export class AnomalyDetector {
     trimWindow(this.authRejectTimesMs, atMs, this.thresholds.auth_reject_window_ms);
     if (this.authRejectTimesMs.length >= this.thresholds.auth_reject_count) {
       this.emitAnomaly({
-        rule: 'auth_reject_burst',
+        rule_id: 'auth_reject_burst',
         severity: 'high',
-        message: 'authentication reject burst detected',
-        count: this.authRejectTimesMs.length,
-        threshold: this.thresholds.auth_reject_count,
-        window_ms: this.thresholds.auth_reject_window_ms,
-        details: {
-          canonical_subreason: classification.canonical_subreason,
-        },
+        evidence_summary: `${this.authRejectTimesMs.length} auth rejects within ${this.thresholds.auth_reject_window_ms}ms (${classification.canonical_subreason})`,
       });
     }
   }
 
   recordHeartbeatSkew(
-    processHeartbeatAgeMs: number,
-    brokerHeartbeatAgeMs: number,
-    _atMs: number = this.nowMs(),
+    brokerTimestampMs: number,
+    localClockMs: number = this.nowMs(),
   ): void {
-    const skewMs = Math.abs(processHeartbeatAgeMs - brokerHeartbeatAgeMs);
-    if (skewMs < this.thresholds.heartbeat_skew_ms) {
+    const skewMs = Math.abs(localClockMs - brokerTimestampMs);
+    if (skewMs <= this.thresholds.heartbeat_skew_ms) {
       return;
     }
     this.emitAnomaly({
-      rule: 'heartbeat_skew',
-      severity: skewMs >= this.thresholds.critical_heartbeat_skew_ms ? 'high' : 'medium',
-      message: 'process and broker heartbeat ages diverged',
-      count: skewMs,
-      threshold: this.thresholds.heartbeat_skew_ms,
-      details: {
-        process_heartbeat_age_ms: processHeartbeatAgeMs,
-        broker_heartbeat_age_ms: brokerHeartbeatAgeMs,
-        skew_ms: skewMs,
-      },
+      rule_id: 'heartbeat_skew',
+      severity: 'medium',
+      evidence_summary: `broker/local heartbeat skew ${skewMs}ms exceeds ${this.thresholds.heartbeat_skew_ms}ms`,
     });
   }
 
@@ -167,54 +133,42 @@ export class AnomalyDetector {
     payload: Pick<JournalEventPayloadFor<'RECONNECT_STATE'>, 'phase'>,
     atMs: number = this.nowMs(),
   ): void {
-    if (payload.phase !== 'attempt' && payload.phase !== 'exhausted') {
+    if (payload.phase !== 'attempt') {
       return;
     }
-    this.reconnectTimesMs.push(atMs);
-    trimWindow(this.reconnectTimesMs, atMs, this.thresholds.reconnect_storm_window_ms);
-    if (this.reconnectTimesMs.length >= this.thresholds.reconnect_storm_count) {
+    this.reconnectAttemptTimesMs.push(atMs);
+    trimWindow(this.reconnectAttemptTimesMs, atMs, this.thresholds.reconnect_storm_window_ms);
+    if (this.reconnectAttemptTimesMs.length >= this.thresholds.reconnect_storm_count) {
       this.emitAnomaly({
-        rule: 'reconnect_storm',
-        severity: 'high',
-        message: 'reconnect storm detected',
-        count: this.reconnectTimesMs.length,
-        threshold: this.thresholds.reconnect_storm_count,
-        window_ms: this.thresholds.reconnect_storm_window_ms,
+        rule_id: 'reconnect_storm',
+        severity: 'medium',
+        evidence_summary: `${this.reconnectAttemptTimesMs.length} reconnect attempts within ${this.thresholds.reconnect_storm_window_ms}ms`,
       });
     }
   }
 
   private emitAnomaly(input: {
-    readonly rule: JournalEventPayloadFor<'ANOMALY_DETECTED'>['rule'];
+    readonly rule_id: JournalEventPayloadFor<'ANOMALY_DETECTED'>['rule_id'];
     readonly severity: JournalEventPayloadFor<'ANOMALY_DETECTED'>['severity'];
-    readonly message: string;
-    readonly count?: number;
-    readonly threshold?: number;
-    readonly window_ms?: number;
-    readonly details?: JournalEventPayloadFor<'ANOMALY_DETECTED'>['details'];
+    readonly evidence_summary: string;
   }): void {
-    this.anomalySequence += 1;
-    const autoEngage = input.severity === 'high';
+    const autoAction: JournalEventPayloadFor<'ANOMALY_DETECTED'>['auto_action'] =
+      input.severity === 'high' ? 'kill_switch_engaged' : 'alert_only';
     const tsNs = this.nowNs();
     this.emitEvent({
       type: 'ANOMALY_DETECTED',
       ts_ns: tsNs,
       payload: {
-        anomaly_id: `anomaly-${this.anomalySequence}`,
-        rule: input.rule,
+        rule_id: input.rule_id,
         severity: input.severity,
-        observed_at_ts_ns: tsNs,
-        message: input.message,
-        auto_engaged_kill_switch: autoEngage,
-        ...(input.count === undefined ? {} : { count: input.count }),
-        ...(input.threshold === undefined ? {} : { threshold: input.threshold }),
-        ...(input.window_ms === undefined ? {} : { window_ms: input.window_ms }),
-        ...(input.details === undefined ? {} : { details: input.details }),
+        triggered_ts_ns: tsNs,
+        evidence_summary: input.evidence_summary,
+        auto_action: autoAction,
       },
     });
-    if (autoEngage && !this.killSwitch.isEngaged()) {
+    if (autoAction === 'kill_switch_engaged' && !this.killSwitch.isEngaged()) {
       this.killSwitch.engage({
-        reason: `anomaly:${input.rule}`,
+        reason: `anomaly:${input.rule_id}`,
         source: 'anomaly_detector',
       });
     }

@@ -1,79 +1,73 @@
 export const FAILURE_CATEGORIES = [
+  'network',
   'auth',
-  'credentials',
   'permission',
-  'entitlement',
-  'risk',
-  'broker',
-  'reconnect',
-  'transport',
+  'rate_limit',
+  'protocol',
   'unknown',
 ] as const;
 
 export type FailureCategory = (typeof FAILURE_CATEGORIES)[number];
 
+export const FAILURE_REMEDIATIONS = [
+  'retry_with_backoff',
+  'escalate',
+  'terminate_session',
+  'block_submission',
+] as const;
+
+export type FailureRemediation = (typeof FAILURE_REMEDIATIONS)[number];
+
+export const NETWORK_FAILURE_SUBREASONS = [
+  'tls_handshake_failed',
+  'socket_dropped',
+  'dns_resolution_failed',
+  'gateway_unreachable',
+] as const;
 export const AUTH_FAILURE_SUBREASONS = [
   'invalid_credentials',
   'session_expired',
-] as const;
-export const CREDENTIALS_FAILURE_SUBREASONS = [
-  'missing',
-  'resolver_unavailable',
+  'mfa_required',
+  'account_locked',
 ] as const;
 export const PERMISSION_FAILURE_SUBREASONS = [
-  'order_submit_denied',
-  'cancel_denied',
+  'plant_not_authorized',
+  'instrument_not_authorized',
+  'account_disabled',
 ] as const;
-export const ENTITLEMENT_FAILURE_SUBREASONS = ['symbol_denied'] as const;
-export const RISK_FAILURE_SUBREASONS = ['local_reject', 'broker_reject'] as const;
-export const BROKER_FAILURE_SUBREASONS = [
-  'unavailable',
-  'protocol_error',
+export const RATE_LIMIT_FAILURE_SUBREASONS = [
+  'submission_throttle',
+  'cancel_throttle',
+  'session_rate_limit',
 ] as const;
-export const RECONNECT_FAILURE_SUBREASONS = [
-  'retry_budget_exhausted',
-  'session_lost',
-  'attempt_timeout',
+export const PROTOCOL_FAILURE_SUBREASONS = [
+  'unknown_message_type',
+  'framing_error',
+  'sequence_number_drift',
+  'schema_version_mismatch',
 ] as const;
-export const TRANSPORT_FAILURE_SUBREASONS = [
-  'process_dead',
-  'broker_dead',
-  'heartbeat_timeout',
-] as const;
-export const UNKNOWN_FAILURE_SUBREASONS = ['unknown'] as const;
+export const UNKNOWN_FAILURE_SUBREASONS = ['unrecognized'] as const;
 
 export interface FailureSubreasonByCategory {
+  readonly network: (typeof NETWORK_FAILURE_SUBREASONS)[number];
   readonly auth: (typeof AUTH_FAILURE_SUBREASONS)[number];
-  readonly credentials: (typeof CREDENTIALS_FAILURE_SUBREASONS)[number];
   readonly permission: (typeof PERMISSION_FAILURE_SUBREASONS)[number];
-  readonly entitlement: (typeof ENTITLEMENT_FAILURE_SUBREASONS)[number];
-  readonly risk: (typeof RISK_FAILURE_SUBREASONS)[number];
-  readonly broker: (typeof BROKER_FAILURE_SUBREASONS)[number];
-  readonly reconnect: (typeof RECONNECT_FAILURE_SUBREASONS)[number];
-  readonly transport: (typeof TRANSPORT_FAILURE_SUBREASONS)[number];
+  readonly rate_limit: (typeof RATE_LIMIT_FAILURE_SUBREASONS)[number];
+  readonly protocol: (typeof PROTOCOL_FAILURE_SUBREASONS)[number];
   readonly unknown: (typeof UNKNOWN_FAILURE_SUBREASONS)[number];
 }
 
-export type FailureSubreason =
-  FailureSubreasonByCategory[keyof FailureSubreasonByCategory];
-
-export interface FailureRemediationFlags {
-  readonly retryable: boolean;
-  readonly should_reconnect: boolean;
-  readonly should_quarantine: boolean;
-  readonly should_kill_switch: boolean;
-  readonly requires_operator: boolean;
-}
+export type FailureSubreason = FailureSubreasonByCategory[keyof FailureSubreasonByCategory];
 
 export type FailureClassification = {
   readonly [TCategory in FailureCategory]: {
     readonly category: TCategory;
     readonly subreason: FailureSubreasonByCategory[TCategory];
     readonly canonical_subreason: `${TCategory}.${FailureSubreasonByCategory[TCategory]}`;
+    readonly remediation: FailureRemediation;
     readonly known: boolean;
     readonly raw_code?: string;
     readonly raw_subreason?: string;
-    readonly remediation: FailureRemediationFlags;
   };
 }[FailureCategory];
 
@@ -85,169 +79,61 @@ type FailureClassificationInput<TCategory extends FailureCategory> = {
 };
 
 const SUBREASONS_BY_CATEGORY = {
+  network: NETWORK_FAILURE_SUBREASONS,
   auth: AUTH_FAILURE_SUBREASONS,
-  credentials: CREDENTIALS_FAILURE_SUBREASONS,
   permission: PERMISSION_FAILURE_SUBREASONS,
-  entitlement: ENTITLEMENT_FAILURE_SUBREASONS,
-  risk: RISK_FAILURE_SUBREASONS,
-  broker: BROKER_FAILURE_SUBREASONS,
-  reconnect: RECONNECT_FAILURE_SUBREASONS,
-  transport: TRANSPORT_FAILURE_SUBREASONS,
+  rate_limit: RATE_LIMIT_FAILURE_SUBREASONS,
+  protocol: PROTOCOL_FAILURE_SUBREASONS,
   unknown: UNKNOWN_FAILURE_SUBREASONS,
 } as const satisfies {
   readonly [TCategory in FailureCategory]: readonly FailureSubreasonByCategory[TCategory][];
 };
 
 const REMEDIATION_BY_CANONICAL_SUBREASON = {
-  'auth.invalid_credentials': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: false,
-    should_kill_switch: true,
-    requires_operator: true,
-  },
-  'auth.session_expired': {
-    retryable: true,
-    should_reconnect: true,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: false,
-  },
-  'credentials.missing': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: false,
-    should_kill_switch: true,
-    requires_operator: true,
-  },
-  'credentials.resolver_unavailable': {
-    retryable: true,
-    should_reconnect: false,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: true,
-  },
-  'permission.order_submit_denied': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: false,
-    should_kill_switch: true,
-    requires_operator: true,
-  },
-  'permission.cancel_denied': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: true,
-    should_kill_switch: true,
-    requires_operator: true,
-  },
-  'entitlement.symbol_denied': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: true,
-  },
-  'risk.local_reject': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: true,
-    should_kill_switch: false,
-    requires_operator: false,
-  },
-  'risk.broker_reject': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: true,
-    should_kill_switch: false,
-    requires_operator: true,
-  },
-  'broker.unavailable': {
-    retryable: true,
-    should_reconnect: true,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: false,
-  },
-  'broker.protocol_error': {
-    retryable: true,
-    should_reconnect: true,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: true,
-  },
-  'reconnect.retry_budget_exhausted': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: false,
-    should_kill_switch: true,
-    requires_operator: true,
-  },
-  'reconnect.session_lost': {
-    retryable: true,
-    should_reconnect: true,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: false,
-  },
-  'reconnect.attempt_timeout': {
-    retryable: true,
-    should_reconnect: true,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: false,
-  },
-  'transport.process_dead': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: false,
-    should_kill_switch: true,
-    requires_operator: true,
-  },
-  'transport.broker_dead': {
-    retryable: true,
-    should_reconnect: true,
-    should_quarantine: false,
-    should_kill_switch: true,
-    requires_operator: true,
-  },
-  'transport.heartbeat_timeout': {
-    retryable: true,
-    should_reconnect: true,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: false,
-  },
-  'unknown.unknown': {
-    retryable: false,
-    should_reconnect: false,
-    should_quarantine: false,
-    should_kill_switch: false,
-    requires_operator: true,
-  },
-} as const satisfies Record<CanonicalFailureSubreason, FailureRemediationFlags>;
+  'network.tls_handshake_failed': 'terminate_session',
+  'network.socket_dropped': 'retry_with_backoff',
+  'network.dns_resolution_failed': 'retry_with_backoff',
+  'network.gateway_unreachable': 'retry_with_backoff',
+  'auth.invalid_credentials': 'terminate_session',
+  'auth.session_expired': 'retry_with_backoff',
+  'auth.mfa_required': 'escalate',
+  'auth.account_locked': 'escalate',
+  'permission.plant_not_authorized': 'escalate',
+  'permission.instrument_not_authorized': 'escalate',
+  'permission.account_disabled': 'escalate',
+  'rate_limit.submission_throttle': 'block_submission',
+  'rate_limit.cancel_throttle': 'block_submission',
+  'rate_limit.session_rate_limit': 'block_submission',
+  'protocol.unknown_message_type': 'escalate',
+  'protocol.framing_error': 'escalate',
+  'protocol.sequence_number_drift': 'retry_with_backoff',
+  'protocol.schema_version_mismatch': 'escalate',
+  'unknown.unrecognized': 'escalate',
+} as const satisfies Record<CanonicalFailureSubreason, FailureRemediation>;
 
 const BROKER_REJECT_CODE_PATTERNS: readonly [
   RegExp,
   FailureClassificationInput<FailureCategory>,
 ][] = [
-  [/AUTH.*SESSION.*EXPIRED|SESSION.*EXPIRED/u, { category: 'auth', subreason: 'session_expired' }],
+  [/TLS|HANDSHAKE/u, { category: 'network', subreason: 'tls_handshake_failed' }],
+  [/SOCKET|CONNECTION.*DROP|DROPPED|DISCONNECT/u, { category: 'network', subreason: 'socket_dropped' }],
+  [/DNS|RESOLUTION/u, { category: 'network', subreason: 'dns_resolution_failed' }],
+  [/GATEWAY|UNREACHABLE|UNAVAILABLE/u, { category: 'network', subreason: 'gateway_unreachable' }],
+  [/SESSION.*EXPIRED|EXPIRED.*SESSION/u, { category: 'auth', subreason: 'session_expired' }],
+  [/MFA|MULTI.*FACTOR/u, { category: 'auth', subreason: 'mfa_required' }],
+  [/ACCOUNT.*LOCK/u, { category: 'auth', subreason: 'account_locked' }],
   [/AUTH|INVALID.*CRED|LOGIN|PASSWORD/u, { category: 'auth', subreason: 'invalid_credentials' }],
-  [/CREDENTIAL.*MISSING|MISSING.*CREDENTIAL/u, { category: 'credentials', subreason: 'missing' }],
-  [/RESOLVER.*UNAVAILABLE|VAULT.*UNAVAILABLE/u, { category: 'credentials', subreason: 'resolver_unavailable' }],
-  [/CANCEL.*DENIED/u, { category: 'permission', subreason: 'cancel_denied' }],
-  [/PERMISSION|SUBMIT.*DENIED|ORDER.*DENIED/u, { category: 'permission', subreason: 'order_submit_denied' }],
-  [/ENTITLEMENT|SYMBOL.*DENIED|MARKET.*DATA.*DENIED/u, { category: 'entitlement', subreason: 'symbol_denied' }],
-  [/LOCAL.*RISK/u, { category: 'risk', subreason: 'local_reject' }],
-  [/RISK/u, { category: 'risk', subreason: 'broker_reject' }],
-  [/PROTOCOL|DECODE|ENCODE/u, { category: 'broker', subreason: 'protocol_error' }],
-  [/UNAVAILABLE|BROKER.*DOWN|GATEWAY.*DOWN/u, { category: 'broker', subreason: 'unavailable' }],
-  [/RETRY.*BUDGET|BUDGET.*EXHAUST/u, { category: 'reconnect', subreason: 'retry_budget_exhausted' }],
-  [/SESSION.*LOST/u, { category: 'reconnect', subreason: 'session_lost' }],
-  [/ATTEMPT.*TIMEOUT|TIMEOUT/u, { category: 'reconnect', subreason: 'attempt_timeout' }],
-  [/PROCESS.*DEAD/u, { category: 'transport', subreason: 'process_dead' }],
-  [/BROKER.*DEAD/u, { category: 'transport', subreason: 'broker_dead' }],
-  [/HEARTBEAT/u, { category: 'transport', subreason: 'heartbeat_timeout' }],
+  [/PLANT.*NOT.*AUTH|ORDER.*PLANT.*DENIED|PLANT.*DENIED/u, { category: 'permission', subreason: 'plant_not_authorized' }],
+  [/INSTRUMENT.*NOT.*AUTH|SYMBOL.*DENIED|INSTRUMENT.*DENIED/u, { category: 'permission', subreason: 'instrument_not_authorized' }],
+  [/ACCOUNT.*DISABLED/u, { category: 'permission', subreason: 'account_disabled' }],
+  [/SUBMISSION.*THROTTLE|ORDER.*THROTTLE/u, { category: 'rate_limit', subreason: 'submission_throttle' }],
+  [/CANCEL.*THROTTLE/u, { category: 'rate_limit', subreason: 'cancel_throttle' }],
+  [/SESSION.*RATE|RATE.*LIMIT/u, { category: 'rate_limit', subreason: 'session_rate_limit' }],
+  [/UNKNOWN.*MESSAGE|MESSAGE.*TYPE/u, { category: 'protocol', subreason: 'unknown_message_type' }],
+  [/FRAMING|FRAME/u, { category: 'protocol', subreason: 'framing_error' }],
+  [/SEQUENCE|SEQ.*DRIFT/u, { category: 'protocol', subreason: 'sequence_number_drift' }],
+  [/SCHEMA.*VERSION|VERSION.*MISMATCH/u, { category: 'protocol', subreason: 'schema_version_mismatch' }],
+  [/PROTOCOL/u, { category: 'protocol', subreason: 'framing_error' }],
 ];
 
 export function parseBrokerRejectCode(
@@ -274,7 +160,7 @@ export function parseBrokerRejectCode(
     }
   }
 
-  return classification({ category: 'unknown', subreason: 'unknown' }, {
+  return classification({ category: 'unknown', subreason: 'unrecognized' }, {
     known: false,
     raw_code: rejectReasonCode,
     raw_subreason: rejectSubreason,
@@ -314,10 +200,10 @@ function classification<TCategory extends FailureCategory>(
     category: input.category,
     subreason: input.subreason,
     canonical_subreason: canonical,
+    remediation: REMEDIATION_BY_CANONICAL_SUBREASON[canonical],
     known: context.known,
     ...(context.raw_code === undefined ? {} : { raw_code: context.raw_code }),
     ...(context.raw_subreason === undefined ? {} : { raw_subreason: context.raw_subreason }),
-    remediation: REMEDIATION_BY_CANONICAL_SUBREASON[canonical],
   } as FailureClassification;
 }
 

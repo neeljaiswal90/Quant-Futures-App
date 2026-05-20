@@ -111,12 +111,15 @@ export class KillSwitchController {
     this.restorePersistedState();
   }
 
-  engage(input: KillSwitchEngageInput): KillSwitchState {
+  engage(input: KillSwitchEngageInput | string, source?: string): KillSwitchState {
+    const request = typeof input === 'string'
+      ? { reason: input, source: source ?? 'operator' }
+      : input;
     const nowMs = this.nowMs();
     this.state = {
       engaged: true,
-      reason: input.reason,
-      source: input.source ?? 'operator',
+      reason: request.reason,
+      source: request.source ?? 'operator',
       engaged_at_ms: nowMs,
     };
     this.submissionGate.requestBlock('kill_switch');

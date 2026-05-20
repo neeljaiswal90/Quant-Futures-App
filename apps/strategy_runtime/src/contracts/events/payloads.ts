@@ -173,15 +173,15 @@ export interface ReconnectStateEventPayload {
   readonly blocked_submission_gate?: boolean;
 }
 
-export type LivenessComponentState = 'unknown' | 'alive' | 'stale' | 'dead';
-export type LivenessOverallState = 'alive' | 'degraded' | 'dead';
+export type LivenessComponentState = 'live' | 'degraded' | 'dead';
+export type LivenessOverallState = 'live' | 'degraded' | 'dead';
 
 export interface LivenessStateEventPayload {
   readonly process_state: LivenessComponentState;
   readonly broker_state: LivenessComponentState;
   readonly overall_state: LivenessOverallState;
   readonly kill_switch_engaged: boolean;
-  readonly process_last_heartbeat_age_ms?: number;
+  readonly process_event_loop_lag_p95_ms?: number;
   readonly broker_last_heartbeat_age_ms?: number;
   readonly reason?: string;
 }
@@ -205,7 +205,7 @@ export interface KillSwitchDisengagedEventPayload {
 }
 
 export type AnomalyRule =
-  | 'rapid_quarantine'
+  | 'rapid_quarantine_accumulation'
   | 'auth_reject_burst'
   | 'heartbeat_skew'
   | 'reconnect_storm';
@@ -213,16 +213,11 @@ export type AnomalyRule =
 export type AnomalySeverity = 'low' | 'medium' | 'high';
 
 export interface AnomalyDetectedEventPayload {
-  readonly anomaly_id: string;
-  readonly rule: AnomalyRule;
+  readonly rule_id: AnomalyRule;
   readonly severity: AnomalySeverity;
-  readonly observed_at_ts_ns: UnixNs;
-  readonly message: string;
-  readonly auto_engaged_kill_switch: boolean;
-  readonly count?: number;
-  readonly threshold?: number;
-  readonly window_ms?: number;
-  readonly details?: FeatureScalarMap;
+  readonly triggered_ts_ns: UnixNs;
+  readonly evidence_summary: string;
+  readonly auto_action: 'kill_switch_engaged' | 'alert_only';
 }
 
 export interface HaltEventPayload {
