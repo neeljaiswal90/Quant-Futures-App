@@ -54,6 +54,7 @@ const PAYLOAD_VALIDATORS = {
   BOOK_REBUILD: validateBookRebuildPayload,
   SESSION_PHASE: validateSessionPhasePayload,
   ROLL_ADVISORY: validateRollAdvisoryPayload,
+  SESSION_MANIFEST: validateSessionManifestPayload,
   HALT: validateHaltPayload,
   WOULD_HALT: validateHaltPayload,
   VALIDATOR_ISSUE: validateValidatorIssuePayload,
@@ -416,6 +417,28 @@ function validateHaltPayload(
   requireEnum(record.state, `${path}.state`, issues, ['halted', 'resumed']);
   optionalNonEmptyString(record.reason, `${path}.reason`, issues);
   optionalBoolean(record.resolved, `${path}.resolved`, issues);
+}
+
+function validateSessionManifestPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.mask_id, `${path}.mask_id`, issues);
+  requireNumber(record.mask_version, `${path}.mask_version`, issues);
+  requireNonEmptyString(record.mask_hash, `${path}.mask_hash`, issues);
+  requireScalarMap(record.reconnect_policy_config, `${path}.reconnect_policy_config`, issues);
+  requireEnum(record.plant_scope, `${path}.plant_scope`, issues, ['ORDER_PLANT']);
+  requireEnum(record.mode, `${path}.mode`, issues, ['paper', 'live']);
+  requireEnum(record.timestamp_anchor, `${path}.timestamp_anchor`, issues, [
+    'broker_exchange_ts_ns',
+    'local_monotonic_unix_anchor',
+    'dual',
+  ]);
+  requireNonEmptyString(record.broker_session_id, `${path}.broker_session_id`, issues);
+  requireEnum(record.adapter_kind, `${path}.adapter_kind`, issues, ['MOCK_ORDER_PLANT']);
 }
 
 function validateValidatorIssuePayload(

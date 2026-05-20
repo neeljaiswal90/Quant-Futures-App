@@ -258,6 +258,15 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
         `active=${stringField(payload, 'active_symbol')}`,
         `next=${stringField(payload, 'next_symbol')}`,
       ]);
+    case 'SESSION_MANIFEST':
+      return compactParts([
+        `mask=${stringField(payload, 'mask_id')}`,
+        `version=${numberField(payload, 'mask_version')}`,
+        `plant=${stringField(payload, 'plant_scope')}`,
+        `mode=${stringField(payload, 'mode')}`,
+        `adapter=${stringField(payload, 'adapter_kind')}`,
+        `broker_session=${stringField(payload, 'broker_session_id')}`,
+      ]);
     case 'HALT':
       return compactParts([
         `state=${stringField(payload, 'state')}`,

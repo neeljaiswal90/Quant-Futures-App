@@ -109,6 +109,7 @@ export const EVENT_CHANNEL_CONTRACTS: readonly EventChannelContract[] = [
     event_types: [
       'SESSION_PHASE',
       'ROLL_ADVISORY',
+      'SESSION_MANIFEST',
       'HALT',
       'WOULD_HALT',
       'VALIDATOR_ISSUE',
@@ -120,7 +121,7 @@ export const EVENT_CHANNEL_CONTRACTS: readonly EventChannelContract[] = [
     tui_default: true,
     facts_are_authoritative: true,
     recomputation_allowed: false,
-    description: 'Session, halt, maintenance, roll state changes, and validator issues.',
+    description: 'Session, halt, maintenance, roll state changes, validator issues, and secret-resolution metadata.',
   },
   {
     channel: 'MARKET',
