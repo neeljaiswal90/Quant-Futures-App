@@ -55,6 +55,7 @@ const PAYLOAD_VALIDATORS = {
   SESSION_PHASE: validateSessionPhasePayload,
   ROLL_ADVISORY: validateRollAdvisoryPayload,
   HALT: validateHaltPayload,
+  WOULD_HALT: validateHaltPayload,
   VALIDATOR_ISSUE: validateValidatorIssuePayload,
   QUOTE: validateQuotePayload,
   TRADE: validateTradePayload,
@@ -413,6 +414,7 @@ function validateHaltPayload(
   if (record === undefined) return;
   requireEnum(record.state, `${path}.state`, issues, ['halted', 'resumed']);
   optionalNonEmptyString(record.reason, `${path}.reason`, issues);
+  optionalBoolean(record.resolved, `${path}.resolved`, issues);
 }
 
 function validateValidatorIssuePayload(

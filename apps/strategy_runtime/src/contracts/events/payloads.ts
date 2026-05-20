@@ -128,6 +128,7 @@ export interface RollAdvisoryEventPayload {
 export interface HaltEventPayload {
   readonly state: 'halted' | 'resumed';
   readonly reason?: string;
+  readonly resolved?: boolean;
 }
 
 export type ValidatorIssueSeverity = 'info' | 'warning' | 'error' | 'fatal';
@@ -439,6 +440,7 @@ export interface JournalEventPayloadByType {
   readonly SESSION_PHASE: SessionPhaseEventPayload;
   readonly ROLL_ADVISORY: RollAdvisoryEventPayload;
   readonly HALT: HaltEventPayload;
+  readonly WOULD_HALT: HaltEventPayload;
   readonly VALIDATOR_ISSUE: ValidatorIssueEventPayload;
   readonly QUOTE: QuoteEventPayload;
   readonly TRADE: TradeEventPayload;

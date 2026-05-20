@@ -7,6 +7,7 @@ import type {
   OrderQuarantineClearedPayload,
   OrderQuarantineEnteredPayload,
 } from '../contracts/events/payloads.js';
+import type { SloDefinition } from '../observability/slo-registry.js';
 
 export const ORDER_LIFECYCLE_STATES = [
   'pending_intent',
@@ -27,21 +28,7 @@ export const DEFAULT_SUBMISSION_ACK_TIMEOUT_MS = 2_000;
 export const DEFAULT_CANCEL_ACK_TIMEOUT_MS = 1_000;
 export const DEFAULT_MAX_CANCEL_ATTEMPTS = 3;
 
-export interface ProvisionalCancelAckSloDefinition {
-  readonly metric_name: 'qfa_order_ack_cancel_ms';
-  readonly windows: readonly {
-    readonly window_id: '5m' | '1h';
-    readonly window_duration_ms: number;
-    readonly sample_count_floor: number;
-    readonly p95_budget_ms: number;
-  }[];
-  readonly is_provisional: true;
-  readonly breach_eligibility: 'not_applicable_until_phase_6_ack';
-}
-
-// TODO(QFA-627): consolidate this structural type with SloDefinition once the
-// burn-rate evaluator branch is merged.
-export const PROVISIONAL_CANCEL_ACK_SLO: ProvisionalCancelAckSloDefinition = {
+export const PROVISIONAL_CANCEL_ACK_SLO: SloDefinition = {
   metric_name: 'qfa_order_ack_cancel_ms',
   windows: [
     {
@@ -104,18 +91,24 @@ export class DeterministicInMemoryQuarantineCounter implements QuarantineCounter
   }
 }
 
+export type SubmissionBlockSource =
+  | 'quarantine'
+  | 'slo_halt';
+
 export type SubmissionGateAcquireResult =
   | {
       readonly allowed: true;
     }
   | {
       readonly allowed: false;
-      readonly reason: 'quarantine_active';
+      readonly reason: 'quarantine_active' | 'slo_halt_active';
       readonly open_quarantine_count: number;
+      readonly active_block_sources?: readonly SubmissionBlockSource[];
     };
 
 export class SubmissionGate {
   private readonly counter: QuarantineCounter;
+  private readonly activeBlockSources = new Set<SubmissionBlockSource>();
 
   constructor(counter: QuarantineCounter = new DeterministicInMemoryQuarantineCounter()) {
     this.counter = counter;
@@ -128,21 +121,53 @@ export class SubmissionGate {
         allowed: false,
         reason: 'quarantine_active',
         open_quarantine_count: openQuarantineCount,
+        ...this.activeBlockSourcesForResult(),
+      };
+    }
+    if (this.activeBlockSources.has('slo_halt')) {
+      return {
+        allowed: false,
+        reason: 'slo_halt_active',
+        open_quarantine_count: openQuarantineCount,
+        active_block_sources: this.active_block_sources,
       };
     }
     return { allowed: true };
   }
 
+  requestBlock(source: SubmissionBlockSource): void {
+    this.activeBlockSources.add(source);
+  }
+
+  releaseBlock(source: SubmissionBlockSource): void {
+    this.activeBlockSources.delete(source);
+  }
+
   blockFromQuarantine(context?: QuarantineCounterContext): number {
-    return this.counter.increment(context);
+    const count = this.counter.increment(context);
+    this.requestBlock('quarantine');
+    return count;
   }
 
   unblockFromQuarantine(context?: QuarantineCounterContext): number {
-    return this.counter.decrement(context);
+    const count = this.counter.decrement(context);
+    if (count === 0) {
+      this.releaseBlock('quarantine');
+    }
+    return count;
   }
 
   get open_quarantine_count(): number {
     return this.counter.value();
+  }
+
+  get active_block_sources(): readonly SubmissionBlockSource[] {
+    return [...this.activeBlockSources].sort();
+  }
+
+  private activeBlockSourcesForResult(): { readonly active_block_sources?: readonly SubmissionBlockSource[] } {
+    const activeBlockSources = this.active_block_sources;
+    return activeBlockSources.length > 1 ? { active_block_sources: activeBlockSources } : {};
   }
 }
 
