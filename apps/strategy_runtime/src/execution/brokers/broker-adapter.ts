@@ -42,6 +42,11 @@ export type BrokerSessionEvent =
   | {
       readonly type: 'RECONNECT_STATE';
       readonly ts_ns: UnixNs;
+      readonly payload: JournalEventPayloadFor<'RECONNECT_STATE'>;
+    }
+  | {
+      readonly type: 'RECONNECT_STATE';
+      readonly ts_ns: UnixNs;
       readonly previous_state: BrokerReconnectState;
       readonly state: BrokerReconnectState;
       readonly reason?: BrokerRejectSubreason;

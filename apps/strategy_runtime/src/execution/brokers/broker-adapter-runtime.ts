@@ -124,6 +124,7 @@ export class BrokerAdapterRuntimeIntegration {
   private readonly ackTimeoutTimersByIntentEventId = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly unsubscribers: (() => void)[] = [];
   private lifecycleEventSequence = 0;
+  private sessionEventSequence = 0;
 
   constructor(options: BrokerAdapterRuntimeIntegrationOptions) {
     this.adapter = options.adapter;
@@ -276,20 +277,34 @@ export class BrokerAdapterRuntimeIntegration {
   }
 
   private handleSessionEvent(event: BrokerSessionEvent): void {
-    if (event.type !== 'SESSION_MANIFEST') {
+    if (event.type === 'SESSION_MANIFEST') {
+      this.eventSink(
+        createJournalEventEnvelope({
+          event_id: makeEventId(`session-manifest-${event.payload.broker_session_id}`),
+          type: 'SESSION_MANIFEST',
+          ts_ns: event.ts_ns,
+          run_id: this.runId,
+          session_id: this.sessionId,
+          payload: event.payload,
+        }),
+      );
       return;
     }
 
-    this.eventSink(
-      createJournalEventEnvelope({
-        event_id: makeEventId(`session-manifest-${event.payload.broker_session_id}`),
-        type: 'SESSION_MANIFEST',
-        ts_ns: event.ts_ns,
-        run_id: this.runId,
-        session_id: this.sessionId,
-        payload: event.payload,
-      }),
-    );
+    if (event.type === 'RECONNECT_STATE') {
+      const payload = normalizeReconnectStatePayload(event);
+      this.sessionEventSequence += 1;
+      this.eventSink(
+        createJournalEventEnvelope({
+          event_id: makeEventId(`broker-session-reconnect-state-${this.sessionEventSequence}`),
+          type: 'RECONNECT_STATE',
+          ts_ns: event.ts_ns,
+          run_id: this.runId,
+          session_id: this.sessionId,
+          payload,
+        }),
+      );
+    }
   }
 
   private toBrokerJournalEnvelope(
@@ -482,4 +497,22 @@ export class BrokerAdapterRuntimeIntegration {
 
 function assertNeverAckEvent(value: never): never {
   throw new Error(`Unhandled broker ACK event: ${String(value)}`);
+}
+
+function normalizeReconnectStatePayload(
+  event: Extract<BrokerSessionEvent, { readonly type: 'RECONNECT_STATE' }>,
+): JournalEventPayloadFor<'RECONNECT_STATE'> {
+  if ('payload' in event) {
+    return event.payload;
+  }
+  return {
+    previous_state: event.previous_state,
+    state: event.state,
+    phase: event.state === 'FAILED' ? 'exhausted' : 'attempt',
+    max_attempts: Number(event.retry_budget_config.max_attempts),
+    retry_budget_config: event.retry_budget_config,
+    ...(event.reason === undefined ? {} : { reason: event.reason }),
+    terminal: event.state === 'FAILED',
+    blocked_submission_gate: event.state !== 'CONNECTED',
+  };
 }

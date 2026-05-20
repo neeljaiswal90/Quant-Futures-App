@@ -266,6 +266,44 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
         `mode=${stringField(payload, 'mode')}`,
         `adapter=${stringField(payload, 'adapter_kind')}`,
         `broker_session=${stringField(payload, 'broker_session_id')}`,
+        optionalField(payload, 'session_phase'),
+      ]);
+    case 'RECONNECT_STATE':
+      return compactParts([
+        `state=${stringField(payload, 'state')}`,
+        `phase=${stringField(payload, 'phase')}`,
+        optionalField(payload, 'attempt'),
+        optionalField(payload, 'next_attempt_delay_ms'),
+        optionalField(payload, 'reason'),
+      ]);
+    case 'LIVENESS_STATE':
+      return compactParts([
+        `process=${stringField(payload, 'process_state')}`,
+        `broker=${stringField(payload, 'broker_state')}`,
+        `overall=${stringField(payload, 'overall_state')}`,
+        `kill_switch=${payload.kill_switch_engaged}`,
+        optionalField(payload, 'reason'),
+      ]);
+    case 'KILL_SWITCH_ENGAGED':
+      return compactParts([
+        `state=${stringField(payload, 'state')}`,
+        `reason=${stringField(payload, 'reason')}`,
+        `source=${stringField(payload, 'source')}`,
+        `persistence=${payload.persistence_enabled}`,
+      ]);
+    case 'KILL_SWITCH_DISENGAGED':
+      return compactParts([
+        `state=${stringField(payload, 'state')}`,
+        `reason=${stringField(payload, 'reason')}`,
+        `source=${stringField(payload, 'source')}`,
+        `token=${stringField(payload, 'token_id')}`,
+      ]);
+    case 'ANOMALY_DETECTED':
+      return compactParts([
+        `rule=${stringField(payload, 'rule')}`,
+        `severity=${stringField(payload, 'severity')}`,
+        `message=${stringField(payload, 'message')}`,
+        `auto_kill=${payload.auto_engaged_kill_switch}`,
       ]);
     case 'HALT':
       return compactParts([
@@ -603,7 +641,18 @@ function colorize(value: string, color: string, enabled: boolean): string {
 }
 
 function colorForEventType(type: RuntimeEventType): string {
-  if (['GAP', 'HALT', 'EXEC_REJECT', 'ORDER_QUARANTINE_ENTERED', 'VALIDATOR_ISSUE'].includes(type)) {
+  if (
+    [
+      'GAP',
+      'HALT',
+      'EXEC_REJECT',
+      'ORDER_QUARANTINE_ENTERED',
+      'VALIDATOR_ISSUE',
+      'KILL_SWITCH_ENGAGED',
+      'ANOMALY_DETECTED',
+      'RECONNECT_STATE',
+    ].includes(type)
+  ) {
     return RED;
   }
   if (['RISK_GATE', 'MGMT_ACTION', 'ROLL_ADVISORY', 'WOULD_HALT', 'SECRET_RESOLUTION'].includes(type)) {

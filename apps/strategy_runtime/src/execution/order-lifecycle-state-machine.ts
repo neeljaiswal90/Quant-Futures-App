@@ -93,7 +93,9 @@ export class DeterministicInMemoryQuarantineCounter implements QuarantineCounter
 
 export type SubmissionBlockSource =
   | 'quarantine'
-  | 'slo_halt';
+  | 'slo_halt'
+  | 'reconnect_in_progress'
+  | 'kill_switch';
 
 export type SubmissionGateAcquireResult =
   | {
@@ -101,7 +103,11 @@ export type SubmissionGateAcquireResult =
     }
   | {
       readonly allowed: false;
-      readonly reason: 'quarantine_active' | 'slo_halt_active';
+      readonly reason:
+        | 'quarantine_active'
+        | 'slo_halt_active'
+        | 'reconnect_in_progress_active'
+        | 'kill_switch_active';
       readonly open_quarantine_count: number;
       readonly active_block_sources?: readonly SubmissionBlockSource[];
     };
@@ -122,6 +128,22 @@ export class SubmissionGate {
         reason: 'quarantine_active',
         open_quarantine_count: openQuarantineCount,
         ...this.activeBlockSourcesForResult(),
+      };
+    }
+    if (this.activeBlockSources.has('kill_switch')) {
+      return {
+        allowed: false,
+        reason: 'kill_switch_active',
+        open_quarantine_count: openQuarantineCount,
+        active_block_sources: this.active_block_sources,
+      };
+    }
+    if (this.activeBlockSources.has('reconnect_in_progress')) {
+      return {
+        allowed: false,
+        reason: 'reconnect_in_progress_active',
+        open_quarantine_count: openQuarantineCount,
+        active_block_sources: this.active_block_sources,
       };
     }
     if (this.activeBlockSources.has('slo_halt')) {

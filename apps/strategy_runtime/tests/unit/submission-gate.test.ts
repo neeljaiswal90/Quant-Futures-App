@@ -33,4 +33,32 @@ describe('SubmissionGate', () => {
     gate.unblockFromQuarantine();
     expect(gate.acquire()).toEqual({ allowed: true });
   });
+
+  it('blocks independently for reconnect and kill-switch sources', () => {
+    const gate = new SubmissionGate();
+
+    gate.requestBlock('reconnect_in_progress');
+    expect(gate.acquire()).toEqual({
+      allowed: false,
+      reason: 'reconnect_in_progress_active',
+      open_quarantine_count: 0,
+      active_block_sources: ['reconnect_in_progress'],
+    });
+
+    gate.requestBlock('kill_switch');
+    expect(gate.acquire()).toEqual({
+      allowed: false,
+      reason: 'kill_switch_active',
+      open_quarantine_count: 0,
+      active_block_sources: ['kill_switch', 'reconnect_in_progress'],
+    });
+
+    gate.releaseBlock('reconnect_in_progress');
+    expect(gate.acquire()).toEqual({
+      allowed: false,
+      reason: 'kill_switch_active',
+      open_quarantine_count: 0,
+      active_block_sources: ['kill_switch'],
+    });
+  });
 });

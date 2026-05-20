@@ -17,11 +17,17 @@ import {
 import { loadAppConfig } from '../config/index.js';
 import {
   BrokerAdapterRuntimeIntegration,
+  AnomalyDetector,
+  DualLivenessMonitor,
+  KillSwitchController,
   MockOrderPlantAdapter,
   SubmissionGate,
   createSimulatedExecutionAdapter,
+  type AnomalyDetectorEvent,
   type BrokerAdapter,
   type BrokerCredentialLookup,
+  type KillSwitchControllerEvent,
+  type LivenessMonitorEvent,
 } from '../execution/index.js';
 import {
   PROVISIONAL_CANCEL_ACK_SLO,
@@ -100,6 +106,9 @@ export interface PaperTradingSessionOptions {
   readonly ack_timeout_policy?: ConstructorParameters<typeof BrokerAdapterRuntimeIntegration>[0]['ack_timeout_policy'];
   readonly order_lifecycle?: OrderLifecycleStateMachine;
   readonly capture_local_timestamp_ns?: () => UnixNs;
+  readonly kill_switch_controller?: KillSwitchController;
+  readonly anomaly_detector?: AnomalyDetector;
+  readonly liveness_monitor?: DualLivenessMonitor;
 }
 
 export interface PaperTradingSessionDiagnostics {
@@ -295,6 +304,9 @@ export class PaperTradingSession {
   private readonly captureLocalTimestampNs?: () => UnixNs;
   private readonly ackTimeoutPolicy: PaperTradingSessionOptions['ack_timeout_policy'];
   private readonly orderLifecycle: OrderLifecycleStateMachine | undefined;
+  private readonly killSwitch: KillSwitchController;
+  private readonly anomalyDetector: AnomalyDetector;
+  private readonly livenessMonitor: DualLivenessMonitor;
   private brokerRuntime: BrokerAdapterRuntimeIntegration | undefined;
   private runner: StrategyRuntimeRunner | undefined;
   private metricsEndpoint: LatencyMetricsEndpoint | undefined;
@@ -334,6 +346,23 @@ export class PaperTradingSession {
     this.captureLocalTimestampNs = options.capture_local_timestamp_ns;
     this.ackTimeoutPolicy = options.ack_timeout_policy;
     this.orderLifecycle = options.order_lifecycle;
+    this.killSwitch = options.kill_switch_controller ?? new KillSwitchController({
+      submission_gate: this.submissionGate,
+      persistence: { enabled: false },
+      emit: (event) => this.publishOperationalEvent(event),
+      now_ns: () => this.nowNs(),
+    });
+    this.anomalyDetector = options.anomaly_detector ?? new AnomalyDetector({
+      kill_switch: this.killSwitch,
+      emit: (event) => this.publishOperationalEvent(event),
+      now_ns: () => this.nowNs(),
+    });
+    this.livenessMonitor = options.liveness_monitor ?? new DualLivenessMonitor({
+      kill_switch: this.killSwitch,
+      emit: (event) => this.publishOperationalEvent(event),
+      now_ns: () => this.nowNs(),
+    });
+    void this.livenessMonitor;
   }
 
   async start(): Promise<void> {
@@ -653,6 +682,22 @@ export class PaperTradingSession {
   private publishHarnessEvent(event: AnyJournalEventEnvelope): void {
     this.journalEvents.push(event);
     this.pendingPublishes.push(this.container.publish(event));
+    this.anomalyDetector.observeEvent(event);
+  }
+
+  private publishOperationalEvent(
+    event: KillSwitchControllerEvent | AnomalyDetectorEvent | LivenessMonitorEvent,
+  ): void {
+    this.publishHarnessEvent(
+      createJournalEventEnvelope({
+        event_id: makeEventId(`paper-operational-${event.type.toLowerCase()}-${++this.eventSequence}`),
+        type: event.type,
+        ts_ns: event.ts_ns,
+        run_id: this.config.run_id,
+        session_id: this.config.session_id,
+        payload: event.payload,
+      }) as AnyJournalEventEnvelope,
+    );
   }
 
   private assertSessionManifestValid(): void {

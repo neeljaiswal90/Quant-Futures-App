@@ -135,12 +135,94 @@ export interface SessionManifestEventPayload {
   readonly timestamp_anchor: 'broker_exchange_ts_ns' | 'local_monotonic_unix_anchor' | 'dual';
   readonly broker_session_id: string;
   readonly adapter_kind: 'MOCK_ORDER_PLANT';
-  readonly session_phase?: 'starting' | 'closing';
+  readonly session_phase?: 'starting' | 'closing' | 'reconnect_success' | 'reconnect_exhausted';
   readonly session_duration_ms?: number;
   readonly final_quarantine_count?: number;
   readonly intents_emitted_total?: number;
   readonly acks_received_total?: number;
   readonly would_halt_emissions_total?: number;
+}
+
+export type ReconnectStateValue =
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'RECONNECTING'
+  | 'RECOVERING'
+  | 'FAILED';
+
+export type ReconnectStatePhase =
+  | 'disconnect'
+  | 'attempt'
+  | 'backoff'
+  | 'success'
+  | 'exhausted';
+
+export interface ReconnectStateEventPayload {
+  readonly state: ReconnectStateValue;
+  readonly phase: ReconnectStatePhase;
+  readonly max_attempts: number;
+  readonly retry_budget_config: FeatureScalarMap;
+  readonly previous_state?: ReconnectStateValue;
+  readonly attempt?: number;
+  readonly backoff_ms?: number;
+  readonly jitter_ms?: number;
+  readonly next_attempt_delay_ms?: number;
+  readonly reason?: string;
+  readonly terminal?: boolean;
+  readonly blocked_submission_gate?: boolean;
+}
+
+export type LivenessComponentState = 'unknown' | 'alive' | 'stale' | 'dead';
+export type LivenessOverallState = 'alive' | 'degraded' | 'dead';
+
+export interface LivenessStateEventPayload {
+  readonly process_state: LivenessComponentState;
+  readonly broker_state: LivenessComponentState;
+  readonly overall_state: LivenessOverallState;
+  readonly kill_switch_engaged: boolean;
+  readonly process_last_heartbeat_age_ms?: number;
+  readonly broker_last_heartbeat_age_ms?: number;
+  readonly reason?: string;
+}
+
+export interface KillSwitchEngagedEventPayload {
+  readonly state: 'engaged';
+  readonly reason: string;
+  readonly source: string;
+  readonly engaged_at_ts_ns: UnixNs;
+  readonly persistence_enabled: boolean;
+  readonly restart_reengage?: boolean;
+}
+
+export interface KillSwitchDisengagedEventPayload {
+  readonly state: 'disengaged';
+  readonly reason: string;
+  readonly source: string;
+  readonly disengaged_at_ts_ns: UnixNs;
+  readonly token_id: string;
+  readonly persistence_enabled: boolean;
+}
+
+export type AnomalyRule =
+  | 'rapid_quarantine'
+  | 'auth_reject_burst'
+  | 'heartbeat_skew'
+  | 'reconnect_storm';
+
+export type AnomalySeverity = 'low' | 'medium' | 'high';
+
+export interface AnomalyDetectedEventPayload {
+  readonly anomaly_id: string;
+  readonly rule: AnomalyRule;
+  readonly severity: AnomalySeverity;
+  readonly observed_at_ts_ns: UnixNs;
+  readonly message: string;
+  readonly auto_engaged_kill_switch: boolean;
+  readonly count?: number;
+  readonly threshold?: number;
+  readonly window_ms?: number;
+  readonly details?: FeatureScalarMap;
 }
 
 export interface HaltEventPayload {
@@ -466,6 +548,11 @@ export interface JournalEventPayloadByType {
   readonly SESSION_PHASE: SessionPhaseEventPayload;
   readonly ROLL_ADVISORY: RollAdvisoryEventPayload;
   readonly SESSION_MANIFEST: SessionManifestEventPayload;
+  readonly RECONNECT_STATE: ReconnectStateEventPayload;
+  readonly LIVENESS_STATE: LivenessStateEventPayload;
+  readonly KILL_SWITCH_ENGAGED: KillSwitchEngagedEventPayload;
+  readonly KILL_SWITCH_DISENGAGED: KillSwitchDisengagedEventPayload;
+  readonly ANOMALY_DETECTED: AnomalyDetectedEventPayload;
   readonly HALT: HaltEventPayload;
   readonly WOULD_HALT: HaltEventPayload;
   readonly VALIDATOR_ISSUE: ValidatorIssueEventPayload;

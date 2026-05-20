@@ -55,6 +55,11 @@ const PAYLOAD_VALIDATORS = {
   SESSION_PHASE: validateSessionPhasePayload,
   ROLL_ADVISORY: validateRollAdvisoryPayload,
   SESSION_MANIFEST: validateSessionManifestPayload,
+  RECONNECT_STATE: validateReconnectStatePayload,
+  LIVENESS_STATE: validateLivenessStatePayload,
+  KILL_SWITCH_ENGAGED: validateKillSwitchEngagedPayload,
+  KILL_SWITCH_DISENGAGED: validateKillSwitchDisengagedPayload,
+  ANOMALY_DETECTED: validateAnomalyDetectedPayload,
   HALT: validateHaltPayload,
   WOULD_HALT: validateHaltPayload,
   VALIDATOR_ISSUE: validateValidatorIssuePayload,
@@ -439,12 +444,138 @@ function validateSessionManifestPayload(
   ]);
   requireNonEmptyString(record.broker_session_id, `${path}.broker_session_id`, issues);
   requireEnum(record.adapter_kind, `${path}.adapter_kind`, issues, ['MOCK_ORDER_PLANT']);
-  optionalEnum(record.session_phase, `${path}.session_phase`, issues, ['starting', 'closing']);
+  optionalEnum(record.session_phase, `${path}.session_phase`, issues, [
+    'starting',
+    'closing',
+    'reconnect_success',
+    'reconnect_exhausted',
+  ]);
   optionalNumber(record.session_duration_ms, `${path}.session_duration_ms`, issues);
   optionalNumber(record.final_quarantine_count, `${path}.final_quarantine_count`, issues);
   optionalNumber(record.intents_emitted_total, `${path}.intents_emitted_total`, issues);
   optionalNumber(record.acks_received_total, `${path}.acks_received_total`, issues);
   optionalNumber(record.would_halt_emissions_total, `${path}.would_halt_emissions_total`, issues);
+}
+
+function validateReconnectStatePayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  optionalEnum(record.previous_state, `${path}.previous_state`, issues, [
+    'DISCONNECTED',
+    'CONNECTING',
+    'CONNECTED',
+    'RECONNECTING',
+    'RECOVERING',
+    'FAILED',
+  ]);
+  requireEnum(record.state, `${path}.state`, issues, [
+    'DISCONNECTED',
+    'CONNECTING',
+    'CONNECTED',
+    'RECONNECTING',
+    'RECOVERING',
+    'FAILED',
+  ]);
+  requireEnum(record.phase, `${path}.phase`, issues, [
+    'disconnect',
+    'attempt',
+    'backoff',
+    'success',
+    'exhausted',
+  ]);
+  optionalNumber(record.attempt, `${path}.attempt`, issues);
+  requireNumber(record.max_attempts, `${path}.max_attempts`, issues);
+  optionalNumber(record.backoff_ms, `${path}.backoff_ms`, issues);
+  optionalNumber(record.jitter_ms, `${path}.jitter_ms`, issues);
+  optionalNumber(record.next_attempt_delay_ms, `${path}.next_attempt_delay_ms`, issues);
+  optionalNonEmptyString(record.reason, `${path}.reason`, issues);
+  requireScalarMap(record.retry_budget_config, `${path}.retry_budget_config`, issues);
+  optionalBoolean(record.terminal, `${path}.terminal`, issues);
+  optionalBoolean(record.blocked_submission_gate, `${path}.blocked_submission_gate`, issues);
+}
+
+function validateLivenessStatePayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireEnum(record.process_state, `${path}.process_state`, issues, [
+    'unknown',
+    'alive',
+    'stale',
+    'dead',
+  ]);
+  requireEnum(record.broker_state, `${path}.broker_state`, issues, [
+    'unknown',
+    'alive',
+    'stale',
+    'dead',
+  ]);
+  requireEnum(record.overall_state, `${path}.overall_state`, issues, ['alive', 'degraded', 'dead']);
+  requireBoolean(record.kill_switch_engaged, `${path}.kill_switch_engaged`, issues);
+  optionalNumber(record.process_last_heartbeat_age_ms, `${path}.process_last_heartbeat_age_ms`, issues);
+  optionalNumber(record.broker_last_heartbeat_age_ms, `${path}.broker_last_heartbeat_age_ms`, issues);
+  optionalNonEmptyString(record.reason, `${path}.reason`, issues);
+}
+
+function validateKillSwitchEngagedPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireEnum(record.state, `${path}.state`, issues, ['engaged']);
+  requireNonEmptyString(record.reason, `${path}.reason`, issues);
+  requireNonEmptyString(record.source, `${path}.source`, issues);
+  requireTimestamp(record.engaged_at_ts_ns, `${path}.engaged_at_ts_ns`, issues);
+  requireBoolean(record.persistence_enabled, `${path}.persistence_enabled`, issues);
+  optionalBoolean(record.restart_reengage, `${path}.restart_reengage`, issues);
+}
+
+function validateKillSwitchDisengagedPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireEnum(record.state, `${path}.state`, issues, ['disengaged']);
+  requireNonEmptyString(record.reason, `${path}.reason`, issues);
+  requireNonEmptyString(record.source, `${path}.source`, issues);
+  requireTimestamp(record.disengaged_at_ts_ns, `${path}.disengaged_at_ts_ns`, issues);
+  requireNonEmptyString(record.token_id, `${path}.token_id`, issues);
+  requireBoolean(record.persistence_enabled, `${path}.persistence_enabled`, issues);
+}
+
+function validateAnomalyDetectedPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.anomaly_id, `${path}.anomaly_id`, issues);
+  requireEnum(record.rule, `${path}.rule`, issues, [
+    'rapid_quarantine',
+    'auth_reject_burst',
+    'heartbeat_skew',
+    'reconnect_storm',
+  ]);
+  requireEnum(record.severity, `${path}.severity`, issues, ['low', 'medium', 'high']);
+  requireTimestamp(record.observed_at_ts_ns, `${path}.observed_at_ts_ns`, issues);
+  requireNonEmptyString(record.message, `${path}.message`, issues);
+  requireBoolean(record.auto_engaged_kill_switch, `${path}.auto_engaged_kill_switch`, issues);
+  optionalNumber(record.count, `${path}.count`, issues);
+  optionalNumber(record.threshold, `${path}.threshold`, issues);
+  optionalNumber(record.window_ms, `${path}.window_ms`, issues);
+  optionalScalarMap(record.details, `${path}.details`, issues);
 }
 
 function validateValidatorIssuePayload(
