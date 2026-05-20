@@ -106,7 +106,7 @@ export const EVENT_CHANNEL_CONTRACTS: readonly EventChannelContract[] = [
   },
   {
     channel: 'SESSION',
-    event_types: ['SESSION_PHASE', 'ROLL_ADVISORY', 'HALT', 'VALIDATOR_ISSUE'],
+    event_types: ['SESSION_PHASE', 'ROLL_ADVISORY', 'HALT', 'WOULD_HALT', 'VALIDATOR_ISSUE'],
     emission_cadence: 'event_driven',
     throttle: { kind: 'none' },
     default_subscribers: EVENT_DRIVEN_SUBSCRIBERS,
