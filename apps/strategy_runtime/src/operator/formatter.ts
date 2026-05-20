@@ -279,6 +279,13 @@ function formatPayloadSummary(event: JournalEventEnvelope): string {
         optionalField(payload, 'source_event_id'),
         optionalField(payload, 'source_event_type'),
       ]);
+    case 'SECRET_RESOLUTION':
+      return compactParts([
+        `key=${stringField(payload, 'key')}`,
+        `backend=${stringField(payload, 'backend')}`,
+        `mode=${stringField(payload, 'mode')}`,
+        `cached=${payload.cached}`,
+      ]);
     case 'QUOTE':
       return compactParts([
         `bid=${numberField(payload, 'bid_px')}x${numberField(payload, 'bid_qty')}`,
@@ -590,7 +597,7 @@ function colorForEventType(type: RuntimeEventType): string {
   if (['GAP', 'HALT', 'EXEC_REJECT', 'ORDER_QUARANTINE_ENTERED', 'VALIDATOR_ISSUE'].includes(type)) {
     return RED;
   }
-  if (['RISK_GATE', 'MGMT_ACTION', 'ROLL_ADVISORY', 'WOULD_HALT'].includes(type)) {
+  if (['RISK_GATE', 'MGMT_ACTION', 'ROLL_ADVISORY', 'WOULD_HALT', 'SECRET_RESOLUTION'].includes(type)) {
     return YELLOW;
   }
   if (['SIM_FILL', 'POSITION', 'CANDIDATE', 'ORDER_QUARANTINE_CLEARED'].includes(type)) {

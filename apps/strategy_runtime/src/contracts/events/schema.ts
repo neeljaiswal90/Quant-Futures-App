@@ -57,6 +57,7 @@ const PAYLOAD_VALIDATORS = {
   HALT: validateHaltPayload,
   WOULD_HALT: validateHaltPayload,
   VALIDATOR_ISSUE: validateValidatorIssuePayload,
+  SECRET_RESOLUTION: validateSecretResolutionPayload,
   QUOTE: validateQuotePayload,
   TRADE: validateTradePayload,
   BAR_CLOSE: validateBarClosePayload,
@@ -442,6 +443,20 @@ function validateValidatorIssuePayload(
     }
   }
   optionalScalarMap(record.details, `${path}.details`, issues);
+}
+
+function validateSecretResolutionPayload(
+  payload: unknown,
+  issues: JournalEventSchemaIssue[],
+  path: string,
+): void {
+  const record = requireRecord(payload, path, issues);
+  if (record === undefined) return;
+  requireNonEmptyString(record.key, `${path}.key`, issues);
+  requireEnum(record.backend, `${path}.backend`, issues, ['env_var', 'vault']);
+  requireTimestamp(record.resolved_at_ts_ns, `${path}.resolved_at_ts_ns`, issues);
+  requireEnum(record.mode, `${path}.mode`, issues, ['paper', 'live']);
+  requireBoolean(record.cached, `${path}.cached`, issues);
 }
 
 function validateConfigPayload(
