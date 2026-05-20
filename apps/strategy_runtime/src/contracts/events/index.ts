@@ -76,6 +76,7 @@ export type {
   RiskGateEventPayload,
   RollAdvisoryEventPayload,
   SessionManifestEventPayload,
+  SecretResolutionEventPayload,
   SessionPhaseEventPayload,
   SimFillEventPayload,
   SizingEventPayload,

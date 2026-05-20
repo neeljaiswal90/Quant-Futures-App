@@ -167,6 +167,14 @@ export interface ValidatorIssueEventPayload {
   readonly details?: FeatureScalarMap;
 }
 
+export interface SecretResolutionEventPayload {
+  readonly key: string;
+  readonly backend: 'env_var' | 'vault';
+  readonly resolved_at_ts_ns: UnixNs;
+  readonly mode: 'paper' | 'live';
+  readonly cached: boolean;
+}
+
 export interface ConfigEventPayload {
   readonly config_hash: string;
   readonly config_version: number;
@@ -455,6 +463,7 @@ export interface JournalEventPayloadByType {
   readonly HALT: HaltEventPayload;
   readonly WOULD_HALT: HaltEventPayload;
   readonly VALIDATOR_ISSUE: ValidatorIssueEventPayload;
+  readonly SECRET_RESOLUTION: SecretResolutionEventPayload;
   readonly QUOTE: QuoteEventPayload;
   readonly TRADE: TradeEventPayload;
   readonly BAR_CLOSE: BarCloseEventPayload;
