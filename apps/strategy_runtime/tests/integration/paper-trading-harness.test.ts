@@ -1,13 +1,20 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  makeEventId,
   makeRunId,
   makeSessionId,
   ns,
   type AnyJournalEventEnvelope,
   type JournalEventPayloadFor,
 } from '../../src/contracts/index.js';
+import { validateJournalEventEnvelope } from '../../src/contracts/events/schema.js';
 import {
+  loadPaperSessionConfigFile,
   PaperTradingSession,
+  resolvePaperTradingSessionConfig,
   type PaperTradingSessionOptions,
 } from '../../src/paper-trading/index.js';
 import {
@@ -35,10 +42,97 @@ const BASE_OPTIONS = {
     session_id: SESSION_ID,
     metrics_endpoint: { enabled: false, port: 0 },
     journal_dir: 'journals/test-qfa-614',
+    shutdown_quarantine_timeout_ms: 0,
   },
 } satisfies Partial<PaperTradingSessionOptions>;
 
 describe('QFA-614 paper trading harness', () => {
+  it('loads the committed paper YAML into runner config', () => {
+    const raw = loadPaperSessionConfigFile();
+    const config = resolvePaperTradingSessionConfig({ env: {} });
+
+    expect(raw).toMatchObject({
+      session: {
+        strategy_id: 'regime_shock_reversion_short_v2',
+        adapter_kind: 'mock',
+      },
+    });
+    expect(config).toMatchObject({
+      strategy_id: 'regime_shock_reversion_short_v2',
+      app_config_path: 'config/app.example.json',
+      journal_dir: 'journals/paper',
+      adapter_kind: 'mock',
+      capability_mask_version: 1,
+      reconnect_policy: {
+        max_attempts: 3,
+        initial_delay_ms: 250,
+        max_delay_ms: 2_000,
+        retry_budget_ms: 10_000,
+        jitter: 'seeded',
+      },
+      metrics_endpoint: {
+        enabled: true,
+        port: 9_469,
+      },
+      slo_budgets_source: 'qfa-627-provisional-registry',
+      shutdown_quarantine_timeout_ms: 30_000,
+    });
+  });
+
+  it('honors QFA_PAPER_SESSION_CONFIG override used by the CLI entrypoint', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'qfa-614-paper-'));
+    const configPath = join(tempDir, 'paper.yaml');
+    writeFileSync(configPath, [
+      'session:',
+      '  strategy_id: regime_shock_reversion_short_v2',
+      '  mode: paper',
+      '  adapter_kind: mock',
+      '  app_config_path: config/app.example.json',
+      '  journal_dir: journals/custom-paper',
+      'execution:',
+      '  plant_scope: ORDER_PLANT',
+      '  capability_mask_id: execution-capability-mask-v1-adr0018-paper-only-order-plant',
+      '  capability_mask_version: 1',
+      '  reconnect_policy:',
+      '    max_attempts: 5',
+      '    initial_delay_ms: 100',
+      '    max_delay_ms: 5000',
+      '    retry_budget_ms: 12000',
+      '    jitter: seeded',
+      '  shutdown_quarantine_timeout_ms: 1234',
+      'observability:',
+      '  metrics:',
+      '    enabled: false',
+      '    host: 127.0.0.1',
+      '    port: 9555',
+      '  slo_budgets_source: qfa-627-provisional-registry',
+      '  slo_budget_overrides: {}',
+      '',
+    ].join('\n'));
+
+    const config = resolvePaperTradingSessionConfig({
+      env: {
+        QFA_PAPER_SESSION_CONFIG: configPath,
+      },
+    });
+
+    expect(config).toMatchObject({
+      paper_session_config_path: configPath,
+      journal_dir: 'journals/custom-paper',
+      metrics_endpoint: {
+        enabled: false,
+        port: 9_555,
+      },
+      reconnect_policy: {
+        max_attempts: 5,
+        initial_delay_ms: 100,
+        max_delay_ms: 5_000,
+        retry_budget_ms: 12_000,
+      },
+      shutdown_quarantine_timeout_ms: 1_234,
+    });
+  });
+
   it('starts a mock paper session and emits an EXEC-VALIDATOR-06-valid manifest', async () => {
     const session = new PaperTradingSession(BASE_OPTIONS);
     await session.start();
@@ -58,6 +152,19 @@ describe('QFA-614 paper trading harness', () => {
     ).toEqual([]);
 
     await session.stop();
+    const closingManifest = session.events
+      .filter((event) => event.type === 'SESSION_MANIFEST')
+      .at(-1);
+    expect(validateJournalEventEnvelope(closingManifest).issues).toEqual([]);
+    expect(closingManifest).toMatchObject({
+      payload: {
+        session_phase: 'closing',
+        final_quarantine_count: 0,
+        intents_emitted_total: 0,
+        acks_received_total: 0,
+        would_halt_emissions_total: 0,
+      },
+    });
     expect(session.getDiagnostics()).toMatchObject({
       stopped: true,
       adapter_kind: 'mock',
@@ -159,6 +266,84 @@ describe('QFA-614 paper trading harness', () => {
       expect(gate.acquire()).toMatchObject({ allowed: false, reason: 'quarantine_active' });
 
       await session.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for in-flight quarantine to drain before stop completes', async () => {
+    vi.useFakeTimers();
+    try {
+      const gate = new SubmissionGate();
+      const intentId = makeEventId('qfa-614-drain-before-stop');
+      const session = new PaperTradingSession({
+        ...BASE_OPTIONS,
+        config: {
+          ...BASE_OPTIONS.config,
+          shutdown_quarantine_timeout_ms: 50,
+        },
+        submission_gate: gate,
+      });
+      await session.start();
+      gate.blockFromQuarantine({ intent_id: intentId, reason: 'submission_ack_timeout' });
+
+      let stopped = false;
+      const stopPromise = session.stop().then(() => {
+        stopped = true;
+      });
+      await vi.advanceTimersByTimeAsync(10);
+      await Promise.resolve();
+      expect(stopped).toBe(false);
+
+      gate.unblockFromQuarantine({ intent_id: intentId, reason: 'submission_ack_timeout' });
+      await vi.advanceTimersByTimeAsync(25);
+      await stopPromise;
+
+      expect(stopped).toBe(true);
+      expect(session.getDiagnostics()).toMatchObject({
+        stopped: true,
+        open_quarantine_count: 0,
+      });
+      expect(session.events.filter((event) => event.type === 'ORDER_QUARANTINE_ENTERED')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('emits shutdown escalation when quarantine does not drain before the bounded timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const gate = new SubmissionGate();
+      const intentId = makeEventId('qfa-614-drain-timeout');
+      const session = new PaperTradingSession({
+        ...BASE_OPTIONS,
+        config: {
+          ...BASE_OPTIONS.config,
+          shutdown_quarantine_timeout_ms: 5,
+        },
+        submission_gate: gate,
+      });
+      await session.start();
+      gate.blockFromQuarantine({ intent_id: intentId, reason: 'submission_ack_timeout' });
+
+      const stopPromise = session.stop();
+      await vi.advanceTimersByTimeAsync(5);
+      await stopPromise;
+
+      expect(session.events.find((event) => event.type === 'ORDER_QUARANTINE_ENTERED')).toMatchObject({
+        payload: {
+          intent_id: 'paper-shutdown-unresolved-quarantine',
+          open_quarantine_count: 1,
+          escalation_required: true,
+          is_provisional: true,
+        },
+      });
+      expect(session.events.filter((event) => event.type === 'SESSION_MANIFEST').at(-1)).toMatchObject({
+        payload: {
+          session_phase: 'closing',
+          final_quarantine_count: 1,
+        },
+      });
     } finally {
       vi.useRealTimers();
     }

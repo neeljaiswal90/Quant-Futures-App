@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import {
   createJournalEventEnvelope,
   makeCausationId,
@@ -58,14 +60,30 @@ import {
 
 export type PaperBrokerAdapterKind = 'mock' | 'rithmic';
 
+export interface PaperReconnectPolicyConfig {
+  readonly max_attempts: number;
+  readonly initial_delay_ms: number;
+  readonly max_delay_ms: number;
+  readonly retry_budget_ms: number;
+  readonly jitter: string;
+}
+
 export interface PaperTradingSessionConfig {
+  readonly paper_session_config_path: string;
+  readonly strategy_id: string;
   readonly app_config_path: string;
   readonly journal_dir: string;
   readonly adapter_kind: PaperBrokerAdapterKind;
+  readonly capability_mask_id: string;
+  readonly capability_mask_version: number;
+  readonly reconnect_policy: PaperReconnectPolicyConfig;
   readonly metrics_endpoint: LatencyMetricsEndpointConfig;
+  readonly slo_budgets_source: string;
+  readonly slo_budget_overrides: Readonly<Record<string, number>>;
   readonly run_id: RunId;
   readonly session_id: SessionId;
   readonly duration_ms?: number;
+  readonly shutdown_quarantine_timeout_ms: number;
 }
 
 export interface PaperTradingSessionOptions {
@@ -102,6 +120,15 @@ export const DEFAULT_PAPER_SESSION_CONFIG_PATH = 'config/paper/paper-session-def
 export const DEFAULT_APP_CONFIG_PATH = 'config/app.example.json' as const;
 export const DEFAULT_PAPER_JOURNAL_DIR = 'journals/paper' as const;
 export const DEFAULT_PAPER_SESSION_DURATION_MS = 3_000;
+export const DEFAULT_PAPER_SHUTDOWN_QUARANTINE_TIMEOUT_MS = 30_000;
+export const DEFAULT_PAPER_STRATEGY_ID = 'regime_shock_reversion_short_v2' as const;
+export const DEFAULT_PAPER_RECONNECT_POLICY: PaperReconnectPolicyConfig = {
+  max_attempts: 3,
+  initial_delay_ms: 250,
+  max_delay_ms: 2_000,
+  retry_budget_ms: 10_000,
+  jitter: 'seeded',
+};
 
 export const RITHMIC_TEST_CREDENTIAL_DESCRIPTORS = [
   {
@@ -137,24 +164,102 @@ export function resolvePaperTradingSessionConfig(
   } = {},
 ): PaperTradingSessionConfig {
   const env = input.env ?? process.env;
+  const paperSessionConfigPath =
+    input.overrides?.paper_session_config_path ??
+    env.QFA_PAPER_SESSION_CONFIG ??
+    DEFAULT_PAPER_SESSION_CONFIG_PATH;
+  const yaml = loadPaperSessionConfigFile(paperSessionConfigPath);
+  const yamlSession = recordAt(yaml, 'session');
+  const yamlExecution = recordAt(yaml, 'execution');
+  const yamlReconnect = recordAt(yamlExecution, 'reconnect_policy');
+  const yamlObservability = recordAt(yaml, 'observability');
+  const yamlMetrics = recordAt(yamlObservability, 'metrics');
+  const mask = buildExecutionCapabilityMask();
   const adapterKind = parseAdapterKind(
-    input.overrides?.adapter_kind ?? env.QFA_BROKER_ADAPTER_KIND ?? 'mock',
+    input.overrides?.adapter_kind ??
+      env.QFA_BROKER_ADAPTER_KIND ??
+      stringAt(yamlSession, 'adapter_kind') ??
+      'mock',
   );
   return {
-    app_config_path: input.overrides?.app_config_path ?? DEFAULT_APP_CONFIG_PATH,
-    journal_dir: input.overrides?.journal_dir ?? env.QFA_JOURNAL_DIR ?? DEFAULT_PAPER_JOURNAL_DIR,
+    paper_session_config_path: paperSessionConfigPath,
+    strategy_id: input.overrides?.strategy_id ?? stringAt(yamlSession, 'strategy_id') ?? DEFAULT_PAPER_STRATEGY_ID,
+    app_config_path: input.overrides?.app_config_path ?? stringAt(yamlSession, 'app_config_path') ?? DEFAULT_APP_CONFIG_PATH,
+    journal_dir:
+      input.overrides?.journal_dir ??
+      env.QFA_JOURNAL_DIR ??
+      stringAt(yamlSession, 'journal_dir') ??
+      DEFAULT_PAPER_JOURNAL_DIR,
     adapter_kind: adapterKind,
-    metrics_endpoint: {
-      enabled: input.overrides?.metrics_endpoint?.enabled ?? env.QFA_METRICS_ENABLED === 'true',
-      port: input.overrides?.metrics_endpoint?.port ?? parseOptionalPort(env.QFA_METRICS_PORT) ?? 9_469,
+    capability_mask_id:
+      input.overrides?.capability_mask_id ??
+      stringAt(yamlExecution, 'capability_mask_id') ??
+      mask.mask_id,
+    capability_mask_version:
+      input.overrides?.capability_mask_version ??
+      numberAt(yamlExecution, 'capability_mask_version') ??
+      mask.mask_version,
+    reconnect_policy: {
+      max_attempts:
+        input.overrides?.reconnect_policy?.max_attempts ??
+        numberAt(yamlReconnect, 'max_attempts') ??
+        DEFAULT_PAPER_RECONNECT_POLICY.max_attempts,
+      initial_delay_ms:
+        input.overrides?.reconnect_policy?.initial_delay_ms ??
+        numberAt(yamlReconnect, 'initial_delay_ms') ??
+        DEFAULT_PAPER_RECONNECT_POLICY.initial_delay_ms,
+      max_delay_ms:
+        input.overrides?.reconnect_policy?.max_delay_ms ??
+        numberAt(yamlReconnect, 'max_delay_ms') ??
+        DEFAULT_PAPER_RECONNECT_POLICY.max_delay_ms,
+      retry_budget_ms:
+        input.overrides?.reconnect_policy?.retry_budget_ms ??
+        numberAt(yamlReconnect, 'retry_budget_ms') ??
+        DEFAULT_PAPER_RECONNECT_POLICY.retry_budget_ms,
+      jitter:
+        input.overrides?.reconnect_policy?.jitter ??
+        stringAt(yamlReconnect, 'jitter') ??
+        DEFAULT_PAPER_RECONNECT_POLICY.jitter,
     },
+    metrics_endpoint: {
+      enabled:
+        input.overrides?.metrics_endpoint?.enabled ??
+        parseOptionalBoolean(env.QFA_METRICS_ENABLED) ??
+        booleanAt(yamlMetrics, 'enabled') ??
+        false,
+      port:
+        input.overrides?.metrics_endpoint?.port ??
+        parseOptionalPort(env.QFA_METRICS_PORT) ??
+        numberAt(yamlMetrics, 'port') ??
+        9_469,
+    },
+    slo_budgets_source:
+      input.overrides?.slo_budgets_source ??
+      stringAt(yamlObservability, 'slo_budgets_source') ??
+      'qfa-627-provisional-registry',
+    slo_budget_overrides:
+      input.overrides?.slo_budget_overrides ??
+      numberRecordAt(yamlObservability, 'slo_budget_overrides') ??
+      {},
     run_id: input.overrides?.run_id ?? makeRunId('paper-session-run'),
     session_id: input.overrides?.session_id ?? makeSessionId('paper-session'),
     duration_ms:
       input.overrides?.duration_ms ??
       parseOptionalPositiveInteger(env.QFA_PAPER_SESSION_DURATION_MS) ??
       DEFAULT_PAPER_SESSION_DURATION_MS,
+    shutdown_quarantine_timeout_ms:
+      input.overrides?.shutdown_quarantine_timeout_ms ??
+      parseOptionalNonNegativeInteger(env.QFA_PAPER_SHUTDOWN_QUARANTINE_TIMEOUT_MS) ??
+      numberAt(yamlExecution, 'shutdown_quarantine_timeout_ms') ??
+      DEFAULT_PAPER_SHUTDOWN_QUARANTINE_TIMEOUT_MS,
   };
+}
+
+export function loadPaperSessionConfigFile(
+  configPath: string = DEFAULT_PAPER_SESSION_CONFIG_PATH,
+): Readonly<Record<string, unknown>> {
+  const text = readFileSync(resolvePath(process.cwd(), configPath), 'utf8');
+  return parseSimplePaperYaml(text);
 }
 
 export function createPaperCredentialResolver(input: {
@@ -198,6 +303,8 @@ export class PaperTradingSession {
   private started = false;
   private stopped = false;
   private eventSequence = 0;
+  private intentsEmittedTotal = 0;
+  private sessionStartedAtMs: number | undefined;
 
   constructor(options: PaperTradingSessionOptions = {}) {
     this.env = options.env ?? process.env;
@@ -236,6 +343,7 @@ export class PaperTradingSession {
     if (this.config.adapter_kind === 'rithmic') {
       throw new Error('QFA-612-PAPER-01b not yet merged: real Rithmic adapter is unavailable');
     }
+    this.sessionStartedAtMs = Date.now();
 
     this.metricsEndpoint = startLatencyMetricsEndpoint({
       config: this.config.metrics_endpoint,
@@ -270,6 +378,7 @@ export class PaperTradingSession {
     this.orderIntentSubscription = this.container.eventBus.subscribe(
       { event_types: ['ORDER_INTENT'] },
       async (delivery) => {
+        this.intentsEmittedTotal += 1;
         await this.brokerRuntime?.handleOrderIntent(
           delivery.event as JournalEventEnvelope<'ORDER_INTENT', JournalEventPayloadFor<'ORDER_INTENT'>>,
         );
@@ -345,10 +454,15 @@ export class PaperTradingSession {
     this.orderIntentSubscription = undefined;
     this.sloSubscription?.();
     this.sloSubscription = undefined;
+    const quarantineDrained = await this.waitForQuarantineDrain();
+    if (!quarantineDrained) {
+      this.emitShutdownQuarantineEscalation();
+    }
     await this.brokerRuntime?.stop();
     this.brokerRuntime = undefined;
     await this.metricsEndpoint?.close();
     this.metricsEndpoint = undefined;
+    this.emitClosingSessionManifest();
     await this.drain();
     this.credentialResolver.shutdown();
     this.started = false;
@@ -376,6 +490,111 @@ export class PaperTradingSession {
 
   get events(): readonly AnyJournalEventEnvelope[] {
     return this.journalEvents;
+  }
+
+  private async waitForQuarantineDrain(): Promise<boolean> {
+    await this.drain();
+    if (this.submissionGate.open_quarantine_count === 0) {
+      return true;
+    }
+
+    const timeoutMs = this.config.shutdown_quarantine_timeout_ms;
+    if (timeoutMs <= 0) {
+      return false;
+    }
+
+    const startedAtMs = Date.now();
+    while (this.submissionGate.open_quarantine_count > 0) {
+      const elapsedMs = Date.now() - startedAtMs;
+      if (elapsedMs >= timeoutMs) {
+        return false;
+      }
+      await sleep(Math.min(25, timeoutMs - elapsedMs));
+      await this.drain();
+    }
+    return true;
+  }
+
+  private emitShutdownQuarantineEscalation(): void {
+    const previousQuarantine = [...this.journalEvents]
+      .reverse()
+      .find((event): event is JournalEventEnvelope<'ORDER_QUARANTINE_ENTERED', JournalEventPayloadFor<'ORDER_QUARANTINE_ENTERED'>> =>
+        event.type === 'ORDER_QUARANTINE_ENTERED',
+      );
+    const payload: JournalEventPayloadFor<'ORDER_QUARANTINE_ENTERED'> = {
+      ...(previousQuarantine?.payload ?? {
+        intent_id: makeEventId('paper-shutdown-unresolved-quarantine'),
+        previous_state: 'pending_ack',
+        quarantine_reason: 'submission_ack_timeout',
+      }),
+      open_quarantine_count: this.submissionGate.open_quarantine_count,
+      escalation_required: true,
+      is_provisional: true,
+    };
+    this.publishHarnessEvent(createJournalEventEnvelope({
+      event_id: makeEventId(`paper-shutdown-quarantine-escalation-${++this.eventSequence}`),
+      type: 'ORDER_QUARANTINE_ENTERED',
+      ts_ns: this.nowNs(),
+      run_id: this.config.run_id,
+      session_id: this.config.session_id,
+      payload,
+    }));
+  }
+
+  private emitClosingSessionManifest(): void {
+    const openingManifest = this.journalEvents.find(
+      (event): event is JournalEventEnvelope<'SESSION_MANIFEST', JournalEventPayloadFor<'SESSION_MANIFEST'>> =>
+        event.type === 'SESSION_MANIFEST',
+    );
+    const mask = buildExecutionCapabilityMask();
+    const payload: JournalEventPayloadFor<'SESSION_MANIFEST'> = {
+      ...(openingManifest?.payload ?? {
+        mask_id: this.config.capability_mask_id,
+        mask_version: this.config.capability_mask_version,
+        mask_hash: mask.mask_hash,
+        reconnect_policy_config: { ...this.config.reconnect_policy },
+        plant_scope: 'ORDER_PLANT',
+        mode: PAPER_RUNTIME_MODE,
+        timestamp_anchor: 'dual',
+        broker_session_id: String(this.config.session_id),
+        adapter_kind: 'MOCK_ORDER_PLANT',
+      }),
+      session_phase: 'closing',
+      session_duration_ms: this.sessionDurationMs(),
+      final_quarantine_count: this.submissionGate.open_quarantine_count,
+      intents_emitted_total: this.intentsEmittedTotal,
+      acks_received_total: this.countEvents([
+        'ORDER_ACK_SUBMISSION',
+        'ORDER_ACK_FILL',
+        'ORDER_ACK_CANCEL',
+        'ORDER_BROKER_REJECT',
+      ]),
+      would_halt_emissions_total: this.countEvents(['WOULD_HALT']),
+    };
+    this.publishHarnessEvent(createJournalEventEnvelope({
+      event_id: makeEventId(`paper-session-closing-manifest-${++this.eventSequence}`),
+      type: 'SESSION_MANIFEST',
+      ts_ns: this.nowNs(),
+      run_id: this.config.run_id,
+      session_id: this.config.session_id,
+      payload,
+    }));
+  }
+
+  private sessionDurationMs(): number {
+    if (this.sessionStartedAtMs === undefined) {
+      return 0;
+    }
+    return Math.max(0, Date.now() - this.sessionStartedAtMs);
+  }
+
+  private countEvents(types: readonly AnyJournalEventEnvelope['type'][]): number {
+    const typeSet = new Set(types);
+    return this.journalEvents.filter((event) => typeSet.has(event.type)).length;
+  }
+
+  private nowNs(): UnixNs {
+    return this.captureLocalTimestampNs?.() ?? ns(BigInt(Date.now()) * 1_000_000n);
   }
 
   private createDefaultContainer(): StrategyRuntimeEngineContainer {
@@ -491,6 +710,19 @@ function parseOptionalPort(value: string | undefined): number | undefined {
   return parsed;
 }
 
+function parseOptionalBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined || value.trim() === '') {
+    return undefined;
+  }
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  throw new Error('QFA_METRICS_ENABLED must be true or false when provided');
+}
+
 function parseOptionalPositiveInteger(value: string | undefined): number | undefined {
   if (value === undefined || value.trim() === '') {
     return undefined;
@@ -500,4 +732,137 @@ function parseOptionalPositiveInteger(value: string | undefined): number | undef
     throw new Error('QFA_PAPER_SESSION_DURATION_MS must be a positive integer');
   }
   return parsed;
+}
+
+function parseOptionalNonNegativeInteger(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === '') {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error('QFA_PAPER_SHUTDOWN_QUARANTINE_TIMEOUT_MS must be a non-negative integer');
+  }
+  return parsed;
+}
+
+function parseSimplePaperYaml(text: string): Readonly<Record<string, unknown>> {
+  const root: Record<string, unknown> = {};
+  const stack: Array<{ readonly indent: number; readonly value: Record<string, unknown> }> = [
+    { indent: -1, value: root },
+  ];
+
+  for (const rawLine of text.split(/\r?\n/u)) {
+    const withoutComment = rawLine.replace(/\s+#.*$/u, '');
+    if (withoutComment.trim() === '') {
+      continue;
+    }
+    const indent = withoutComment.match(/^ */u)?.[0].length ?? 0;
+    const line = withoutComment.trim();
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex <= 0) {
+      throw new Error(`Unsupported paper YAML line: ${rawLine}`);
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const rawValue = line.slice(separatorIndex + 1).trim();
+    while (stack[stack.length - 1]!.indent >= indent) {
+      stack.pop();
+    }
+    const parent = stack[stack.length - 1]!.value;
+    if (rawValue === '') {
+      const child: Record<string, unknown> = {};
+      parent[key] = child;
+      stack.push({ indent, value: child });
+    } else {
+      parent[key] = parseSimpleYamlScalar(rawValue);
+    }
+  }
+
+  return root;
+}
+
+function parseSimpleYamlScalar(value: string): string | number | boolean | null | Record<string, never> {
+  if (value === '{}') {
+    return {};
+  }
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  if (value === 'null') {
+    return null;
+  }
+  const numeric = Number(value);
+  if (value !== '' && Number.isFinite(numeric) && String(numeric) === value) {
+    return numeric;
+  }
+  return value.replace(/^['"]|['"]$/gu, '');
+}
+
+function recordAt(
+  value: Readonly<Record<string, unknown>> | undefined,
+  key: string,
+): Readonly<Record<string, unknown>> | undefined {
+  const child = value?.[key];
+  if (child !== undefined && (child === null || typeof child !== 'object' || Array.isArray(child))) {
+    throw new Error(`paper session config field ${key} must be an object`);
+  }
+  return child as Readonly<Record<string, unknown>> | undefined;
+}
+
+function stringAt(value: Readonly<Record<string, unknown>> | undefined, key: string): string | undefined {
+  const child = value?.[key];
+  if (child === undefined) {
+    return undefined;
+  }
+  if (typeof child !== 'string') {
+    throw new Error(`paper session config field ${key} must be a string`);
+  }
+  return child;
+}
+
+function numberAt(value: Readonly<Record<string, unknown>> | undefined, key: string): number | undefined {
+  const child = value?.[key];
+  if (child === undefined) {
+    return undefined;
+  }
+  if (typeof child !== 'number' || !Number.isFinite(child)) {
+    throw new Error(`paper session config field ${key} must be a finite number`);
+  }
+  return child;
+}
+
+function booleanAt(value: Readonly<Record<string, unknown>> | undefined, key: string): boolean | undefined {
+  const child = value?.[key];
+  if (child === undefined) {
+    return undefined;
+  }
+  if (typeof child !== 'boolean') {
+    throw new Error(`paper session config field ${key} must be a boolean`);
+  }
+  return child;
+}
+
+function numberRecordAt(
+  value: Readonly<Record<string, unknown>> | undefined,
+  key: string,
+): Readonly<Record<string, number>> | undefined {
+  const record = recordAt(value, key);
+  if (record === undefined) {
+    return undefined;
+  }
+  const numbers: Record<string, number> = {};
+  for (const [childKey, childValue] of Object.entries(record)) {
+    if (typeof childValue !== 'number' || !Number.isFinite(childValue)) {
+      throw new Error(`paper session config field ${key}.${childKey} must be a finite number`);
+    }
+    numbers[childKey] = childValue;
+  }
+  return numbers;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

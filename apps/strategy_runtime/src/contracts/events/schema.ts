@@ -439,6 +439,12 @@ function validateSessionManifestPayload(
   ]);
   requireNonEmptyString(record.broker_session_id, `${path}.broker_session_id`, issues);
   requireEnum(record.adapter_kind, `${path}.adapter_kind`, issues, ['MOCK_ORDER_PLANT']);
+  optionalEnum(record.session_phase, `${path}.session_phase`, issues, ['starting', 'closing']);
+  optionalNumber(record.session_duration_ms, `${path}.session_duration_ms`, issues);
+  optionalNumber(record.final_quarantine_count, `${path}.final_quarantine_count`, issues);
+  optionalNumber(record.intents_emitted_total, `${path}.intents_emitted_total`, issues);
+  optionalNumber(record.acks_received_total, `${path}.acks_received_total`, issues);
+  optionalNumber(record.would_halt_emissions_total, `${path}.would_halt_emissions_total`, issues);
 }
 
 function validateValidatorIssuePayload(
