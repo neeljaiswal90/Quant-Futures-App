@@ -349,6 +349,88 @@ describe('QFA-614 paper trading harness', () => {
     }
   });
 
+  it('attaches reconnect runner so disconnect blocks gate, emits attempt, then releases on success', async () => {
+    vi.useFakeTimers();
+    try {
+      const gate = new SubmissionGate();
+      const adapter = new ReconnectHarnessAdapter({ reconnect_start_delay_ms: 25 });
+      const session = new PaperTradingSession({
+        ...BASE_OPTIONS,
+        broker_adapter: adapter,
+        submission_gate: gate,
+      });
+      await session.start();
+
+      adapter.emitDisconnect();
+      await Promise.resolve();
+
+      expect(gate.acquire()).toMatchObject({
+        allowed: false,
+        reason: 'reconnect_in_progress_active',
+      });
+      expect(session.events.find((event) =>
+        event.type === 'RECONNECT_STATE' &&
+        (event.payload as JournalEventPayloadFor<'RECONNECT_STATE'>).phase === 'attempt' &&
+        (event.payload as JournalEventPayloadFor<'RECONNECT_STATE'>).attempt === 1,
+      )).toBeDefined();
+
+      await session.processFeatureSnapshot(
+        STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot,
+      );
+      expect(adapter.submitted_intent_count).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(25);
+      await session.drain();
+
+      expect(gate.acquire()).toEqual({ allowed: true });
+      expect(session.events.find((event) =>
+        event.type === 'SESSION_MANIFEST' &&
+        (event.payload as JournalEventPayloadFor<'SESSION_MANIFEST'>).session_phase ===
+          'reconnect_success',
+      )).toBeDefined();
+
+      await session.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps reconnect gate blocked after five failed reconnect attempts and emits exhausted manifest', async () => {
+    vi.useFakeTimers();
+    try {
+      const gate = new SubmissionGate();
+      const adapter = new ReconnectHarnessAdapter({ reconnect_failures_before_success: 5 });
+      const session = new PaperTradingSession({
+        ...BASE_OPTIONS,
+        broker_adapter: adapter,
+        submission_gate: gate,
+      });
+      await session.start();
+
+      adapter.emitDisconnect();
+      await vi.advanceTimersByTimeAsync(120_000);
+      await session.drain();
+
+      expect(session.events.find((event) =>
+        event.type === 'RECONNECT_STATE' &&
+        (event.payload as JournalEventPayloadFor<'RECONNECT_STATE'>).phase === 'exhausted',
+      )).toBeDefined();
+      expect(session.events.find((event) =>
+        event.type === 'SESSION_MANIFEST' &&
+        (event.payload as JournalEventPayloadFor<'SESSION_MANIFEST'>).session_phase ===
+          'reconnect_exhausted',
+      )).toBeDefined();
+      expect(gate.acquire()).toMatchObject({
+        allowed: false,
+        reason: 'reconnect_in_progress_active',
+      });
+
+      await session.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('fails closed when selecting the future real Rithmic adapter before QFA-612-PAPER-01b', async () => {
     const session = new PaperTradingSession({
       config: {
@@ -411,5 +493,119 @@ class SilentAcceptingAdapter implements BrokerAdapter {
     return () => {
       this.sessionHandlers.delete(handler);
     };
+  }
+}
+
+class ReconnectHarnessAdapter implements BrokerAdapter {
+  readonly plant_scope: PlantScope = 'ORDER_PLANT';
+  readonly mode: RuntimeMode = 'paper';
+  private readonly sessionHandlers = new Set<(event: BrokerSessionEvent) => void>();
+  private readonly reconnectStartDelayMs: number;
+  private reconnectFailuresRemaining: number;
+  private running = false;
+  private startCount = 0;
+  private submittedIntentCount = 0;
+
+  constructor(options: {
+    readonly reconnect_start_delay_ms?: number;
+    readonly reconnect_failures_before_success?: number;
+  } = {}) {
+    this.reconnectStartDelayMs = options.reconnect_start_delay_ms ?? 0;
+    this.reconnectFailuresRemaining = options.reconnect_failures_before_success ?? 0;
+  }
+
+  async start(): Promise<void> {
+    this.startCount += 1;
+    if (this.startCount > 1 && this.reconnectFailuresRemaining > 0) {
+      this.reconnectFailuresRemaining -= 1;
+      throw new Error('fixture reconnect failure');
+    }
+    if (this.startCount > 1 && this.reconnectStartDelayMs > 0) {
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, this.reconnectStartDelayMs);
+        timer.unref?.();
+      });
+    }
+    this.running = true;
+    this.emitSessionManifest();
+  }
+
+  async stop(): Promise<void> {
+    this.running = false;
+  }
+
+  async submitIntent(
+    _intent: OrderIntentEventEnvelope,
+  ): Promise<{ readonly accepted: boolean; readonly broker_intent_correlation_id: string }> {
+    this.submittedIntentCount += 1;
+    return { accepted: this.running, broker_intent_correlation_id: 'reconnect-harness-correlation' };
+  }
+
+  async requestCancel(): Promise<{ readonly accepted: boolean }> {
+    return { accepted: false };
+  }
+
+  subscribeAckEvents(_handler: (event: BrokerAckEnvelope) => void): Unsubscribe {
+    return () => undefined;
+  }
+
+  subscribeSessionEvents(handler: (event: BrokerSessionEvent) => void): Unsubscribe {
+    this.sessionHandlers.add(handler);
+    return () => {
+      this.sessionHandlers.delete(handler);
+    };
+  }
+
+  emitDisconnect(): void {
+    this.running = false;
+    this.emitSession({
+      type: 'RECONNECT_STATE',
+      ts_ns: ns(1_800_000_000_000_000_000n + BigInt(this.startCount) * 1_000_000n),
+      payload: {
+        previous_state: 'CONNECTED',
+        state: 'DISCONNECTED',
+        phase: 'disconnect',
+        attempt: 0,
+        max_attempts: 5,
+        retry_budget_config: { max_attempts: 5 },
+        reason: 'fixture_disconnect',
+        blocked_submission_gate: true,
+      },
+    });
+  }
+
+  get submitted_intent_count(): number {
+    return this.submittedIntentCount;
+  }
+
+  private emitSessionManifest(): void {
+    const mask = buildExecutionCapabilityMask();
+    this.emitSession({
+      type: 'SESSION_MANIFEST',
+      ts_ns: ns(1_800_000_000_000_000_000n + BigInt(this.startCount) * 1_000_000n),
+      payload: {
+        mask_id: mask.mask_id,
+        mask_version: mask.mask_version,
+        mask_hash: mask.mask_hash,
+        reconnect_policy_config: {
+          max_attempts: 5,
+          initial_delay_ms: 1_000,
+          max_delay_ms: 30_000,
+          retry_budget_ms: 91_000,
+          jitter: 'seeded',
+        },
+        plant_scope: 'ORDER_PLANT',
+        mode: 'paper',
+        timestamp_anchor: 'broker_exchange_ts_ns',
+        broker_session_id: `reconnect-harness-session-${this.startCount}`,
+        adapter_kind: 'MOCK_ORDER_PLANT',
+      },
+    });
+  }
+
+  private emitSession(event: BrokerSessionEvent): void {
+    for (const handler of this.sessionHandlers) {
+      handler(event);
+    }
   }
 }

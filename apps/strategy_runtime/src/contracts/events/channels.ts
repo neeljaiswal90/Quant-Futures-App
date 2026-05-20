@@ -89,7 +89,7 @@ const EVENT_DRIVEN_SUBSCRIBERS = [
 export const EVENT_CHANNEL_CONTRACTS: readonly EventChannelContract[] = [
   {
     channel: 'CONNECTION',
-    event_types: ['CONN', 'FEED', 'GAP', 'BOOK_REBUILD'],
+    event_types: ['CONN', 'FEED', 'GAP', 'BOOK_REBUILD', 'RECONNECT_STATE', 'LIVENESS_STATE'],
     emission_cadence: '1hz_heartbeat',
     throttle: {
       kind: 'fixed_rate',
@@ -110,6 +110,9 @@ export const EVENT_CHANNEL_CONTRACTS: readonly EventChannelContract[] = [
       'SESSION_PHASE',
       'ROLL_ADVISORY',
       'SESSION_MANIFEST',
+      'KILL_SWITCH_ENGAGED',
+      'KILL_SWITCH_DISENGAGED',
+      'ANOMALY_DETECTED',
       'HALT',
       'WOULD_HALT',
       'VALIDATOR_ISSUE',

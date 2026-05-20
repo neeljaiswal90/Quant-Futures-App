@@ -17,11 +17,20 @@ import {
 import { loadAppConfig } from '../config/index.js';
 import {
   BrokerAdapterRuntimeIntegration,
+  AnomalyDetector,
+  DualLivenessMonitor,
+  KillSwitchController,
   MockOrderPlantAdapter,
+  ReconnectRunner,
   SubmissionGate,
   createSimulatedExecutionAdapter,
+  type AnomalyDetectorEvent,
   type BrokerAdapter,
   type BrokerCredentialLookup,
+  type BrokerSessionEvent,
+  type KillSwitchControllerEvent,
+  type LivenessMonitorEvent,
+  type ReconnectRunnerEvent,
 } from '../execution/index.js';
 import {
   PROVISIONAL_CANCEL_ACK_SLO,
@@ -100,6 +109,9 @@ export interface PaperTradingSessionOptions {
   readonly ack_timeout_policy?: ConstructorParameters<typeof BrokerAdapterRuntimeIntegration>[0]['ack_timeout_policy'];
   readonly order_lifecycle?: OrderLifecycleStateMachine;
   readonly capture_local_timestamp_ns?: () => UnixNs;
+  readonly kill_switch_controller?: KillSwitchController;
+  readonly anomaly_detector?: AnomalyDetector;
+  readonly liveness_monitor?: DualLivenessMonitor;
 }
 
 export interface PaperTradingSessionDiagnostics {
@@ -295,10 +307,15 @@ export class PaperTradingSession {
   private readonly captureLocalTimestampNs?: () => UnixNs;
   private readonly ackTimeoutPolicy: PaperTradingSessionOptions['ack_timeout_policy'];
   private readonly orderLifecycle: OrderLifecycleStateMachine | undefined;
+  private readonly killSwitch: KillSwitchController;
+  private readonly anomalyDetector: AnomalyDetector;
+  private readonly livenessMonitor: DualLivenessMonitor;
+  private readonly reconnectRunner: ReconnectRunner;
   private brokerRuntime: BrokerAdapterRuntimeIntegration | undefined;
   private runner: StrategyRuntimeRunner | undefined;
   private metricsEndpoint: LatencyMetricsEndpoint | undefined;
   private orderIntentSubscription: RuntimeEventBusSubscription | undefined;
+  private reconnectSessionSubscription: (() => void) | undefined;
   private sloSubscription: (() => void) | undefined;
   private started = false;
   private stopped = false;
@@ -334,6 +351,30 @@ export class PaperTradingSession {
     this.captureLocalTimestampNs = options.capture_local_timestamp_ns;
     this.ackTimeoutPolicy = options.ack_timeout_policy;
     this.orderLifecycle = options.order_lifecycle;
+    this.killSwitch = options.kill_switch_controller ?? new KillSwitchController({
+      submission_gate: this.submissionGate,
+      persistence: { enabled: false },
+      emit: (event) => this.publishOperationalEvent(event),
+      now_ns: () => this.nowNs(),
+    });
+    this.anomalyDetector = options.anomaly_detector ?? new AnomalyDetector({
+      kill_switch: this.killSwitch,
+      emit: (event) => this.publishOperationalEvent(event),
+      now_ns: () => this.nowNs(),
+    });
+    this.livenessMonitor = options.liveness_monitor ?? new DualLivenessMonitor({
+      kill_switch: this.killSwitch,
+      latency_registry: this.latencyRegistry,
+      emit: (event) => this.publishOperationalEvent(event),
+      now_ns: () => this.nowNs(),
+    });
+    this.reconnectRunner = new ReconnectRunner({
+      submission_gate: this.submissionGate,
+      manifest_payload: () => this.reconnectManifestPayload(),
+      emit: (event) => this.publishOperationalEvent(event),
+      reconnect: async () => this.reconnectBrokerAdapter(),
+      now_ns: () => this.nowNs(),
+    });
   }
 
   async start(): Promise<void> {
@@ -404,6 +445,9 @@ export class PaperTradingSession {
     });
     this.sloSubscription = haltEmitter.subscribe(this.burnRateEvaluator);
 
+    this.reconnectSessionSubscription = this.adapter.subscribeSessionEvents((event) => {
+      this.handleOperationalSessionEvent(event);
+    });
     await this.brokerRuntime.start();
     await this.drain();
     this.assertSessionManifestValid();
@@ -452,6 +496,8 @@ export class PaperTradingSession {
     }
     this.orderIntentSubscription?.unsubscribe();
     this.orderIntentSubscription = undefined;
+    this.reconnectSessionSubscription?.();
+    this.reconnectSessionSubscription = undefined;
     this.sloSubscription?.();
     this.sloSubscription = undefined;
     const quarantineDrained = await this.waitForQuarantineDrain();
@@ -597,6 +643,10 @@ export class PaperTradingSession {
     return this.captureLocalTimestampNs?.() ?? ns(BigInt(Date.now()) * 1_000_000n);
   }
 
+  private nowMs(): number {
+    return Number(BigInt(this.nowNs()) / 1_000_000n);
+  }
+
   private createDefaultContainer(): StrategyRuntimeEngineContainer {
     const config = loadAppConfig({
       configPath: this.config.app_config_path,
@@ -653,6 +703,84 @@ export class PaperTradingSession {
   private publishHarnessEvent(event: AnyJournalEventEnvelope): void {
     this.journalEvents.push(event);
     this.pendingPublishes.push(this.container.publish(event));
+    this.anomalyDetector.observeEvent(event);
+  }
+
+  private publishOperationalEvent(
+    event: KillSwitchControllerEvent | AnomalyDetectorEvent | LivenessMonitorEvent | ReconnectRunnerEvent,
+  ): void {
+    this.publishHarnessEvent(
+      createJournalEventEnvelope({
+        event_id: makeEventId(`paper-operational-${event.type.toLowerCase()}-${++this.eventSequence}`),
+        type: event.type,
+        ts_ns: event.ts_ns,
+        run_id: this.config.run_id,
+        session_id: this.config.session_id,
+        payload: event.payload,
+      }) as AnyJournalEventEnvelope,
+    );
+  }
+
+  private handleOperationalSessionEvent(event: BrokerSessionEvent): void {
+    this.livenessMonitor.recordBrokerHeartbeat({
+      broker_ts_ns: event.ts_ns,
+      local_received_ms: this.nowMs(),
+    });
+    if (event.type !== 'RECONNECT_STATE') {
+      return;
+    }
+    const payload = reconnectPayloadForSessionEvent(event);
+    if (payload.phase === 'disconnect' || payload.state === 'DISCONNECTED') {
+      void this.reconnectRunner.handleDisconnect(payload.reason ?? 'broker_disconnect');
+    }
+  }
+
+  private async reconnectBrokerAdapter(): Promise<{
+    readonly connected: boolean;
+    readonly broker_session_id?: string;
+    readonly reason?: string;
+  }> {
+    try {
+      await this.adapter.start();
+      return {
+        connected: true,
+        ...(this.latestBrokerSessionId() === undefined
+          ? {}
+          : { broker_session_id: this.latestBrokerSessionId() }),
+      };
+    } catch (error) {
+      return {
+        connected: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  private reconnectManifestPayload(): JournalEventPayloadFor<'SESSION_MANIFEST'> {
+    const openingManifest = this.journalEvents.find(
+      (event): event is JournalEventEnvelope<'SESSION_MANIFEST', JournalEventPayloadFor<'SESSION_MANIFEST'>> =>
+        event.type === 'SESSION_MANIFEST',
+    );
+    const mask = buildExecutionCapabilityMask();
+    return openingManifest?.payload ?? {
+      mask_id: this.config.capability_mask_id,
+      mask_version: this.config.capability_mask_version,
+      mask_hash: mask.mask_hash,
+      reconnect_policy_config: { ...this.config.reconnect_policy },
+      plant_scope: 'ORDER_PLANT',
+      mode: PAPER_RUNTIME_MODE,
+      timestamp_anchor: 'dual',
+      broker_session_id: String(this.config.session_id),
+      adapter_kind: 'MOCK_ORDER_PLANT',
+    };
+  }
+
+  private latestBrokerSessionId(): string | undefined {
+    return [...this.journalEvents]
+      .reverse()
+      .find((event): event is JournalEventEnvelope<'SESSION_MANIFEST', JournalEventPayloadFor<'SESSION_MANIFEST'>> =>
+        event.type === 'SESSION_MANIFEST',
+      )?.payload.broker_session_id;
   }
 
   private assertSessionManifestValid(): void {
@@ -865,4 +993,26 @@ function numberRecordAt(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function reconnectPayloadForSessionEvent(
+  event: Extract<BrokerSessionEvent, { readonly type: 'RECONNECT_STATE' }>,
+): JournalEventPayloadFor<'RECONNECT_STATE'> {
+  if ('payload' in event) {
+    return event.payload;
+  }
+  return {
+    previous_state: event.previous_state,
+    state: event.state,
+    phase: event.state === 'DISCONNECTED'
+      ? 'disconnect'
+      : event.state === 'FAILED'
+        ? 'exhausted'
+        : 'attempt',
+    max_attempts: Number(event.retry_budget_config.max_attempts),
+    retry_budget_config: event.retry_budget_config,
+    ...(event.reason === undefined ? {} : { reason: event.reason }),
+    terminal: event.state === 'FAILED',
+    blocked_submission_gate: event.state !== 'CONNECTED',
+  };
 }
