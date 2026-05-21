@@ -1,0 +1,21 @@
+{
+  "checks": {
+    "check_01_tls_auth": {
+      "error": "ORDER_PLANT login failed: rp_code=['13', 'permission denied']",
+      "status": "FAIL"
+    },
+    "check_06_logout_close": {
+      "error": "ORDER_PLANT login failed: rp_code=['13', 'permission denied']",
+      "status": "FAIL"
+    }
+  },
+  "environment": {
+    "exchange": "CME",
+    "gateway_url": "[REDACTED:credential]",
+    "symbol": "MNQM6",
+    "system_name": "Rithmic Test"
+  },
+  "final_disposition": "HOLD",
+  "started_at_utc": "2026-05-21T16:19:38.491191+00:00",
+  "ticket": "QFA-612-PREFLIGHT-02"
+}

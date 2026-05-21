@@ -5,18 +5,26 @@ export interface RedactionResult {
 
 const CREDENTIAL_KEYS = [
   'RITHMIC_TEST_USERNAME',
+  'RITHMIC_TEST_USER',
   'RITHMIC_TEST_PASSWORD',
+  'RITHMIC_TEST_WS_URL',
+  'RITHMIC_TEST_GATEWAY_URL',
   'RITHMIC_USERNAME',
+  'RITHMIC_USER',
   'RITHMIC_PASSWORD',
+  'RITHMIC_WS_URL',
+  'RITHMIC_CONNECT_POINT',
   'username',
   'password',
+  'gateway_url',
 ] as const;
 
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const IP_PATTERN = /\b(?!(?:127\.0\.0\.1|0\.0\.0\.0)\b)(?:\d{1,3}\.){3}\d{1,3}\b/g;
 const BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+\/-]+=*/g;
 const SESSION_ID_PATTERN = /\b(?:rithmic-|mock-)?session[-_:][A-Za-z0-9._-]+\b/gi;
-const ORDER_ID_PATTERN = /\b(?:broker[-_])?order[-_:][A-Za-z0-9._-]+\b/gi;
+const ORDER_VALUE_PATTERN = /(\b(?:broker[_-])?order(?:Id|_id)?["':=]+)([A-Za-z0-9._-]{4,})\b/gi;
+const ORDER_ID_PATTERN = /\border[-_:](?!plant\b)[A-Za-z0-9._-]*\d[A-Za-z0-9._-]*\b/gi;
 const ACCOUNT_ID_PATTERN = /(\b(?:account(?:Id|_id)?["'\s:=]+))([A-Za-z0-9._-]{4,})\b/gi;
 
 export function redactText(input: string, explicitSecrets: readonly string[] = []): RedactionResult {
@@ -41,6 +49,7 @@ export function redactText(input: string, explicitSecrets: readonly string[] = [
   replace(BEARER_PATTERN, 'Bearer [REDACTED:credential]');
   replace(EMAIL_PATTERN, '[REDACTED:credential]');
   replace(SESSION_ID_PATTERN, '[REDACTED:session-id-1]');
+  replace(ORDER_VALUE_PATTERN, '$1[REDACTED:order-id-1]');
   replace(ORDER_ID_PATTERN, '[REDACTED:order-id-1]');
   replace(ACCOUNT_ID_PATTERN, '$1[REDACTED:account-id]');
   replace(IP_PATTERN, '[REDACTED:ip]');

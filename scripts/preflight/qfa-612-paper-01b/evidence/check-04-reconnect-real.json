@@ -1,0 +1,5 @@
+{
+  "check_id": "check-04-reconnect-real",
+  "title": "ORDER_PLANT orderly and disorderly reconnect",
+  "disposition": "FAIL"
+}
