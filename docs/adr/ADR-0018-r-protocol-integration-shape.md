@@ -722,5 +722,10 @@ Coordinator decisions:
 
 ## Amendments
 
-(None at acceptance. Future amendments listed here as
-ADR-0018-A1, A2, etc. per LD-018-18.)
+- **ADR-0018-A1** (commit pending) — Rithmic ORDER_PLANT broker
+  sidecar. Amends LD-018-2 to lift the prohibition on Python
+  sidecar architecture for Rithmic ORDER_PLANT specifically.
+  Adopts vendor SDK (pyrithmic) + typed IPC + idempotency +
+  reconciliation gate + phased paper/live progression. Live
+  trading remains out of scope. See
+  `docs/adr/ADR-0018-A1-rithmic-order-plant-broker-sidecar.md`.
