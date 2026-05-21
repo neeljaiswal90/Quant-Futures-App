@@ -1,0 +1,9 @@
+{
+  "check_id": "check-01-tls-auth-order-plant",
+  "title": "ORDER_PLANT TLS/WebSocket connect and auth ACK byte-trace upgrade",
+  "disposition": "FAIL",
+  "evidence": {
+    "error": "ORDER_PLANT login failed: rp_code=['13', 'permission denied']",
+    "status": "FAIL"
+  }
+}

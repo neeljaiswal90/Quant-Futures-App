@@ -1,0 +1,9 @@
+{
+  "check_id": "check-06-logout-close-real",
+  "title": "ORDER_PLANT logout and close semantics byte-trace upgrade",
+  "disposition": "FAIL",
+  "evidence": {
+    "error": "ORDER_PLANT login failed: rp_code=['13', 'permission denied']",
+    "status": "FAIL"
+  }
+}
