@@ -8,6 +8,7 @@ export * from './anomaly/anomaly-detector.js';
 export * from './brokers/broker-adapter.js';
 export * from './brokers/broker-adapter-runtime.js';
 export * from './brokers/mock-order-plant-adapter.js';
+export * from './brokers/python-broker-adapter.js';
 export * from './kill-switch/kill-switch-controller.js';
 export * from './liveness/dual-liveness-monitor.js';
 export * from './reconnect/reconnect-runner.js';

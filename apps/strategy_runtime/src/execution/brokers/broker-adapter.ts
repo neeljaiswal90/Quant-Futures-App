@@ -7,7 +7,7 @@ import type {
 
 export type RuntimeMode = 'paper' | 'live';
 export type PlantScope = 'ORDER_PLANT';
-export type BrokerAdapterKind = 'MOCK_ORDER_PLANT';
+export type BrokerAdapterKind = 'MOCK_ORDER_PLANT' | 'PYTHON_RITHMIC_ORDER_PLANT';
 export type Unsubscribe = () => void;
 
 export type OrderIntentEventEnvelope = JournalEventEnvelope<
@@ -51,6 +51,11 @@ export type BrokerSessionEvent =
       readonly state: BrokerReconnectState;
       readonly reason?: BrokerRejectSubreason;
       readonly retry_budget_config: BrokerReconnectPolicyConfig;
+    }
+  | {
+      readonly type: 'VALIDATOR_ISSUE';
+      readonly ts_ns: UnixNs;
+      readonly payload: JournalEventPayloadFor<'VALIDATOR_ISSUE'>;
     };
 
 export interface BrokerCancelRequest {

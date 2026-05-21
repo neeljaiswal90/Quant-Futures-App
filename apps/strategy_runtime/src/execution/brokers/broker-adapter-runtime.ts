@@ -305,6 +305,20 @@ export class BrokerAdapterRuntimeIntegration {
         }),
       );
     }
+
+    if (event.type === 'VALIDATOR_ISSUE') {
+      this.sessionEventSequence += 1;
+      this.eventSink(
+        createJournalEventEnvelope({
+          event_id: makeEventId(`broker-session-validator-issue-${this.sessionEventSequence}`),
+          type: 'VALIDATOR_ISSUE',
+          ts_ns: event.ts_ns,
+          run_id: this.runId,
+          session_id: this.sessionId,
+          payload: event.payload,
+        }),
+      );
+    }
   }
 
   private toBrokerJournalEnvelope(

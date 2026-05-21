@@ -134,7 +134,7 @@ export interface SessionManifestEventPayload {
   readonly mode: 'paper' | 'live';
   readonly timestamp_anchor: 'broker_exchange_ts_ns' | 'local_monotonic_unix_anchor' | 'dual';
   readonly broker_session_id: string;
-  readonly adapter_kind: 'MOCK_ORDER_PLANT';
+  readonly adapter_kind: 'MOCK_ORDER_PLANT' | 'PYTHON_RITHMIC_ORDER_PLANT';
   readonly session_phase?: 'starting' | 'closing' | 'reconnect_success' | 'reconnect_exhausted';
   readonly session_duration_ms?: number;
   readonly final_quarantine_count?: number;
