@@ -1,0 +1,9 @@
+{
+  "check_id": "check-05-[REDACTED:order-id-1]",
+  "title": "Real paper order ACK/fill/cancel/reject lifecycle",
+  "disposition": "HOLD",
+  "evidence": [],
+  "notes": [
+    "No paper order was placed. The available RProtocol probe is explicitly TICKER_PLANT-only and never connects to [REDACTED:order-id-1]."
+  ]
+}

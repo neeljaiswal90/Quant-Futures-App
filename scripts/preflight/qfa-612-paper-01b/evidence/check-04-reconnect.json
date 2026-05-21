@@ -1,0 +1,9 @@
+{
+  "check_id": "check-04-reconnect",
+  "title": "Real orderly and disorderly reconnect behavior",
+  "disposition": "HOLD",
+  "evidence": [],
+  "notes": [
+    "No real reconnect check was executed. Existing repo support has a mock reconnect spike and a TICKER_PLANT probe, but no real reconnect preflight harness for the test gateway."
+  ]
+}
