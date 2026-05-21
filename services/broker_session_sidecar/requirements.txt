@@ -1,0 +1,4 @@
+# QFA-612-BROKER-01 sidecar scaffold.
+# pyrithmic is pinned here for runtime installs once the validated environment is available.
+# Tests mock the import boundary so CI does not require gateway access or the package.
+pyrithmic==1.0.0
