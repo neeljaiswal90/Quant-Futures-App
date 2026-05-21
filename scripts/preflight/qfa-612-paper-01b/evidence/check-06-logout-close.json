@@ -1,0 +1,11 @@
+{
+  "check_id": "check-06-logout-close",
+  "title": "Real logout and close semantics",
+  "disposition": "PASS_PARTIAL",
+  "evidence": [
+    "The authenticated 10s and 300s probes exited cleanly with process exit code 0."
+  ],
+  "notes": [
+    "The committed evidence does not include broker logout ACK/close-frame bytes. [REDACTED:order-id-1] session close semantics remain unproven."
+  ]
+}

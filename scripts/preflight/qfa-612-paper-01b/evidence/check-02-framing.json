@@ -1,0 +1,12 @@
+{
+  "check_id": "check-02-framing",
+  "title": "Real market/order message framing decode",
+  "disposition": "PASS_PARTIAL",
+  "evidence": [
+    "Smoke summary: {\"line_count\":4,\"records_by_stream\":{\"L1_QUOTE\":3,\"LAST_TRADE\":1},\"first_sidecar_recv_ts_ns\":\"1779377579998631500\",\"last_sidecar_recv_ts_ns\":\"1779377591446452700\",\"unknown_template_records\":0}",
+    "Heartbeat summary: {\"line_count\":96,\"records_by_stream\":{\"L1_QUOTE\":89,\"LAST_TRADE\":7},\"first_sidecar_recv_ts_ns\":\"1779377603758919300\",\"last_sidecar_recv_ts_ns\":\"1779377890237634500\",\"unknown_template_records\":0}"
+  ],
+  "notes": [
+    "Market LAST_TRADE/L1_QUOTE protobuf framing decoded successfully. [REDACTED:order-id-1]/order message framing is not exercised by the current probe."
+  ]
+}

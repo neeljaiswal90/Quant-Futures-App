@@ -1,0 +1,12 @@
+{
+  "check_id": "check-01-tls-auth",
+  "title": "Real TLS/WebSocket connect and authenticated RProtocol bootstrap",
+  "disposition": "PASS_PARTIAL",
+  "evidence": [
+    "RProtocol --list-systems returned the expected Rithmic Test system.",
+    "Authenticated 10s market-data smoke produced records with zero probe errors."
+  ],
+  "notes": [
+    "TLS/WebSocket/protobuf login path is proven by the existing TICKER_PLANT probe. The probe does not expose raw TLS cipher/auth ACK bytes as committed evidence."
+  ]
+}

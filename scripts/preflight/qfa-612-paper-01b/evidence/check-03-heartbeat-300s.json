@@ -1,0 +1,11 @@
+{
+  "check_id": "check-03-heartbeat-300s",
+  "title": "Real heartbeat/liveness run for at least five wall-clock minutes",
+  "disposition": "PASS",
+  "evidence": [
+    "300s summary: {\"line_count\":96,\"records_by_stream\":{\"L1_QUOTE\":89,\"LAST_TRADE\":7},\"first_sidecar_recv_ts_ns\":\"1779377603758919300\",\"last_sidecar_recv_ts_ns\":\"1779377890237634500\",\"unknown_template_records\":0}"
+  ],
+  "notes": [
+    "The authenticated websocket/probe stayed alive for the full 300s capture with zero probe errors."
+  ]
+}
