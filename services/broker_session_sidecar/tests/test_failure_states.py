@@ -31,12 +31,21 @@ class FailureStateTests(unittest.TestCase):
     def test_schema_version_incompatible(self) -> None:
         events = run_commands([{"schema_version": 999, "type": "heartbeat", "command_id": "bad-schema"}])
         self.assertEqual(events[1]["failure_state"], "schema_version_incompatible")
+        self.assertEqual(events[1]["payload"]["reason"], "unsupported broker IPC command schema")
+        self.assertFalse(events[1]["payload"]["recoverable"])
 
     def test_order_path_not_yet_implemented_for_order_commands(self) -> None:
         for command_type in ("submit_order", "cancel_order", "query_order", "request_reconciliation_snapshot"):
             with self.subTest(command_type=command_type):
-                events = run_commands([{"schema_version": 1, "type": command_type, "command_id": command_type}])
+                events = run_commands([{
+                    "schema_version": 1,
+                    "type": command_type,
+                    "command_id": command_type,
+                    "idempotency_key": f"{command_type}-idem",
+                }])
                 self.assertEqual(events[1]["failure_state"], "order_path_not_yet_implemented")
+                self.assertEqual(events[1]["payload"]["reason"], "order path is not implemented in QFA-612-BROKER-01")
+                self.assertEqual(events[1]["payload"]["correlated_command_idempotency_key"], f"{command_type}-idem")
 
     def test_duplicate_command_detected_stub_path(self) -> None:
         events = run_commands([
@@ -48,8 +57,10 @@ class FailureStateTests(unittest.TestCase):
     def test_broker_disconnected_error_shape_exists_but_sidecar_unavailable_is_not_emitted(self) -> None:
         event = broker_error("broker_disconnected", "disconnected session-abc")
         self.assertEqual(event["failure_state"], "broker_disconnected")
+        self.assertEqual(event["payload"]["reason"], "disconnected [REDACTED:session-id-1]")
+        self.assertFalse(event["payload"]["recoverable"])
         self.assertNotEqual(event["failure_state"], "sidecar_unavailable")
-        self.assertNotIn("abc", event["rp_message_redacted"])
+        self.assertNotIn("abc", event["reason"])
 
 
 if __name__ == "__main__":

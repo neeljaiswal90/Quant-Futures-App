@@ -7,7 +7,9 @@ import sys
 import time
 from typing import Any, TextIO
 
-from services.broker_session_sidecar.contracts.broker_ipc_contract import BROKER_IPC_SCHEMA_VERSION, SIDECAR_NAME
+from services.broker_session_sidecar.contracts.broker_ipc_contract import BROKER_IPC_SCHEMA_VERSION
+
+SIDECAR_NAME = "qfa_broker_session_sidecar"
 
 
 def now_ns() -> int:

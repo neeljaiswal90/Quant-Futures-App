@@ -15,10 +15,9 @@ from typing import Any, Iterable, TextIO
 from services.broker_session_sidecar import __version__
 from services.broker_session_sidecar.auth import AuthDeniedError, AuthResult, authenticate
 from services.broker_session_sidecar.contracts.broker_ipc_contract import (
+    BROKER_IPC_COMMAND_MESSAGE_TYPES,
+    BROKER_IPC_COMMAND_MESSAGE_TYPES_REQUIRING_IDEMPOTENCY_KEY,
     BROKER_IPC_SCHEMA_VERSION,
-    ORDER_PATH_COMMAND_TYPES,
-    SUPPORTED_COMMAND_TYPES,
-    parse_command,
 )
 from services.broker_session_sidecar.credential_resolver import CredentialResolutionError, resolve_credentials
 from services.broker_session_sidecar.heartbeat import heartbeat_pong
@@ -28,6 +27,8 @@ from services.broker_session_sidecar.ipc.redactor import redact_text
 _STOP_REQUESTED = False
 _SEEN_COMMAND_IDS: set[str] = set()
 _STDIN_EOF = object()
+SUPPORTED_COMMAND_TYPES = frozenset(BROKER_IPC_COMMAND_MESSAGE_TYPES)
+ORDER_PATH_COMMAND_TYPES = frozenset(BROKER_IPC_COMMAND_MESSAGE_TYPES_REQUIRING_IDEMPOTENCY_KEY)
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,15 @@ class SidecarConfig:
     config_path: str | None
     log_level: str
     mode: str
+
+
+@dataclass(frozen=True)
+class ParsedCommand:
+    raw: dict[str, Any]
+    command_type: str
+    command_id: str | None
+    schema_version: int
+    idempotency_key: str | None
 
 
 def parse_args(argv: Iterable[str]) -> SidecarConfig:
@@ -51,12 +61,43 @@ def log(message: object, level: str = "info") -> None:
     sys.stderr.flush()
 
 
-def broker_error(failure_state: str, message: object, command_id: str | None = None, **fields: Any) -> dict[str, Any]:
+def broker_error(
+    failure_state: str,
+    reason: object,
+    command_id: str | None = None,
+    *,
+    recoverable: bool = False,
+    rp_code: object | None = None,
+    rp_message: object | None = None,
+    correlated_command_idempotency_key: str | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    reason_redacted = redact_text(reason)
+    failure_payload: dict[str, Any] = {
+        "failure_state": failure_state,
+        "reason": reason_redacted,
+        "recoverable": recoverable,
+    }
+    if rp_code is not None:
+        failure_payload["rp_code"] = str(rp_code)
+    if rp_message is not None:
+        failure_payload["rp_message_redacted"] = redact_text(rp_message)
+    if correlated_command_idempotency_key is not None:
+        failure_payload["correlated_command_idempotency_key"] = correlated_command_idempotency_key
     return make_event(
         "broker_error",
         command_id=command_id,
         failure_state=failure_state,
-        rp_message_redacted=redact_text(message),
+        reason=reason_redacted,
+        recoverable=recoverable,
+        payload=failure_payload,
+        **({"rp_code": str(rp_code)} if rp_code is not None else {}),
+        **({"rp_message_redacted": redact_text(rp_message)} if rp_message is not None else {}),
+        **(
+            {"correlated_command_idempotency_key": correlated_command_idempotency_key}
+            if correlated_command_idempotency_key is not None
+            else {}
+        ),
         **fields,
     )
 
@@ -103,12 +144,18 @@ def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.s
         credentials = resolve_credentials(os.environ)
         auth_result = authenticate(credentials, mode=config.mode)
     except CredentialResolutionError as exc:
-        event = broker_error("auth_denied", f"missing env vars: {', '.join(exc.missing)}", missing_env=list(exc.missing))
+        reason = f"missing env vars: {', '.join(exc.missing)}"
+        event = broker_error("auth_denied", reason, rp_message=reason, missing_env=list(exc.missing))
         write_jsonl(stdout, event)
-        log(event["rp_message_redacted"], "error")
+        log(event["reason"], "error")
         return 2
     except AuthDeniedError as exc:
-        event = broker_error("auth_denied", exc.rp_message_redacted, rp_code=exc.rp_code)
+        event = broker_error(
+            "auth_denied",
+            "Rithmic authentication denied",
+            rp_code=exc.rp_code,
+            rp_message=exc.rp_message_redacted,
+        )
         write_jsonl(stdout, event)
         log(exc.rp_message_redacted, "error")
         return 2
@@ -133,16 +180,42 @@ def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.s
         try:
             payload = json.loads(stripped)
         except json.JSONDecodeError as exc:
-            _emit_with_latency(stdout, broker_error("schema_version_incompatible", f"invalid JSON command: {exc}"), None, received_at_ns)
+            _emit_with_latency(
+                stdout,
+                broker_error("schema_version_incompatible", f"invalid JSON command: {exc}"),
+                None,
+                received_at_ns,
+            )
             continue
         command = parse_command(payload)
         if command is None or command.schema_version != BROKER_IPC_SCHEMA_VERSION or command.command_type not in SUPPORTED_COMMAND_TYPES:
             command_id = payload.get("command_id") if isinstance(payload, dict) and isinstance(payload.get("command_id"), str) else None
-            _emit_with_latency(stdout, broker_error("schema_version_incompatible", "unsupported broker IPC command schema", command_id), command_id, received_at_ns)
+            idempotency_key = payload.get("idempotency_key") if isinstance(payload, dict) and isinstance(payload.get("idempotency_key"), str) else None
+            _emit_with_latency(
+                stdout,
+                broker_error(
+                    "schema_version_incompatible",
+                    "unsupported broker IPC command schema",
+                    command_id,
+                    correlated_command_idempotency_key=idempotency_key,
+                ),
+                command_id,
+                received_at_ns,
+            )
             continue
         if command.command_id is not None:
             if command.command_id in _SEEN_COMMAND_IDS:
-                _emit_with_latency(stdout, broker_error("duplicate_command_detected", "duplicate command id", command.command_id), command.command_id, received_at_ns)
+                _emit_with_latency(
+                    stdout,
+                    broker_error(
+                        "duplicate_command_detected",
+                        "duplicate command id",
+                        command.command_id,
+                        correlated_command_idempotency_key=command.idempotency_key,
+                    ),
+                    command.command_id,
+                    received_at_ns,
+                )
                 continue
             _SEEN_COMMAND_IDS.add(command.command_id)
 
@@ -153,7 +226,17 @@ def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.s
             _emit_with_latency(stdout, heartbeat_pong(command.raw, auth_result.broker_session_id), command.command_id, received_at_ns)
             continue
         if command.command_type in ORDER_PATH_COMMAND_TYPES:
-            _emit_with_latency(stdout, broker_error("order_path_not_yet_implemented", "order path is not implemented in QFA-612-BROKER-01", command.command_id), command.command_id, received_at_ns)
+            _emit_with_latency(
+                stdout,
+                broker_error(
+                    "order_path_not_yet_implemented",
+                    "order path is not implemented in QFA-612-BROKER-01",
+                    command.command_id,
+                    correlated_command_idempotency_key=command.idempotency_key,
+                ),
+                command.command_id,
+                received_at_ns,
+            )
             continue
         if command.command_type == "subscribe_order_events":
             _emit_with_latency(stdout, make_event("subscribe_order_events_ack", command_id=command.command_id), command.command_id, received_at_ns)
@@ -161,6 +244,24 @@ def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.s
 
     write_jsonl(stdout, make_event("shutdown_complete", reason="signal" if _STOP_REQUESTED else "stdin_eof"))
     return 0
+
+
+def parse_command(value: Any) -> ParsedCommand | None:
+    if not isinstance(value, dict):
+        return None
+    command_type = value.get("message_type") or value.get("type") or value.get("command_type")
+    schema_version = value.get("schema_version")
+    if not isinstance(command_type, str) or not isinstance(schema_version, int):
+        return None
+    command_id = value.get("command_id") or value.get("correlation_id")
+    idempotency_key = value.get("idempotency_key")
+    return ParsedCommand(
+        raw=value,
+        command_type=command_type,
+        command_id=command_id if isinstance(command_id, str) else None,
+        schema_version=schema_version,
+        idempotency_key=idempotency_key if isinstance(idempotency_key, str) else None,
+    )
 
 
 def _start_stdin_reader(stdin: TextIO) -> queue.Queue[str | object]:
