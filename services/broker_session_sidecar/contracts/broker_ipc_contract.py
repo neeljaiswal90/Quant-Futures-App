@@ -170,6 +170,15 @@ def build_broker_ipc_contract_export() -> dict[str, Any]:
             "process_id",
             "schema_version",
         ],
+        "failure_payload_fields": [
+            "failure_state",
+            "rp_code",
+            "rp_message_redacted",
+            "reason",
+            "recoverable",
+            "correlated_command_idempotency_key",
+            "qfa_broker_sidecar_ipc_ms",
+        ],
         "optional_telemetry_fields": ["qfa_broker_sidecar_ipc_ms"],
     }
 
@@ -262,7 +271,7 @@ def validate_broker_ipc_envelope(value: Any) -> BrokerIpcValidationResult:
                 "order_rejected",
                 "cancel_rejected",
             }:
-                _validate_optional_failure_state(payload, issues)
+                _validate_failure_payload(payload, issues)
             _validate_optional_ipc_latency(payload, issues)
 
     sorted_issues = sorted(issues, key=lambda issue: (issue["path"], issue["code"]))
@@ -322,20 +331,28 @@ def _validate_boot_identity_payload(
         )
 
 
-def _validate_optional_failure_state(
+def _validate_failure_payload(
     payload: dict[str, Any],
     issues: list[BrokerIpcValidationIssue],
 ) -> None:
-    if (
-        "failure_state" in payload
-        and payload.get("failure_state") not in BROKER_IPC_FAILURE_STATES
-    ):
+    if "failure_state" not in payload:
+        _add_issue(issues, "$.payload.failure_state", "missing_required_field", "is required")
+    elif payload.get("failure_state") not in BROKER_IPC_FAILURE_STATES:
         _add_issue(
             issues,
             "$.payload.failure_state",
             "invalid_field_value",
             "must be one of: " + ", ".join(BROKER_IPC_FAILURE_STATES),
         )
+    _require_required_string(payload, "reason", "$.payload.reason", issues)
+    _require_required_boolean(payload, "recoverable", "$.payload.recoverable", issues)
+    _optional_string(payload.get("rp_code"), "$.payload.rp_code", issues)
+    _optional_string(payload.get("rp_message_redacted"), "$.payload.rp_message_redacted", issues)
+    _optional_string(
+        payload.get("correlated_command_idempotency_key"),
+        "$.payload.correlated_command_idempotency_key",
+        issues,
+    )
 
 
 def _validate_optional_ipc_latency(
@@ -372,6 +389,40 @@ def _require_non_empty_string(
 ) -> None:
     if not isinstance(value, str) or value.strip() == "":
         _add_issue(issues, path, "invalid_field_type", "must be a non-empty string")
+
+
+def _require_required_string(
+    record: dict[str, Any],
+    field_name: str,
+    path: str,
+    issues: list[BrokerIpcValidationIssue],
+) -> None:
+    if field_name not in record:
+        _add_issue(issues, path, "missing_required_field", "is required")
+        return
+    _require_non_empty_string(record.get(field_name), path, issues)
+
+
+def _require_required_boolean(
+    record: dict[str, Any],
+    field_name: str,
+    path: str,
+    issues: list[BrokerIpcValidationIssue],
+) -> None:
+    if field_name not in record:
+        _add_issue(issues, path, "missing_required_field", "is required")
+        return
+    if not isinstance(record.get(field_name), bool):
+        _add_issue(issues, path, "invalid_field_type", "must be a boolean")
+
+
+def _optional_string(
+    value: Any,
+    path: str,
+    issues: list[BrokerIpcValidationIssue],
+) -> None:
+    if value is not None and not isinstance(value, str):
+        _add_issue(issues, path, "invalid_field_type", "must be a string when present")
 
 
 def _require_timestamp(

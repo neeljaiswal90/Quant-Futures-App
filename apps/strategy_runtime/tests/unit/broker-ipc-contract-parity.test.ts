@@ -30,6 +30,10 @@ function pythonContractJson(): string {
   return result.stdout.trim();
 }
 
+function pythonContract(): Record<string, unknown> {
+  return JSON.parse(pythonContractJson()) as Record<string, unknown>;
+}
+
 function baseEnvelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     schema_version: BROKER_IPC_SCHEMA_VERSION,
@@ -75,6 +79,16 @@ describe('QFA-612 broker IPC contract parity', () => {
     );
     expect(contract.failure_states).toEqual(BROKER_IPC_FAILURE_STATES);
     expect(contract.failure_states).toContain('order_path_not_yet_implemented');
+    expect(contract.failure_payload_fields).toEqual([
+      'failure_state',
+      'rp_code',
+      'rp_message_redacted',
+      'reason',
+      'recoverable',
+      'correlated_command_idempotency_key',
+      'qfa_broker_sidecar_ipc_ms',
+    ]);
+    expect(contract.failure_payload_fields).toEqual(pythonContract().failure_payload_fields);
     expect(contract.optional_telemetry_fields).toContain('qfa_broker_sidecar_ipc_ms');
     expect(contract.bigint_fields).toContain('boot_ts_ns');
   });
@@ -136,6 +150,8 @@ describe('QFA-612 broker IPC contract parity', () => {
         event_ts_ns: '-1',
         payload: {
           failure_state: 'unknown_state',
+          reason: 'broker returned an unknown state',
+          recoverable: false,
           qfa_broker_sidecar_ipc_ms: -1,
         },
       }),
@@ -148,5 +164,70 @@ describe('QFA-612 broker IPC contract parity', () => {
       '$.payload.failure_state',
       '$.payload.qfa_broker_sidecar_ipc_ms',
     ]);
+  });
+
+  it('requires recoverable for failure payloads', () => {
+    const result = validateBrokerIpcEnvelope(
+      baseEnvelope({
+        message_type: 'broker_error',
+        direction: 'event',
+        idempotency_key: undefined,
+        payload: {
+          failure_state: 'broker_disconnected',
+          reason: 'heartbeat expired',
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual({
+      path: '$.payload.recoverable',
+      code: 'missing_required_field',
+      message: 'is required',
+    });
+  });
+
+  it('validates broker_error payloads with all optional diagnostic fields', () => {
+    const result = validateBrokerIpcEnvelope(
+      baseEnvelope({
+        message_type: 'broker_error',
+        direction: 'event',
+        idempotency_key: undefined,
+        payload: {
+          failure_state: 'broker_disconnected',
+          rp_code: 'RP-123',
+          rp_message_redacted: 'connection closed by gateway [redacted]',
+          reason: 'gateway disconnected',
+          recoverable: true,
+          correlated_command_idempotency_key: 'idem-1',
+          qfa_broker_sidecar_ipc_ms: 3.5,
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects non-string rp_code failure diagnostics', () => {
+    const result = validateBrokerIpcEnvelope(
+      baseEnvelope({
+        message_type: 'broker_error',
+        direction: 'event',
+        idempotency_key: undefined,
+        payload: {
+          failure_state: 'broker_disconnected',
+          rp_code: 123,
+          reason: 'gateway disconnected',
+          recoverable: true,
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual({
+      path: '$.payload.rp_code',
+      code: 'invalid_field_type',
+      message: 'must be a string when present',
+    });
   });
 });

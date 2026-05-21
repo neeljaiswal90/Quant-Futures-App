@@ -96,7 +96,11 @@ export interface BrokerIpcBootIdentityPayload {
 
 export interface BrokerIpcFailurePayload {
   readonly failure_state: BrokerIpcFailureState;
+  readonly rp_code?: string;
+  readonly rp_message_redacted?: string;
   readonly reason: string;
+  readonly recoverable: boolean;
+  readonly correlated_command_idempotency_key?: string;
   readonly qfa_broker_sidecar_ipc_ms?: number;
 }
 
@@ -144,6 +148,7 @@ export interface BrokerIpcContractExport {
   readonly envelope_fields: readonly string[];
   readonly bigint_fields: readonly string[];
   readonly boot_identity_payload_fields: readonly string[];
+  readonly failure_payload_fields: readonly string[];
   readonly optional_telemetry_fields: readonly string[];
 }
 
@@ -194,6 +199,15 @@ export function buildBrokerIpcContractExport(): BrokerIpcContractExport {
       'boot_ts_ns',
       'process_id',
       'schema_version',
+    ],
+    failure_payload_fields: [
+      'failure_state',
+      'rp_code',
+      'rp_message_redacted',
+      'reason',
+      'recoverable',
+      'correlated_command_idempotency_key',
+      'qfa_broker_sidecar_ipc_ms',
     ],
     optional_telemetry_fields: ['qfa_broker_sidecar_ipc_ms'],
   };
@@ -272,7 +286,7 @@ export function validateBrokerIpcEnvelope(value: unknown): BrokerIpcValidationRe
         messageType === 'order_rejected' ||
         messageType === 'cancel_rejected'
       ) {
-        validateOptionalFailureState(payload, issues);
+        validateFailurePayload(payload, issues);
       }
       validateOptionalIpcLatency(payload, issues);
     }
@@ -335,14 +349,13 @@ function validateBootIdentityPayload(
   }
 }
 
-function validateOptionalFailureState(
+function validateFailurePayload(
   payload: Record<string, unknown>,
   issues: BrokerIpcValidationIssue[],
 ): void {
-  if (
-    payload.failure_state !== undefined &&
-    !BROKER_IPC_FAILURE_STATES.includes(payload.failure_state as never)
-  ) {
+  if (!Object.hasOwn(payload, 'failure_state')) {
+    addIssue(issues, '$.payload.failure_state', 'missing_required_field', 'is required');
+  } else if (!BROKER_IPC_FAILURE_STATES.includes(payload.failure_state as never)) {
     addIssue(
       issues,
       '$.payload.failure_state',
@@ -350,6 +363,15 @@ function validateOptionalFailureState(
       `must be one of: ${BROKER_IPC_FAILURE_STATES.join(', ')}`,
     );
   }
+  requireRequiredString(payload, 'reason', '$.payload.reason', issues);
+  requireRequiredBoolean(payload, 'recoverable', '$.payload.recoverable', issues);
+  optionalString(payload.rp_code, '$.payload.rp_code', issues);
+  optionalString(payload.rp_message_redacted, '$.payload.rp_message_redacted', issues);
+  optionalString(
+    payload.correlated_command_idempotency_key,
+    '$.payload.correlated_command_idempotency_key',
+    issues,
+  );
 }
 
 function validateOptionalIpcLatency(
@@ -389,6 +411,44 @@ function requireNonEmptyString(
 ): void {
   if (typeof value !== 'string' || value.trim() === '') {
     addIssue(issues, path, 'invalid_field_type', 'must be a non-empty string');
+  }
+}
+
+function requireRequiredString(
+  record: Record<string, unknown>,
+  fieldName: string,
+  path: string,
+  issues: BrokerIpcValidationIssue[],
+): void {
+  if (!Object.hasOwn(record, fieldName)) {
+    addIssue(issues, path, 'missing_required_field', 'is required');
+    return;
+  }
+  requireNonEmptyString(record[fieldName], path, issues);
+}
+
+function requireRequiredBoolean(
+  record: Record<string, unknown>,
+  fieldName: string,
+  path: string,
+  issues: BrokerIpcValidationIssue[],
+): void {
+  if (!Object.hasOwn(record, fieldName)) {
+    addIssue(issues, path, 'missing_required_field', 'is required');
+    return;
+  }
+  if (typeof record[fieldName] !== 'boolean') {
+    addIssue(issues, path, 'invalid_field_type', 'must be a boolean');
+  }
+}
+
+function optionalString(
+  value: unknown,
+  path: string,
+  issues: BrokerIpcValidationIssue[],
+): void {
+  if (value !== undefined && typeof value !== 'string') {
+    addIssue(issues, path, 'invalid_field_type', 'must be a string when present');
   }
 }
 
