@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import signal
 import sys
+import threading
 from dataclasses import dataclass
 from typing import Any, Iterable, TextIO
 
@@ -25,6 +27,7 @@ from services.broker_session_sidecar.ipc.redactor import redact_text
 
 _STOP_REQUESTED = False
 _SEEN_COMMAND_IDS: set[str] = set()
+_STDIN_EOF = object()
 
 
 @dataclass(frozen=True)
@@ -87,9 +90,14 @@ def install_signal_handlers() -> None:
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, request_stop)
 
 
 def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> int:
+    global _STOP_REQUESTED
+    _STOP_REQUESTED = False
+    _SEEN_COMMAND_IDS.clear()
     install_signal_handlers()
     try:
         credentials = resolve_credentials(os.environ)
@@ -107,7 +115,15 @@ def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.s
 
     write_jsonl(stdout, boot_identity(auth_result, config))
 
-    for line in stdin:
+    stdin_queue = _start_stdin_reader(stdin)
+    while not _STOP_REQUESTED:
+        try:
+            item = stdin_queue.get(timeout=0.05)
+        except queue.Empty:
+            continue
+        if item is _STDIN_EOF:
+            break
+        line = str(item)
         if _STOP_REQUESTED:
             break
         stripped = line.strip()
@@ -145,6 +161,21 @@ def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.s
 
     write_jsonl(stdout, make_event("shutdown_complete", reason="signal" if _STOP_REQUESTED else "stdin_eof"))
     return 0
+
+
+def _start_stdin_reader(stdin: TextIO) -> queue.Queue[str | object]:
+    stdin_queue: queue.Queue[str | object] = queue.Queue()
+
+    def read_stdin() -> None:
+        try:
+            for line in stdin:
+                stdin_queue.put(line)
+        finally:
+            stdin_queue.put(_STDIN_EOF)
+
+    thread = threading.Thread(target=read_stdin, name="qfa-broker-sidecar-stdin-reader", daemon=True)
+    thread.start()
+    return stdin_queue
 
 
 def _emit_with_latency(stdout: TextIO, event: dict[str, Any], command_id: str | None, received_at_ns: int) -> None:

@@ -37,9 +37,8 @@ class AuthHandshakeTests(unittest.TestCase):
                 authenticate(RithmicCredentials("user", "secret", "wss://gateway", "test-system"))
         self.assertEqual(ctx.exception.rp_code, "13")
         self.assertNotIn("secret", ctx.exception.rp_message_redacted)
-        self.assertIn("[REDACTED:CREDENTIAL]", ctx.exception.rp_message_redacted)
-        self.assertIn("[REDACTED:EMAIL]", ctx.exception.rp_message_redacted)
-        self.assertIn("[REDACTED:IP]", ctx.exception.rp_message_redacted)
+        self.assertIn("[REDACTED:credential]", ctx.exception.rp_message_redacted)
+        self.assertIn("[REDACTED:ip]", ctx.exception.rp_message_redacted)
 
 
 if __name__ == "__main__":

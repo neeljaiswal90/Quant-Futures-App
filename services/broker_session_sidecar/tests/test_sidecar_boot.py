@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -84,6 +85,34 @@ class SidecarBootTests(unittest.TestCase):
         self.assertEqual(events[0]["failure_state"], "auth_denied")
         self.assertIn("RITHMIC_TEST_USER", events[0]["rp_message_redacted"])
         self.assertNotIn("test-password", result.stdout + result.stderr)
+
+    def test_sigterm_interrupts_idle_stdin_within_two_seconds(self) -> None:
+        process = subprocess.Popen(
+            [sys.executable, "-m", "broker_session_sidecar"],
+            cwd=ROOT,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env_with_mock_pyrithmic(),
+        )
+        try:
+            boot_line = process.stdout.readline() if process.stdout is not None else ""
+            self.assertEqual(json.loads(boot_line)["type"], "boot_identity")
+            time.sleep(0.1)
+            if os.name == "nt":
+                process.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                process.send_signal(signal.SIGTERM)
+            stdout, stderr = process.communicate(timeout=2)
+        finally:
+            if process.poll() is None:
+                process.kill()
+        self.assertEqual(process.returncode, 0, stderr)
+        events = json_lines(boot_line + stdout)
+        self.assertEqual(events[-1]["type"], "shutdown_complete")
+        self.assertEqual(events[-1]["reason"], "signal")
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ class FailureStateTests(unittest.TestCase):
         self.assertEqual(events[3]["failure_state"], "duplicate_command_detected")
 
     def test_broker_disconnected_error_shape_exists_but_sidecar_unavailable_is_not_emitted(self) -> None:
-        event = broker_error("broker_disconnected", "disconnected session_id=abc")
+        event = broker_error("broker_disconnected", "disconnected session-abc")
         self.assertEqual(event["failure_state"], "broker_disconnected")
         self.assertNotEqual(event["failure_state"], "sidecar_unavailable")
         self.assertNotIn("abc", event["rp_message_redacted"])

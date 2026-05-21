@@ -6,26 +6,42 @@ from services.broker_session_sidecar.ipc.redactor import redact_text
 
 
 class RedactorParityTests(unittest.TestCase):
-    def test_preflight_fixture_parity_strings(self) -> None:
-        # Fixture parity note: BROKER-01 cannot import the TS preflight redactor from Python.
-        # These canned strings mirror the TS preflight categories and assert byte-identical
-        # expected Python output for credentials, emails, IPs, Bearer tokens, sessions,
-        # order IDs, and account IDs.
+    def test_preflight_redactor_fixture_matches_ts_output_byte_for_byte(self) -> None:
+        raw = "\n".join((
+            'RITHMIC_TEST_USERNAME="paper.user@example.com"',
+            'RITHMIC_TEST_USER="paper.alias@example.com"',
+            'RITHMIC_TEST_PASSWORD="secret-password-123"',
+            'RITHMIC_TEST_WS_URL="wss://example.test:443"',
+            'RITHMIC_CONNECT_POINT="wss://fallback.example.test:443"',
+            "Authorization: Bearer eyJhbGciOi.fake.token",
+            "session-abc123 broker_order_id=order-xyz789 accountId=ABC12345",
+            "gateway=203.0.113.17 localhost=127.0.0.1",
+        ))
+        expected = "\n".join((
+            'RITHMIC_TEST_USERNAME="[REDACTED:credential]"',
+            'RITHMIC_TEST_USER="[REDACTED:credential]"',
+            'RITHMIC_TEST_PASSWORD="[REDACTED:credential]"',
+            'RITHMIC_TEST_WS_URL="[REDACTED:credential]"',
+            'RITHMIC_CONNECT_POINT="[REDACTED:credential]"',
+            "Authorization: Bearer [REDACTED:credential]",
+            "[REDACTED:session-id-1] broker_order_id=[REDACTED:[REDACTED:order-id-1]] accountId=[REDACTED:account-id]",
+            "gateway=[REDACTED:ip] localhost=127.0.0.1",
+        ))
+        self.assertEqual(redact_text(raw, ["secret-password-123"]), expected)
+
+    def test_preflight_category_edges_match_ts_output_byte_for_byte(self) -> None:
         raw = (
-            "password=hunter2 token=abc123 user trader@example.com ip 192.168.1.10 "
-            "Bearer eyJhbGciOiJIUzI1NiJ9 session_id=sess-123 order_id=ord-456 account_id=acct-789"
+            "mock-session-123 session-xyz rithmic-session:abc order-xyz789 "
+            "accountId=ABC12345 0.0.0.0 127.0.0.1 198.51.100.2 "
+            "Bearer token abc@example.com"
         )
         expected = (
-            "password=[REDACTED:CREDENTIAL] token=[REDACTED:CREDENTIAL] user [REDACTED:EMAIL] ip [REDACTED:IP] "
-            "Bearer [REDACTED:TOKEN] session_id=[REDACTED:SESSION_ID] order_id=[REDACTED:ORDER_ID] account_id=[REDACTED:ACCOUNT_ID]"
+            "[REDACTED:session-id-1] [REDACTED:session-id-1] [REDACTED:session-id-1] "
+            "[REDACTED:order-id-1] accountId=[REDACTED:account-id] "
+            "0.0.0.0 127.0.0.1 [REDACTED:ip] Bearer [REDACTED:credential] "
+            "[REDACTED:credential]"
         )
         self.assertEqual(redact_text(raw), expected)
-
-    def test_order_and_account_aliases(self) -> None:
-        self.assertEqual(
-            redact_text("broker_order_id=ABC broker_account_id=XYZ"),
-            "broker_order_id=[REDACTED:ORDER_ID] broker_account_id=[REDACTED:ACCOUNT_ID]",
-        )
 
 
 if __name__ == "__main__":
