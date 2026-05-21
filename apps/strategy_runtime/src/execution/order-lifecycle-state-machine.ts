@@ -95,6 +95,7 @@ export type SubmissionBlockSource =
   | 'quarantine'
   | 'slo_halt'
   | 'reconnect_in_progress'
+  | 'broker_reconciliation_in_progress'
   | 'kill_switch';
 
 export type SubmissionGateAcquireResult =
@@ -107,6 +108,7 @@ export type SubmissionGateAcquireResult =
         | 'quarantine_active'
         | 'slo_halt_active'
         | 'reconnect_in_progress_active'
+        | 'broker_reconciliation_in_progress_active'
         | 'kill_switch_active';
       readonly open_quarantine_count: number;
       readonly active_block_sources?: readonly SubmissionBlockSource[];
@@ -142,6 +144,14 @@ export class SubmissionGate {
       return {
         allowed: false,
         reason: 'reconnect_in_progress_active',
+        open_quarantine_count: openQuarantineCount,
+        active_block_sources: this.active_block_sources,
+      };
+    }
+    if (this.activeBlockSources.has('broker_reconciliation_in_progress')) {
+      return {
+        allowed: false,
+        reason: 'broker_reconciliation_in_progress_active',
         open_quarantine_count: openQuarantineCount,
         active_block_sources: this.active_block_sources,
       };

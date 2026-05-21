@@ -443,7 +443,10 @@ function validateSessionManifestPayload(
     'dual',
   ]);
   requireNonEmptyString(record.broker_session_id, `${path}.broker_session_id`, issues);
-  requireEnum(record.adapter_kind, `${path}.adapter_kind`, issues, ['MOCK_ORDER_PLANT']);
+  requireEnum(record.adapter_kind, `${path}.adapter_kind`, issues, [
+    'MOCK_ORDER_PLANT',
+    'PYTHON_RITHMIC_ORDER_PLANT',
+  ]);
   optionalEnum(record.session_phase, `${path}.session_phase`, issues, [
     'starting',
     'closing',
