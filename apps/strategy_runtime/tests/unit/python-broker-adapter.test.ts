@@ -13,8 +13,8 @@ import {
   type UnixNs,
 } from '../../src/contracts/index.js';
 import { SubmissionGate } from '../../src/execution/order-lifecycle-state-machine.js';
+import { BROKER_IPC_SCHEMA_VERSION } from '../../src/execution/brokers/broker-ipc-contract.js';
 import {
-  BROKER_IPC_SCHEMA_VERSION,
   PythonBrokerAdapter,
 } from '../../src/execution/brokers/python-broker-adapter.js';
 import type {
@@ -189,12 +189,42 @@ const schemaVersion = ${BROKER_IPC_SCHEMA_VERSION};
 function send(message) {
   process.stdout.write(JSON.stringify(message) + "\n");
 }
+function envelope(messageType, correlationId, payload, overrides = {}) {
+  return {
+    schema_version: schemaVersion,
+    message_type: messageType,
+    direction: "event",
+    run_id: "run-python-broker-adapter",
+    session_id: "mock-python-session",
+    correlation_id: correlationId,
+    causation_id: correlationId,
+    event_ts_ns: "1800000000001000000",
+    adapter_version: "mock-sidecar-v1",
+    payload,
+    ...overrides
+  };
+}
 function boot(version = schemaVersion) {
   send({
     schema_version: version,
     message_type: "boot_identity",
-    boot_ts_ns: "1800000000000000000",
-    broker_session_id: "mock-python-session"
+    direction: "event",
+    run_id: "run-python-broker-adapter",
+    session_id: "mock-python-session",
+    correlation_id: "boot",
+    causation_id: "boot",
+    event_ts_ns: "1800000000000000000",
+    adapter_version: "mock-sidecar-v1",
+    payload: {
+      adapter_version: "mock-sidecar-v1",
+      sdk_name: "pyrithmic",
+      sdk_version: "test",
+      protocol_environment: "rithmic_paper",
+      gateway_url_redacted: "mock-gateway",
+      boot_ts_ns: "1800000000000000000",
+      process_id: process.pid,
+      schema_version: version
+    }
   });
 }
 if (scenario === "no_boot") {
@@ -221,39 +251,32 @@ process.stdin.on("data", (chunk) => {
 });
 function handle(command) {
   if (command.message_type === "shutdown") {
-    send({
-      schema_version: schemaVersion,
-      message_type: "shutdown_complete",
-      correlation_id: command.correlation_id,
+    send(envelope("shutdown_complete", command.correlation_id, {}, {
       event_ts_ns: "1800000000002000000"
-    });
+    }));
     return;
   }
-  if (command.message_type !== "submit_intent") return;
+  if (command.message_type !== "submit_order") return;
   if (scenario === "order_not_implemented") {
-    send({
-      schema_version: schemaVersion,
-      message_type: "order_path_not_yet_implemented",
-      correlation_id: command.correlation_id,
-      event_ts_ns: "1800000000001000000",
-      reason: "order_path_not_yet_implemented"
-    });
+    send(envelope("broker_error", command.correlation_id, {
+      failure_state: "order_path_not_yet_implemented",
+      reason: "order_path_not_yet_implemented",
+      recoverable: false,
+      correlated_command_idempotency_key: command.idempotency_key,
+      qfa_broker_sidecar_ipc_ms: 1.5
+    }));
     return;
   }
   if (scenario === "malformed_then_ack") {
     process.stdout.write("{not-json}\n");
   }
-  send({
-    schema_version: schemaVersion,
-    message_type: "order_accepted",
-    correlation_id: command.correlation_id,
-    event_ts_ns: "1800000000001000000",
-    intent_id: command.intent.event_id,
+  send(envelope("order_accepted", command.correlation_id, {
+    intent_id: command.payload.intent.event_id,
     submission_ack_id: "submission-ack-1",
     broker_order_id: "PY-1",
     broker_account_id: "paper-account",
     instrument_symbol: "MNQM6"
-  });
+  }));
 }
 `;
 }

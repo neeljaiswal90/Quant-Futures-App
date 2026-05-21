@@ -21,13 +21,18 @@ import {
   type RuntimeMode,
   type Unsubscribe,
 } from './broker-adapter.js';
-
-export const BROKER_IPC_SCHEMA_VERSION = 1;
+import {
+  BROKER_IPC_SCHEMA_VERSION,
+  validateBrokerIpcEnvelope,
+  type BrokerIpcEnvelope,
+  type BrokerIpcFailurePayload,
+} from './broker-ipc-contract.js';
 
 const DEFAULT_BOOT_TIMEOUT_MS = 10_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 60_000;
 const NS_PER_MS = 1_000_000n;
+const ADAPTER_VERSION = 'qfa-612-broker-02-ts-adapter';
 
 export interface PythonBrokerAdapterOptions {
   readonly mode?: RuntimeMode;
@@ -47,94 +52,9 @@ type PendingCommandKind = 'submit' | 'cancel';
 
 interface PendingCommand {
   readonly kind: PendingCommandKind;
+  readonly idempotency_key: string;
   readonly resolve: (result: { readonly accepted: boolean; readonly broker_intent_correlation_id?: string }) => void;
   readonly reject: (error: Error) => void;
-}
-
-// TODO(QFA-612-BROKER-00): replace these minimal IPC replicas with the shared BROKER-00 TS contract.
-type BrokerIpcMessage =
-  | BrokerIpcBootIdentity
-  | BrokerIpcShutdownComplete
-  | BrokerIpcOrderPathNotYetImplemented
-  | BrokerIpcOrderAccepted
-  | BrokerIpcOrderFill
-  | BrokerIpcOrderCancelled
-  | BrokerIpcOrderRejected
-  | BrokerIpcBrokerError
-  | BrokerIpcHeartbeat;
-
-interface BrokerIpcBase {
-  readonly schema_version: number;
-  readonly message_type: string;
-  readonly correlation_id?: string;
-  readonly event_ts_ns?: UnixNs;
-}
-
-interface BrokerIpcBootIdentity extends BrokerIpcBase {
-  readonly message_type: 'boot_identity';
-  readonly boot_ts_ns: UnixNs;
-  readonly broker_session_id: string;
-}
-
-interface BrokerIpcShutdownComplete extends BrokerIpcBase {
-  readonly message_type: 'shutdown_complete';
-}
-
-interface BrokerIpcOrderPathNotYetImplemented extends BrokerIpcBase {
-  readonly message_type: 'order_path_not_yet_implemented';
-  readonly reason?: string;
-}
-
-interface BrokerIpcOrderAccepted extends BrokerIpcBase {
-  readonly message_type: 'order_accepted';
-  readonly intent_id: EventId;
-  readonly submission_ack_id?: EventId;
-  readonly broker_order_id: string;
-  readonly broker_account_id: string;
-  readonly instrument_symbol: string;
-}
-
-interface BrokerIpcOrderFill extends BrokerIpcBase {
-  readonly message_type: 'order_partially_filled' | 'order_filled';
-  readonly intent_id: EventId;
-  readonly submission_ack_id: EventId;
-  readonly fill_ack_id?: EventId;
-  readonly broker_order_id: string;
-  readonly broker_account_id: string;
-  readonly instrument_symbol: string;
-  readonly fill_qty: number;
-  readonly fill_price: number;
-}
-
-interface BrokerIpcOrderCancelled extends BrokerIpcBase {
-  readonly message_type: 'order_cancelled';
-  readonly intent_id: EventId;
-  readonly submission_ack_id: EventId;
-  readonly cancel_ack_id?: EventId;
-  readonly broker_order_id: string;
-  readonly broker_account_id: string;
-  readonly cancel_reason?: JournalEventPayloadFor<'ORDER_ACK_CANCEL'>['cancel_reason'];
-}
-
-interface BrokerIpcOrderRejected extends BrokerIpcBase {
-  readonly message_type: 'order_rejected';
-  readonly intent_id: EventId;
-  readonly broker_order_id?: string;
-  readonly broker_account_id: string;
-  readonly reject_reason_code: string;
-  readonly reject_subreason?: string;
-  readonly reject_message_redacted?: string;
-}
-
-interface BrokerIpcBrokerError extends BrokerIpcBase {
-  readonly message_type: 'broker_error';
-  readonly failure_state?: string;
-  readonly code?: string;
-  readonly message?: string;
-}
-
-interface BrokerIpcHeartbeat extends BrokerIpcBase {
-  readonly message_type: 'heartbeat';
 }
 
 export class PythonBrokerAdapter implements BrokerAdapter {
@@ -229,11 +149,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
 
     this.stopping = true;
     this.clearHeartbeatTimer();
-    this.writeCommand({
-      schema_version: BROKER_IPC_SCHEMA_VERSION,
-      message_type: 'shutdown',
-      correlation_id: this.nextCorrelationId('shutdown'),
-    });
+    this.writeCommand(this.commandEnvelope('shutdown', this.nextCorrelationId('shutdown'), {}, undefined));
 
     await new Promise<void>((resolve, reject) => {
       this.shutdownResolver = { resolve, reject };
@@ -252,14 +168,9 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   ): Promise<{ readonly accepted: boolean; readonly broker_intent_correlation_id: string }> {
     this.requireRunning();
     const correlationId = this.nextCorrelationId('submit');
-    this.writeCommand({
-      schema_version: BROKER_IPC_SCHEMA_VERSION,
-      message_type: 'submit_intent',
-      correlation_id: correlationId,
-      idempotency_key: String(intent.event_id),
-      intent,
-    });
-    const result = await this.awaitCommandResult(correlationId, 'submit');
+    const idempotencyKey = String(intent.event_id);
+    this.writeCommand(this.commandEnvelope('submit_order', correlationId, { intent }, idempotencyKey));
+    const result = await this.awaitCommandResult(correlationId, 'submit', idempotencyKey);
     return {
       accepted: result.accepted,
       broker_intent_correlation_id: correlationId,
@@ -269,14 +180,9 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   async requestCancel(request: BrokerCancelRequest): Promise<{ readonly accepted: boolean }> {
     this.requireRunning();
     const correlationId = this.nextCorrelationId('cancel');
-    this.writeCommand({
-      schema_version: BROKER_IPC_SCHEMA_VERSION,
-      message_type: 'request_cancel',
-      correlation_id: correlationId,
-      idempotency_key: `${request.intent_id}:${request.submission_ack_id}`,
-      request,
-    });
-    const result = await this.awaitCommandResult(correlationId, 'cancel');
+    const idempotencyKey = `${request.intent_id}:${request.submission_ack_id}`;
+    this.writeCommand(this.commandEnvelope('cancel_order', correlationId, { request }, idempotencyKey));
+    const result = await this.awaitCommandResult(correlationId, 'cancel', idempotencyKey);
     return { accepted: result.accepted };
   }
 
@@ -318,27 +224,29 @@ export class PythonBrokerAdapter implements BrokerAdapter {
       return;
     }
 
-    if (!isBrokerIpcMessage(parsed)) {
-      this.emitValidatorIssue('broker_ipc_schema_invalid', 'sidecar stdout message failed minimal IPC validation');
-      return;
-    }
-
-    this.markActivity();
-    if (parsed.schema_version !== BROKER_IPC_SCHEMA_VERSION) {
+    const validation = validateBrokerIpcEnvelope(parsed);
+    if (!validation.ok || validation.envelope === undefined) {
+      const messageType = messageTypeOf(parsed);
+      const schemaVersion = schemaVersionOf(parsed);
       this.emitValidatorIssue(
-        'broker_ipc_schema_version_mismatch',
-        `expected ${BROKER_IPC_SCHEMA_VERSION}, received ${parsed.schema_version}`,
+        schemaVersion !== BROKER_IPC_SCHEMA_VERSION
+          ? 'broker_ipc_schema_version_mismatch'
+          : 'broker_ipc_schema_invalid',
+        `sidecar stdout message failed BROKER-00 IPC validation: ${validation.issues
+          .map((issue) => `${issue.path} ${issue.message}`)
+          .join('; ')}`,
       );
-      if (parsed.message_type === 'boot_identity') {
+      if (messageType === 'boot_identity' && schemaVersion !== BROKER_IPC_SCHEMA_VERSION) {
         this.failBoot(new Error('Python broker sidecar IPC schema version mismatch'));
       }
       return;
     }
 
-    this.dispatchMessage(parsed);
+    this.markActivity();
+    this.dispatchMessage(validation.envelope);
   }
 
-  private dispatchMessage(message: BrokerIpcMessage): void {
+  private dispatchMessage(message: BrokerIpcEnvelope): void {
     switch (message.message_type) {
       case 'boot_identity':
         this.handleBootIdentity(message);
@@ -347,102 +255,121 @@ export class PythonBrokerAdapter implements BrokerAdapter {
         this.shutdownResolver?.resolve();
         this.child?.kill('SIGTERM');
         return;
-      case 'order_path_not_yet_implemented':
-        this.emitValidatorIssue(
-          'order_path_not_yet_implemented',
-          message.reason ?? 'Python broker sidecar order path is not implemented',
-        );
-        this.resolvePending(message.correlation_id, { accepted: false });
-        return;
       case 'order_accepted':
+      case 'order_acknowledged': {
+        const payload = orderAcceptedPayload(message);
         this.emitAck({
           type: 'ORDER_ACK_SUBMISSION',
-          ts_ns: message.event_ts_ns ?? this.nowNs(),
+          ts_ns: ns(message.event_ts_ns),
           payload: {
-            intent_id: message.intent_id,
+            intent_id: payload.intent_id,
             submission_ack_id:
-              message.submission_ack_id ?? makeEventId(`python-submission-ack-${message.correlation_id ?? message.intent_id}`),
-            broker_order_id: message.broker_order_id,
-            broker_account_id: message.broker_account_id,
-            instrument_symbol: message.instrument_symbol,
+              payload.submission_ack_id ?? makeEventId(`python-submission-ack-${message.correlation_id}`),
+            broker_order_id: payload.broker_order_id,
+            broker_account_id: payload.broker_account_id,
+            instrument_symbol: payload.instrument_symbol,
           },
           broker_intent_correlation_id: message.correlation_id,
         });
         this.resolvePending(message.correlation_id, { accepted: true });
         return;
+      }
       case 'order_partially_filled':
-      case 'order_filled':
+      case 'order_filled': {
+        const payload = orderFillPayload(message);
         this.emitAck({
           type: 'ORDER_ACK_FILL',
-          ts_ns: message.event_ts_ns ?? this.nowNs(),
+          ts_ns: ns(message.event_ts_ns),
           payload: {
-            intent_id: message.intent_id,
-            submission_ack_id: message.submission_ack_id,
+            intent_id: payload.intent_id,
+            submission_ack_id: payload.submission_ack_id,
             fill_ack_id:
-              message.fill_ack_id ?? makeEventId(`python-fill-ack-${message.correlation_id ?? message.intent_id}`),
-            broker_order_id: message.broker_order_id,
-            broker_account_id: message.broker_account_id,
-            instrument_symbol: message.instrument_symbol,
-            fill_qty: message.fill_qty,
-            fill_price: message.fill_price,
+              payload.fill_ack_id ?? makeEventId(`python-fill-ack-${message.correlation_id}`),
+            broker_order_id: payload.broker_order_id,
+            broker_account_id: payload.broker_account_id,
+            instrument_symbol: payload.instrument_symbol,
+            fill_qty: payload.fill_qty,
+            fill_price: payload.fill_price,
             fill_kind: message.message_type === 'order_filled' ? 'FULL' : 'PARTIAL',
           },
           broker_intent_correlation_id: message.correlation_id,
         });
         return;
-      case 'order_cancelled':
+      }
+      case 'order_cancelled': {
+        const payload = orderCancelledPayload(message);
         this.emitAck({
           type: 'ORDER_ACK_CANCEL',
-          ts_ns: message.event_ts_ns ?? this.nowNs(),
+          ts_ns: ns(message.event_ts_ns),
           payload: {
-            intent_id: message.intent_id,
-            submission_ack_id: message.submission_ack_id,
+            intent_id: payload.intent_id,
+            submission_ack_id: payload.submission_ack_id,
             cancel_ack_id:
-              message.cancel_ack_id ?? makeEventId(`python-cancel-ack-${message.correlation_id ?? message.intent_id}`),
-            broker_order_id: message.broker_order_id,
-            broker_account_id: message.broker_account_id,
-            cancel_reason: message.cancel_reason ?? 'CLIENT_REQUESTED',
+              payload.cancel_ack_id ?? makeEventId(`python-cancel-ack-${message.correlation_id}`),
+            broker_order_id: payload.broker_order_id,
+            broker_account_id: payload.broker_account_id,
+            cancel_reason: payload.cancel_reason ?? 'CLIENT_REQUESTED',
           },
           broker_intent_correlation_id: message.correlation_id,
         });
         this.resolvePending(message.correlation_id, { accepted: true });
         return;
-      case 'order_rejected':
+      }
+      case 'order_rejected': {
+        const payload = orderRejectedPayload(message);
+        const failure = failurePayload(message);
+        this.emitValidatorIssue(failure.failure_state, failure.reason, failureDetails(failure));
         this.emitAck({
           type: 'ORDER_BROKER_REJECT',
-          ts_ns: message.event_ts_ns ?? this.nowNs(),
+          ts_ns: ns(message.event_ts_ns),
           payload: {
-            intent_id: message.intent_id,
-            ...(message.broker_order_id === undefined ? {} : { broker_order_id: message.broker_order_id }),
-            broker_account_id: message.broker_account_id,
-            reject_reason_code: message.reject_reason_code,
-            ...(message.reject_subreason === undefined ? {} : { reject_subreason: message.reject_subreason }),
-            reject_message_redacted: message.reject_message_redacted ?? '[redacted]',
+            intent_id: payload.intent_id,
+            ...(payload.broker_order_id === undefined ? {} : { broker_order_id: payload.broker_order_id }),
+            broker_account_id: payload.broker_account_id,
+            reject_reason_code: failure.rp_code ?? failure.failure_state,
+            reject_subreason: failure.failure_state,
+            reject_message_redacted: failure.rp_message_redacted ?? failure.reason,
           },
           broker_intent_correlation_id: message.correlation_id,
         });
         this.resolvePending(message.correlation_id, { accepted: false });
         return;
+      }
       case 'broker_error':
-        if (message.failure_state === 'sidecar_unavailable') {
-          this.markSidecarUnavailable(message.code ?? 'broker_error');
+      case 'connection_lost':
+      case 'cancel_rejected': {
+        const failure = failurePayload(message);
+        if (failure.failure_state === 'sidecar_unavailable') {
+          this.markSidecarUnavailable(failure.reason, failure);
+          return;
+        }
+        if (failure.failure_state === 'order_path_not_yet_implemented') {
+          this.emitValidatorIssue(failure.failure_state, failure.reason, failureDetails(failure));
+          this.resolvePending(message.correlation_id, { accepted: false });
           return;
         }
         this.emitValidatorIssue(
-          message.code ?? 'broker_error',
-          message.message ?? 'Python broker sidecar reported broker_error',
+          failure.rp_code ?? failure.failure_state,
+          failure.reason,
+          failureDetails(failure),
         );
         this.resolvePending(message.correlation_id, { accepted: false });
         return;
-      case 'heartbeat':
+      }
+      case 'heartbeat_pong':
+      case 'recovered':
+      case 'cancel_pending':
+      case 'position_snapshot':
+      case 'reconciliation_snapshot':
         return;
       default:
-        assertNeverMessage(message);
+        throw new Error(`Unhandled broker IPC message: ${String(message.message_type)}`);
     }
   }
 
-  private handleBootIdentity(message: BrokerIpcBootIdentity): void {
-    this.brokerSessionId = message.broker_session_id;
+  private handleBootIdentity(message: BrokerIpcEnvelope): void {
+    const payload = bootIdentityPayload(message);
+    this.brokerSessionId = message.session_id;
     this.running = true;
     if (this.bootTimer !== undefined) {
       clearTimeout(this.bootTimer);
@@ -451,7 +378,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     const mask = buildExecutionCapabilityMask();
     this.emitSession({
       type: 'SESSION_MANIFEST',
-      ts_ns: message.boot_ts_ns,
+      ts_ns: ns(payload.boot_ts_ns),
       payload: {
         mask_id: mask.mask_id,
         mask_version: mask.mask_version,
@@ -460,7 +387,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
         plant_scope: 'ORDER_PLANT',
         mode: this.mode,
         timestamp_anchor: 'broker_exchange_ts_ns',
-        broker_session_id: message.broker_session_id,
+        broker_session_id: message.session_id,
         adapter_kind: 'PYTHON_RITHMIC_ORDER_PLANT',
       },
     });
@@ -489,15 +416,20 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     }
   }
 
-  private markSidecarUnavailable(reason: string): void {
+  private markSidecarUnavailable(reason: string, failure?: BrokerIpcFailurePayload): void {
     if (this.stopping) {
       return;
     }
+    const payload = failure ?? {
+      failure_state: 'sidecar_unavailable',
+      reason: `Python broker sidecar unavailable: ${reason}`,
+      recoverable: false,
+    } satisfies BrokerIpcFailurePayload;
     this.submissionGate?.requestBlock('broker_reconciliation_in_progress');
     this.emitValidatorIssue(
-      'sidecar_unavailable',
-      `Python broker sidecar unavailable: ${reason}`,
-      { failure_state: 'sidecar_unavailable' },
+      payload.failure_state,
+      payload.reason,
+      failureDetails(payload),
     );
     for (const [correlationId, pending] of this.pendingCommands.entries()) {
       pending.resolve({ accepted: false });
@@ -521,12 +453,12 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     }
   }
 
-  private awaitCommandResult(correlationId: string, kind: PendingCommandKind): Promise<{
+  private awaitCommandResult(correlationId: string, kind: PendingCommandKind, idempotencyKey: string): Promise<{
     readonly accepted: boolean;
     readonly broker_intent_correlation_id?: string;
   }> {
     return new Promise((resolve, reject) => {
-      this.pendingCommands.set(correlationId, { kind, resolve, reject });
+      this.pendingCommands.set(correlationId, { kind, idempotency_key: idempotencyKey, resolve, reject });
     });
   }
 
@@ -545,7 +477,28 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     pending.resolve(result);
   }
 
-  private writeCommand(command: Readonly<Record<string, unknown>>): void {
+  private commandEnvelope(
+    messageType: 'submit_order' | 'cancel_order' | 'shutdown',
+    correlationId: string,
+    payload: Readonly<Record<string, unknown>>,
+    idempotencyKey: string | undefined,
+  ): BrokerIpcEnvelope {
+    return {
+      schema_version: BROKER_IPC_SCHEMA_VERSION,
+      message_type: messageType,
+      direction: 'command',
+      run_id: 'qfa-612-broker-02',
+      session_id: this.brokerSessionId,
+      correlation_id: correlationId,
+      causation_id: correlationId,
+      ...(idempotencyKey === undefined ? {} : { idempotency_key: idempotencyKey }),
+      event_ts_ns: this.nowNs(),
+      adapter_version: ADAPTER_VERSION,
+      payload,
+    };
+  }
+
+  private writeCommand(command: BrokerIpcEnvelope): void {
     this.child?.stdin.write(`${JSON.stringify(command, stringifyBigint)}\n`);
   }
 
@@ -603,12 +556,18 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   }
 }
 
-function isBrokerIpcMessage(value: unknown): value is BrokerIpcMessage {
+function messageTypeOf(value: unknown): unknown {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return false;
+    return undefined;
   }
-  const record = value as Record<string, unknown>;
-  return typeof record.schema_version === 'number' && typeof record.message_type === 'string';
+  return (value as Record<string, unknown>).message_type;
+}
+
+function schemaVersionOf(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return (value as Record<string, unknown>).schema_version;
 }
 
 function stringifyBigint(_key: string, value: unknown): unknown {
@@ -625,6 +584,113 @@ function positiveMs(value: number | undefined, defaultValue: number, name: strin
 
 function messageFrom(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function recordPayload(message: BrokerIpcEnvelope): Record<string, unknown> {
+  return message.payload !== null && typeof message.payload === 'object' && !Array.isArray(message.payload)
+    ? message.payload as Record<string, unknown>
+    : {};
+}
+
+function bootIdentityPayload(message: BrokerIpcEnvelope): {
+  readonly boot_ts_ns: UnixNs | bigint | number | string;
+} {
+  const payload = recordPayload(message);
+  return {
+    boot_ts_ns: payload.boot_ts_ns as UnixNs | bigint | number | string,
+  };
+}
+
+function orderAcceptedPayload(message: BrokerIpcEnvelope): {
+  readonly intent_id: EventId;
+  readonly submission_ack_id?: EventId;
+  readonly broker_order_id: string;
+  readonly broker_account_id: string;
+  readonly instrument_symbol: string;
+} {
+  const payload = recordPayload(message);
+  return {
+    intent_id: payload.intent_id as EventId,
+    submission_ack_id: payload.submission_ack_id as EventId | undefined,
+    broker_order_id: String(payload.broker_order_id),
+    broker_account_id: String(payload.broker_account_id),
+    instrument_symbol: String(payload.instrument_symbol),
+  };
+}
+
+function orderFillPayload(message: BrokerIpcEnvelope): {
+  readonly intent_id: EventId;
+  readonly submission_ack_id: EventId;
+  readonly fill_ack_id?: EventId;
+  readonly broker_order_id: string;
+  readonly broker_account_id: string;
+  readonly instrument_symbol: string;
+  readonly fill_qty: number;
+  readonly fill_price: number;
+} {
+  const payload = recordPayload(message);
+  return {
+    intent_id: payload.intent_id as EventId,
+    submission_ack_id: payload.submission_ack_id as EventId,
+    fill_ack_id: payload.fill_ack_id as EventId | undefined,
+    broker_order_id: String(payload.broker_order_id),
+    broker_account_id: String(payload.broker_account_id),
+    instrument_symbol: String(payload.instrument_symbol),
+    fill_qty: Number(payload.fill_qty),
+    fill_price: Number(payload.fill_price),
+  };
+}
+
+function orderCancelledPayload(message: BrokerIpcEnvelope): {
+  readonly intent_id: EventId;
+  readonly submission_ack_id: EventId;
+  readonly cancel_ack_id?: EventId;
+  readonly broker_order_id: string;
+  readonly broker_account_id: string;
+  readonly cancel_reason?: JournalEventPayloadFor<'ORDER_ACK_CANCEL'>['cancel_reason'];
+} {
+  const payload = recordPayload(message);
+  return {
+    intent_id: payload.intent_id as EventId,
+    submission_ack_id: payload.submission_ack_id as EventId,
+    cancel_ack_id: payload.cancel_ack_id as EventId | undefined,
+    broker_order_id: String(payload.broker_order_id),
+    broker_account_id: String(payload.broker_account_id),
+    cancel_reason: payload.cancel_reason as JournalEventPayloadFor<'ORDER_ACK_CANCEL'>['cancel_reason'] | undefined,
+  };
+}
+
+function orderRejectedPayload(message: BrokerIpcEnvelope): {
+  readonly intent_id: EventId;
+  readonly broker_order_id?: string;
+  readonly broker_account_id: string;
+} {
+  const payload = recordPayload(message);
+  return {
+    intent_id: payload.intent_id as EventId,
+    broker_order_id: payload.broker_order_id as string | undefined,
+    broker_account_id: String(payload.broker_account_id),
+  };
+}
+
+function failurePayload(message: BrokerIpcEnvelope): BrokerIpcFailurePayload {
+  return recordPayload(message) as unknown as BrokerIpcFailurePayload;
+}
+
+function failureDetails(payload: BrokerIpcFailurePayload): JournalEventPayloadFor<'VALIDATOR_ISSUE'>['details'] {
+  return {
+    failure_state: payload.failure_state,
+    reason: payload.reason,
+    recoverable: payload.recoverable,
+    ...(payload.rp_code === undefined ? {} : { rp_code: payload.rp_code }),
+    ...(payload.rp_message_redacted === undefined ? {} : { rp_message_redacted: payload.rp_message_redacted }),
+    ...(payload.correlated_command_idempotency_key === undefined
+      ? {}
+      : { correlated_command_idempotency_key: payload.correlated_command_idempotency_key }),
+    ...(payload.qfa_broker_sidecar_ipc_ms === undefined
+      ? {}
+      : { qfa_broker_sidecar_ipc_ms: payload.qfa_broker_sidecar_ipc_ms }),
+  };
 }
 
 function assertNeverMessage(message: never): never {
