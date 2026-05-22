@@ -20,6 +20,13 @@ from services.broker_session_sidecar.auth import (
     authenticate,
     disconnect_auth_result,
 )
+from services.broker_session_sidecar.account_allowlist import (
+    AllowlistConfigError,
+    account_id_allowed,
+    command_account_id,
+    load_allowlist_from_env,
+    redacted_account_id,
+)
 from services.broker_session_sidecar.contracts.broker_ipc_contract import (
     BROKER_IPC_COMMAND_MESSAGE_TYPES,
     BROKER_IPC_COMMAND_MESSAGE_TYPES_REQUIRING_IDEMPOTENCY_KEY,
@@ -156,6 +163,14 @@ async def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO =
     auth_result: AuthResult | None = None
     try:
         try:
+            allowlist = load_allowlist_from_env(os.environ)
+        except AllowlistConfigError as exc:
+            event = broker_error("schema_version_incompatible", "invalid broker allowlist configuration", rp_message=str(exc))
+            write_jsonl(stdout, event)
+            log(str(exc), "error")
+            return 2
+
+        try:
             credentials = resolve_credentials(os.environ)
             auth_result = await authenticate(credentials, mode=config.mode)
         except CredentialResolutionError as exc:
@@ -235,11 +250,40 @@ async def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO =
                     continue
                 _SEEN_COMMAND_IDS.add(command.command_id)
 
+            account_id = command_account_id(command.raw)
+            if account_id is not None and not account_id_allowed(allowlist, account_id):
+                _emit_with_latency(
+                    stdout,
+                    broker_error(
+                        "account_id_not_in_allowlist",
+                        "command account_id is not in the broker allowlist",
+                        command.command_id,
+                        correlated_command_idempotency_key=command.idempotency_key,
+                        account_id_redacted=redacted_account_id(account_id),
+                    ),
+                    command.command_id,
+                    received_at_ns,
+                )
+                continue
+
             if command.command_type == "shutdown":
                 _emit_with_latency(stdout, make_event("shutdown_complete", command_id=command.command_id), command.command_id, received_at_ns)
                 return 0
             if command.command_type == "heartbeat":
                 _emit_with_latency(stdout, heartbeat_pong(command.raw, auth_result.broker_session_id), command.command_id, received_at_ns)
+                continue
+            if command.command_type == "query_account_list":
+                _emit_with_latency(
+                    stdout,
+                    broker_error(
+                        "order_path_not_yet_implemented",
+                        "broker account metadata query is deferred to QFA-612-BROKER-03",
+                        command.command_id,
+                        correlated_command_idempotency_key=command.idempotency_key,
+                    ),
+                    command.command_id,
+                    received_at_ns,
+                )
                 continue
             if command.command_type in ORDER_PATH_COMMAND_TYPES:
                 _emit_with_latency(

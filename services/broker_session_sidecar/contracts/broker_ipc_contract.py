@@ -19,6 +19,7 @@ BrokerIpcCommandMessageType = Literal[
     "query_order",
     "request_reconciliation_snapshot",
     "subscribe_order_events",
+    "query_account_list",
     "heartbeat",
     "shutdown",
 ]
@@ -32,6 +33,7 @@ BROKER_IPC_COMMAND_MESSAGE_TYPES_REQUIRING_IDEMPOTENCY_KEY: list[str] = [
 
 BROKER_IPC_COMMAND_MESSAGE_TYPES_FORBIDDING_IDEMPOTENCY_KEY: list[str] = [
     "subscribe_order_events",
+    "query_account_list",
     "heartbeat",
     "shutdown",
 ]
@@ -56,6 +58,7 @@ BrokerIpcEventMessageType = Literal[
     "recovered",
     "position_snapshot",
     "reconciliation_snapshot",
+    "account_list_snapshot",
     "heartbeat_pong",
     "shutdown_complete",
 ]
@@ -75,6 +78,7 @@ BROKER_IPC_EVENT_MESSAGE_TYPES: list[str] = [
     "recovered",
     "position_snapshot",
     "reconciliation_snapshot",
+    "account_list_snapshot",
     "heartbeat_pong",
     "shutdown_complete",
 ]
@@ -89,6 +93,7 @@ BrokerIpcFailureState = Literal[
     "duplicate_command_detected",
     "schema_version_incompatible",
     "order_path_not_yet_implemented",
+    "account_id_not_in_allowlist",
 ]
 
 BROKER_IPC_FAILURE_STATES: list[str] = [
@@ -101,6 +106,7 @@ BROKER_IPC_FAILURE_STATES: list[str] = [
     "duplicate_command_detected",
     "schema_version_incompatible",
     "order_path_not_yet_implemented",
+    "account_id_not_in_allowlist",
 ]
 
 BrokerIpcProtocolEnvironment = Literal[
@@ -167,7 +173,7 @@ def build_broker_ipc_contract_export() -> dict[str, Any]:
             "adapter_version",
             "payload",
         ],
-        "bigint_fields": ["event_ts_ns", "boot_ts_ns"],
+        "bigint_fields": ["event_ts_ns", "boot_ts_ns", "snapshot_ts_ns"],
         "boot_identity_payload_fields": [
             "adapter_version",
             "sdk_name",
@@ -186,6 +192,15 @@ def build_broker_ipc_contract_export() -> dict[str, Any]:
             "recoverable",
             "correlated_command_idempotency_key",
             "qfa_broker_sidecar_ipc_ms",
+        ],
+        "account_list_payload_fields": ["accounts", "snapshot_ts_ns"],
+        "account_payload_fields": [
+            "fcm_id",
+            "ib_id",
+            "account_id",
+            "account_name",
+            "account_currency",
+            "account_auto_liquidate",
         ],
         "optional_telemetry_fields": ["qfa_broker_sidecar_ipc_ms"],
     }
@@ -280,6 +295,8 @@ def validate_broker_ipc_envelope(value: Any) -> BrokerIpcValidationResult:
                 "cancel_rejected",
             }:
                 _validate_failure_payload(payload, issues)
+            if message_type == "account_list_snapshot":
+                _validate_account_list_snapshot_payload(payload, issues)
             _validate_optional_ipc_latency(payload, issues)
 
     sorted_issues = sorted(issues, key=lambda issue: (issue["path"], issue["code"]))
@@ -369,6 +386,28 @@ def _validate_failure_payload(
     )
 
 
+def _validate_account_list_snapshot_payload(
+    payload: dict[str, Any],
+    issues: list[BrokerIpcValidationIssue],
+) -> None:
+    accounts = payload.get("accounts")
+    if not isinstance(accounts, list):
+        _add_issue(issues, "$.payload.accounts", "invalid_field_type", "must be an array")
+    else:
+        for index, account in enumerate(accounts):
+            path = f"$.payload.accounts[{index}]"
+            if not isinstance(account, dict):
+                _add_issue(issues, path, "invalid_envelope", "must be an object")
+                continue
+            _require_required_string(account, "fcm_id", f"{path}.fcm_id", issues)
+            _require_required_string(account, "ib_id", f"{path}.ib_id", issues)
+            _require_required_string(account, "account_id", f"{path}.account_id", issues)
+            _optional_string(account.get("account_name"), f"{path}.account_name", issues)
+            _optional_string(account.get("account_currency"), f"{path}.account_currency", issues)
+            _optional_boolean(account.get("account_auto_liquidate"), f"{path}.account_auto_liquidate", issues)
+    _require_timestamp(payload.get("snapshot_ts_ns"), "$.payload.snapshot_ts_ns", issues)
+
+
 def _validate_optional_ipc_latency(
     payload: dict[str, Any],
     issues: list[BrokerIpcValidationIssue],
@@ -437,6 +476,15 @@ def _optional_string(
 ) -> None:
     if value is not None and not isinstance(value, str):
         _add_issue(issues, path, "invalid_field_type", "must be a string when present")
+
+
+def _optional_boolean(
+    value: Any,
+    path: str,
+    issues: list[BrokerIpcValidationIssue],
+) -> None:
+    if value is not None and not isinstance(value, bool):
+        _add_issue(issues, path, "invalid_field_type", "must be a boolean when present")
 
 
 def _require_timestamp(

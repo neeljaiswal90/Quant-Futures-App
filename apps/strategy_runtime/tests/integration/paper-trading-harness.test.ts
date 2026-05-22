@@ -50,6 +50,18 @@ const BASE_OPTIONS = {
     shutdown_quarantine_timeout_ms: 0,
   },
 } satisfies Partial<PaperTradingSessionOptions>;
+const LIVE_ACCOUNT_ALLOWLIST = [
+  {
+    fcm_id: 'TEST_FCM',
+    ib_id: 'TEST_IB',
+    account_id: 'TEST_ACCT_001',
+    label: 'Synthetic account',
+    max_position_contracts: 2,
+    daily_loss_cap_usd: 100,
+    max_session_duration_ms: 60_000,
+    time_of_day_restriction: 'unrestricted',
+  },
+] as const;
 
 describe('QFA-614 paper trading harness', () => {
   it('loads the committed paper YAML into runner config', () => {
@@ -495,6 +507,7 @@ describe('QFA-614 paper trading harness', () => {
         ...BASE_OPTIONS.config,
         market_data_source: 'live_rithmic_ticker_plant',
         adapter_kind: 'mock',
+        live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
       },
       live_ticker_subscriber: ticker,
     });
@@ -510,12 +523,56 @@ describe('QFA-614 paper trading harness', () => {
         mode: 'paper',
         adapter_kind: 'MOCK_ORDER_PLANT',
         market_data_source: 'live_rithmic_ticker_plant',
+        live_account_allowlist_summary: [
+          {
+            label: 'Synthetic account',
+            fcm_id: 'TEST_FCM',
+            ib_id: 'TEST_IB',
+            account_id_redacted: 'TEST_A..._001',
+            max_position_contracts: 2,
+            daily_loss_cap_usd: 100,
+          },
+        ],
       },
     });
     expect(session.getDiagnostics()).toMatchObject({
       adapter_kind: 'mock',
       market_data_source: 'live_rithmic_ticker_plant',
+      live_account_allowlist_count: 1,
     });
+  });
+
+  it('loads live account allowlist from env-selected JSON path with override precedence', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'qfa-635-allowlist-'));
+    try {
+      const allowlistPath = join(tempDir, 'allowlist.json');
+      writeFileSync(allowlistPath, JSON.stringify(LIVE_ACCOUNT_ALLOWLIST), 'utf8');
+
+      const envConfig = resolvePaperTradingSessionConfig({
+        env: { QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH: allowlistPath },
+      });
+      expect(envConfig.live_account_allowlist).toEqual(LIVE_ACCOUNT_ALLOWLIST);
+
+      const overrideConfig = resolvePaperTradingSessionConfig({
+        env: { QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH: allowlistPath },
+        overrides: {
+          live_account_allowlist: [],
+        },
+      });
+      expect(overrideConfig.live_account_allowlist).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed when live ticker shadow mode has an empty allowlist', () => {
+    expect(() => new PaperTradingSession({
+      config: {
+        ...BASE_OPTIONS.config,
+        market_data_source: 'live_rithmic_ticker_plant',
+        adapter_kind: 'mock',
+      },
+    })).toThrow('requires a non-empty live_account_allowlist');
   });
 
   it('rejects real adapter construction in live ticker shadow mode', () => {
@@ -524,6 +581,7 @@ describe('QFA-614 paper trading harness', () => {
         ...BASE_OPTIONS.config,
         market_data_source: 'live_rithmic_ticker_plant',
         adapter_kind: 'rithmic',
+        live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
       },
     })).toThrow('shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
   });
@@ -714,6 +772,7 @@ describe('QFA-614 paper trading harness', () => {
           journal_dir: liveTickerJournalDir,
           market_data_source: 'live_rithmic_ticker_plant',
           adapter_kind: 'mock',
+          live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
         },
         live_ticker_subscriber: ticker,
       });

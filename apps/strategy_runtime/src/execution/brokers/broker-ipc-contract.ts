@@ -14,6 +14,7 @@ export const BROKER_IPC_COMMAND_MESSAGE_TYPES_REQUIRING_IDEMPOTENCY_KEY = [
 
 export const BROKER_IPC_COMMAND_MESSAGE_TYPES_FORBIDDING_IDEMPOTENCY_KEY = [
   'subscribe_order_events',
+  'query_account_list',
   'heartbeat',
   'shutdown',
 ] as const;
@@ -40,6 +41,7 @@ export const BROKER_IPC_EVENT_MESSAGE_TYPES = [
   'recovered',
   'position_snapshot',
   'reconciliation_snapshot',
+  'account_list_snapshot',
   'heartbeat_pong',
   'shutdown_complete',
 ] as const;
@@ -57,6 +59,7 @@ export const BROKER_IPC_FAILURE_STATES = [
   'duplicate_command_detected',
   'schema_version_incompatible',
   'order_path_not_yet_implemented',
+  'account_id_not_in_allowlist',
 ] as const;
 
 export type BrokerIpcFailureState = (typeof BROKER_IPC_FAILURE_STATES)[number];
@@ -107,6 +110,20 @@ export interface BrokerIpcFailurePayload {
   readonly qfa_broker_sidecar_ipc_ms?: number;
 }
 
+export interface BrokerIpcAccount {
+  readonly fcm_id: string;
+  readonly ib_id: string;
+  readonly account_id: string;
+  readonly account_name?: string;
+  readonly account_currency?: string;
+  readonly account_auto_liquidate?: boolean;
+}
+
+export interface BrokerIpcAccountListSnapshotPayload {
+  readonly accounts: readonly BrokerIpcAccount[];
+  readonly snapshot_ts_ns: bigint | number | string;
+}
+
 export interface BrokerIpcTelemetryPayload {
   readonly qfa_broker_sidecar_ipc_ms?: number;
 }
@@ -153,6 +170,8 @@ export interface BrokerIpcContractExport {
   readonly bigint_fields: readonly string[];
   readonly boot_identity_payload_fields: readonly string[];
   readonly failure_payload_fields: readonly string[];
+  readonly account_list_payload_fields: readonly string[];
+  readonly account_payload_fields: readonly string[];
   readonly optional_telemetry_fields: readonly string[];
 }
 
@@ -194,7 +213,7 @@ export function buildBrokerIpcContractExport(): BrokerIpcContractExport {
       'adapter_version',
       'payload',
     ],
-    bigint_fields: ['event_ts_ns', 'boot_ts_ns'],
+    bigint_fields: ['event_ts_ns', 'boot_ts_ns', 'snapshot_ts_ns'],
     boot_identity_payload_fields: [
       'adapter_version',
       'sdk_name',
@@ -213,6 +232,15 @@ export function buildBrokerIpcContractExport(): BrokerIpcContractExport {
       'recoverable',
       'correlated_command_idempotency_key',
       'qfa_broker_sidecar_ipc_ms',
+    ],
+    account_list_payload_fields: ['accounts', 'snapshot_ts_ns'],
+    account_payload_fields: [
+      'fcm_id',
+      'ib_id',
+      'account_id',
+      'account_name',
+      'account_currency',
+      'account_auto_liquidate',
     ],
     optional_telemetry_fields: ['qfa_broker_sidecar_ipc_ms'],
   };
@@ -292,6 +320,9 @@ export function validateBrokerIpcEnvelope(value: unknown): BrokerIpcValidationRe
         messageType === 'cancel_rejected'
       ) {
         validateFailurePayload(payload, issues);
+      }
+      if (messageType === 'account_list_snapshot') {
+        validateAccountListSnapshotPayload(payload, issues);
       }
       validateOptionalIpcLatency(payload, issues);
     }
@@ -384,6 +415,30 @@ function validateFailurePayload(
   );
 }
 
+function validateAccountListSnapshotPayload(
+  payload: Record<string, unknown>,
+  issues: BrokerIpcValidationIssue[],
+): void {
+  if (!Array.isArray(payload.accounts)) {
+    addIssue(issues, '$.payload.accounts', 'invalid_field_type', 'must be an array');
+  } else {
+    payload.accounts.forEach((account, index) => {
+      const path = `$.payload.accounts[${index}]`;
+      const record = requireRecord(account, path, issues);
+      if (record === undefined) {
+        return;
+      }
+      requireRequiredString(record, 'fcm_id', `${path}.fcm_id`, issues);
+      requireRequiredString(record, 'ib_id', `${path}.ib_id`, issues);
+      requireRequiredString(record, 'account_id', `${path}.account_id`, issues);
+      optionalString(record.account_name, `${path}.account_name`, issues);
+      optionalString(record.account_currency, `${path}.account_currency`, issues);
+      optionalBoolean(record.account_auto_liquidate, `${path}.account_auto_liquidate`, issues);
+    });
+  }
+  requireTimestamp(payload.snapshot_ts_ns, '$.payload.snapshot_ts_ns', issues);
+}
+
 function validateOptionalIpcLatency(
   payload: Record<string, unknown>,
   issues: BrokerIpcValidationIssue[],
@@ -459,6 +514,16 @@ function optionalString(
 ): void {
   if (value !== undefined && typeof value !== 'string') {
     addIssue(issues, path, 'invalid_field_type', 'must be a string when present');
+  }
+}
+
+function optionalBoolean(
+  value: unknown,
+  path: string,
+  issues: BrokerIpcValidationIssue[],
+): void {
+  if (value !== undefined && typeof value !== 'boolean') {
+    addIssue(issues, path, 'invalid_field_type', 'must be a boolean when present');
   }
 }
 

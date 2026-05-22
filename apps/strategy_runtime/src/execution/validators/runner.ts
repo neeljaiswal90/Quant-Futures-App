@@ -1,4 +1,6 @@
 import type { AnyJournalEventEnvelope, JsonValue, UnixNs } from '../../contracts/index.js';
+import type { BrokerAccountSnapshotEntry, LiveAccountAllowlist } from '../brokers/account-allowlist.js';
+import { AccountAllowlistValidator } from './account-allowlist.js';
 import type { ExecutionCapabilityMask } from '../execution-capability-mask.js';
 import { AckLineageValidator } from './ack-lineage.js';
 import { DualTimestampValidator } from './dual-timestamp.js';
@@ -18,6 +20,7 @@ export const EXECUTION_VALIDATOR_IDS = [
   'EXEC-VALIDATOR-06',
   'EXEC-VALIDATOR-07',
   'EXEC-VALIDATOR-08',
+  'EXEC-VALIDATOR-09',
 ] as const;
 
 export type ExecutionValidatorId = (typeof EXECUTION_VALIDATOR_IDS)[number];
@@ -56,6 +59,8 @@ export interface ValidatorRuntimeContext {
   readonly execution_phase?: string;
   readonly timestamp_anchor?: string;
   readonly wall_clock_band_ns?: bigint;
+  readonly live_account_allowlist?: LiveAccountAllowlist;
+  readonly account_list_snapshot?: readonly BrokerAccountSnapshotEntry[];
 }
 
 export interface ValidatorRunner {
@@ -114,11 +119,13 @@ export function createExecutionValidatorRunner(
         submissionGate: options.submissionGate,
       }),
       new TsPythonParityValidator({ pythonMaskExporter: options.pythonMaskExporter }),
+      new AccountAllowlistValidator(),
     ],
   );
 }
 
 export {
+  AccountAllowlistValidator,
   AckLineageValidator,
   DualTimestampValidator,
   MaskCoherenceValidator,

@@ -42,6 +42,11 @@ import {
   type ReconnectRunnerEvent,
 } from '../execution/index.js';
 import {
+  resolveLiveAccountAllowlist,
+  summarizeLiveAccountAllowlist,
+  type LiveAccountAllowlist,
+} from '../execution/brokers/account-allowlist.js';
+import {
   PROVISIONAL_CANCEL_ACK_SLO,
   type OrderLifecycleStateMachine,
 } from '../execution/order-lifecycle-state-machine.js';
@@ -95,6 +100,8 @@ export interface PaperTradingSessionConfig {
   readonly market_data_source: PaperMarketDataSource;
   readonly local_obs_replay_path?: string;
   readonly local_obs_replay_pace_mode: LocalObsReplayPaceMode;
+  readonly live_account_allowlist: LiveAccountAllowlist;
+  readonly live_account_verification_enabled: boolean;
   readonly capability_mask_id: string;
   readonly capability_mask_version: number;
   readonly reconnect_policy: PaperReconnectPolicyConfig;
@@ -136,6 +143,7 @@ export interface PaperTradingSessionDiagnostics {
   readonly journal_path?: string;
   readonly local_obs_replay_path?: string;
   readonly local_obs_replay_pace_mode: LocalObsReplayPaceMode;
+  readonly live_account_allowlist_count: number;
   readonly broker_adapter_kind: string;
   readonly event_count: number;
   readonly event_counts_by_type: Readonly<Record<string, number>>;
@@ -254,6 +262,15 @@ export function resolvePaperTradingSessionConfig(
       stringAt(yamlObservability, 'market_data_source') ??
       DEFAULT_PAPER_MARKET_DATA_SOURCE,
   );
+  const liveAccountAllowlist = resolveConfiguredLiveAccountAllowlist({
+    value:
+      input.overrides?.live_account_allowlist ??
+      (env.QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH === undefined
+        ? arrayAt(yamlExecution, 'live_account_allowlist')
+        : undefined),
+    env,
+    path: env.QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH,
+  });
   return {
     paper_session_config_path: paperSessionConfigPath,
     strategy_id: input.overrides?.strategy_id ?? stringAt(yamlSession, 'strategy_id') ?? DEFAULT_PAPER_STRATEGY_ID,
@@ -275,6 +292,12 @@ export function resolvePaperTradingSessionConfig(
         stringAt(yamlObservability, 'local_obs_replay_pace_mode') ??
         DEFAULT_LOCAL_OBS_REPLAY_PACE_MODE,
     ),
+    live_account_allowlist: liveAccountAllowlist,
+    live_account_verification_enabled:
+      input.overrides?.live_account_verification_enabled ??
+      parseOptionalBoolean(env.QFA_PAPER_LIVE_ACCOUNT_VERIFICATION_ENABLED) ??
+      booleanAt(yamlExecution, 'live_account_verification_enabled') ??
+      false,
     capability_mask_id:
       input.overrides?.capability_mask_id ??
       stringAt(yamlExecution, 'capability_mask_id') ??
@@ -346,6 +369,32 @@ export function loadPaperSessionConfigFile(
   return parseSimplePaperYaml(text);
 }
 
+function resolveConfiguredLiveAccountAllowlist(input: {
+  readonly value: unknown;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly path?: string;
+}): LiveAccountAllowlist {
+  const value =
+    input.value !== undefined
+      ? input.value
+      : input.path === undefined || input.path.trim() === ''
+        ? undefined
+        : JSON.parse(readFileSync(resolvePath(process.cwd(), input.path), 'utf8')) as unknown;
+  const result = resolveLiveAccountAllowlist({
+    value,
+    env: input.env,
+    path: input.path === undefined ? '$.execution.live_account_allowlist' : input.path,
+  });
+  if (!result.ok) {
+    throw new Error(
+      `live account allowlist failed validation: ${result.issues
+        .map((issue) => `${issue.path} ${issue.code}: ${issue.message}`)
+        .join('; ')}`,
+    );
+  }
+  return result.allowlist;
+}
+
 export function createPaperCredentialResolver(input: {
   readonly env?: Record<string, string | undefined>;
   readonly emit?: (event: CredentialResolutionEvent) => void;
@@ -414,6 +463,12 @@ export class PaperTradingSession {
     });
     if (this.config.market_data_source === 'live_rithmic_ticker_plant' && this.config.adapter_kind !== 'mock') {
       throw new Error('live_rithmic_ticker_plant shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+    }
+    if (
+      this.config.market_data_source === 'live_rithmic_ticker_plant' &&
+      this.config.live_account_allowlist.length === 0
+    ) {
+      throw new Error('live_rithmic_ticker_plant shadow mode requires a non-empty live_account_allowlist');
     }
     if (this.config.market_data_source === 'local_obs_replay' && this.config.adapter_kind !== 'mock') {
       throw new Error('local_obs_replay shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
@@ -634,6 +689,7 @@ export class PaperTradingSession {
       market_data_source: this.config.market_data_source,
       ...(this.journalPath === undefined ? {} : { journal_path: this.journalPath }),
       local_obs_replay_pace_mode: this.config.local_obs_replay_pace_mode,
+      live_account_allowlist_count: this.config.live_account_allowlist.length,
       broker_adapter_kind: this.adapter.constructor.name,
       event_count: this.journalEvents.length,
       event_counts_by_type: counts,
@@ -865,6 +921,9 @@ export class PaperTradingSession {
       payload: {
         ...event.payload,
         market_data_source: this.config.market_data_source,
+        ...(this.config.live_account_allowlist.length === 0
+          ? {}
+          : { live_account_allowlist_summary: summarizeLiveAccountAllowlist(this.config.live_account_allowlist) }),
       },
     } as AnyJournalEventEnvelope;
   }
@@ -935,6 +994,9 @@ export class PaperTradingSession {
       timestamp_anchor: 'dual',
       broker_session_id: String(this.config.session_id),
       adapter_kind: 'MOCK_ORDER_PLANT',
+      ...(this.config.live_account_allowlist.length === 0
+        ? {}
+        : { live_account_allowlist_summary: summarizeLiveAccountAllowlist(this.config.live_account_allowlist) }),
     };
   }
 
@@ -1123,7 +1185,10 @@ function parseSimplePaperYaml(text: string): Readonly<Record<string, unknown>> {
   return root;
 }
 
-function parseSimpleYamlScalar(value: string): string | number | boolean | null | Record<string, never> {
+function parseSimpleYamlScalar(value: string): string | number | boolean | null | Record<string, never> | readonly unknown[] {
+  if (value === '[]') {
+    return [];
+  }
   if (value === '{}') {
     return {};
   }
@@ -1194,6 +1259,17 @@ function booleanAt(value: Readonly<Record<string, unknown>> | undefined, key: st
   }
   if (typeof child !== 'boolean') {
     throw new Error(`paper session config field ${key} must be a boolean`);
+  }
+  return child;
+}
+
+function arrayAt(value: Readonly<Record<string, unknown>> | undefined, key: string): readonly unknown[] | undefined {
+  const child = value?.[key];
+  if (child === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(child)) {
+    throw new Error(`paper session config field ${key} must be an array`);
   }
   return child;
 }
