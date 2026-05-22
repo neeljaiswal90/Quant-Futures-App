@@ -1,7 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve as resolvePath } from 'node:path';
 import {
   createJournalEventEnvelope,
+  journalEventToJsonLine,
   makeCausationId,
   makeEventId,
   makeRunId,
@@ -132,6 +133,7 @@ export interface PaperTradingSessionDiagnostics {
   readonly stopped: boolean;
   readonly adapter_kind: PaperBrokerAdapterKind;
   readonly market_data_source: PaperMarketDataSource;
+  readonly journal_path?: string;
   readonly local_obs_replay_path?: string;
   readonly local_obs_replay_pace_mode: LocalObsReplayPaceMode;
   readonly broker_adapter_kind: string;
@@ -390,6 +392,8 @@ export class PaperTradingSession {
   private readonly reconnectRunner: ReconnectRunner;
   private readonly liveTickerSubscriber?: Pick<LiveTickerSubscriber, 'start' | 'stop'>;
   private readonly localObsReplaySource?: Pick<LocalObsReplaySource, 'start' | 'stop'>;
+  private journalWriter: PaperSessionJournalWriter | undefined;
+  private journalPath: string | undefined;
   private brokerRuntime: BrokerAdapterRuntimeIntegration | undefined;
   private runner: StrategyRuntimeRunner | undefined;
   private metricsEndpoint: LatencyMetricsEndpoint | undefined;
@@ -477,6 +481,11 @@ export class PaperTradingSession {
       throw new Error('QFA-612-PAPER-01b not yet merged: real Rithmic adapter is unavailable');
     }
     this.sessionStartedAtMs = Date.now();
+    this.journalWriter = new FilePaperSessionJournalWriter({
+      journal_dir: this.config.journal_dir,
+      session_id: this.config.session_id,
+    });
+    this.journalPath = this.journalWriter.journal_path;
 
     this.metricsEndpoint = startLatencyMetricsEndpoint({
       config: this.config.metrics_endpoint,
@@ -606,6 +615,8 @@ export class PaperTradingSession {
     this.metricsEndpoint = undefined;
     this.emitClosingSessionManifest();
     await this.drain();
+    this.journalWriter?.close();
+    this.journalWriter = undefined;
     this.credentialResolver.shutdown();
     this.started = false;
     this.stopped = true;
@@ -621,6 +632,7 @@ export class PaperTradingSession {
       stopped: this.stopped,
       adapter_kind: this.config.adapter_kind,
       market_data_source: this.config.market_data_source,
+      ...(this.journalPath === undefined ? {} : { journal_path: this.journalPath }),
       local_obs_replay_pace_mode: this.config.local_obs_replay_pace_mode,
       broker_adapter_kind: this.adapter.constructor.name,
       event_count: this.journalEvents.length,
@@ -839,6 +851,7 @@ export class PaperTradingSession {
   private publishHarnessEvent(event: AnyJournalEventEnvelope): void {
     const enrichedEvent = this.withMarketDataSource(event);
     this.journalEvents.push(enrichedEvent);
+    this.journalWriter?.write(enrichedEvent);
     this.pendingPublishes.push(this.container.publish(enrichedEvent));
     this.anomalyDetector.observeEvent(enrichedEvent);
   }
@@ -945,6 +958,43 @@ export class PaperTradingSession {
       throw new Error(`SESSION_MANIFEST failed EXEC-VALIDATOR-06: ${issues[0]!.message}`);
     }
   }
+}
+
+interface PaperSessionJournalWriter {
+  readonly journal_path: string;
+  write(event: AnyJournalEventEnvelope): void;
+  close(): void;
+}
+
+class FilePaperSessionJournalWriter implements PaperSessionJournalWriter {
+  readonly journal_path: string;
+  private closed = false;
+
+  constructor(options: {
+    readonly journal_dir: string;
+    readonly session_id: SessionId;
+  }) {
+    const journalDir = resolvePath(process.cwd(), options.journal_dir);
+    mkdirSync(journalDir, { recursive: true });
+    this.journal_path = join(journalDir, `${sanitizeJournalFileSegment(String(options.session_id))}.jsonl`);
+    writeFileSync(this.journal_path, '', 'utf8');
+  }
+
+  write(event: AnyJournalEventEnvelope): void {
+    if (this.closed) {
+      throw new Error('paper session journal writer is already closed');
+    }
+    appendFileSync(this.journal_path, `${journalEventToJsonLine(event)}\n`, 'utf8');
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+}
+
+function sanitizeJournalFileSegment(value: string): string {
+  const sanitized = value.replace(/[^A-Za-z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '');
+  return sanitized === '' ? 'paper-session' : sanitized;
 }
 
 export function sourceQuoteEventForSnapshot(
