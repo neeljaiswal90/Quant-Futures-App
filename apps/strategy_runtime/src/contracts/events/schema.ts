@@ -450,6 +450,7 @@ function validateSessionManifestPayload(
   optionalEnum(record.market_data_source, `${path}.market_data_source`, issues, [
     'simulation',
     'live_rithmic_ticker_plant',
+    'local_obs_replay',
   ]);
   optionalEnum(record.session_phase, `${path}.session_phase`, issues, [
     'starting',

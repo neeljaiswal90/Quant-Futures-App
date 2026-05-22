@@ -19,6 +19,8 @@ execution:
 
 observability:
   market_data_source: simulation
+  local_obs_replay_path: null
+  local_obs_replay_pace_mode: realtime
   metrics:
     enabled: true
     host: 127.0.0.1

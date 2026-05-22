@@ -12,3 +12,4 @@ export * from './queue-synthesis/index.js';
 export * from './parquet-schemas.js';
 export * from './ticker-ipc-contract.js';
 export * from './live-ticker-subscriber.js';
+export * from './local-obs-replay-source.js';
