@@ -1,4 +1,4 @@
-# QFA-612-BROKER-01 sidecar scaffold.
-# pyrithmic is pinned here for runtime installs once the validated environment is available.
+# QFA-612-BROKER-01 SDK migration substrate.
+# async-rithmic is the sole Rithmic SDK for the broker session sidecar.
 # Tests mock the import boundary so CI does not require gateway access or the package.
-pyrithmic==1.0.0
+async-rithmic==1.6.1

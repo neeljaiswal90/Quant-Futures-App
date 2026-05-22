@@ -69,6 +69,9 @@ export const BROKER_IPC_PROTOCOL_ENVIRONMENTS = [
 
 export type BrokerIpcProtocolEnvironment = (typeof BROKER_IPC_PROTOCOL_ENVIRONMENTS)[number];
 
+export const BROKER_IPC_SDK_NAMES = ['pyrithmic', 'async-rithmic'] as const;
+export type BrokerIpcSdkName = (typeof BROKER_IPC_SDK_NAMES)[number];
+
 export interface BrokerIpcEnvelope<TPayload = unknown> {
   readonly schema_version: typeof BROKER_IPC_SCHEMA_VERSION;
   readonly message_type: BrokerIpcMessageType;
@@ -85,7 +88,7 @@ export interface BrokerIpcEnvelope<TPayload = unknown> {
 
 export interface BrokerIpcBootIdentityPayload {
   readonly adapter_version: string;
-  readonly sdk_name: 'pyrithmic';
+  readonly sdk_name: BrokerIpcSdkName;
   readonly sdk_version: string;
   readonly protocol_environment: BrokerIpcProtocolEnvironment;
   readonly gateway_url_redacted: string;
@@ -145,6 +148,7 @@ export interface BrokerIpcContractExport {
   readonly event_message_types: readonly BrokerIpcEventMessageType[];
   readonly failure_states: readonly BrokerIpcFailureState[];
   readonly protocol_environments: readonly BrokerIpcProtocolEnvironment[];
+  readonly sdk_names: readonly BrokerIpcSdkName[];
   readonly envelope_fields: readonly string[];
   readonly bigint_fields: readonly string[];
   readonly boot_identity_payload_fields: readonly string[];
@@ -176,6 +180,7 @@ export function buildBrokerIpcContractExport(): BrokerIpcContractExport {
     event_message_types: BROKER_IPC_EVENT_MESSAGE_TYPES,
     failure_states: BROKER_IPC_FAILURE_STATES,
     protocol_environments: BROKER_IPC_PROTOCOL_ENVIRONMENTS,
+    sdk_names: BROKER_IPC_SDK_NAMES,
     envelope_fields: [
       'schema_version',
       'message_type',
@@ -324,8 +329,13 @@ function validateBootIdentityPayload(
   issues: BrokerIpcValidationIssue[],
 ): void {
   requireNonEmptyString(payload.adapter_version, '$.payload.adapter_version', issues);
-  if (payload.sdk_name !== 'pyrithmic') {
-    addIssue(issues, '$.payload.sdk_name', 'invalid_field_value', 'must be pyrithmic');
+  if (!BROKER_IPC_SDK_NAMES.includes(payload.sdk_name as never)) {
+    addIssue(
+      issues,
+      '$.payload.sdk_name',
+      'invalid_field_value',
+      `must be one of: ${BROKER_IPC_SDK_NAMES.join(', ')}`,
+    );
   }
   requireNonEmptyString(payload.sdk_version, '$.payload.sdk_version', issues);
   if (!BROKER_IPC_PROTOCOL_ENVIRONMENTS.includes(payload.protocol_environment as never)) {

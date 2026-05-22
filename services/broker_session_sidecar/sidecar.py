@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
-import queue
 import signal
 import sys
 import threading
@@ -13,7 +13,13 @@ from dataclasses import dataclass
 from typing import Any, Iterable, TextIO
 
 from services.broker_session_sidecar import __version__
-from services.broker_session_sidecar.auth import AuthDeniedError, AuthResult, authenticate
+from services.broker_session_sidecar.auth import (
+    ASYNC_RITHMIC_SDK_NAME,
+    AuthDeniedError,
+    AuthResult,
+    authenticate,
+    disconnect_auth_result,
+)
 from services.broker_session_sidecar.contracts.broker_ipc_contract import (
     BROKER_IPC_COMMAND_MESSAGE_TYPES,
     BROKER_IPC_COMMAND_MESSAGE_TYPES_REQUIRING_IDEMPOTENCY_KEY,
@@ -111,6 +117,8 @@ def boot_identity(auth_result: AuthResult, config: SidecarConfig) -> dict[str, A
         config_path=config.config_path,
         contract_schema_version=BROKER_IPC_SCHEMA_VERSION,
         account_ref_redacted=auth_result.account_ref_redacted,
+        sdk_name=ASYNC_RITHMIC_SDK_NAME,
+        sdk_version=auth_result.sdk_version,
     )
 
 
@@ -124,10 +132,14 @@ def ipc_measurement(command_id: str | None, received_at_ns: int, responded_at_ns
     )
 
 
-def install_signal_handlers() -> None:
-    def request_stop(_signum: int, _frame: object) -> None:
+def install_signal_handlers(stop_event: asyncio.Event | None = None) -> None:
+    loop = asyncio.get_running_loop() if stop_event is not None else None
+
+    def request_stop(_signum: int, _frame: object | None = None) -> None:
         global _STOP_REQUESTED
         _STOP_REQUESTED = True
+        if stop_event is not None and loop is not None:
+            loop.call_soon_threadsafe(stop_event.set)
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
@@ -135,81 +147,106 @@ def install_signal_handlers() -> None:
         signal.signal(signal.SIGBREAK, request_stop)
 
 
-def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> int:
+async def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> int:
     global _STOP_REQUESTED
     _STOP_REQUESTED = False
     _SEEN_COMMAND_IDS.clear()
-    install_signal_handlers()
+    stop_event = asyncio.Event()
+    install_signal_handlers(stop_event)
+    auth_result: AuthResult | None = None
     try:
-        credentials = resolve_credentials(os.environ)
-        auth_result = authenticate(credentials, mode=config.mode)
-    except CredentialResolutionError as exc:
-        reason = f"missing env vars: {', '.join(exc.missing)}"
-        event = broker_error("auth_denied", reason, rp_message=reason, missing_env=list(exc.missing))
-        write_jsonl(stdout, event)
-        log(event["reason"], "error")
-        return 2
-    except AuthDeniedError as exc:
-        event = broker_error(
-            "auth_denied",
-            "Rithmic authentication denied",
-            rp_code=exc.rp_code,
-            rp_message=exc.rp_message_redacted,
-        )
-        write_jsonl(stdout, event)
-        log(exc.rp_message_redacted, "error")
-        return 2
-
-    write_jsonl(stdout, boot_identity(auth_result, config))
-
-    stdin_queue = _start_stdin_reader(stdin)
-    while not _STOP_REQUESTED:
         try:
-            item = stdin_queue.get(timeout=0.05)
-        except queue.Empty:
-            continue
-        if item is _STDIN_EOF:
-            break
-        line = str(item)
-        if _STOP_REQUESTED:
-            break
-        stripped = line.strip()
-        if not stripped:
-            continue
-        received_at_ns = now_ns()
-        try:
-            payload = json.loads(stripped)
-        except json.JSONDecodeError as exc:
-            _emit_with_latency(
-                stdout,
-                broker_error("schema_version_incompatible", f"invalid JSON command: {exc}"),
-                None,
-                received_at_ns,
+            credentials = resolve_credentials(os.environ)
+            auth_result = await authenticate(credentials, mode=config.mode)
+        except CredentialResolutionError as exc:
+            reason = f"missing env vars: {', '.join(exc.missing)}"
+            event = broker_error("auth_denied", reason, rp_message=reason, missing_env=list(exc.missing))
+            write_jsonl(stdout, event)
+            log(event["reason"], "error")
+            return 2
+        except AuthDeniedError as exc:
+            event = broker_error(
+                "auth_denied",
+                "Rithmic authentication denied",
+                rp_code=exc.rp_code,
+                rp_message=exc.rp_message_redacted,
             )
-            continue
-        command = parse_command(payload)
-        if command is None or command.schema_version != BROKER_IPC_SCHEMA_VERSION or command.command_type not in SUPPORTED_COMMAND_TYPES:
-            command_id = payload.get("command_id") if isinstance(payload, dict) and isinstance(payload.get("command_id"), str) else None
-            idempotency_key = payload.get("idempotency_key") if isinstance(payload, dict) and isinstance(payload.get("idempotency_key"), str) else None
-            _emit_with_latency(
-                stdout,
-                broker_error(
-                    "schema_version_incompatible",
-                    "unsupported broker IPC command schema",
-                    command_id,
-                    correlated_command_idempotency_key=idempotency_key,
-                ),
-                command_id,
-                received_at_ns,
-            )
-            continue
-        if command.command_id is not None:
-            if command.command_id in _SEEN_COMMAND_IDS:
+            write_jsonl(stdout, event)
+            log(exc.rp_message_redacted, "error")
+            return 2
+
+        write_jsonl(stdout, boot_identity(auth_result, config))
+
+        stdin_queue: asyncio.Queue[str | object] = asyncio.Queue()
+        _start_stdin_reader(stdin, asyncio.get_running_loop(), stdin_queue)
+        while not _STOP_REQUESTED:
+            try:
+                item = await asyncio.wait_for(stdin_queue.get(), timeout=0.05)
+            except TimeoutError:
+                continue
+            if item is _STDIN_EOF:
+                break
+            line = str(item)
+            if _STOP_REQUESTED:
+                break
+            stripped = line.strip()
+            if not stripped:
+                continue
+            received_at_ns = now_ns()
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                _emit_with_latency(
+                    stdout,
+                    broker_error("schema_version_incompatible", f"invalid JSON command: {exc}"),
+                    None,
+                    received_at_ns,
+                )
+                continue
+            command = parse_command(payload)
+            if command is None or command.schema_version != BROKER_IPC_SCHEMA_VERSION or command.command_type not in SUPPORTED_COMMAND_TYPES:
+                command_id = payload.get("command_id") if isinstance(payload, dict) and isinstance(payload.get("command_id"), str) else None
+                idempotency_key = payload.get("idempotency_key") if isinstance(payload, dict) and isinstance(payload.get("idempotency_key"), str) else None
                 _emit_with_latency(
                     stdout,
                     broker_error(
-                        "duplicate_command_detected",
-                        "duplicate command id",
+                        "schema_version_incompatible",
+                        "unsupported broker IPC command schema",
+                        command_id,
+                        correlated_command_idempotency_key=idempotency_key,
+                    ),
+                    command_id,
+                    received_at_ns,
+                )
+                continue
+            if command.command_id is not None:
+                if command.command_id in _SEEN_COMMAND_IDS:
+                    _emit_with_latency(
+                        stdout,
+                        broker_error(
+                            "duplicate_command_detected",
+                            "duplicate command id",
+                            command.command_id,
+                            correlated_command_idempotency_key=command.idempotency_key,
+                        ),
+                        command.command_id,
+                        received_at_ns,
+                    )
+                    continue
+                _SEEN_COMMAND_IDS.add(command.command_id)
+
+            if command.command_type == "shutdown":
+                _emit_with_latency(stdout, make_event("shutdown_complete", command_id=command.command_id), command.command_id, received_at_ns)
+                return 0
+            if command.command_type == "heartbeat":
+                _emit_with_latency(stdout, heartbeat_pong(command.raw, auth_result.broker_session_id), command.command_id, received_at_ns)
+                continue
+            if command.command_type in ORDER_PATH_COMMAND_TYPES:
+                _emit_with_latency(
+                    stdout,
+                    broker_error(
+                        "order_path_not_yet_implemented",
+                        "order path is not implemented in QFA-612-BROKER-01",
                         command.command_id,
                         correlated_command_idempotency_key=command.idempotency_key,
                     ),
@@ -217,33 +254,15 @@ def run(config: SidecarConfig, stdin: TextIO = sys.stdin, stdout: TextIO = sys.s
                     received_at_ns,
                 )
                 continue
-            _SEEN_COMMAND_IDS.add(command.command_id)
+            if command.command_type == "subscribe_order_events":
+                _emit_with_latency(stdout, make_event("subscribe_order_events_ack", command_id=command.command_id), command.command_id, received_at_ns)
+                continue
 
-        if command.command_type == "shutdown":
-            _emit_with_latency(stdout, make_event("shutdown_complete", command_id=command.command_id), command.command_id, received_at_ns)
-            return 0
-        if command.command_type == "heartbeat":
-            _emit_with_latency(stdout, heartbeat_pong(command.raw, auth_result.broker_session_id), command.command_id, received_at_ns)
-            continue
-        if command.command_type in ORDER_PATH_COMMAND_TYPES:
-            _emit_with_latency(
-                stdout,
-                broker_error(
-                    "order_path_not_yet_implemented",
-                    "order path is not implemented in QFA-612-BROKER-01",
-                    command.command_id,
-                    correlated_command_idempotency_key=command.idempotency_key,
-                ),
-                command.command_id,
-                received_at_ns,
-            )
-            continue
-        if command.command_type == "subscribe_order_events":
-            _emit_with_latency(stdout, make_event("subscribe_order_events_ack", command_id=command.command_id), command.command_id, received_at_ns)
-            continue
-
-    write_jsonl(stdout, make_event("shutdown_complete", reason="signal" if _STOP_REQUESTED else "stdin_eof"))
-    return 0
+        write_jsonl(stdout, make_event("shutdown_complete", reason="signal" if _STOP_REQUESTED else "stdin_eof"))
+        return 0
+    finally:
+        if auth_result is not None:
+            await disconnect_auth_result(auth_result)
 
 
 def parse_command(value: Any) -> ParsedCommand | None:
@@ -264,19 +283,20 @@ def parse_command(value: Any) -> ParsedCommand | None:
     )
 
 
-def _start_stdin_reader(stdin: TextIO) -> queue.Queue[str | object]:
-    stdin_queue: queue.Queue[str | object] = queue.Queue()
-
+def _start_stdin_reader(
+    stdin: TextIO,
+    loop: asyncio.AbstractEventLoop,
+    stdin_queue: asyncio.Queue[str | object],
+) -> None:
     def read_stdin() -> None:
         try:
             for line in stdin:
-                stdin_queue.put(line)
+                loop.call_soon_threadsafe(stdin_queue.put_nowait, line)
         finally:
-            stdin_queue.put(_STDIN_EOF)
+            loop.call_soon_threadsafe(stdin_queue.put_nowait, _STDIN_EOF)
 
     thread = threading.Thread(target=read_stdin, name="qfa-broker-sidecar-stdin-reader", daemon=True)
     thread.start()
-    return stdin_queue
 
 
 def _emit_with_latency(stdout: TextIO, event: dict[str, Any], command_id: str | None, received_at_ns: int) -> None:
@@ -287,4 +307,4 @@ def _emit_with_latency(stdout: TextIO, event: dict[str, Any], command_id: str | 
 
 def main(argv: list[str] | None = None) -> int:
     config = parse_args(sys.argv[1:] if argv is None else argv)
-    return run(config)
+    return asyncio.run(run(config))
