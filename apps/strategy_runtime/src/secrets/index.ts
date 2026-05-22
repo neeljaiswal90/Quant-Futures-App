@@ -7,6 +7,7 @@ export {
   type CredentialBackend,
   type CredentialBackendKind,
   type CredentialDescriptor,
+  type CredentialPlantScope,
   type CredentialResolutionEvent,
   type CredentialResolver,
   type CredentialResolverClock,

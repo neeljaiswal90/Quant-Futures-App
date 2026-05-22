@@ -79,6 +79,7 @@ export type {
   OrderQuarantineEnteredPayload,
   PositionEventPayload,
   PriceTargetEventPayload,
+  PaperMarketDataSource,
   QuoteEventPayload,
   RankEventPayload,
   ReconnectStateEventPayload,

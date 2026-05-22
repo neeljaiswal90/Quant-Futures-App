@@ -14,6 +14,7 @@ export const TIMESTAMP_NS_FIELD_NAMES = [
   'exchange_event_ts_ns',
   'rithmic_publish_ts_ns',
   'sidecar_recv_ts_ns',
+  'tick_ts_ns',
   'runtime_consume_ts_ns',
   'created_ts_ns',
   'emitted_ts_ns',

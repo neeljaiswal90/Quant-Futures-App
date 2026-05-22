@@ -4,12 +4,14 @@ import { captureLocalTimestampNs } from '../observability/local-timestamp.js';
 
 export type RuntimeMode = 'paper' | 'live';
 export type CredentialBackendKind = 'env_var' | 'vault';
+export type CredentialPlantScope = 'TICKER_PLANT' | 'ORDER_PLANT' | 'PNL_PLANT' | 'HISTORY_PLANT';
 
 export interface CredentialDescriptor {
   readonly key: string;
   readonly required_in_modes: readonly RuntimeMode[];
   readonly redact_in_logs: true;
   readonly env_var_name?: string;
+  readonly plant_scope?: CredentialPlantScope;
 }
 
 export interface CredentialValue {
@@ -28,6 +30,7 @@ export interface CredentialBackend {
 
 export interface CredentialResolver {
   resolve(key: string): Promise<CredentialValue>;
+  resolveForPlant?(key: string, plant_scope: CredentialPlantScope): Promise<CredentialValue>;
   refreshAll(): Promise<void>;
   shutdown(): void;
 }
@@ -74,6 +77,17 @@ export function assertDescriptorAuthorized(
 ): void {
   if (!descriptor.required_in_modes.includes(mode)) {
     throw new CredentialResolutionError(`credential key ${descriptor.key} is not authorized for ${mode} mode`);
+  }
+}
+
+export function assertDescriptorPlantScopeAuthorized(
+  descriptor: CredentialDescriptor,
+  requestedPlantScope: CredentialPlantScope,
+): void {
+  if (descriptor.plant_scope !== undefined && descriptor.plant_scope !== requestedPlantScope) {
+    throw new CredentialResolutionError(
+      `credential key ${descriptor.key} is scoped to ${descriptor.plant_scope}, not ${requestedPlantScope}`,
+    );
   }
 }
 

@@ -10,10 +10,12 @@ import {
   type AnyJournalEventEnvelope,
   type JournalEventEnvelope,
   type JournalEventPayloadFor,
+  type PaperMarketDataSource,
   type RunId,
   type SessionId,
   type UnixNs,
 } from '../contracts/index.js';
+import { LiveTickerSubscriber, type LiveTickerSubscriberOptions } from '../data/index.js';
 import { loadAppConfig } from '../config/index.js';
 import {
   BrokerAdapterRuntimeIntegration,
@@ -83,6 +85,7 @@ export interface PaperTradingSessionConfig {
   readonly app_config_path: string;
   readonly journal_dir: string;
   readonly adapter_kind: PaperBrokerAdapterKind;
+  readonly market_data_source: PaperMarketDataSource;
   readonly capability_mask_id: string;
   readonly capability_mask_version: number;
   readonly reconnect_policy: PaperReconnectPolicyConfig;
@@ -112,12 +115,14 @@ export interface PaperTradingSessionOptions {
   readonly kill_switch_controller?: KillSwitchController;
   readonly anomaly_detector?: AnomalyDetector;
   readonly liveness_monitor?: DualLivenessMonitor;
+  readonly live_ticker_subscriber?: Pick<LiveTickerSubscriber, 'start' | 'stop'>;
 }
 
 export interface PaperTradingSessionDiagnostics {
   readonly started: boolean;
   readonly stopped: boolean;
   readonly adapter_kind: PaperBrokerAdapterKind;
+  readonly market_data_source: PaperMarketDataSource;
   readonly broker_adapter_kind: string;
   readonly event_count: number;
   readonly event_counts_by_type: Readonly<Record<string, number>>;
@@ -134,6 +139,7 @@ export const DEFAULT_PAPER_JOURNAL_DIR = 'journals/paper' as const;
 export const DEFAULT_PAPER_SESSION_DURATION_MS = 3_000;
 export const DEFAULT_PAPER_SHUTDOWN_QUARANTINE_TIMEOUT_MS = 30_000;
 export const DEFAULT_PAPER_STRATEGY_ID = 'regime_shock_reversion_short_v2' as const;
+export const DEFAULT_PAPER_MARKET_DATA_SOURCE = 'simulation' as const satisfies PaperMarketDataSource;
 export const DEFAULT_PAPER_RECONNECT_POLICY: PaperReconnectPolicyConfig = {
   max_attempts: 3,
   initial_delay_ms: 250,
@@ -147,24 +153,59 @@ export const RITHMIC_TEST_CREDENTIAL_DESCRIPTORS = [
     key: 'rithmic.order_plant.username',
     env_var_name: 'RITHMIC_TEST_USERNAME',
     required_in_modes: ['paper'],
+    plant_scope: 'ORDER_PLANT',
     redact_in_logs: true,
   },
   {
     key: 'rithmic.order_plant.password',
     env_var_name: 'RITHMIC_TEST_PASSWORD',
     required_in_modes: ['paper'],
+    plant_scope: 'ORDER_PLANT',
     redact_in_logs: true,
   },
   {
     key: 'rithmic.order_plant.gateway_url',
     env_var_name: 'RITHMIC_TEST_GATEWAY_URL',
     required_in_modes: ['paper'],
+    plant_scope: 'ORDER_PLANT',
     redact_in_logs: true,
   },
   {
     key: 'rithmic.order_plant.system_name',
     env_var_name: 'RITHMIC_TEST_SYSTEM_NAME',
     required_in_modes: ['paper'],
+    plant_scope: 'ORDER_PLANT',
+    redact_in_logs: true,
+  },
+] as const satisfies readonly CredentialDescriptor[];
+
+export const RITHMIC_LIVE_TICKER_PLANT_CREDENTIAL_DESCRIPTORS = [
+  {
+    key: 'rithmic.live_ticker_plant.username',
+    env_var_name: 'RITHMIC_USER',
+    required_in_modes: ['paper'],
+    plant_scope: 'TICKER_PLANT',
+    redact_in_logs: true,
+  },
+  {
+    key: 'rithmic.live_ticker_plant.password',
+    env_var_name: 'RITHMIC_PASSWORD',
+    required_in_modes: ['paper'],
+    plant_scope: 'TICKER_PLANT',
+    redact_in_logs: true,
+  },
+  {
+    key: 'rithmic.live_ticker_plant.connect_point',
+    env_var_name: 'RITHMIC_CONNECT_POINT',
+    required_in_modes: ['paper'],
+    plant_scope: 'TICKER_PLANT',
+    redact_in_logs: true,
+  },
+  {
+    key: 'rithmic.live_ticker_plant.system_name',
+    env_var_name: 'RITHMIC_SYSTEM_NAME',
+    required_in_modes: ['paper'],
+    plant_scope: 'TICKER_PLANT',
     redact_in_logs: true,
   },
 ] as const satisfies readonly CredentialDescriptor[];
@@ -193,6 +234,12 @@ export function resolvePaperTradingSessionConfig(
       stringAt(yamlSession, 'adapter_kind') ??
       'mock',
   );
+  const marketDataSource = parseMarketDataSource(
+    input.overrides?.market_data_source ??
+      env.QFA_PAPER_MARKET_DATA_SOURCE ??
+      stringAt(yamlObservability, 'market_data_source') ??
+      DEFAULT_PAPER_MARKET_DATA_SOURCE,
+  );
   return {
     paper_session_config_path: paperSessionConfigPath,
     strategy_id: input.overrides?.strategy_id ?? stringAt(yamlSession, 'strategy_id') ?? DEFAULT_PAPER_STRATEGY_ID,
@@ -203,6 +250,7 @@ export function resolvePaperTradingSessionConfig(
       stringAt(yamlSession, 'journal_dir') ??
       DEFAULT_PAPER_JOURNAL_DIR,
     adapter_kind: adapterKind,
+    market_data_source: marketDataSource,
     capability_mask_id:
       input.overrides?.capability_mask_id ??
       stringAt(yamlExecution, 'capability_mask_id') ??
@@ -277,8 +325,15 @@ export function loadPaperSessionConfigFile(
 export function createPaperCredentialResolver(input: {
   readonly env?: Record<string, string | undefined>;
   readonly emit?: (event: CredentialResolutionEvent) => void;
+  readonly adapter_kind?: PaperBrokerAdapterKind;
+  readonly market_data_source?: PaperMarketDataSource;
 } = {}): CredentialResolver {
-  const descriptors = RITHMIC_TEST_CREDENTIAL_DESCRIPTORS;
+  const descriptors = [
+    ...((input.adapter_kind ?? 'mock') === 'rithmic' ? RITHMIC_TEST_CREDENTIAL_DESCRIPTORS : []),
+    ...((input.market_data_source ?? DEFAULT_PAPER_MARKET_DATA_SOURCE) === 'live_rithmic_ticker_plant'
+      ? RITHMIC_LIVE_TICKER_PLANT_CREDENTIAL_DESCRIPTORS
+      : []),
+  ];
   return new CompositeCredentialResolver({
     descriptors,
     mode_reader: () => PAPER_RUNTIME_MODE,
@@ -311,6 +366,7 @@ export class PaperTradingSession {
   private readonly anomalyDetector: AnomalyDetector;
   private readonly livenessMonitor: DualLivenessMonitor;
   private readonly reconnectRunner: ReconnectRunner;
+  private readonly liveTickerSubscriber?: Pick<LiveTickerSubscriber, 'start' | 'stop'>;
   private brokerRuntime: BrokerAdapterRuntimeIntegration | undefined;
   private runner: StrategyRuntimeRunner | undefined;
   private metricsEndpoint: LatencyMetricsEndpoint | undefined;
@@ -329,6 +385,9 @@ export class PaperTradingSession {
       env: this.env,
       overrides: options.config,
     });
+    if (this.config.market_data_source === 'live_rithmic_ticker_plant' && this.config.adapter_kind !== 'mock') {
+      throw new Error('live_rithmic_ticker_plant shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+    }
     this.container = options.container ?? this.createDefaultContainer();
     this.adapter = options.broker_adapter ?? this.createBrokerAdapter();
     this.submissionGate = options.submission_gate ?? new SubmissionGate();
@@ -347,6 +406,8 @@ export class PaperTradingSession {
       createPaperCredentialResolver({
         env: this.env,
         emit: (event) => this.credentialEvents.push(event),
+        adapter_kind: this.config.adapter_kind,
+        market_data_source: this.config.market_data_source,
       });
     this.captureLocalTimestampNs = options.capture_local_timestamp_ns;
     this.ackTimeoutPolicy = options.ack_timeout_policy;
@@ -375,6 +436,7 @@ export class PaperTradingSession {
       reconnect: async () => this.reconnectBrokerAdapter(),
       now_ns: () => this.nowNs(),
     });
+    this.liveTickerSubscriber = options.live_ticker_subscriber ?? this.createLiveTickerSubscriber();
   }
 
   async start(): Promise<void> {
@@ -448,6 +510,7 @@ export class PaperTradingSession {
     this.reconnectSessionSubscription = this.adapter.subscribeSessionEvents((event) => {
       this.handleOperationalSessionEvent(event);
     });
+    await this.liveTickerSubscriber?.start();
     await this.brokerRuntime.start();
     await this.drain();
     this.assertSessionManifestValid();
@@ -504,6 +567,7 @@ export class PaperTradingSession {
     if (!quarantineDrained) {
       this.emitShutdownQuarantineEscalation();
     }
+    await this.liveTickerSubscriber?.stop();
     await this.brokerRuntime?.stop();
     this.brokerRuntime = undefined;
     await this.metricsEndpoint?.close();
@@ -524,6 +588,7 @@ export class PaperTradingSession {
       started: this.started,
       stopped: this.stopped,
       adapter_kind: this.config.adapter_kind,
+      market_data_source: this.config.market_data_source,
       broker_adapter_kind: this.adapter.constructor.name,
       event_count: this.journalEvents.length,
       event_counts_by_type: counts,
@@ -673,6 +738,26 @@ export class PaperTradingSession {
     });
   }
 
+  private createLiveTickerSubscriber(): Pick<LiveTickerSubscriber, 'start' | 'stop'> | undefined {
+    if (this.config.market_data_source !== 'live_rithmic_ticker_plant') {
+      return undefined;
+    }
+    const options: LiveTickerSubscriberOptions = {
+      run_id: this.config.run_id,
+      session_id: this.config.session_id,
+      event_sink: (event) => this.publishHarnessEvent(event),
+      submission_gate: this.submissionGate,
+      credentials_env: {
+        RITHMIC_USER: this.env.RITHMIC_USER,
+        RITHMIC_PASSWORD: this.env.RITHMIC_PASSWORD,
+        RITHMIC_CONNECT_POINT: this.env.RITHMIC_CONNECT_POINT,
+        RITHMIC_SYSTEM_NAME: this.env.RITHMIC_SYSTEM_NAME,
+      },
+      now_ns: () => this.nowNs(),
+    };
+    return new LiveTickerSubscriber(options);
+  }
+
   private credentialLookup(): BrokerCredentialLookup {
     return {
       resolveOrderPlantCredentials: async () => {
@@ -701,9 +786,23 @@ export class PaperTradingSession {
   }
 
   private publishHarnessEvent(event: AnyJournalEventEnvelope): void {
-    this.journalEvents.push(event);
-    this.pendingPublishes.push(this.container.publish(event));
-    this.anomalyDetector.observeEvent(event);
+    const enrichedEvent = this.withMarketDataSource(event);
+    this.journalEvents.push(enrichedEvent);
+    this.pendingPublishes.push(this.container.publish(enrichedEvent));
+    this.anomalyDetector.observeEvent(enrichedEvent);
+  }
+
+  private withMarketDataSource(event: AnyJournalEventEnvelope): AnyJournalEventEnvelope {
+    if (event.type !== 'SESSION_MANIFEST') {
+      return event;
+    }
+    return {
+      ...event,
+      payload: {
+        ...event.payload,
+        market_data_source: this.config.market_data_source,
+      },
+    } as AnyJournalEventEnvelope;
   }
 
   private publishOperationalEvent(
@@ -825,6 +924,13 @@ function parseAdapterKind(value: string): PaperBrokerAdapterKind {
     return value;
   }
   throw new Error('QFA_BROKER_ADAPTER_KIND must be one of: mock, rithmic');
+}
+
+function parseMarketDataSource(value: string): PaperMarketDataSource {
+  if (value === 'simulation' || value === 'live_rithmic_ticker_plant') {
+    return value;
+  }
+  throw new Error('QFA_PAPER_MARKET_DATA_SOURCE must be one of: simulation, live_rithmic_ticker_plant');
 }
 
 function parseOptionalPort(value: string | undefined): number | undefined {

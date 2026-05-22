@@ -12,9 +12,11 @@ import {
 } from '../../src/contracts/index.js';
 import { validateJournalEventEnvelope } from '../../src/contracts/events/schema.js';
 import {
+  createPaperCredentialResolver,
   loadPaperSessionConfigFile,
   PaperTradingSession,
   resolvePaperTradingSessionConfig,
+  RITHMIC_LIVE_TICKER_PLANT_CREDENTIAL_DESCRIPTORS,
   type PaperTradingSessionOptions,
 } from '../../src/paper-trading/index.js';
 import {
@@ -62,6 +64,7 @@ describe('QFA-614 paper trading harness', () => {
       app_config_path: 'config/app.example.json',
       journal_dir: 'journals/paper',
       adapter_kind: 'mock',
+      market_data_source: 'simulation',
       capability_mask_version: 1,
       reconnect_policy: {
         max_attempts: 3,
@@ -440,7 +443,101 @@ describe('QFA-614 paper trading harness', () => {
     });
     await expect(session.start()).rejects.toThrow('QFA-612-PAPER-01b not yet merged');
   });
+
+  it('parses live Rithmic ticker source from env override', () => {
+    const config = resolvePaperTradingSessionConfig({
+      env: {
+        QFA_PAPER_MARKET_DATA_SOURCE: 'live_rithmic_ticker_plant',
+      },
+    });
+
+    expect(config.market_data_source).toBe('live_rithmic_ticker_plant');
+    expect(config.adapter_kind).toBe('mock');
+  });
+
+  it('registers only TICKER_PLANT descriptors when live ticker source is enabled', async () => {
+    const resolver = createPaperCredentialResolver({
+      market_data_source: 'live_rithmic_ticker_plant',
+      env: {
+        RITHMIC_USER: 'live-user',
+        RITHMIC_PASSWORD: 'live-password',
+        RITHMIC_CONNECT_POINT: 'wss://live-ticker.example',
+        RITHMIC_SYSTEM_NAME: 'Rithmic Live',
+        RITHMIC_TEST_USERNAME: 'should-not-resolve',
+      },
+    });
+
+    await expect(
+      resolver.resolveForPlant?.('rithmic.live_ticker_plant.username', 'TICKER_PLANT'),
+    ).resolves.toMatchObject({
+      key: 'rithmic.live_ticker_plant.username',
+      value: 'live-user',
+    });
+    await expect(
+      resolver.resolveForPlant?.('rithmic.live_ticker_plant.username', 'ORDER_PLANT'),
+    ).rejects.toThrow('not ORDER_PLANT');
+    await expect(resolver.resolve('rithmic.order_plant.username')).rejects.toThrow(
+      'unregistered credential key',
+    );
+    expect(RITHMIC_LIVE_TICKER_PLANT_CREDENTIAL_DESCRIPTORS.every(
+      (descriptor) => descriptor.plant_scope === 'TICKER_PLANT',
+    )).toBe(true);
+  });
+
+  it('emits paper-mode mock-adapter manifest in live ticker shadow mode', async () => {
+    const ticker = new StubLiveTickerSubscriber();
+    const session = new PaperTradingSession({
+      ...BASE_OPTIONS,
+      config: {
+        ...BASE_OPTIONS.config,
+        market_data_source: 'live_rithmic_ticker_plant',
+        adapter_kind: 'mock',
+      },
+      live_ticker_subscriber: ticker,
+    });
+
+    await session.start();
+    await session.stop();
+
+    expect(ticker.started).toBe(true);
+    expect(ticker.stopped).toBe(true);
+    const manifest = session.events.find((event) => event.type === 'SESSION_MANIFEST');
+    expect(manifest).toMatchObject({
+      payload: {
+        mode: 'paper',
+        adapter_kind: 'MOCK_ORDER_PLANT',
+        market_data_source: 'live_rithmic_ticker_plant',
+      },
+    });
+    expect(session.getDiagnostics()).toMatchObject({
+      adapter_kind: 'mock',
+      market_data_source: 'live_rithmic_ticker_plant',
+    });
+  });
+
+  it('rejects real adapter construction in live ticker shadow mode', () => {
+    expect(() => new PaperTradingSession({
+      config: {
+        ...BASE_OPTIONS.config,
+        market_data_source: 'live_rithmic_ticker_plant',
+        adapter_kind: 'rithmic',
+      },
+    })).toThrow('shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+  });
 });
+
+class StubLiveTickerSubscriber {
+  started = false;
+  stopped = false;
+
+  async start(): Promise<void> {
+    this.started = true;
+  }
+
+  async stop(): Promise<void> {
+    this.stopped = true;
+  }
+}
 
 class SilentAcceptingAdapter implements BrokerAdapter {
   readonly plant_scope: PlantScope = 'ORDER_PLANT';

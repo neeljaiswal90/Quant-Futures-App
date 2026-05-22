@@ -10,3 +10,5 @@ export * from './parquet-cache-write.js';
 export * from './parquet-cache.js';
 export * from './queue-synthesis/index.js';
 export * from './parquet-schemas.js';
+export * from './ticker-ipc-contract.js';
+export * from './live-ticker-subscriber.js';

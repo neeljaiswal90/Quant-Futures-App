@@ -18,6 +18,7 @@ execution:
   shutdown_quarantine_timeout_ms: 30000
 
 observability:
+  market_data_source: simulation
   metrics:
     enabled: true
     host: 127.0.0.1
