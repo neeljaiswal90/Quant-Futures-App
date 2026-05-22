@@ -6,6 +6,7 @@ import {
   BROKER_IPC_COMMAND_MESSAGE_TYPES_REQUIRING_IDEMPOTENCY_KEY,
   BROKER_IPC_FAILURE_STATES,
   BROKER_IPC_SCHEMA_VERSION,
+  BROKER_IPC_SDK_NAMES,
   buildBrokerIpcContractExport,
   stableBrokerIpcContractJson,
   validateBrokerIpcEnvelope,
@@ -79,6 +80,9 @@ describe('QFA-612 broker IPC contract parity', () => {
     );
     expect(contract.failure_states).toEqual(BROKER_IPC_FAILURE_STATES);
     expect(contract.failure_states).toContain('order_path_not_yet_implemented');
+    expect(contract.sdk_names).toEqual(BROKER_IPC_SDK_NAMES);
+    expect(contract.sdk_names).toEqual(['pyrithmic', 'async-rithmic']);
+    expect(contract.sdk_names).toEqual(pythonContract().sdk_names);
     expect(contract.failure_payload_fields).toEqual([
       'failure_state',
       'rp_code',
@@ -126,7 +130,7 @@ describe('QFA-612 broker IPC contract parity', () => {
         idempotency_key: undefined,
         payload: {
           adapter_version: 'broker-ipc-v1',
-          sdk_name: 'pyrithmic',
+          sdk_name: 'async-rithmic',
           sdk_version: '1.2.3',
           protocol_environment: 'rithmic_paper',
           gateway_url_redacted: 'rituz00100.rithmic.com:443',

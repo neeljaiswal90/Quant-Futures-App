@@ -115,6 +115,13 @@ BROKER_IPC_PROTOCOL_ENVIRONMENTS: list[str] = [
     "rithmic_live",
 ]
 
+BrokerIpcSdkName = Literal["pyrithmic", "async-rithmic"]
+
+BROKER_IPC_SDK_NAMES: list[str] = [
+    "pyrithmic",
+    "async-rithmic",
+]
+
 
 class BrokerIpcValidationIssue(TypedDict):
     path: str
@@ -146,6 +153,7 @@ def build_broker_ipc_contract_export() -> dict[str, Any]:
         "event_message_types": BROKER_IPC_EVENT_MESSAGE_TYPES,
         "failure_states": BROKER_IPC_FAILURE_STATES,
         "protocol_environments": BROKER_IPC_PROTOCOL_ENVIRONMENTS,
+        "sdk_names": BROKER_IPC_SDK_NAMES,
         "envelope_fields": [
             "schema_version",
             "message_type",
@@ -289,10 +297,11 @@ def make_boot_identity_payload(
     gateway_url_redacted: str,
     boot_ts_ns: int | str,
     process_id: int | None = None,
+    sdk_name: BrokerIpcSdkName = "pyrithmic",
 ) -> dict[str, Any]:
     return {
         "adapter_version": adapter_version,
-        "sdk_name": "pyrithmic",
+        "sdk_name": sdk_name,
         "sdk_version": sdk_version,
         "protocol_environment": protocol_environment,
         "gateway_url_redacted": gateway_url_redacted,
@@ -307,8 +316,13 @@ def _validate_boot_identity_payload(
     issues: list[BrokerIpcValidationIssue],
 ) -> None:
     _require_non_empty_string(payload.get("adapter_version"), "$.payload.adapter_version", issues)
-    if payload.get("sdk_name") != "pyrithmic":
-        _add_issue(issues, "$.payload.sdk_name", "invalid_field_value", "must be pyrithmic")
+    if payload.get("sdk_name") not in BROKER_IPC_SDK_NAMES:
+        _add_issue(
+            issues,
+            "$.payload.sdk_name",
+            "invalid_field_value",
+            "must be one of: " + ", ".join(BROKER_IPC_SDK_NAMES),
+        )
     _require_non_empty_string(payload.get("sdk_version"), "$.payload.sdk_version", issues)
     if payload.get("protocol_environment") not in BROKER_IPC_PROTOCOL_ENVIRONMENTS:
         _add_issue(
