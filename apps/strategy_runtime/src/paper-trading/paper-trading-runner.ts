@@ -15,7 +15,13 @@ import {
   type SessionId,
   type UnixNs,
 } from '../contracts/index.js';
-import { LiveTickerSubscriber, type LiveTickerSubscriberOptions } from '../data/index.js';
+import {
+  LiveTickerSubscriber,
+  LocalObsReplaySource,
+  type LiveTickerSubscriberOptions,
+  type LocalObsReplayPaceMode,
+  type LocalObsReplaySourceOptions,
+} from '../data/index.js';
 import { loadAppConfig } from '../config/index.js';
 import {
   BrokerAdapterRuntimeIntegration,
@@ -86,6 +92,8 @@ export interface PaperTradingSessionConfig {
   readonly journal_dir: string;
   readonly adapter_kind: PaperBrokerAdapterKind;
   readonly market_data_source: PaperMarketDataSource;
+  readonly local_obs_replay_path?: string;
+  readonly local_obs_replay_pace_mode: LocalObsReplayPaceMode;
   readonly capability_mask_id: string;
   readonly capability_mask_version: number;
   readonly reconnect_policy: PaperReconnectPolicyConfig;
@@ -116,6 +124,7 @@ export interface PaperTradingSessionOptions {
   readonly anomaly_detector?: AnomalyDetector;
   readonly liveness_monitor?: DualLivenessMonitor;
   readonly live_ticker_subscriber?: Pick<LiveTickerSubscriber, 'start' | 'stop'>;
+  readonly local_obs_replay_source?: Pick<LocalObsReplaySource, 'start' | 'stop'>;
 }
 
 export interface PaperTradingSessionDiagnostics {
@@ -123,6 +132,8 @@ export interface PaperTradingSessionDiagnostics {
   readonly stopped: boolean;
   readonly adapter_kind: PaperBrokerAdapterKind;
   readonly market_data_source: PaperMarketDataSource;
+  readonly local_obs_replay_path?: string;
+  readonly local_obs_replay_pace_mode: LocalObsReplayPaceMode;
   readonly broker_adapter_kind: string;
   readonly event_count: number;
   readonly event_counts_by_type: Readonly<Record<string, number>>;
@@ -140,6 +151,7 @@ export const DEFAULT_PAPER_SESSION_DURATION_MS = 3_000;
 export const DEFAULT_PAPER_SHUTDOWN_QUARANTINE_TIMEOUT_MS = 30_000;
 export const DEFAULT_PAPER_STRATEGY_ID = 'regime_shock_reversion_short_v2' as const;
 export const DEFAULT_PAPER_MARKET_DATA_SOURCE = 'simulation' as const satisfies PaperMarketDataSource;
+export const DEFAULT_LOCAL_OBS_REPLAY_PACE_MODE = 'realtime' as const satisfies LocalObsReplayPaceMode;
 export const DEFAULT_PAPER_RECONNECT_POLICY: PaperReconnectPolicyConfig = {
   max_attempts: 3,
   initial_delay_ms: 250,
@@ -251,6 +263,16 @@ export function resolvePaperTradingSessionConfig(
       DEFAULT_PAPER_JOURNAL_DIR,
     adapter_kind: adapterKind,
     market_data_source: marketDataSource,
+    local_obs_replay_path:
+      input.overrides?.local_obs_replay_path ??
+      env.QFA_PAPER_LOCAL_OBS_PATH ??
+      optionalStringAt(yamlObservability, 'local_obs_replay_path'),
+    local_obs_replay_pace_mode: parseLocalObsReplayPaceMode(
+      input.overrides?.local_obs_replay_pace_mode ??
+        env.QFA_PAPER_LOCAL_OBS_PACE_MODE ??
+        stringAt(yamlObservability, 'local_obs_replay_pace_mode') ??
+        DEFAULT_LOCAL_OBS_REPLAY_PACE_MODE,
+    ),
     capability_mask_id:
       input.overrides?.capability_mask_id ??
       stringAt(yamlExecution, 'capability_mask_id') ??
@@ -367,6 +389,7 @@ export class PaperTradingSession {
   private readonly livenessMonitor: DualLivenessMonitor;
   private readonly reconnectRunner: ReconnectRunner;
   private readonly liveTickerSubscriber?: Pick<LiveTickerSubscriber, 'start' | 'stop'>;
+  private readonly localObsReplaySource?: Pick<LocalObsReplaySource, 'start' | 'stop'>;
   private brokerRuntime: BrokerAdapterRuntimeIntegration | undefined;
   private runner: StrategyRuntimeRunner | undefined;
   private metricsEndpoint: LatencyMetricsEndpoint | undefined;
@@ -387,6 +410,12 @@ export class PaperTradingSession {
     });
     if (this.config.market_data_source === 'live_rithmic_ticker_plant' && this.config.adapter_kind !== 'mock') {
       throw new Error('live_rithmic_ticker_plant shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+    }
+    if (this.config.market_data_source === 'local_obs_replay' && this.config.adapter_kind !== 'mock') {
+      throw new Error('local_obs_replay shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+    }
+    if (this.config.market_data_source === 'local_obs_replay' && this.config.local_obs_replay_path === undefined) {
+      throw new Error('QFA_PAPER_LOCAL_OBS_PATH is required when QFA_PAPER_MARKET_DATA_SOURCE=local_obs_replay');
     }
     this.container = options.container ?? this.createDefaultContainer();
     this.adapter = options.broker_adapter ?? this.createBrokerAdapter();
@@ -437,6 +466,7 @@ export class PaperTradingSession {
       now_ns: () => this.nowNs(),
     });
     this.liveTickerSubscriber = options.live_ticker_subscriber ?? this.createLiveTickerSubscriber();
+    this.localObsReplaySource = options.local_obs_replay_source ?? this.createLocalObsReplaySource();
   }
 
   async start(): Promise<void> {
@@ -511,6 +541,7 @@ export class PaperTradingSession {
       this.handleOperationalSessionEvent(event);
     });
     await this.liveTickerSubscriber?.start();
+    await this.localObsReplaySource?.start();
     await this.brokerRuntime.start();
     await this.drain();
     this.assertSessionManifestValid();
@@ -568,6 +599,7 @@ export class PaperTradingSession {
       this.emitShutdownQuarantineEscalation();
     }
     await this.liveTickerSubscriber?.stop();
+    await this.localObsReplaySource?.stop();
     await this.brokerRuntime?.stop();
     this.brokerRuntime = undefined;
     await this.metricsEndpoint?.close();
@@ -589,6 +621,7 @@ export class PaperTradingSession {
       stopped: this.stopped,
       adapter_kind: this.config.adapter_kind,
       market_data_source: this.config.market_data_source,
+      local_obs_replay_pace_mode: this.config.local_obs_replay_pace_mode,
       broker_adapter_kind: this.adapter.constructor.name,
       event_count: this.journalEvents.length,
       event_counts_by_type: counts,
@@ -756,6 +789,24 @@ export class PaperTradingSession {
       now_ns: () => this.nowNs(),
     };
     return new LiveTickerSubscriber(options);
+  }
+
+  private createLocalObsReplaySource(): Pick<LocalObsReplaySource, 'start' | 'stop'> | undefined {
+    if (this.config.market_data_source !== 'local_obs_replay') {
+      return undefined;
+    }
+    const path = this.config.local_obs_replay_path;
+    if (path === undefined) {
+      throw new Error('QFA_PAPER_LOCAL_OBS_PATH is required when QFA_PAPER_MARKET_DATA_SOURCE=local_obs_replay');
+    }
+    const options: LocalObsReplaySourceOptions = {
+      path,
+      run_id: this.config.run_id,
+      session_id: this.config.session_id,
+      pace_mode: this.config.local_obs_replay_pace_mode,
+      event_sink: (event) => this.publishHarnessEvent(event),
+    };
+    return new LocalObsReplaySource(options);
   }
 
   private credentialLookup(): BrokerCredentialLookup {
@@ -927,10 +978,17 @@ function parseAdapterKind(value: string): PaperBrokerAdapterKind {
 }
 
 function parseMarketDataSource(value: string): PaperMarketDataSource {
-  if (value === 'simulation' || value === 'live_rithmic_ticker_plant') {
+  if (value === 'simulation' || value === 'live_rithmic_ticker_plant' || value === 'local_obs_replay') {
     return value;
   }
-  throw new Error('QFA_PAPER_MARKET_DATA_SOURCE must be one of: simulation, live_rithmic_ticker_plant');
+  throw new Error('QFA_PAPER_MARKET_DATA_SOURCE must be one of: simulation, live_rithmic_ticker_plant, local_obs_replay');
+}
+
+function parseLocalObsReplayPaceMode(value: string): LocalObsReplayPaceMode {
+  if (value === 'realtime' || value === 'as_fast_as_possible') {
+    return value;
+  }
+  throw new Error('QFA_PAPER_LOCAL_OBS_PACE_MODE must be one of: realtime, as_fast_as_possible');
 }
 
 function parseOptionalPort(value: string | undefined): number | undefined {
@@ -1049,6 +1107,17 @@ function recordAt(
 function stringAt(value: Readonly<Record<string, unknown>> | undefined, key: string): string | undefined {
   const child = value?.[key];
   if (child === undefined) {
+    return undefined;
+  }
+  if (typeof child !== 'string') {
+    throw new Error(`paper session config field ${key} must be a string`);
+  }
+  return child;
+}
+
+function optionalStringAt(value: Readonly<Record<string, unknown>> | undefined, key: string): string | undefined {
+  const child = value?.[key];
+  if (child === undefined || child === null) {
     return undefined;
   }
   if (typeof child !== 'string') {

@@ -524,6 +524,75 @@ describe('QFA-614 paper trading harness', () => {
       },
     })).toThrow('shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
   });
+  it('parses local OBS replay source from env override', () => {
+    const fixturePath = join(process.cwd(), 'apps/strategy_runtime/tests/fixtures/obs-replay-sample.jsonl');
+    const config = resolvePaperTradingSessionConfig({
+      env: {
+        QFA_PAPER_MARKET_DATA_SOURCE: 'local_obs_replay',
+        QFA_PAPER_LOCAL_OBS_PATH: fixturePath,
+        QFA_PAPER_LOCAL_OBS_PACE_MODE: 'as_fast_as_possible',
+      },
+    });
+
+    expect(config).toMatchObject({
+      market_data_source: 'local_obs_replay',
+      local_obs_replay_path: fixturePath,
+      local_obs_replay_pace_mode: 'as_fast_as_possible',
+      adapter_kind: 'mock',
+    });
+  });
+
+  it('runs local OBS replay through paper-mode mock-adapter harness invariants', async () => {
+    const fixturePath = join(process.cwd(), 'apps/strategy_runtime/tests/fixtures/obs-replay-sample.jsonl');
+    const session = new PaperTradingSession({
+      ...BASE_OPTIONS,
+      config: {
+        ...BASE_OPTIONS.config,
+        market_data_source: 'local_obs_replay',
+        local_obs_replay_path: fixturePath,
+        local_obs_replay_pace_mode: 'as_fast_as_possible',
+        adapter_kind: 'mock',
+      },
+    });
+
+    await session.start();
+    await session.stop();
+
+    expect(session.events.filter((event) => event.type === 'QUOTE').length).toBeGreaterThan(0);
+    expect(session.events.filter((event) => event.type === 'TRADE').length).toBeGreaterThan(0);
+    expect(session.events.find((event) => event.type === 'SESSION_MANIFEST')).toMatchObject({
+      payload: {
+        mode: 'paper',
+        adapter_kind: 'MOCK_ORDER_PLANT',
+        market_data_source: 'local_obs_replay',
+      },
+    });
+    expect(session.getDiagnostics()).toMatchObject({
+      adapter_kind: 'mock',
+      market_data_source: 'local_obs_replay',
+    });
+  });
+
+  it('fails closed when local OBS replay path is missing', () => {
+    expect(() => new PaperTradingSession({
+      config: {
+        ...BASE_OPTIONS.config,
+        market_data_source: 'local_obs_replay',
+        adapter_kind: 'mock',
+      },
+    })).toThrow('QFA_PAPER_LOCAL_OBS_PATH is required');
+  });
+
+  it('rejects real adapter construction in local OBS replay shadow mode', () => {
+    expect(() => new PaperTradingSession({
+      config: {
+        ...BASE_OPTIONS.config,
+        market_data_source: 'local_obs_replay',
+        local_obs_replay_path: join(process.cwd(), 'apps/strategy_runtime/tests/fixtures/obs-replay-sample.jsonl'),
+        adapter_kind: 'rithmic',
+      },
+    })).toThrow('local_obs_replay shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+  });
 });
 
 class StubLiveTickerSubscriber {

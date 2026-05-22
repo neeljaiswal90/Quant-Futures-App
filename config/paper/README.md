@@ -8,9 +8,15 @@ Environment variables:
 - `QFA_PAPER_SESSION_CONFIG`: optional path to a paper YAML config. The QFA-614
   runner loads this file at startup; default `config/paper/paper-session-defaults.yaml`.
 - `QFA_BROKER_ADAPTER_KIND`: `mock` or `rithmic`; default `mock`.
-- `QFA_PAPER_MARKET_DATA_SOURCE`: `simulation` or
-  `live_rithmic_ticker_plant`; default `simulation`. The live ticker source
-  keeps `mode=paper` and requires `QFA_BROKER_ADAPTER_KIND=mock`.
+- `QFA_PAPER_MARKET_DATA_SOURCE`: `simulation`, `live_rithmic_ticker_plant`, or
+  `local_obs_replay`; default `simulation`. The live ticker source keeps
+  `mode=paper` and requires `QFA_BROKER_ADAPTER_KIND=mock`; local OBS replay
+  is offline-only and also requires the mock adapter.
+- `QFA_PAPER_LOCAL_OBS_PATH`: required only when
+  `QFA_PAPER_MARKET_DATA_SOURCE=local_obs_replay`; points at an OBS-01 JSONL file
+  containing `QUOTE` / `TRADE` events.
+- `QFA_PAPER_LOCAL_OBS_PACE_MODE`: `realtime` or `as_fast_as_possible`;
+  default `realtime`.
 - `QFA_METRICS_ENABLED`: enables the QFA-626 `/metrics` endpoint when `true`.
 - `QFA_METRICS_PORT`: metrics port; default `9469`, bound to `127.0.0.1`.
 - `QFA_PAPER_SESSION_DURATION_MS`: CLI smoke-run duration; default `3000`.
