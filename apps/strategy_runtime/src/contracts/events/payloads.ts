@@ -30,6 +30,7 @@ import type { RuntimeEventType } from './event-types.js';
 
 export type FeatureScalarValue = number | string | boolean | null;
 export type FeatureScalarMap = Readonly<Record<string, FeatureScalarValue>>;
+export type PaperMarketDataSource = 'simulation' | 'live_rithmic_ticker_plant';
 
 export interface SourceTimestampPayload {
   readonly exchange_event_ts_ns: UnixNs;
@@ -135,6 +136,7 @@ export interface SessionManifestEventPayload {
   readonly timestamp_anchor: 'broker_exchange_ts_ns' | 'local_monotonic_unix_anchor' | 'dual';
   readonly broker_session_id: string;
   readonly adapter_kind: 'MOCK_ORDER_PLANT' | 'PYTHON_RITHMIC_ORDER_PLANT';
+  readonly market_data_source?: PaperMarketDataSource;
   readonly session_phase?: 'starting' | 'closing' | 'reconnect_success' | 'reconnect_exhausted';
   readonly session_duration_ms?: number;
   readonly final_quarantine_count?: number;

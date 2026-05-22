@@ -447,6 +447,10 @@ function validateSessionManifestPayload(
     'MOCK_ORDER_PLANT',
     'PYTHON_RITHMIC_ORDER_PLANT',
   ]);
+  optionalEnum(record.market_data_source, `${path}.market_data_source`, issues, [
+    'simulation',
+    'live_rithmic_ticker_plant',
+  ]);
   optionalEnum(record.session_phase, `${path}.session_phase`, issues, [
     'starting',
     'closing',

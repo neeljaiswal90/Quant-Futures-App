@@ -3,10 +3,12 @@ import {
   CredentialResolutionError,
   DEFAULT_CREDENTIAL_RESOLVER_CLOCK,
   assertDescriptorAuthorized,
+  assertDescriptorPlantScopeAuthorized,
   descriptorMap,
   secretResolutionPayload,
   type CredentialBackend,
   type CredentialDescriptor,
+  type CredentialPlantScope,
   type CredentialResolutionEvent,
   type CredentialResolver,
   type CredentialResolverClock,
@@ -51,12 +53,26 @@ export class CompositeCredentialResolver implements CredentialResolver {
   }
 
   async resolve(key: string): Promise<CredentialValue> {
+    return this.resolveInternal(key);
+  }
+
+  async resolveForPlant(key: string, plant_scope: CredentialPlantScope): Promise<CredentialValue> {
+    return this.resolveInternal(key, plant_scope);
+  }
+
+  private async resolveInternal(
+    key: string,
+    plantScope?: CredentialPlantScope,
+  ): Promise<CredentialValue> {
     if (this.refreshState !== 'idle') {
       throw new CredentialResolutionError(`credential resolver is not ready: ${this.refreshState}`);
     }
     const descriptor = this.requireDescriptor(key);
     const mode = this.modeReader();
     assertDescriptorAuthorized(descriptor, mode);
+    if (plantScope !== undefined) {
+      assertDescriptorPlantScopeAuthorized(descriptor, plantScope);
+    }
     const backend = this.backendForMode(mode);
     const cacheKey = this.cacheKey(mode, backend.kind, descriptor.key);
     const cached = this.resolvedCacheKeys.has(cacheKey);
