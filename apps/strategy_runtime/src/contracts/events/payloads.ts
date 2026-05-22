@@ -137,6 +137,14 @@ export interface SessionManifestEventPayload {
   readonly broker_session_id: string;
   readonly adapter_kind: 'MOCK_ORDER_PLANT' | 'PYTHON_RITHMIC_ORDER_PLANT';
   readonly market_data_source?: PaperMarketDataSource;
+  readonly live_account_allowlist_summary?: readonly {
+    readonly label: string;
+    readonly fcm_id: string;
+    readonly ib_id: string;
+    readonly account_id_redacted: string;
+    readonly max_position_contracts: number;
+    readonly daily_loss_cap_usd: number;
+  }[];
   readonly session_phase?: 'starting' | 'closing' | 'reconnect_success' | 'reconnect_exhausted';
   readonly session_duration_ms?: number;
   readonly final_quarantine_count?: number;
@@ -238,7 +246,8 @@ export type ValidatorIssueEventValidatorId =
   | 'EXEC-VALIDATOR-05'
   | 'EXEC-VALIDATOR-06'
   | 'EXEC-VALIDATOR-07'
-  | 'EXEC-VALIDATOR-08';
+  | 'EXEC-VALIDATOR-08'
+  | 'EXEC-VALIDATOR-09';
 
 export interface ValidatorIssueEventPayload {
   readonly validator_id: ValidatorIssueEventValidatorId;
@@ -368,6 +377,7 @@ export interface OrderIntentEventPayload {
   readonly limit_price?: number;
   readonly stop_price?: number;
   readonly time_in_force: 'ioc' | 'day' | 'gtc';
+  readonly account_id?: string;
   readonly strategy_config_hash?: string;
   readonly management_action_id?: ManagementActionId;
   readonly position_id?: PositionId;

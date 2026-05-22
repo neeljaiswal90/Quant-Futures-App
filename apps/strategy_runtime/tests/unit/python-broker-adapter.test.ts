@@ -26,6 +26,18 @@ import type {
 const RUN_ID = makeRunId('run-python-broker-adapter');
 const SESSION_ID = makeSessionId('session-python-broker-adapter');
 const BASE_TS_NS = ns(1_800_000_000_000_000_000n);
+const LIVE_ACCOUNT_ALLOWLIST = [
+  {
+    fcm_id: 'TEST_FCM',
+    ib_id: 'TEST_IB',
+    account_id: 'TEST_ACCT_001',
+    label: 'Synthetic account',
+    max_position_contracts: 2,
+    daily_loss_cap_usd: 100,
+    max_session_duration_ms: 60_000,
+    time_of_day_restriction: 'unrestricted',
+  },
+] as const;
 
 describe('PythonBrokerAdapter', () => {
   it('emits SESSION_MANIFEST from boot_identity', async () => {
@@ -68,6 +80,51 @@ describe('PythonBrokerAdapter', () => {
     expect(result).toMatchObject({ accepted: false });
     expect(sessions.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
       payload: { code: 'order_path_not_yet_implemented' },
+    });
+  });
+
+  it('rejects order intents missing account_id before sending to the sidecar when allowlist is configured', async () => {
+    const { adapter, sessions } = adapterFor('clean_shutdown', {
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+    });
+    await adapter.start();
+
+    const result = await adapter.submitIntent(orderIntent('intent-missing-account'));
+    await adapter.stop();
+
+    expect(result).toMatchObject({ accepted: false });
+    expect(sessions.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+      payload: {
+        validator_id: 'EXEC-VALIDATOR-09',
+        code: 'order_intent_missing_account_id',
+        severity: 'fatal',
+      },
+    });
+  });
+
+  it('verifies account_list_snapshot against the configured allowlist during boot when enabled', async () => {
+    const { adapter } = adapterFor('account_snapshot_pass', {
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+      account_list_verification_enabled: true,
+    });
+
+    await adapter.start();
+    await adapter.stop();
+  });
+
+  it('rejects boot when account_list_snapshot is missing an allowlist entry', async () => {
+    const { adapter, sessions } = adapterFor('account_snapshot_missing', {
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+      account_list_verification_enabled: true,
+    });
+
+    await expect(adapter.start()).rejects.toThrow('account allowlist verification failed');
+    expect(sessions.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+      payload: {
+        validator_id: 'EXEC-VALIDATOR-09',
+        code: 'account_allowlist_missing_from_broker_snapshot',
+        severity: 'fatal',
+      },
     });
   });
 
@@ -138,7 +195,7 @@ function adapterFor(
   return { adapter, sessions, acks };
 }
 
-function orderIntent(eventId: string): OrderIntentEventEnvelope {
+function orderIntent(eventId: string, accountId?: string): OrderIntentEventEnvelope {
   return createJournalEventEnvelope({
     event_id: makeEventId(eventId),
     type: 'ORDER_INTENT',
@@ -155,6 +212,7 @@ function orderIntent(eventId: string): OrderIntentEventEnvelope {
       quantity: 1,
       limit_price: 19_750.25,
       time_in_force: 'day',
+      ...(accountId === undefined ? {} : { account_id: accountId }),
     } satisfies JournalEventPayloadFor<'ORDER_INTENT'>,
   });
 }
@@ -253,6 +311,20 @@ function handle(command) {
   if (command.message_type === "shutdown") {
     send(envelope("shutdown_complete", command.correlation_id, {}, {
       event_ts_ns: "1800000000002000000"
+    }));
+    return;
+  }
+  if (command.message_type === "query_account_list") {
+    send(envelope("account_list_snapshot", command.correlation_id, {
+      accounts: scenario === "account_snapshot_missing" ? [] : [{
+        fcm_id: "TEST_FCM",
+        ib_id: "TEST_IB",
+        account_id: "TEST_ACCT_001",
+        account_name: "Synthetic account",
+        account_currency: "USD",
+        account_auto_liquidate: false
+      }],
+      snapshot_ts_ns: "1800000000001000000"
     }));
     return;
   }

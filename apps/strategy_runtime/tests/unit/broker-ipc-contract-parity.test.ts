@@ -80,6 +80,9 @@ describe('QFA-612 broker IPC contract parity', () => {
     );
     expect(contract.failure_states).toEqual(BROKER_IPC_FAILURE_STATES);
     expect(contract.failure_states).toContain('order_path_not_yet_implemented');
+    expect(contract.failure_states).toContain('account_id_not_in_allowlist');
+    expect(contract.command_message_types_forbidding_idempotency_key).toContain('query_account_list');
+    expect(contract.event_message_types).toContain('account_list_snapshot');
     expect(contract.sdk_names).toEqual(BROKER_IPC_SDK_NAMES);
     expect(contract.sdk_names).toEqual(['pyrithmic', 'async-rithmic']);
     expect(contract.sdk_names).toEqual(pythonContract().sdk_names);
@@ -93,8 +96,20 @@ describe('QFA-612 broker IPC contract parity', () => {
       'qfa_broker_sidecar_ipc_ms',
     ]);
     expect(contract.failure_payload_fields).toEqual(pythonContract().failure_payload_fields);
+    expect(contract.account_list_payload_fields).toEqual(['accounts', 'snapshot_ts_ns']);
+    expect(contract.account_payload_fields).toEqual([
+      'fcm_id',
+      'ib_id',
+      'account_id',
+      'account_name',
+      'account_currency',
+      'account_auto_liquidate',
+    ]);
+    expect(contract.account_list_payload_fields).toEqual(pythonContract().account_list_payload_fields);
+    expect(contract.account_payload_fields).toEqual(pythonContract().account_payload_fields);
     expect(contract.optional_telemetry_fields).toContain('qfa_broker_sidecar_ipc_ms');
     expect(contract.bigint_fields).toContain('boot_ts_ns');
+    expect(contract.bigint_fields).toContain('snapshot_ts_ns');
   });
 
   it('validates command idempotency requirements and forbidden idempotency keys', () => {
@@ -233,5 +248,47 @@ describe('QFA-612 broker IPC contract parity', () => {
       code: 'invalid_field_type',
       message: 'must be a string when present',
     });
+  });
+
+  it('validates account list snapshots', () => {
+    const result = validateBrokerIpcEnvelope(
+      baseEnvelope({
+        message_type: 'account_list_snapshot',
+        direction: 'event',
+        idempotency_key: undefined,
+        payload: {
+          accounts: [
+            {
+              fcm_id: 'TEST_FCM',
+              ib_id: 'TEST_IB',
+              account_id: 'TEST_ACCT_001',
+              account_name: 'Synthetic account',
+              account_currency: 'USD',
+              account_auto_liquidate: false,
+            },
+          ],
+          snapshot_ts_ns: '1776965227000000000',
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects malformed account list snapshots', () => {
+    const result = validateBrokerIpcEnvelope(
+      baseEnvelope({
+        message_type: 'account_list_snapshot',
+        direction: 'event',
+        idempotency_key: undefined,
+        payload: {
+          accounts: [{ fcm_id: 'TEST_FCM', ib_id: 42, account_id: 'TEST_ACCT_001' }],
+        },
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.path)).toContain('$.payload.accounts[0].ib_id');
+    expect(result.issues.map((issue) => issue.path)).toContain('$.payload.snapshot_ts_ns');
   });
 });

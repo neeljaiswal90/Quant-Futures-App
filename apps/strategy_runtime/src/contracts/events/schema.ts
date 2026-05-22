@@ -44,6 +44,7 @@ const VALIDATOR_IDS = [
   'EXEC-VALIDATOR-06',
   'EXEC-VALIDATOR-07',
   'EXEC-VALIDATOR-08',
+  'EXEC-VALIDATOR-09',
 ] as const;
 const VALIDATOR_SEVERITIES = ['info', 'warning', 'error', 'fatal'] as const;
 
@@ -452,6 +453,11 @@ function validateSessionManifestPayload(
     'live_rithmic_ticker_plant',
     'local_obs_replay',
   ]);
+  optionalLiveAccountAllowlistSummary(
+    record.live_account_allowlist_summary,
+    `${path}.live_account_allowlist_summary`,
+    issues,
+  );
   optionalEnum(record.session_phase, `${path}.session_phase`, issues, [
     'starting',
     'closing',
@@ -463,6 +469,31 @@ function validateSessionManifestPayload(
   optionalNumber(record.intents_emitted_total, `${path}.intents_emitted_total`, issues);
   optionalNumber(record.acks_received_total, `${path}.acks_received_total`, issues);
   optionalNumber(record.would_halt_emissions_total, `${path}.would_halt_emissions_total`, issues);
+}
+
+function optionalLiveAccountAllowlistSummary(
+  value: unknown,
+  path: string,
+  issues: JournalEventSchemaIssue[],
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    addIssue(issues, path, 'invalid_field_type', 'must be an array');
+    return;
+  }
+  value.forEach((entry, index) => {
+    const entryPath = `${path}[${index}]`;
+    const record = requireRecord(entry, entryPath, issues);
+    if (record === undefined) return;
+    requireNonEmptyString(record.label, `${entryPath}.label`, issues);
+    requireNonEmptyString(record.fcm_id, `${entryPath}.fcm_id`, issues);
+    requireNonEmptyString(record.ib_id, `${entryPath}.ib_id`, issues);
+    requireNonEmptyString(record.account_id_redacted, `${entryPath}.account_id_redacted`, issues);
+    requireNumber(record.max_position_contracts, `${entryPath}.max_position_contracts`, issues);
+    requireNumber(record.daily_loss_cap_usd, `${entryPath}.daily_loss_cap_usd`, issues);
+  });
 }
 
 function validateReconnectStatePayload(
@@ -907,6 +938,7 @@ function validateOrderIntentPayload(
   optionalNumber(record.limit_price, `${path}.limit_price`, issues);
   optionalNumber(record.stop_price, `${path}.stop_price`, issues);
   requireEnum(record.time_in_force, `${path}.time_in_force`, issues, ['ioc', 'day', 'gtc']);
+  optionalNonEmptyString(record.account_id, `${path}.account_id`, issues);
   optionalNonEmptyString(record.strategy_config_hash, `${path}.strategy_config_hash`, issues);
   optionalNonEmptyString(record.management_action_id, `${path}.management_action_id`, issues);
   optionalNonEmptyString(record.position_id, `${path}.position_id`, issues);

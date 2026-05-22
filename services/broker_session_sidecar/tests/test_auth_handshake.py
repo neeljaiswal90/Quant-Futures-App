@@ -70,3 +70,36 @@ def test_authenticate_failure_raises_auth_denied_with_structured_fields() -> Non
 
     assert exc_info.value.rp_code == "13"
     assert "[REDACTED:credential]" in exc_info.value.rp_message_redacted
+
+
+def test_authenticate_connects_ticker_plant_only_with_client_factory() -> None:
+    captured: dict[str, object] = {}
+    module = ModuleType("async_rithmic")
+    module.__version__ = "1.6.1"
+    ticker_marker = object()
+
+    class FakeSysInfraType:
+        TICKER_PLANT = ticker_marker
+
+    class FakeClient:
+        session_id = "client-session-123"
+
+        def __init__(self, **kwargs: object) -> None:
+            captured["init"] = kwargs
+
+        async def connect(self, **kwargs: object) -> None:
+            captured["connect"] = kwargs
+
+        async def disconnect(self) -> None:
+            captured["disconnect"] = True
+
+    module.SysInfraType = FakeSysInfraType  # type: ignore[attr-defined]
+    module.RithmicClient = FakeClient  # type: ignore[attr-defined]
+
+    with patch.dict(os.environ, _env(), clear=True):
+        credentials = resolve_credentials(os.environ)
+    with patch.dict(sys.modules, {"async_rithmic": module}):
+        result = asyncio.run(authenticate(credentials))
+
+    assert result.broker_session_id == "client-session-123"
+    assert captured["connect"] == {"plants": [ticker_marker]}

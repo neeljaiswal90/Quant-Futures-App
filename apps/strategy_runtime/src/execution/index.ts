@@ -6,6 +6,7 @@ export * from './slippage-model.js';
 export * from './failure-taxonomy.js';
 export * from './anomaly/anomaly-detector.js';
 export * from './brokers/broker-adapter.js';
+export * from './brokers/account-allowlist.js';
 export * from './brokers/broker-adapter-runtime.js';
 export * from './brokers/broker-ipc-contract.js';
 export * from './brokers/mock-order-plant-adapter.js';

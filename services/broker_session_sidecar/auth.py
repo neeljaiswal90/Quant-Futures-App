@@ -92,7 +92,7 @@ async def _call_gateway(async_rithmic: Any, credentials: RithmicCredentials) -> 
     connect = getattr(client, "connect", None)
     if not callable(connect):
         raise AuthDeniedError("async-rithmic client has no supported connect method")
-    result = await _maybe_await(connect())
+    result = await _maybe_await(connect(**_ticker_only_connect_kwargs(async_rithmic)))
     return client if result is None else result
 
 
@@ -123,6 +123,14 @@ def _make_client(client_factory: Any, credentials: RithmicCredentials) -> Any:
         except TypeError as exc:
             last_error = exc
     raise AuthDeniedError(f"async-rithmic client construction failed: {last_error}")
+
+
+def _ticker_only_connect_kwargs(async_rithmic: Any) -> dict[str, Any]:
+    sys_infra = getattr(async_rithmic, "SysInfraType", None)
+    ticker = getattr(sys_infra, "TICKER_PLANT", None)
+    if ticker is None:
+        return {}
+    return {"plants": [ticker]}
 
 
 def _auth_result_from_response(response: Any, sdk_version: str) -> AuthResult:

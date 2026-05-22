@@ -27,6 +27,14 @@ import {
   type BrokerIpcEnvelope,
   type BrokerIpcFailurePayload,
 } from './broker-ipc-contract.js';
+import {
+  accountIdAllowed,
+  liveAccountAllowlistToJsonValue,
+  missingAllowlistEntriesFromSnapshot,
+  redactAccountId,
+  type BrokerAccountSnapshotEntry,
+  type LiveAccountAllowlist,
+} from './account-allowlist.js';
 
 const DEFAULT_BOOT_TIMEOUT_MS = 10_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -46,6 +54,8 @@ export interface PythonBrokerAdapterOptions {
   readonly reconnect_policy_config?: BrokerReconnectPolicyConfig;
   readonly submission_gate?: SubmissionGate;
   readonly now_ns?: () => UnixNs;
+  readonly live_account_allowlist?: LiveAccountAllowlist;
+  readonly account_list_verification_enabled?: boolean;
 }
 
 type PendingCommandKind = 'submit' | 'cancel';
@@ -70,6 +80,8 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   private readonly reconnectPolicyConfig: BrokerReconnectPolicyConfig;
   private readonly submissionGate?: SubmissionGate;
   private readonly nowNs: () => UnixNs;
+  private readonly liveAccountAllowlist: LiveAccountAllowlist;
+  private readonly accountListVerificationEnabled: boolean;
   private readonly ackHandlers = new Set<(event: BrokerAckEnvelope) => void>();
   private readonly sessionHandlers = new Set<(event: BrokerSessionEvent) => void>();
   private readonly pendingCommands = new Map<string, PendingCommand>();
@@ -89,10 +101,15 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     this.mode = options.mode ?? 'paper';
     this.executable = options.executable ?? 'python';
     this.args = options.args ?? ['-m', 'broker_session_sidecar'];
+    this.liveAccountAllowlist = options.live_account_allowlist ?? [];
+    this.accountListVerificationEnabled = options.account_list_verification_enabled ?? false;
     this.env = {
       ...process.env,
       ...options.env,
       ...options.credentials_env,
+      ...(this.liveAccountAllowlist.length === 0
+        ? {}
+        : { QFA_BROKER_ALLOWLIST_JSON: JSON.stringify(liveAccountAllowlistToJsonValue(this.liveAccountAllowlist)) }),
     };
     this.bootTimeoutMs = positiveMs(options.boot_timeout_ms, DEFAULT_BOOT_TIMEOUT_MS, 'boot_timeout_ms');
     this.shutdownTimeoutMs = positiveMs(
@@ -168,6 +185,20 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   ): Promise<{ readonly accepted: boolean; readonly broker_intent_correlation_id: string }> {
     this.requireRunning();
     const correlationId = this.nextCorrelationId('submit');
+    const accountValidation = this.validateIntentAccount(intent);
+    if (!accountValidation.ok) {
+      this.emitValidatorIssue(
+        accountValidation.code,
+        accountValidation.message,
+        accountValidation.details,
+        'EXEC-VALIDATOR-09',
+        'fatal',
+      );
+      return {
+        accepted: false,
+        broker_intent_correlation_id: correlationId,
+      };
+    }
     const idempotencyKey = String(intent.event_id);
     this.writeCommand(this.commandEnvelope('submit_order', correlationId, { intent }, idempotencyKey));
     const result = await this.awaitCommandResult(correlationId, 'submit', idempotencyKey);
@@ -356,6 +387,9 @@ export class PythonBrokerAdapter implements BrokerAdapter {
         this.resolvePending(message.correlation_id, { accepted: false });
         return;
       }
+      case 'account_list_snapshot':
+        this.handleAccountListSnapshot(message);
+        return;
       case 'heartbeat_pong':
       case 'recovered':
       case 'cancel_pending':
@@ -392,6 +426,42 @@ export class PythonBrokerAdapter implements BrokerAdapter {
       },
     });
     this.markActivity();
+    if (this.accountListVerificationEnabled && this.liveAccountAllowlist.length > 0) {
+      this.writeCommand(this.commandEnvelope(
+        'query_account_list',
+        this.nextCorrelationId('query-account-list'),
+        {},
+        undefined,
+      ));
+      return;
+    }
+    this.resolveBoot();
+  }
+
+  private handleAccountListSnapshot(message: BrokerIpcEnvelope): void {
+    const snapshot = accountListSnapshotPayload(message);
+    const missing = missingAllowlistEntriesFromSnapshot(this.liveAccountAllowlist, snapshot.accounts);
+    if (missing.length > 0) {
+      this.emitValidatorIssue(
+        'account_allowlist_missing_from_broker_snapshot',
+        'broker account snapshot did not include every configured live account allowlist entry',
+        {
+          missing_account_ids_redacted: missing.map((entry) => redactAccountId(entry.account_id)).join(','),
+        },
+        'EXEC-VALIDATOR-09',
+        'fatal',
+      );
+      this.failBoot(new Error('Python broker sidecar account allowlist verification failed'));
+      return;
+    }
+    this.resolveBoot();
+  }
+
+  private resolveBoot(): void {
+    if (this.bootTimer !== undefined) {
+      clearTimeout(this.bootTimer);
+      this.bootTimer = undefined;
+    }
     this.bootResolver?.resolve();
     this.bootResolver = undefined;
   }
@@ -478,7 +548,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   }
 
   private commandEnvelope(
-    messageType: 'submit_order' | 'cancel_order' | 'shutdown',
+    messageType: 'submit_order' | 'cancel_order' | 'query_account_list' | 'shutdown',
     correlationId: string,
     payload: Readonly<Record<string, unknown>>,
     idempotencyKey: string | undefined,
@@ -518,13 +588,15 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     code: string,
     message: string,
     details: JournalEventPayloadFor<'VALIDATOR_ISSUE'>['details'] = {},
+    validatorId: JournalEventPayloadFor<'VALIDATOR_ISSUE'>['validator_id'] = 'EXEC-VALIDATOR-08',
+    severity: JournalEventPayloadFor<'VALIDATOR_ISSUE'>['severity'] = code === 'sidecar_unavailable' ? 'fatal' : 'error',
   ): void {
     this.emitSession({
       type: 'VALIDATOR_ISSUE',
       ts_ns: this.nowNs(),
       payload: {
-        validator_id: 'EXEC-VALIDATOR-08',
-        severity: code === 'sidecar_unavailable' ? 'fatal' : 'error',
+        validator_id: validatorId,
+        severity,
         emitted_ts_ns: this.nowNs(),
         code,
         message,
@@ -553,6 +625,40 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   private nextCorrelationId(prefix: string): string {
     this.commandSequence += 1;
     return `python-broker-${prefix}-${this.commandSequence}`;
+  }
+
+  private validateIntentAccount(intent: OrderIntentEventEnvelope): {
+    readonly ok: true;
+  } | {
+    readonly ok: false;
+    readonly code: string;
+    readonly message: string;
+    readonly details: JournalEventPayloadFor<'VALIDATOR_ISSUE'>['details'];
+  } {
+    if (this.liveAccountAllowlist.length === 0) {
+      return { ok: true };
+    }
+    const accountId = intent.payload.account_id;
+    if (accountId === undefined || accountId.trim() === '') {
+      return {
+        ok: false,
+        code: 'order_intent_missing_account_id',
+        message: 'order intent is missing account_id required by live account allowlist enforcement',
+        details: {},
+      };
+    }
+    const allowlistCheck = accountIdAllowed(this.liveAccountAllowlist, accountId);
+    if (!allowlistCheck.ok) {
+      return {
+        ok: false,
+        code: allowlistCheck.code,
+        message: allowlistCheck.message,
+        details: {
+          account_id_redacted: redactAccountId(accountId),
+        },
+      };
+    }
+    return { ok: true };
   }
 }
 
@@ -675,6 +781,31 @@ function orderRejectedPayload(message: BrokerIpcEnvelope): {
 
 function failurePayload(message: BrokerIpcEnvelope): BrokerIpcFailurePayload {
   return recordPayload(message) as unknown as BrokerIpcFailurePayload;
+}
+
+function accountListSnapshotPayload(message: BrokerIpcEnvelope): {
+  readonly accounts: readonly BrokerAccountSnapshotEntry[];
+} {
+  const payload = recordPayload(message);
+  const accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
+  return {
+    accounts: accounts.map((account) => {
+      const record =
+        account !== null && typeof account === 'object' && !Array.isArray(account)
+          ? account as Record<string, unknown>
+          : {};
+      return {
+        fcm_id: String(record.fcm_id ?? ''),
+        ib_id: String(record.ib_id ?? ''),
+        account_id: String(record.account_id ?? ''),
+        ...(typeof record.account_name === 'string' ? { account_name: record.account_name } : {}),
+        ...(typeof record.account_currency === 'string' ? { account_currency: record.account_currency } : {}),
+        ...(typeof record.account_auto_liquidate === 'boolean'
+          ? { account_auto_liquidate: record.account_auto_liquidate }
+          : {}),
+      };
+    }),
+  };
 }
 
 function failureDetails(payload: BrokerIpcFailurePayload): JournalEventPayloadFor<'VALIDATOR_ISSUE'>['details'] {
