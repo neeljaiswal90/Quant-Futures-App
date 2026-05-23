@@ -15,6 +15,7 @@ tsconfig.tsbuildinfo
 reports/
 data/probes/
 data/databento/
+journals/
 
 .env
 .env.*
