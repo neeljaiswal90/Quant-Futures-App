@@ -20,6 +20,7 @@ import {
   applyInitialFillToTargetPosition,
   buildTargetPositionFromCandidate,
   evaluatePositionManager,
+  isBreakEvenTriggerMet,
   resolveManagementProfile,
   type ManagementProfile,
   type PositionManagerMarketInput,
@@ -112,6 +113,14 @@ function market(
     authority: 'authoritative',
     ...overrides,
   };
+}
+
+function target(position: TargetPosition, label: 'pt1' | 'pt2' | 'runner') {
+  const found = position.targets.find((item) => item.label === label);
+  if (found === undefined) {
+    throw new Error(`missing ${label}`);
+  }
+  return found;
 }
 
 describe('MGMT-03 position-manager FSM', () => {
@@ -238,6 +247,150 @@ describe('MGMT-03 position-manager FSM', () => {
     expect(result.fsm_state).toBe('EXITED');
     expect(result.updated_position.remaining_quantity).toBe(0);
     expect(result.actions[0]?.action_type).toBe('EXIT_FULL');
+  });
+
+  it('combined-bar stop+PT1 sets pt1_touched flag through terminal stop for short positions', () => {
+    const { profile, position } = openPosition('trend_pullback_short', profileWithoutTrailing('trend_pullback_short'));
+    const pt1 = target(position, 'pt1');
+    const combinedBar = market(position, {
+      mark_price: position.active_stop_price,
+      high_price: position.active_stop_price,
+      low_price: pt1.price,
+    });
+
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: combinedBar,
+    });
+
+    expect(result.updated_position.pt1_touched).toBe(true);
+    expect(isBreakEvenTriggerMet(result.updated_position, combinedBar)).toBe(true);
+    expect(result.updated_position.targets.find((item) => item.label === 'pt1')).toMatchObject({
+      status: 'cancelled',
+      filled_quantity: 0,
+    });
+    expect(result.fsm_state).toBe('EXITED');
+    expect(result.actions.map((action) => action.action_type)).toEqual(['EXIT_FULL']);
+    expect(result.actions[0]).toMatchObject({
+      reason: 'stop:hit',
+      exit_price: position.active_stop_price,
+    });
+  });
+
+  it('combined-bar stop+PT1 still records stop fill rather than PT1 fill', () => {
+    const { profile, position } = openPosition('trend_pullback_short', profileWithoutTrailing('trend_pullback_short'));
+    const pt1 = target(position, 'pt1');
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        mark_price: position.active_stop_price,
+        high_price: position.active_stop_price,
+        low_price: pt1.price,
+      }),
+    });
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      action_type: 'EXIT_FULL',
+      reason: 'stop:hit',
+      exit_quantity: position.remaining_quantity,
+      exit_price: position.active_stop_price,
+    });
+    expect(result.actions.map((action) => action.target_label)).toEqual([undefined]);
+    expect(result.updated_position.targets.find((item) => item.label === 'pt1')).toMatchObject({
+      status: 'cancelled',
+      filled_quantity: 0,
+    });
+  });
+
+  it('non-combined-bar PT1 then next-bar stop arms break-even before the stop', () => {
+    const { profile, position } = openPosition('trend_pullback_short', profileWithoutTrailing('trend_pullback_short'));
+    const pt1 = target(position, 'pt1');
+    const afterPt1 = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        mark_price: pt1.price,
+        high_price: position.entry_price,
+        low_price: pt1.price,
+      }),
+    });
+
+    expect(afterPt1.updated_position.pt1_touched).toBe(true);
+    expect(afterPt1.updated_position.break_even.moved).toBe(true);
+    expect(afterPt1.actions.map((action) => action.action_type)).toEqual([
+      'TAKE_PARTIAL',
+      'MARK_BREAKEVEN',
+    ]);
+    expect(afterPt1.management_action_payloads.map((payload) => payload.action_type)).toContain('MARK_BREAKEVEN');
+
+    const breakEvenStop = afterPt1.updated_position.active_stop_price;
+    const afterStop = evaluatePositionManager({
+      position: afterPt1.updated_position,
+      profile,
+      market: market(afterPt1.updated_position, {
+        mark_price: breakEvenStop,
+        high_price: breakEvenStop,
+        low_price: breakEvenStop,
+      }),
+    });
+
+    expect(afterStop.fsm_state).toBe('EXITED');
+    expect(afterStop.actions[0]).toMatchObject({
+      action_type: 'EXIT_FULL',
+      reason: 'stop:hit',
+      exit_price: breakEvenStop,
+    });
+  });
+
+  it('non-combined-bar stop-only does not set pt1_touched', () => {
+    const { profile, position } = openPosition('trend_pullback_short', profileWithoutTrailing('trend_pullback_short'));
+    const stopOnlyBar = market(position, {
+      mark_price: position.active_stop_price,
+      high_price: position.active_stop_price,
+      low_price: position.entry_price,
+    });
+
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: stopOnlyBar,
+    });
+
+    expect(result.updated_position.pt1_touched).toBe(false);
+    expect(isBreakEvenTriggerMet(result.updated_position, stopOnlyBar)).toBe(false);
+    expect(result.actions.map((action) => action.action_type)).toEqual(['EXIT_FULL']);
+  });
+
+  it('combined-bar stop+PT1 sets pt1_touched flag through terminal stop for long positions', () => {
+    const { profile, position } = openPosition('trend_pullback_long', profileWithoutTrailing('trend_pullback_long'));
+    const pt1 = target(position, 'pt1');
+    const combinedBar = market(position, {
+      mark_price: position.active_stop_price,
+      high_price: pt1.price,
+      low_price: position.active_stop_price,
+    });
+
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: combinedBar,
+    });
+
+    expect(result.updated_position.pt1_touched).toBe(true);
+    expect(isBreakEvenTriggerMet(result.updated_position, combinedBar)).toBe(true);
+    expect(result.updated_position.targets.find((item) => item.label === 'pt1')).toMatchObject({
+      status: 'cancelled',
+      filled_quantity: 0,
+    });
+    expect(result.fsm_state).toBe('EXITED');
+    expect(result.actions).toMatchObject([{
+      action_type: 'EXIT_FULL',
+      reason: 'stop:hit',
+      exit_price: position.active_stop_price,
+    }]);
   });
 
   it('moves the stop to breakeven after the configured trigger', () => {

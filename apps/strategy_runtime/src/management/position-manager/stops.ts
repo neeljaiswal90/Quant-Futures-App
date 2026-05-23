@@ -149,12 +149,12 @@ function isStopHit(position: TargetPosition, market: PositionManagerMarketInput)
   return (market.high_price ?? market.mark_price) >= position.active_stop_price;
 }
 
-function isBreakEvenTriggerMet(
+export function isBreakEvenTriggerMet(
   position: TargetPosition,
   market: PositionManagerMarketInput,
 ): boolean {
   if (position.break_even.trigger === 'after_pt1') {
-    return position.targets.some((target) => target.label === 'pt1' && target.status === 'filled');
+    return position.pt1_touched;
   }
   return computeUnrealizedR(position, market.mark_price) >= (position.break_even.trigger_r ?? 0);
 }

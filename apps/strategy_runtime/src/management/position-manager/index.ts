@@ -16,7 +16,7 @@ import {
 } from '../target-position.js';
 import { evaluateFailSafe } from './fail-safe.js';
 import { evaluateStopHit, maybeMoveStopToBreakEven } from './stops.js';
-import { applyTargetHits, computePositionUnrealizedPnlUsd } from './targets.js';
+import { applyTargetHits, computePositionUnrealizedPnlUsd, markPt1Touched } from './targets.js';
 import { evaluateTimeStop } from './time-stops.js';
 import { applyTrailingStop } from './trailing.js';
 
@@ -103,6 +103,12 @@ export function evaluatePositionManager(
   stages.push(failSafe);
   current = failSafe.position;
   terminalReason = failSafe.terminal_reason;
+
+  if (terminalReason === undefined) {
+    const pt1Touch = markPt1Touched(current, input.market);
+    stages.push(pt1Touch);
+    current = pt1Touch.position;
+  }
 
   if (terminalReason === undefined) {
     const stop = evaluateStopHit(current, input.market);
