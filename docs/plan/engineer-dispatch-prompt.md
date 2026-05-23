@@ -208,7 +208,9 @@ Step 8: Coordinator review (mandatory before PR open).
    Workers operating without a coordinator session (operator-direct
    dispatch) MUST surface their Step 7 report to the operator and wait
    for the operator's explicit authorization before opening a PR. The
-   STATE: READY-FOR-PR line is a request, not a permission.
+   STATE: PENDING-REVIEW line is a request, not a permission. STATE:
+   READY-FOR-PR fires only after explicit coordinator/operator
+   authorization.
 
 ========================================================================
 4. ESCALATION TRIGGERS (STOP AND ASK)
