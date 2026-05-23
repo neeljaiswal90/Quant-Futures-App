@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="420" viewBox="0 0 920 420" role="img" aria-labelledby="title desc">
+  <title id="title">regime_shock_reversion_short_v2 backtest PnL</title>
+  <desc id="desc">Per-window and cumulative net PnL for the re-derived Cycle3 held-out backtest.</desc>
+  <style>
+    .bg { fill: #f8fafc; }
+    .panel { fill: #ffffff; stroke: #dbe3ef; stroke-width: 1; }
+    .title { font: 700 22px Georgia, 'Times New Roman', serif; fill: #0f172a; }
+    .subtitle { font: 13px 'Segoe UI', sans-serif; fill: #475569; }
+    .axis-label { font: 12px 'Segoe UI', sans-serif; fill: #475569; }
+    .small { font: 11px 'Segoe UI', sans-serif; fill: #64748b; }
+    .value { font: 700 12px 'Segoe UI', sans-serif; fill: #1e3a8a; }
+    .cum { font: 700 12px 'Segoe UI', sans-serif; fill: #9a3412; }
+    .grid { stroke: #e2e8f0; stroke-width: 1; }
+    .axis { stroke: #94a3b8; stroke-width: 1.2; }
+    .line { fill: none; stroke: #f97316; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .legend { font: 12px 'Segoe UI', sans-serif; fill: #334155; }
+  </style>
+  <rect class="bg" width="920" height="420" rx="18"/>
+  <rect class="panel" x="18" y="18" width="884" height="384" rx="16"/>
+  <text x="78" y="34" class="title">regime_shock_reversion_short_v2 held-out PnL</text>
+  <text x="78" y="56" class="subtitle">Cycle3 fixed-engine backtest: net PnL by walk-forward test window and cumulative PnL</text>
+  <line x1="78" y1="344.0" x2="872" y2="344.0" class="grid"/>
+    <text x="66" y="348.0" text-anchor="end" class="axis-label">$0</text>
+    <line x1="78" y1="273.4" x2="872" y2="273.4" class="grid"/>
+    <text x="66" y="277.4" text-anchor="end" class="axis-label">$500</text>
+    <line x1="78" y1="202.8" x2="872" y2="202.8" class="grid"/>
+    <text x="66" y="206.8" text-anchor="end" class="axis-label">$1,000</text>
+    <line x1="78" y1="132.2" x2="872" y2="132.2" class="grid"/>
+    <text x="66" y="136.2" text-anchor="end" class="axis-label">$1,500</text>
+    <line x1="78" y1="61.6" x2="872" y2="61.6" class="grid"/>
+    <text x="66" y="65.6" text-anchor="end" class="axis-label">$2,000</text>
+  <line x1="78" y1="344.0" x2="872" y2="344.0" class="axis"/>
+  <line x1="78" y1="48" x2="78" y2="344" class="axis"/>
+  <rect x="131.3" y="234.0" width="92.0" height="110.0" rx="8" fill="#2563eb"/>
+    <text x="177.3" y="224.0" text-anchor="middle" class="value">$780</text>
+    <rect x="329.8" y="252.2" width="92.0" height="91.8" rx="8" fill="#2563eb"/>
+    <text x="375.8" y="242.2" text-anchor="middle" class="value">$651</text>
+    <rect x="528.3" y="339.2" width="92.0" height="4.8" rx="8" fill="#2563eb"/>
+    <text x="574.3" y="329.2" text-anchor="middle" class="value">$34</text>
+    <rect x="726.8" y="286.4" width="92.0" height="57.6" rx="8" fill="#2563eb"/>
+    <text x="772.8" y="276.4" text-anchor="middle" class="value">$408</text>
+  <polyline points="177.25,233.95154151404154 375.75,142.1150793650794 574.25,137.31501831501836 772.75,79.71428571428578" class="line"/>
+  <circle cx="177.3" cy="234.0" r="5" fill="#f97316" stroke="#ffffff" stroke-width="2"/>
+    <text x="177.3" y="220.0" text-anchor="middle" class="cum">$780</text>
+    <circle cx="375.8" cy="142.1" r="5" fill="#f97316" stroke="#ffffff" stroke-width="2"/>
+    <text x="375.8" y="128.1" text-anchor="middle" class="cum">$1,430</text>
+    <circle cx="574.3" cy="137.3" r="5" fill="#f97316" stroke="#ffffff" stroke-width="2"/>
+    <text x="574.3" y="123.3" text-anchor="middle" class="cum">$1,464</text>
+    <circle cx="772.8" cy="79.7" r="5" fill="#f97316" stroke="#ffffff" stroke-width="2"/>
+    <text x="772.8" y="65.7" text-anchor="middle" class="cum">$1,872</text>
+  <text x="177.3" y="384" text-anchor="middle" class="axis-label">WF 1</text>
+    <text x="177.3" y="402" text-anchor="middle" class="small">70 trades</text>
+    <text x="375.8" y="384" text-anchor="middle" class="axis-label">WF 2</text>
+    <text x="375.8" y="402" text-anchor="middle" class="small">60 trades</text>
+    <text x="574.3" y="384" text-anchor="middle" class="axis-label">WF 3</text>
+    <text x="574.3" y="402" text-anchor="middle" class="small">301 trades</text>
+    <text x="772.8" y="384" text-anchor="middle" class="axis-label">WF 5</text>
+    <text x="772.8" y="402" text-anchor="middle" class="small">140 trades</text>
+  <rect x="658" y="36" width="12" height="12" rx="3" fill="#2563eb"/>
+  <text x="676" y="46" class="legend">Net PnL per window</text>
+  <line x1="800" y1="42" x2="824" y2="42" class="line"/>
+  <text x="832" y="46" class="legend">Cumulative</text>
+</svg>
