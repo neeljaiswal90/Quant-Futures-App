@@ -104,18 +104,23 @@ export function evaluatePositionManager(
   current = failSafe.position;
   terminalReason = failSafe.terminal_reason;
 
-  if (terminalReason === undefined) {
-    const stop = evaluateStopHit(current, input.market);
-    stages.push(stop);
-    current = stop.position;
-    terminalReason = stop.terminal_reason;
-  }
-
+  // Targets evaluate before stop so that a bar spanning both PT1 and the
+  // active stop realizes the limit-order partial fill (and books PT1's
+  // reward) instead of being silently swallowed by the stop. Break-even arm
+  // still runs after stop so the BE-moved stop only takes effect on the
+  // NEXT bar, avoiding double-trigger on the same bar.
   if (terminalReason === undefined) {
     const targets = applyTargetHits(current, input.market);
     stages.push(targets);
     current = targets.position;
     terminalReason = targets.terminal_reason;
+  }
+
+  if (terminalReason === undefined) {
+    const stop = evaluateStopHit(current, input.market);
+    stages.push(stop);
+    current = stop.position;
+    terminalReason = stop.terminal_reason;
   }
 
   if (terminalReason === undefined) {

@@ -240,6 +240,68 @@ describe('MGMT-03 position-manager FSM', () => {
     expect(result.actions[0]?.action_type).toBe('EXIT_FULL');
   });
 
+  it('fills PT1 partial before stop when bar spans both PT1 and the active stop (short)', () => {
+    const { profile, position } = openPosition(
+      'regime_shock_reversion_short_v2',
+      profileWithoutTrailing('regime_shock_reversion_short_v2'),
+    );
+    const pt1 = position.targets.find((target) => target.label === 'pt1');
+    if (pt1 === undefined) throw new Error('missing pt1');
+    const originalStop = position.active_stop_price;
+    const entryPrice = position.entry_price;
+    const initialQty = position.remaining_quantity;
+
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        mark_price: entryPrice,
+        high_price: originalStop,
+        low_price: pt1.price,
+      }),
+    });
+
+    const actionTypes = result.actions.map((action) => action.action_type);
+    expect(actionTypes).toEqual(['TAKE_PARTIAL', 'EXIT_FULL']);
+    expect(result.updated_position.remaining_quantity).toBe(0);
+
+    const partialAction = result.actions.find((action) => action.action_type === 'TAKE_PARTIAL');
+    const stopAction = result.actions.find((action) => action.action_type === 'EXIT_FULL');
+    expect(partialAction?.exit_price).toBe(pt1.price);
+    expect(stopAction?.exit_price).toBe(originalStop);
+    expect((stopAction?.exit_quantity ?? 0) + (partialAction?.exit_quantity ?? 0)).toBe(initialQty);
+
+    const pointValue = position.instrument.point_value;
+    const fullStopPnlUsd = -(originalStop - position.entry_price) * initialQty * pointValue;
+    expect(result.updated_position.realized_pnl_usd).toBeGreaterThan(fullStopPnlUsd);
+
+    const pt1Updated = result.updated_position.targets.find((target) => target.label === 'pt1');
+    expect(pt1Updated?.status).toBe('filled');
+  });
+
+  it('arms break-even on the bar after PT1 fills, when the bar did not also touch the stop', () => {
+    const { profile, position } = openPosition(
+      'regime_shock_reversion_short_v2',
+      profileWithoutTrailing('regime_shock_reversion_short_v2'),
+    );
+    const pt1 = position.targets.find((target) => target.label === 'pt1');
+    if (pt1 === undefined) throw new Error('missing pt1');
+
+    const afterPt1 = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        mark_price: pt1.price,
+        high_price: position.entry_price,
+        low_price: pt1.price,
+      }),
+    });
+
+    expect(afterPt1.fsm_state).toBe('BREAKEVEN_ARMED');
+    expect(afterPt1.updated_position.break_even.moved).toBe(true);
+    expect(afterPt1.updated_position.active_stop_price).toBeLessThan(position.entry_price);
+  });
+
   it('moves the stop to breakeven after the configured trigger', () => {
     const { profile, position } = openPosition('breakout_retest_long', profileWithoutTrailing('breakout_retest_long'));
     const pt1 = position.targets.find((target) => target.label === 'pt1');
