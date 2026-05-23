@@ -48,6 +48,7 @@ export function applyTargetHits(
       lifecycle_state: isFlat ? 'closed' : 'open',
       remaining_quantity: nextRemaining,
       targets: updatedTargets,
+      pt1_touched: current.pt1_touched || target.label === 'pt1',
       realized_pnl_usd: round6(current.realized_pnl_usd + realizedPnlUsd),
       updated_ts_ns: market.event_ts_ns,
       reasons: [
@@ -77,6 +78,27 @@ export function applyTargetHits(
   }
 
   return { position: current, actions, reasons };
+}
+
+export function markPt1Touched(
+  position: TargetPosition,
+  market: PositionManagerMarketInput,
+): PositionManagerStepResult {
+  if (position.lifecycle_state === 'closed' || position.remaining_quantity <= 0 || position.pt1_touched) {
+    return { position, actions: [], reasons: [] };
+  }
+  const pt1 = position.targets.find((target) => target.label === 'pt1');
+  if (pt1 === undefined || pt1.status !== 'pending' || !isTargetHit(position, pt1, market)) {
+    return { position, actions: [], reasons: [] };
+  }
+  return {
+    position: {
+      ...position,
+      pt1_touched: true,
+    },
+    actions: [],
+    reasons: [],
+  };
 }
 
 export function computePositionUnrealizedPnlUsd(
@@ -116,7 +138,7 @@ export function computeUnrealizedR(position: TargetPosition, markPrice: number):
   return round6(points / position.risk_points);
 }
 
-function isTargetHit(
+export function isTargetHit(
   position: TargetPosition,
   target: TargetPositionTarget,
   market: PositionManagerMarketInput,

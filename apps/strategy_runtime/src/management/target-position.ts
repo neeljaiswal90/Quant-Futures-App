@@ -89,6 +89,7 @@ export interface TargetPosition {
   readonly initial_stop_price: number;
   readonly active_stop_price: number;
   readonly risk_points: number;
+  readonly pt1_touched: boolean;
   readonly targets: readonly TargetPositionTarget[];
   readonly break_even: TargetPositionBreakEvenState;
   readonly trailing_stop: TargetPositionTrailState;
@@ -170,6 +171,7 @@ export interface TargetPositionJournalSummary {
   readonly remaining_quantity: number;
   readonly entry_price: number;
   readonly stop_price: number;
+  readonly pt1_touched: boolean;
   readonly targets: readonly TargetPositionJournalSummaryTarget[];
   readonly realized_pnl_usd: number;
   readonly unrealized_pnl_usd: number;
@@ -210,6 +212,7 @@ export function applyInitialFillToTargetPosition(
     remaining_quantity: fill.quantity,
     entry_price: fill.price,
     risk_points: riskPoints,
+    pt1_touched: false,
     targets: position.targets.map((target) => {
       const quantity = partialQuantities.find((item) => item.label === target.label);
       if (quantity === undefined) {
@@ -271,6 +274,7 @@ export function applyExitFillToTargetPosition(
     lifecycle_state: isFlat ? 'closed' : 'closing',
     remaining_quantity: nextRemainingQuantity,
     targets: updatedTargets,
+    pt1_touched: position.pt1_touched || input.target_label === 'pt1',
     realized_pnl_usd: round6(position.realized_pnl_usd + realizedPnlUsd),
     unrealized_pnl_usd: isFlat
       ? 0
@@ -358,6 +362,9 @@ export function validateTargetPosition(
   requirePositiveFinite(position.initial_stop_price, '$.initial_stop_price', issues);
   requirePositiveFinite(position.active_stop_price, '$.active_stop_price', issues);
   requirePositiveFinite(position.risk_points, '$.risk_points', issues);
+  if (typeof position.pt1_touched !== 'boolean') {
+    addIssue(issues, '$.pt1_touched', 'invalid_field_value', 'must be boolean');
+  }
 
   validateSideMath(position, issues);
   validateTargetList(position, issues);
@@ -387,6 +394,7 @@ export function summarizeTargetPositionForJournal(
     remaining_quantity: position.remaining_quantity,
     entry_price: position.entry_price,
     stop_price: position.active_stop_price,
+    pt1_touched: position.pt1_touched,
     targets: position.targets.map((target) => ({
       label: target.label,
       price: target.price,
@@ -461,6 +469,7 @@ function buildTargetPosition(input: {
     initial_stop_price: stopPolicy.stop_price,
     active_stop_price: stopPolicy.stop_price,
     risk_points: riskPoints,
+    pt1_touched: false,
     targets,
     break_even: {
       enabled: input.profile.break_even.enabled,
