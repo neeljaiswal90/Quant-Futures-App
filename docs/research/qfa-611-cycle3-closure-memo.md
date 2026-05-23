@@ -116,3 +116,26 @@ parallel with ADR-0020.
 Combined cycles: 4 + 8 + 3 = 15 strategies tested in total. 1 advanced.
 Hit rate: 6.7% across all hypotheses tested. This is consistent with
 the strict ADR-0016 methodology - the gate is meant to be hard.
+
+
+## RE-DERIVATION AMENDMENT (2026-05-22)
+
+This memo's original verdict table reflected the management-engine state at commit `e985b10`, which contained the BE@PT1 silent no-op defect described in ADR-0024 and the QFA-611-Cycle3 re-derivation invocation memo (commit `77ac31e`).
+
+The re-derivation protocol per ADR-0024 LD-024-3 was executed via QFA-611-CYCLE3-REDERIVATION-01. The fixed engine from QFA-MGMT-BUG-FIX-01 (commit `86dc5ec`, implementation commit `642cf17`) was applied; the Cycle3 inference layer was re-run for all 3 strategies; new held-out validation artifacts and `strategy-selection-v3.json` were produced.
+
+Updated verdict table from the re-derivation:
+
+| Strategy | Before verdict | After verdict | Sharpe | DSR | PSR_zero | Trade count | PF | Verdict reason |
+|---|---|---|---:|---:|---:|---:|---:|---|
+| `regime_shock_reversion_short_v2` | ADVANCE_TO_PAPER | ADVANCE_TO_PAPER | 5.0541923581 | 3.7799241637 | 0.9999981956 | 571 | 1.418043 | all_stage1_thresholds_passed |
+| `vwap_overnight_reversal_short` | REJECT | REJECT | 1.7589603427 | 0.1399409384 | 0.8395829864 | 40 | 1.293814 | three_or_more_stage1_thresholds_failed |
+| `vwap_overnight_reversal_long` | REJECT | REJECT | -0.9601061531 | -1.3637612554 | 0.3046906677 | 69 | 0.791514 | three_or_more_stage1_thresholds_failed |
+
+Re-derivation memo: `docs/research/qfa-611-cycle3-rederivation-memo.md`
+
+New `strategy-selection-v3.json` sha256: `CEE1B8DCE63CFD292487721D38110B2E637646E96B3B9641BDC1B984329ABEDB`
+
+Reconciliation decision: **Path A unchanged**. `regime_shock_reversion_short_v2` remains `ADVANCE_TO_PAPER`; `vwap_overnight_reversal_short` and `vwap_overnight_reversal_long` remain `REJECT`.
+
+This amendment supersedes the original verdict table for all downstream dispatch authorization decisions. The original verdict table is preserved above as audit lineage; it is not the authoritative verdict from this point forward.
