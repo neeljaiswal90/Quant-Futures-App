@@ -9,11 +9,33 @@ Quant futures alpha-validation platform for deterministic MNQ backtesting, data 
 - `regime_shock_reversion_short_v2` is the active strategy advanced to paper validation. Re-derived held-out metrics on the fixed engine: Sharpe `5.0542`, DSR `3.7799`, PSR_zero `0.999998`, profit factor `1.4180`, total trades `571`, verdict `ADVANCE_TO_PAPER`.
 - `vwap_overnight_reversal_short` and `vwap_overnight_reversal_long` remain rejected after re-derivation.
 - Shadow validation is operational through both live ticker sidecar wiring and local OBS replay, with on-disk JSONL journal persistence for forensic review.
-- Broker-real lane status: async Rithmic substrate and account allowlist are in place; QFA-612-BROKER-03 is unblocked and is the next milestone for LUCIDFLEX paper ORDER_PLANT lifecycle.
+- Broker-real lane status: async Rithmic substrate and account allowlist are in place; QFA-612-BROKER-03 is unblocked and is the next milestone for paper ORDER_PLANT lifecycle.
 
 ## Paper validation strategy
 
 The current paper-validation candidate is `regime_shock_reversion_short_v2`, a mean-reversion MNQ strategy selected by the Cycle3 inference process under ADR-0016 thresholds. It is authorized for paper validation only; live-money execution remains out of scope.
+
+![regime_shock_reversion_short_v2 held-out PnL](docs/research/assets/regime-shock-reversion-short-v2-pnl.svg)
+
+Backtest performance summary:
+
+| Metric | Value |
+|---|---:|
+| Net PnL | `$1,872.00` |
+| Final equity | `$51,872.00` |
+| Max drawdown | `$391.00` |
+| Profit factor | `1.4180` |
+| Win rate | `50.61%` |
+| Total trades | `571` |
+
+Walk-forward held-out PnL:
+
+| Window | Net PnL | Cumulative PnL | Trades | Profit factor |
+|---|---:|---:|---:|---:|
+| WF 1 | `$779.50` | `$779.50` | 70 | `2.2057` |
+| WF 2 | `$650.50` | `$1,430.00` | 60 | `2.2997` |
+| WF 3 | `$34.00` | `$1,464.00` | 301 | `1.0131` |
+| WF 5 | `$408.00` | `$1,872.00` | 140 | `1.5601` |
 
 Paper validation objectives:
 
