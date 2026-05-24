@@ -76,6 +76,7 @@ export interface StrategyFeatureSnapshotContext {
   readonly today_open: number | null;
   readonly vix_value: number | null;
   readonly vix_fresh: boolean;
+  readonly vix_prior_close_percentile: number | null;
   readonly regime_label: StrategyFeatureSnapshotRegime;
   readonly opening_range_high: number | null;
   readonly opening_range_low: number | null;

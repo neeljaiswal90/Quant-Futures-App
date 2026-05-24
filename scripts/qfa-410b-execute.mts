@@ -69,9 +69,16 @@ interface CorpusManifest {
 interface RegimeLabelsArtifact {
   readonly labels?: readonly {
     readonly session_id: string;
+    readonly label_status?: string;
     readonly confirmed_label?: string;
     readonly regime_label?: string;
+    readonly primary_percentile?: number | null;
   }[];
+}
+
+interface RegimeLabelSessionContext {
+  readonly regimeBySession: ReadonlyMap<string, string>;
+  readonly vixPriorClosePercentileBySession: ReadonlyMap<string, number | null>;
 }
 
 interface LockManifest {
@@ -143,10 +150,12 @@ export async function runQfa410bExecute(
   await mkdir(args.outputDir, { recursive: true });
   const manifests = dependencies.manifests ?? args.manifests.map((path) => readJson<CorpusManifest>(path));
   const manifestHashes = inputManifestHashes(args.manifests);
+  const regimeLabels = loadRegimeLabels(args.regimeLabelsPath);
   const sessions = dependencies.archiveSessions ?? archiveSessionsFromManifests({
     archiveRoot: args.archiveRoot,
     manifests,
-    regimeBySession: loadRegimeLabels(args.regimeLabelsPath),
+    regimeBySession: regimeLabels.regimeBySession,
+    vixPriorClosePercentileBySession: regimeLabels.vixPriorClosePercentileBySession,
   });
   const sessionOrder = sessions.map((session) => session.session_id).sort();
   const policy = loadWalkForwardPolicy(args.walkForwardPolicyPath);
@@ -211,6 +220,7 @@ export function archiveSessionsFromManifests(input: {
   readonly archiveRoot?: string;
   readonly manifests: readonly CorpusManifest[];
   readonly regimeBySession: ReadonlyMap<string, string>;
+  readonly vixPriorClosePercentileBySession?: ReadonlyMap<string, number | null>;
 }): readonly RealArchiveSessionSource[] {
   const bySession = new Map<string, RealArchiveSessionSource>();
   for (const manifest of input.manifests) {
@@ -227,6 +237,7 @@ export function archiveSessionsFromManifests(input: {
         trading_date: session.trading_date ?? session.session_id.replace(/-rth$/, ''),
         raw_symbol: session.raw_symbol ?? session.symbol ?? 'MNQ',
         regime_label: knownRegime(input.regimeBySession.get(session.session_id)),
+        vix_prior_close_percentile: input.vixPriorClosePercentileBySession?.get(session.session_id) ?? null,
         rth_start_ts_ns: session.rth_window?.start_ts_ns,
         rth_end_ts_ns: session.rth_window?.end_ts_ns,
         trades_path: tradesPath,
@@ -287,15 +298,31 @@ function inputManifestHashes(paths: readonly string[]): HeldOutValidationArtifac
   return { feb, mar, apr };
 }
 
-function loadRegimeLabels(path: string): ReadonlyMap<string, string> {
+function loadRegimeLabels(path: string): RegimeLabelSessionContext {
   if (!existsSync(path)) {
-    return new Map();
+    return {
+      regimeBySession: new Map(),
+      vixPriorClosePercentileBySession: new Map(),
+    };
   }
   const artifact = readJson<RegimeLabelsArtifact>(path);
-  return new Map((artifact.labels ?? []).map((session) => [
-    session.session_id,
-    session.confirmed_label ?? session.regime_label ?? 'unknown',
-  ]));
+  const regimeBySession = new Map<string, string>();
+  const vixPriorClosePercentileBySession = new Map<string, number | null>();
+  for (const session of artifact.labels ?? []) {
+    regimeBySession.set(session.session_id, session.confirmed_label ?? session.regime_label ?? 'unknown');
+    vixPriorClosePercentileBySession.set(
+      session.session_id,
+      session.label_status === 'available'
+      && typeof session.primary_percentile === 'number'
+      && Number.isFinite(session.primary_percentile)
+        ? session.primary_percentile
+        : null,
+    );
+  }
+  return {
+    regimeBySession,
+    vixPriorClosePercentileBySession,
+  };
 }
 
 function writePartialEvidenceStub(

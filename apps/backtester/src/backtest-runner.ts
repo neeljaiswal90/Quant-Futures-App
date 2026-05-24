@@ -233,6 +233,7 @@ function createNeutralStrategySnapshot(
       today_open: toSafeNumber(bar.open, 'bar.open'),
       vix_value: null,
       vix_fresh: false,
+      vix_prior_close_percentile: null,
       regime_label: 'unknown',
       opening_range_high: null,
       opening_range_low: null,

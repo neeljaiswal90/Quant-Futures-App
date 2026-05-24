@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   makeCandidateId,
@@ -70,6 +73,7 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
       prior_day_low: 98,
       today_open: 100,
       regime_label: 'high',
+      vix_prior_close_percentile: 0.733333,
       opening_range_high: 100,
       opening_range_low: 100,
       opening_range_minutes_elapsed: 0,
@@ -97,9 +101,40 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
     });
     expect(typeof snapshots[0]?.context.vix_fresh).toBe('boolean');
   });
+
+  it('populates VIX prior-close percentile from available regime labels', async () => {
+    const snapshots: StrategyFeatureSnapshot[] = [];
+    await runFixture(capturingGenerator(snapshots), {
+      regime_labels_path: fixtureRegimeLabels([{
+        session_id: '2026-02-02-rth',
+        label_status: 'available',
+        confirmed_label: 'high',
+        primary_percentile: 0.733333,
+      }]),
+    });
+
+    expect(snapshots[0]?.context.vix_prior_close_percentile).toBe(0.733333);
+  });
+
+  it('falls closed to null when the regime label percentile is unavailable', async () => {
+    const snapshots: StrategyFeatureSnapshot[] = [];
+    await runFixture(capturingGenerator(snapshots), {
+      regime_labels_path: fixtureRegimeLabels([{
+        session_id: '2026-02-02-rth',
+        label_status: 'warmup_unavailable',
+        confirmed_label: 'high',
+        primary_percentile: 0.733333,
+      }]),
+    });
+
+    expect(snapshots[0]?.context.vix_prior_close_percentile).toBeNull();
+  });
 });
 
-async function runFixture(strategyGenerator: RealArchiveStrategyGenerator = deterministicGenerator()) {
+async function runFixture(
+  strategyGenerator: RealArchiveStrategyGenerator = deterministicGenerator(),
+  overrides: Partial<Parameters<typeof runRealArchiveBacktest>[0]> = {},
+) {
   return runRealArchiveBacktest({
     run_id: 'run-qfa-201b-fixture',
     strategy_id: 'trend_pullback_long',
@@ -131,7 +166,20 @@ async function runFixture(strategyGenerator: RealArchiveStrategyGenerator = dete
         ],
       },
     ],
+    ...overrides,
   });
+}
+
+function fixtureRegimeLabels(labels: readonly {
+  readonly session_id: string;
+  readonly label_status: string;
+  readonly confirmed_label: string;
+  readonly primary_percentile: number | null;
+}[]): string {
+  const root = mkdtempSync(join(tmpdir(), 'qfa-cycle4-s1-regime-'));
+  const path = join(root, 'regime-labels.json');
+  writeFileSync(path, JSON.stringify({ labels }), 'utf8');
+  return path;
 }
 
 function capturingGenerator(snapshots: StrategyFeatureSnapshot[]): RealArchiveStrategyGenerator {

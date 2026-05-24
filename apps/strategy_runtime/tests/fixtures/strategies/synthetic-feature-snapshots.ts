@@ -127,6 +127,7 @@ function makeSnapshot(input: {
       today_open: input.barsStartClose,
       vix_value: null,
       vix_fresh: false,
+      vix_prior_close_percentile: null,
       regime_label: input.regimeLabel ?? 'unknown',
       opening_range_high: null,
       opening_range_low: null,

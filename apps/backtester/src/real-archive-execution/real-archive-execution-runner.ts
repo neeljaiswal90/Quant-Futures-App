@@ -154,6 +154,12 @@ interface EventSequence {
 interface SnapshotContextInputs {
   readonly vixByDate: ReadonlyMap<string, number>;
   readonly regimeBySession: ReadonlyMap<string, StrategyFeatureSnapshotRegime>;
+  readonly vixPriorClosePercentileBySession: ReadonlyMap<string, number | null>;
+}
+
+interface RegimeLabelSnapshotInputs {
+  readonly regimeBySession: ReadonlyMap<string, StrategyFeatureSnapshotRegime>;
+  readonly vixPriorClosePercentileBySession: ReadonlyMap<string, number | null>;
 }
 
 export async function runRealArchiveBacktest(
@@ -852,9 +858,11 @@ async function estimateFill(input: {
 }
 
 function loadSnapshotContextInputs(options: RealArchiveBacktestOptions): SnapshotContextInputs {
+  const regimeLabels = loadRegimeLabels(options.regime_labels_path);
   return {
     vixByDate: loadVixDailyValues(options.vix_daily_paths),
-    regimeBySession: loadRegimeLabels(options.regime_labels_path),
+    regimeBySession: regimeLabels.regimeBySession,
+    vixPriorClosePercentileBySession: regimeLabels.vixPriorClosePercentileBySession,
   };
 }
 
@@ -864,12 +872,16 @@ function contextSeed(
   priorSessionDailyOhl: SessionDailyOhl | null,
 ): SnapshotContextSeed {
   const vixValue = inputs.vixByDate.get(session.trading_date) ?? null;
+  const vixPriorClosePercentile = session.vix_prior_close_percentile !== undefined
+    ? session.vix_prior_close_percentile
+    : inputs.vixPriorClosePercentileBySession.get(session.session_id) ?? null;
   return {
     prior_day_close: session.prior_day_close ?? priorSessionDailyOhl?.close ?? null,
     prior_day_high: session.prior_day_high ?? priorSessionDailyOhl?.high ?? null,
     prior_day_low: session.prior_day_low ?? priorSessionDailyOhl?.low ?? null,
     vix_value: vixValue,
     vix_fresh: vixValue !== null,
+    vix_prior_close_percentile: vixPriorClosePercentile,
     regime_label: knownSnapshotRegime(session.regime_label)
       ?? inputs.regimeBySession.get(session.session_id)
       ?? 'unknown',
@@ -907,26 +919,46 @@ function discoverVixDailyPaths(): readonly string[] {
     .map((name) => join(directory, name));
 }
 
-function loadRegimeLabels(path: string | undefined): ReadonlyMap<string, StrategyFeatureSnapshotRegime> {
+function loadRegimeLabels(path: string | undefined): RegimeLabelSnapshotInputs {
   const filePath = path ?? join(process.cwd(), 'artifacts', 'regime', 'regime-labels.json');
   if (!existsSync(filePath)) {
-    return new Map();
+    return {
+      regimeBySession: new Map(),
+      vixPriorClosePercentileBySession: new Map(),
+    };
   }
   const artifact = JSON.parse(readFileSync(filePath, 'utf8')) as {
     readonly labels?: readonly {
       readonly session_id?: string;
+      readonly label_status?: string;
       readonly confirmed_label?: string;
       readonly regime_label?: string;
+      readonly primary_percentile?: number | null;
     }[];
   };
-  return new Map((artifact.labels ?? [])
-    .map((label): readonly [string, StrategyFeatureSnapshotRegime] | null => {
-      if (typeof label.session_id !== 'string') {
-        return null;
-      }
-      return [label.session_id, knownSnapshotRegime(label.confirmed_label ?? label.regime_label) ?? 'unknown'];
-    })
-    .filter((entry): entry is readonly [string, StrategyFeatureSnapshotRegime] => entry !== null));
+  const regimeBySession = new Map<string, StrategyFeatureSnapshotRegime>();
+  const vixPriorClosePercentileBySession = new Map<string, number | null>();
+  for (const label of artifact.labels ?? []) {
+    if (typeof label.session_id !== 'string') {
+      continue;
+    }
+    regimeBySession.set(
+      label.session_id,
+      knownSnapshotRegime(label.confirmed_label ?? label.regime_label) ?? 'unknown',
+    );
+    vixPriorClosePercentileBySession.set(
+      label.session_id,
+      label.label_status === 'available'
+      && typeof label.primary_percentile === 'number'
+      && Number.isFinite(label.primary_percentile)
+        ? label.primary_percentile
+        : null,
+    );
+  }
+  return {
+    regimeBySession,
+    vixPriorClosePercentileBySession,
+  };
 }
 
 function knownSnapshotRegime(value: unknown): StrategyFeatureSnapshotRegime | null {
