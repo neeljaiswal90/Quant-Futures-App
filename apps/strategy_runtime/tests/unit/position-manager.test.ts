@@ -105,14 +105,51 @@ function market(
   position: TargetPosition,
   overrides: Partial<PositionManagerMarketInput> = {},
 ): PositionManagerMarketInput {
+  const markPrice = overrides.mark_price ?? position.entry_price;
+  const tickSize = typeof position.instrument.tick_size === 'number' && position.instrument.tick_size > 0
+    ? position.instrument.tick_size
+    : 0.25;
   return {
     event_ts_ns: NEXT_TS_NS,
-    mark_price: position.entry_price,
+    mark_price: markPrice,
     high_price: position.entry_price,
     low_price: position.entry_price,
+    bid_px: markPrice - tickSize,
+    ask_px: markPrice + tickSize,
     authority: 'authoritative',
     ...overrides,
   };
+}
+
+function withFailSafe(
+  position: TargetPosition,
+  overrides: Partial<TargetPosition['fail_safe']>,
+): TargetPosition {
+  return {
+    ...position,
+    fail_safe: {
+      ...position.fail_safe,
+      ...overrides,
+    },
+  };
+}
+
+function withPt1Touched(position: TargetPosition): TargetPosition {
+  return {
+    ...position,
+    pt1_touched: true,
+  };
+}
+
+function withoutBidPx(input: PositionManagerMarketInput): PositionManagerMarketInput {
+  const { bid_px: _bidPx, ...withoutBid } = input;
+  return withoutBid;
+}
+
+function markAtUnrealizedR(position: TargetPosition, unrealizedR: number): number {
+  return position.side === 'long'
+    ? position.entry_price + (unrealizedR * position.risk_points)
+    : position.entry_price - (unrealizedR * position.risk_points);
 }
 
 function target(position: TargetPosition, label: 'pt1' | 'pt2' | 'runner') {
@@ -210,13 +247,14 @@ describe('MGMT-03 position-manager FSM', () => {
 
   it('exits a long position when the stop is hit', () => {
     const { profile, position } = openPosition('trend_pullback_long');
+    const stopPosition = withFailSafe(position, { enabled: false });
     const result = evaluatePositionManager({
-      position,
+      position: stopPosition,
       profile,
-      market: market(position, {
-        mark_price: position.active_stop_price,
-        high_price: position.entry_price,
-        low_price: position.active_stop_price,
+      market: market(stopPosition, {
+        mark_price: stopPosition.active_stop_price,
+        high_price: stopPosition.entry_price,
+        low_price: stopPosition.active_stop_price,
       }),
     });
 
@@ -227,20 +265,21 @@ describe('MGMT-03 position-manager FSM', () => {
         action_type: 'EXIT_FULL',
         reason: 'stop:hit',
         exit_quantity: 3,
-        exit_price: position.active_stop_price,
+        exit_price: stopPosition.active_stop_price,
       },
     ]);
   });
 
   it('exits a short position when the stop is hit', () => {
     const { profile, position } = openPosition('trend_pullback_short');
+    const stopPosition = withFailSafe(position, { enabled: false });
     const result = evaluatePositionManager({
-      position,
+      position: stopPosition,
       profile,
-      market: market(position, {
-        mark_price: position.active_stop_price,
-        high_price: position.active_stop_price,
-        low_price: position.entry_price,
+      market: market(stopPosition, {
+        mark_price: stopPosition.active_stop_price,
+        high_price: stopPosition.active_stop_price,
+        low_price: stopPosition.entry_price,
       }),
     });
 
@@ -251,15 +290,16 @@ describe('MGMT-03 position-manager FSM', () => {
 
   it('combined-bar stop+PT1 sets pt1_touched flag through terminal stop for short positions', () => {
     const { profile, position } = openPosition('trend_pullback_short', profileWithoutTrailing('trend_pullback_short'));
-    const pt1 = target(position, 'pt1');
-    const combinedBar = market(position, {
-      mark_price: position.active_stop_price,
-      high_price: position.active_stop_price,
+    const stopPosition = withFailSafe(position, { enabled: false });
+    const pt1 = target(stopPosition, 'pt1');
+    const combinedBar = market(stopPosition, {
+      mark_price: stopPosition.active_stop_price,
+      high_price: stopPosition.active_stop_price,
       low_price: pt1.price,
     });
 
     const result = evaluatePositionManager({
-      position,
+      position: stopPosition,
       profile,
       market: combinedBar,
     });
@@ -274,19 +314,20 @@ describe('MGMT-03 position-manager FSM', () => {
     expect(result.actions.map((action) => action.action_type)).toEqual(['EXIT_FULL']);
     expect(result.actions[0]).toMatchObject({
       reason: 'stop:hit',
-      exit_price: position.active_stop_price,
+      exit_price: stopPosition.active_stop_price,
     });
   });
 
   it('combined-bar stop+PT1 still records stop fill rather than PT1 fill', () => {
     const { profile, position } = openPosition('trend_pullback_short', profileWithoutTrailing('trend_pullback_short'));
-    const pt1 = target(position, 'pt1');
+    const stopPosition = withFailSafe(position, { enabled: false });
+    const pt1 = target(stopPosition, 'pt1');
     const result = evaluatePositionManager({
-      position,
+      position: stopPosition,
       profile,
-      market: market(position, {
-        mark_price: position.active_stop_price,
-        high_price: position.active_stop_price,
+      market: market(stopPosition, {
+        mark_price: stopPosition.active_stop_price,
+        high_price: stopPosition.active_stop_price,
         low_price: pt1.price,
       }),
     });
@@ -295,8 +336,8 @@ describe('MGMT-03 position-manager FSM', () => {
     expect(result.actions[0]).toMatchObject({
       action_type: 'EXIT_FULL',
       reason: 'stop:hit',
-      exit_quantity: position.remaining_quantity,
-      exit_price: position.active_stop_price,
+      exit_quantity: stopPosition.remaining_quantity,
+      exit_price: stopPosition.active_stop_price,
     });
     expect(result.actions.map((action) => action.target_label)).toEqual([undefined]);
     expect(result.updated_position.targets.find((item) => item.label === 'pt1')).toMatchObject({
@@ -347,14 +388,15 @@ describe('MGMT-03 position-manager FSM', () => {
 
   it('non-combined-bar stop-only does not set pt1_touched', () => {
     const { profile, position } = openPosition('trend_pullback_short', profileWithoutTrailing('trend_pullback_short'));
-    const stopOnlyBar = market(position, {
-      mark_price: position.active_stop_price,
-      high_price: position.active_stop_price,
-      low_price: position.entry_price,
+    const stopPosition = withFailSafe(position, { enabled: false });
+    const stopOnlyBar = market(stopPosition, {
+      mark_price: stopPosition.active_stop_price,
+      high_price: stopPosition.active_stop_price,
+      low_price: stopPosition.entry_price,
     });
 
     const result = evaluatePositionManager({
-      position,
+      position: stopPosition,
       profile,
       market: stopOnlyBar,
     });
@@ -366,15 +408,16 @@ describe('MGMT-03 position-manager FSM', () => {
 
   it('combined-bar stop+PT1 sets pt1_touched flag through terminal stop for long positions', () => {
     const { profile, position } = openPosition('trend_pullback_long', profileWithoutTrailing('trend_pullback_long'));
-    const pt1 = target(position, 'pt1');
-    const combinedBar = market(position, {
-      mark_price: position.active_stop_price,
+    const stopPosition = withFailSafe(position, { enabled: false });
+    const pt1 = target(stopPosition, 'pt1');
+    const combinedBar = market(stopPosition, {
+      mark_price: stopPosition.active_stop_price,
       high_price: pt1.price,
-      low_price: position.active_stop_price,
+      low_price: stopPosition.active_stop_price,
     });
 
     const result = evaluatePositionManager({
-      position,
+      position: stopPosition,
       profile,
       market: combinedBar,
     });
@@ -389,7 +432,7 @@ describe('MGMT-03 position-manager FSM', () => {
     expect(result.actions).toMatchObject([{
       action_type: 'EXIT_FULL',
       reason: 'stop:hit',
-      exit_price: position.active_stop_price,
+      exit_price: stopPosition.active_stop_price,
     }]);
   });
 
@@ -494,8 +537,144 @@ describe('MGMT-03 position-manager FSM', () => {
     expect(lowerLow.actions.map((action) => action.action_type)).toContain('MOVE_STOP');
   });
 
-  it('exits on time stop using caller-provided timestamps', () => {
+  it('exits on time stop when unrealized R is below the pre-PT1 floor', () => {
     const { profile, position } = openPosition('breakout_retest_long');
+    const exitPrice = markAtUnrealizedR(position, -0.3);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        event_ts_ns: position.time_stop.deadline_ts_ns ?? LATE_TS_NS,
+        mark_price: exitPrice,
+        high_price: position.entry_price,
+        low_price: exitPrice,
+      }),
+    });
+
+    expect(result.fsm_state).toBe('TIME_STOP_EXIT');
+    expect(result.actions).toMatchObject([
+      {
+        action_type: 'TIME_STOP_EXIT',
+        reason: 'time_stop:deadline_reached',
+      },
+    ]);
+  });
+
+  it('MGMT-BUG-FIX-02 T1 exits long positions when max adverse R is exceeded', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const exitPrice = markAtUnrealizedR(position, -1.01);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        mark_price: exitPrice,
+        high_price: position.entry_price,
+        low_price: exitPrice,
+      }),
+    });
+
+    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'FAIL_SAFE_EXIT',
+      reason: 'fail_safe:max_adverse_r_exceeded',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T2 exits short positions when max adverse R is exceeded', () => {
+    const { profile, position } = openPosition('trend_pullback_short');
+    const exitPrice = markAtUnrealizedR(position, -1.01);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        mark_price: exitPrice,
+        high_price: exitPrice,
+        low_price: position.entry_price,
+      }),
+    });
+
+    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'FAIL_SAFE_EXIT',
+      reason: 'fail_safe:max_adverse_r_exceeded',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T3 holds long positions below the adverse-R boundary', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const markPrice = markAtUnrealizedR(position, -0.99);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        mark_price: markPrice,
+        high_price: position.entry_price,
+        low_price: markPrice,
+      }),
+    });
+
+    expect(result.actions.map((action) => action.action_type)).not.toContain('FAIL_SAFE_EXIT');
+    expect(result.reasons).not.toContain('fail_safe:max_adverse_r_exceeded');
+  });
+
+  it('MGMT-BUG-FIX-02 T4 does not fail safe when spread equals the threshold', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const tick = position.instrument.tick_size;
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        bid_px: position.entry_price - (tick * 4),
+        ask_px: position.entry_price + (tick * 4),
+      }),
+    });
+
+    expect(result.actions.map((action) => action.action_type)).not.toContain('FAIL_SAFE_EXIT');
+    expect(result.reasons).not.toContain('fail_safe:max_spread_ticks_exceeded');
+  });
+
+  it('MGMT-BUG-FIX-02 T5 fails safe when spread exceeds the threshold', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const tick = position.instrument.tick_size;
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        bid_px: position.entry_price - (tick * 5),
+        ask_px: position.entry_price + (tick * 4),
+      }),
+    });
+
+    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'FAIL_SAFE_EXIT',
+      reason: 'fail_safe:max_spread_ticks_exceeded',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T6 exits pre-PT1 positions below the time-stop floor', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const exitPrice = markAtUnrealizedR(position, -0.3);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        event_ts_ns: position.time_stop.deadline_ts_ns ?? LATE_TS_NS,
+        mark_price: exitPrice,
+        high_price: position.entry_price,
+        low_price: exitPrice,
+      }),
+    });
+
+    expect(result.fsm_state).toBe('TIME_STOP_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'TIME_STOP_EXIT',
+      reason: 'time_stop:deadline_reached',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T7 holds pre-PT1 positions at the time-stop floor', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
     const result = evaluatePositionManager({
       position,
       profile,
@@ -507,13 +686,215 @@ describe('MGMT-03 position-manager FSM', () => {
       }),
     });
 
+    expect(result.actions).toEqual([]);
+    expect(result.reasons).toContain('time_stop:held_past_deadline_pre_pt1');
+  });
+
+  it('MGMT-BUG-FIX-02 T8 exits post-PT1 positions below breakeven at deadline', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const pt1Position = withPt1Touched(position);
+    const exitPrice = markAtUnrealizedR(pt1Position, -0.01);
+    const result = evaluatePositionManager({
+      position: pt1Position,
+      profile,
+      market: market(pt1Position, {
+        event_ts_ns: pt1Position.time_stop.deadline_ts_ns ?? LATE_TS_NS,
+        mark_price: exitPrice,
+        high_price: pt1Position.entry_price,
+        low_price: exitPrice,
+      }),
+    });
+
     expect(result.fsm_state).toBe('TIME_STOP_EXIT');
-    expect(result.actions).toMatchObject([
-      {
-        action_type: 'TIME_STOP_EXIT',
-        reason: 'time_stop:deadline_reached',
-      },
-    ]);
+    expect(result.actions).toMatchObject([{
+      action_type: 'TIME_STOP_EXIT',
+      reason: 'time_stop:deadline_reached',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T9a fails closed when live-authoritative spread inputs are incomplete', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const tick = position.instrument.tick_size;
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: withoutBidPx(market(position, {
+        ask_px: position.entry_price + tick,
+        authority: 'authoritative',
+      })),
+    });
+
+    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'FAIL_SAFE_EXIT',
+      reason: 'fail_safe:spread_unavailable_in_live_authoritative',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T9b skips incomplete synthetic spread inputs outside authoritative mode', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const tick = position.instrument.tick_size;
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: withoutBidPx(market(position, {
+        ask_px: position.entry_price + tick,
+        authority: 'warming',
+      })),
+    });
+
+    expect(result.actions.map((action) => action.action_type)).not.toContain('FAIL_SAFE_EXIT');
+    expect(result.reasons).not.toContain('fail_safe:spread_unavailable_in_live_authoritative');
+  });
+
+  it('MGMT-BUG-FIX-02 T9c preserves stale-market precedence over spread checks', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const tick = position.instrument.tick_size;
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: withoutBidPx(market(position, {
+        ask_px: position.entry_price + tick,
+        authority: 'stale',
+      })),
+    });
+
+    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'FAIL_SAFE_EXIT',
+      reason: 'fail_safe:stale_market',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T10 skips adverse-R checks when position fail-safe is disabled', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const disabled = withFailSafe(position, { enabled: false });
+    const exitPrice = markAtUnrealizedR(disabled, -1.01);
+    const result = evaluatePositionManager({
+      position: disabled,
+      profile,
+      market: market(disabled, {
+        mark_price: exitPrice,
+        high_price: disabled.entry_price,
+        low_price: disabled.entry_price,
+      }),
+    });
+
+    expect(result.actions.map((action) => action.action_type)).not.toContain('FAIL_SAFE_EXIT');
+    expect(result.reasons).not.toContain('fail_safe:max_adverse_r_exceeded');
+  });
+
+  it('MGMT-BUG-FIX-02 T10b skips spread checks when position fail-safe is disabled', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const disabled = withFailSafe(position, { enabled: false });
+    const tick = disabled.instrument.tick_size;
+    const result = evaluatePositionManager({
+      position: disabled,
+      profile,
+      market: market(disabled, {
+        bid_px: disabled.entry_price - (tick * 5),
+        ask_px: disabled.entry_price + (tick * 4),
+      }),
+    });
+
+    expect(result.actions.map((action) => action.action_type)).not.toContain('FAIL_SAFE_EXIT');
+    expect(result.reasons).not.toContain('fail_safe:max_spread_ticks_exceeded');
+  });
+
+  it('MGMT-BUG-FIX-02 T10c keeps structural checks active when position fail-safe is disabled', () => {
+    const { position } = openPosition('trend_pullback_long');
+    const disabled = withFailSafe(position, { enabled: false });
+    const mismatchedProfile = resolveManagementProfile('trend_pullback_short').profile;
+    const result = evaluatePositionManager({
+      position: disabled,
+      profile: mismatchedProfile,
+      market: market(disabled),
+    });
+
+    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'FAIL_SAFE_EXIT',
+      reason: 'fail_safe:profile_mismatch',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T11 exits long positions at the exact adverse-R boundary', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const exitPrice = markAtUnrealizedR(position, -1);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        mark_price: exitPrice,
+        high_price: position.entry_price,
+        low_price: exitPrice,
+      }),
+    });
+
+    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'FAIL_SAFE_EXIT',
+      reason: 'fail_safe:max_adverse_r_exceeded',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T12 holds post-PT1 positions at breakeven on the deadline', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const pt1Position = withPt1Touched(position);
+    const result = evaluatePositionManager({
+      position: pt1Position,
+      profile,
+      market: market(pt1Position, {
+        event_ts_ns: pt1Position.time_stop.deadline_ts_ns ?? LATE_TS_NS,
+        mark_price: pt1Position.entry_price,
+        high_price: pt1Position.entry_price,
+        low_price: pt1Position.entry_price,
+      }),
+    });
+
+    expect(result.actions.map((action) => action.action_type)).not.toContain('TIME_STOP_EXIT');
+    expect(result.actions.map((action) => action.action_type)).not.toContain('EXIT_FULL');
+    expect(result.reasons).toContain('time_stop:held_past_deadline_post_pt1');
+  });
+
+  it('MGMT-BUG-FIX-02 T13 applies time-stop unrealized R symmetrically for shorts', () => {
+    const { profile, position } = openPosition('trend_pullback_short');
+    const exitPrice = markAtUnrealizedR(position, -0.3);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        event_ts_ns: position.time_stop.deadline_ts_ns ?? LATE_TS_NS,
+        mark_price: exitPrice,
+        high_price: exitPrice,
+        low_price: position.entry_price,
+      }),
+    });
+
+    expect(result.fsm_state).toBe('TIME_STOP_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'TIME_STOP_EXIT',
+      reason: 'time_stop:deadline_reached',
+    }]);
+  });
+
+  it('MGMT-BUG-FIX-02 T14 fails closed for inverted live-authoritative quotes', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const tick = position.instrument.tick_size;
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: market(position, {
+        bid_px: position.entry_price + tick,
+        ask_px: position.entry_price,
+      }),
+    });
+
+    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    expect(result.actions).toMatchObject([{
+      action_type: 'FAIL_SAFE_EXIT',
+      reason: 'fail_safe:spread_unavailable_in_live_authoritative',
+    }]);
   });
 
   it('fails safe for stale market input', () => {

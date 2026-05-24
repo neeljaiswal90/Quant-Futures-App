@@ -72,6 +72,47 @@ function firstFailSafeReason(
   if (issues.length > 0) {
     return `fail_safe:invalid_target_position:${issues[0]?.path ?? 'unknown'}`;
   }
+  if (position.fail_safe.enabled === true) {
+    const maxAdverseR = position.fail_safe.max_adverse_r;
+    if (Number.isFinite(maxAdverseR) && maxAdverseR > 0 && position.risk_points > 0) {
+      const unrealizedPoints =
+        position.side === 'long'
+          ? market.mark_price - position.entry_price
+          : position.entry_price - market.mark_price;
+      const unrealizedR = unrealizedPoints / position.risk_points;
+      const adverseR = -unrealizedR;
+      if (adverseR >= maxAdverseR) {
+        return 'fail_safe:max_adverse_r_exceeded';
+      }
+    }
+
+    const maxSpreadTicks = position.fail_safe.max_spread_ticks;
+    if (Number.isFinite(maxSpreadTicks) && maxSpreadTicks > 0) {
+      const bidPx = market.bid_px;
+      const askPx = market.ask_px;
+      const hasBidAsk =
+        typeof bidPx === 'number' &&
+        Number.isFinite(bidPx) &&
+        bidPx > 0 &&
+        typeof askPx === 'number' &&
+        Number.isFinite(askPx) &&
+        askPx > 0 &&
+        askPx >= bidPx;
+
+      if (market.authority === 'authoritative' && !hasBidAsk) {
+        return 'fail_safe:spread_unavailable_in_live_authoritative';
+      }
+      if (hasBidAsk) {
+        const tickSize = position.instrument.tick_size;
+        if (typeof tickSize === 'number' && tickSize > 0) {
+          const spreadTicks = (askPx - bidPx) / tickSize;
+          if (spreadTicks > maxSpreadTicks) {
+            return 'fail_safe:max_spread_ticks_exceeded';
+          }
+        }
+      }
+    }
+  }
   return undefined;
 }
 

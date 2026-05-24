@@ -20,6 +20,29 @@ export function evaluateTimeStop(
     return { position, actions: [], reasons: [] };
   }
 
+  const pt1Touched = position.pt1_touched === true;
+  const threshold = pt1Touched
+    ? position.time_stop.post_pt1_min_unrealized_r
+    : position.time_stop.pre_pt1_min_unrealized_r;
+  if (typeof threshold === 'number' && Number.isFinite(threshold)) {
+    const unrealizedPoints =
+      position.side === 'long'
+        ? market.mark_price - position.entry_price
+        : position.entry_price - market.mark_price;
+    const unrealizedR = position.risk_points > 0 ? unrealizedPoints / position.risk_points : 0;
+    if (unrealizedR >= threshold) {
+      return {
+        position,
+        actions: [],
+        reasons: [
+          pt1Touched
+            ? 'time_stop:held_past_deadline_post_pt1'
+            : 'time_stop:held_past_deadline_pre_pt1',
+        ],
+      };
+    }
+  }
+
   const exitQuantity = position.remaining_quantity;
   const realizedPnlUsd = computeRealizedPnlUsd(position, market.mark_price, exitQuantity);
   return {

@@ -725,6 +725,8 @@ describe('ORCH-02 deterministic runner loop', () => {
       mark_price: openPosition.entry_price,
       high_price: openPosition.entry_price,
       low_price: openPosition.entry_price,
+      bid_px: openPosition.entry_price - 0.25,
+      ask_px: openPosition.entry_price + 0.25,
       authority: 'authoritative',
     });
 
@@ -826,6 +828,8 @@ describe('ORCH-02 deterministic runner loop', () => {
       mark_price: openPosition.targets[1]!.price,
       high_price: openPosition.targets[1]!.price,
       low_price: openPosition.entry_price,
+      bid_px: openPosition.targets[1]!.price - 0.25,
+      ask_px: openPosition.targets[1]!.price + 0.25,
       authority: 'authoritative',
     });
 
@@ -920,6 +924,8 @@ describe('ORCH-02 deterministic runner loop', () => {
       mark_price: pt1.price,
       high_price: pt1.price,
       low_price: openPosition.entry_price,
+      bid_px: pt1.price - 0.25,
+      ask_px: pt1.price + 0.25,
       authority: 'authoritative',
     });
 
@@ -1029,12 +1035,15 @@ describe('ORCH-02 deterministic runner loop', () => {
     const managementSource = await runner.publishExternalEvent(
       sourceQuoteEvent('source-management-time-stop-1', managementTs),
     );
+    const timeStopExitPrice = openPosition.entry_price - (openPosition.risk_points * 0.3);
 
     const result = await runner.processManagementTick({
       cause_event: managementSource,
-      mark_price: openPosition.entry_price,
+      mark_price: timeStopExitPrice,
       high_price: openPosition.entry_price,
-      low_price: openPosition.entry_price,
+      low_price: timeStopExitPrice,
+      bid_px: timeStopExitPrice - 0.25,
+      ask_px: timeStopExitPrice + 0.25,
       authority: 'authoritative',
     });
 
@@ -1060,12 +1069,15 @@ describe('ORCH-02 deterministic runner loop', () => {
     const managementSource = await runner.publishExternalEvent(
       sourceQuoteEvent('source-management-time-stop-reject-1', openPosition.time_stop.deadline_ts_ns!),
     );
+    const timeStopExitPrice = openPosition.entry_price - (openPosition.risk_points * 0.3);
 
     const result = await runner.processManagementTick({
       cause_event: managementSource,
-      mark_price: openPosition.entry_price,
+      mark_price: timeStopExitPrice,
       high_price: openPosition.entry_price,
-      low_price: openPosition.entry_price,
+      low_price: timeStopExitPrice,
+      bid_px: timeStopExitPrice - 0.25,
+      ask_px: timeStopExitPrice + 0.25,
       authority: 'authoritative',
     });
 
