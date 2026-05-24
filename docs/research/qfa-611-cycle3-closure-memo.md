@@ -59,14 +59,118 @@ Their verdicts and YAMLs remain byte-locked. They are not re-tested in
 Cycle3 or any future cycle without a new strategy_id and new parameter
 lock per CF-41/LD-023-2.
 
-### 5. Cycle4 dispatch: DEFERRED
+### 5. Cycle4 dispatch: SCOPED DEFERRAL (amended 2026-05-24)
 
-Phase 5 closes successfully with one ADVANCE_TO_PAPER. The Cycle4
-decision (further hypothesis families, e.g., reversal at opening range
-failure, microstructure-derived families, event-day filters) is
-deferred until PAPER-OBSERVATION on v2 completes. If paper observation
-validates v2's alpha, Cycle4 is non-urgent; if paper observation
-reveals issues, Cycle4 dispatch becomes the primary research path.
+#### Original deferral language (preserved for audit lineage)
+
+> *"Phase 5 closes successfully with one ADVANCE_TO_PAPER. The Cycle4
+> decision (further hypothesis families, e.g., reversal at opening range
+> failure, microstructure-derived families, event-day filters) is
+> deferred until PAPER-OBSERVATION on v2 completes. If paper observation
+> validates v2's alpha, Cycle4 is non-urgent; if paper observation
+> reveals issues, Cycle4 dispatch becomes the primary research path."*
+
+#### Amendment grounding
+
+This amendment scopes the original "Cycle4 dispatch: DEFERRED" clause.
+External grounding: the Apr 1-8 2026 regime-pinning finding identified
+in the ADR-0024 invocation memo (commit `77ac31e`, dated ~3 hours
+before the original closure memo was drafted) flagged Cycle4 research
+as a candidate research path. The original closure memo's "Cycle4
+deferred" language was drafted without explicit knowledge of that
+finding's downstream implications. This amendment clarifies the scope
+of the deferral given the now-completed CYCLE4-R1 and CYCLE4-R2
+research-tier evidence packs (PRs #226 and #225, commits `503cefb`
+and `65f02a6`).
+
+The amendment is structurally supported by the CYCLE4 hash-lineage
+trace at `docs/research/cycle4-hash-lineage-trace.md` (commit
+`d58cf3d`, PR #227), which documents that the QFA-611 selection
+pipeline's audit-chain hashes (`strategy_fingerprint_sha256`,
+`final_phase2_hash`, `final_phase4_hash`) are selective in the sense
+relevant for the amendment: schema additions to
+`StrategyFeatureSnapshotContext` that v2 does not consume, and
+REGISTERED_INACTIVE new strategy_id implementations, do not alter
+v2's audit-chain hashes.
+
+#### Scoped deferral
+
+The Cycle4 SELECTION RUN (adding new strategy_ids to
+`ACTIVE_STRATEGY_IDS`, emitting a Cycle4 lock manifest, running the
+G4 gate, producing `strategy-selection-v4.json`) remains DEFERRED
+until PAPER-OBSERVATION on `regime_shock_reversion_short_v2`
+completes (CF-52 minimum window: ~45-60 trading days; ideally ≥6
+months per SIZING-R1 deferred questions at
+`docs/research/sizing-r1-post-fix-kelly-tiered-rederivation.md`).
+
+Pre-paper-observation Cycle4 work is PERMITTED in the following
+scopes:
+
+1. **RESEARCH-TIER evidence packs** in `docs/research/cycle4-*.md` and
+   `scratch/cycle4-research/`. No code paths touched. Already
+   exercised: PRs #225 (CYCLE4-R2 hold-time), #226 (CYCLE4-R1
+   VIX-gate scope), #227 (CYCLE4 hash-lineage trace).
+
+2. **BACKLOG ROW additions** (`CYCLE4-*` tickets in
+   `docs/plan/new_app_v1_ticket_backlog_v6.csv`). Descriptive only.
+   Already exercised: PR #223 (CYCLE4-R1 + CYCLE4-R2 rows).
+
+3. **SCHEMA PRs** (e.g., the proposed `CYCLE4-S1` to add
+   `vix_prior_close_percentile` to `StrategyFeatureSnapshotContext`)
+   PROVIDED they pass the standard byte-identical regression gate on
+   all then-active strategies including v2. v2's outputs must be
+   byte-equal pre/post schema addition. Pattern follows QFA-7xx-A
+   PR #182. Hash-lineage analysis (commit `d58cf3d`) confirms that
+   `strategy_fingerprint_sha256` (per-strategy decisions),
+   `final_phase2_hash` (per-active-strategy artifacts), and
+   `final_phase4_hash` (regime substrate inputs only) are all
+   selective — schema additions that v2 does not consume do not
+   alter v2's audit-chain hashes.
+
+4. **NEW strategy_id IMPLEMENTATIONS as REGISTERED_INACTIVE**: TS
+   code, YAML parameter-lock, registry entry, tests, fixtures all
+   land, but the strategy_id is NOT added to `ACTIVE_STRATEGY_IDS`,
+   does NOT receive a parameter-lock manifest entry in any active
+   cycle, does NOT produce held-out validation artifacts, and does
+   NOT appear in any selection JSON. The strategy is dormant code
+   in the codebase until Cycle4 selection RUN fires
+   post-paper-observation. The `REGISTERED_INACTIVE_STRATEGY_IDS`
+   constant at `apps/strategy_runtime/src/contracts/strategy-ids.ts:9`
+   is the canonical home for these.
+
+#### Discipline preserved
+
+- v2 remains the CANONICAL paper-validation candidate throughout
+  the CF-52 observation window. No competing paper candidate.
+- v3/v4/etc. implementations cannot displace v2 in the paper window.
+- v3/v4/etc. cannot enter live execution pre-paper-observation.
+- Cycle4 SELECTION decisions (which strategy_ids advance to G4)
+  are made WITH the benefit of v2's paper observation evidence.
+
+#### Anti-pattern enforcement (CF-44 + LD-611-7)
+
+Pre-paper Cycle4 implementation work MUST NOT influence
+paper-observation monitoring posture. If v2 paper observation
+reveals problems, the response is honest acceptance OR a documented
+retreat to NO-LIVE per LD-611-7 — NOT "luckily we already have v3
+implemented; let's just swap."
+
+Enforceable via code-level dormant state: if v2 paper observation
+triggers an LD-611-7 NO-LIVE retreat, the Cycle4 SELECTION RUN
+itself is also retreated. v3/v4/etc. implementations remain
+permanently REGISTERED_INACTIVE until a future cycle dispatch
+with proper authorization (a new closure-memo amendment, a new
+ADR, or both). The pre-built implementations are not an escape
+hatch — they are parallel evidence streams that exist only to
+accelerate a *separate, properly-authorized* Cycle4 dispatch.
+
+#### Authority
+
+This amendment requires joint coordinator + operator sign-off
+analogous to ADR-0024 LD-024-2. The original closure memo was a
+Phase 5 decision artifact; this amendment is a scope clarification
+of that artifact and follows the same authority pattern. Both
+parties on record in the PR before merge.
 
 ## Open Phase 6 dispatch chain
 
