@@ -1,0 +1,28 @@
+{
+  "conditioning_cells_max": "from R5 stratifications; placeholder documenting future R5 expansion",
+  "cost_cells": 3,
+  "exit_cells": {
+    "pt_pts": 7,
+    "stop_pts": 6,
+    "subtotal": 42
+  },
+  "generated_at_note": "Deterministic MOC-R4 manifest; no wall-clock timestamp emitted.",
+  "multiple_testing_control": {
+    "deflated_stat_correction": true,
+    "fold_count": 6,
+    "method": "nested_walk_forward_plus_SPA_or_reality_check"
+  },
+  "notes": "research_grid total_screened_cells is NOT QFA-611 Cycle3 effective_trial_count. Production trial count is 1 or 2; DSR / SPA / Reality-Check applies to research screening only.",
+  "primary_selection_metric": "expected_daily_pnl_usd",
+  "schema_version": 1,
+  "scope_decision": "MNQ-only cost scenarios; nq_low/mid/high deferred to MOC-R4-NQ after QFA-119f.",
+  "total_screened_cells_max": 90720,
+  "trigger_cells": {
+    "arm_time_s": 3,
+    "latency_bucket_ms": 4,
+    "reference": 3,
+    "stop_limit_protection_pts": 4,
+    "subtotal": 720,
+    "trigger_offset_pts": 5
+  }
+}
