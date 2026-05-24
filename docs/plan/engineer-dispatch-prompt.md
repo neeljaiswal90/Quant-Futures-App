@@ -183,9 +183,18 @@ Step 5: Implement minimally.
 Step 6: Verify.
    - Run the unit tests for your ticket: `npx vitest run <path>` or
      `pytest <path>`.
+   - Run the FULL monorepo test sweep: `npx vitest run` with NO PATH
+     FILTER. This is mandatory, not optional. PR #240 (MGMT-BUG-FIX-02)
+     missed three backtester regressions because the worker ran only
+     `npx vitest run apps/strategy_runtime/tests/`; the monorepo sweep
+     would have caught them pre-PR.
    - Run the regression gate per the plan (QFA-301 replay for schema
      work; determinism re-run for selection work; etc.).
-   - Run `npx tsc --noEmit` (TypeScript) and any python type-check.
+   - Run `npx tsc -b tsconfig.json` (TypeScript) and any python
+     type-check. NOTE: use `tsc -b`, NOT `tsc --noEmit` — the latter
+     does NOT catch cross-workspace type errors. PR #232 (CYCLE4-V3-
+     IMPL) CI-failed on a missing run-spec-builder entry that
+     `--noEmit` missed.
    - Run lints: `npm run lint` if defined.
 
 Step 7: Report.
@@ -211,6 +220,18 @@ Step 8: Coordinator review (mandatory before PR open).
    STATE: PENDING-REVIEW line is a request, not a permission. STATE:
    READY-FOR-PR fires only after explicit coordinator/operator
    authorization.
+
+   **CI status is a mandatory coord-side check.** When the worker has
+   already opened a draft PR (e.g., on a continuation iteration), the
+   coordinator MUST verify `gh pr checks <PR#>` is SUCCESS before
+   issuing READY-FOR-PR / un-draft authorization. The worker's local
+   test report (Step 6) is necessary but not sufficient — local-scope
+   vitest can pass while the monorepo sweep on CI fails. PR #240's
+   first review round (coord-1) missed this gate; coord-2 caught it
+   via independent `gh pr checks` verification, surfacing three
+   backtester regressions hidden by the worker's local report. The
+   dual-coord review pattern's value comes from independent gate
+   verification, not redundant diff review.
 
 ========================================================================
 4. ESCALATION TRIGGERS (STOP AND ASK)
