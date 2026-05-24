@@ -42,7 +42,7 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
       quantity: 1,
       spread_bucket: '2-tick',
       queue_ahead_bucket: '6-20',
-      exit_reason: 'stop_loss',
+      exit_reason: 'fail_safe',
       exit_bar_index: 2,
       max_favorable_excursion_cents: 150n,
       max_adverse_excursion_cents: -250n,

@@ -72,7 +72,7 @@ describe('HeldOutValidationArtifactV1 writer', () => {
         regime: 'high',
         spread_bucket: '2-tick',
         queue_ahead_bucket: '6-20',
-        exit_reason: 'stop_loss',
+        exit_reason: 'fail_safe',
       });
     } finally {
       rmSync(outputDir, { force: true, recursive: true });
