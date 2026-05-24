@@ -99,6 +99,7 @@ describe('STRAT-01 active strategy registry', () => {
       'regime_mean_reversion_short',
       'liquidity_sweep_reversal_long',
       'liquidity_sweep_reversal_short',
+      'regime_shock_reversion_short_v3',
     ]);
     expect(listAllStrategyRegistryEntries().map((entry) => entry.strategy_id)).toEqual([
       ...ACTIVE_STRATEGY_IDS,

@@ -57,6 +57,11 @@ export interface RegimeMeanReversionStrategyParameters {
   readonly minimum_target_rr: number;
 }
 
+export interface RegimeShockReversionShortV3StrategyParameters extends RegimeMeanReversionStrategyParameters {
+  readonly vix_pct_overfire_lower_bound: number;
+  readonly vix_pct_overfire_upper_bound: number;
+}
+
 export type LiquiditySweepRegime =
   | 'high'
   | 'mid'
@@ -116,6 +121,7 @@ export interface StrategyConfigById {
   readonly vwap_overnight_reversal_long: VwapOvernightReversalStrategyParameters;
   readonly vwap_overnight_reversal_short: VwapOvernightReversalStrategyParameters;
   readonly regime_shock_reversion_short_v2: RegimeMeanReversionStrategyParameters;
+  readonly regime_shock_reversion_short_v3: RegimeShockReversionShortV3StrategyParameters;
 }
 
 export interface StrategyConfigLineage {
@@ -219,6 +225,12 @@ export const DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG: RegimeMeanReversion
   minimum_target_rr: 1,
 };
 
+export const DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V3_CONFIG: RegimeShockReversionShortV3StrategyParameters = {
+  ...DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
+  vix_pct_overfire_lower_bound: 0.67,
+  vix_pct_overfire_upper_bound: 0.85,
+};
+
 export const DEFAULT_LIQUIDITY_SWEEP_REVERSAL_LONG_CONFIG: LiquiditySweepReversalStrategyParameters = {
   sweep_aggressor_threshold: 0.45,
   sweep_overshoot_sigma: 0.35,
@@ -275,6 +287,7 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     vwap_overnight_reversal_long: 90,
     vwap_overnight_reversal_short: 100,
     regime_shock_reversion_short_v2: 110,
+    regime_shock_reversion_short_v3: 120,
   },
 };
 
@@ -290,6 +303,7 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   vwap_overnight_reversal_long: DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG,
   vwap_overnight_reversal_short: DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG,
   regime_shock_reversion_short_v2: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
+  regime_shock_reversion_short_v3: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V3_CONFIG,
 };
 
 export const DEFAULT_STRATEGY_RUNTIME_CONFIG = buildStrategyRuntimeConfig(
@@ -310,6 +324,7 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   vwap_overnight_reversal_long: 'vwap_overnight_reversal_long.yaml',
   vwap_overnight_reversal_short: 'vwap_overnight_reversal_short.yaml',
   regime_shock_reversion_short_v2: 'regime_shock_reversion_short_v2.yaml',
+  regime_shock_reversion_short_v3: 'regime_shock_reversion_short_v3.yaml',
 } as const satisfies Record<StrategyId, string>;
 
 export function loadStrategyRuntimeConfig(
@@ -373,6 +388,10 @@ export function loadStrategyRuntimeConfig(
       'regime_shock_reversion_short_v2',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v2), sourceFiles),
     ),
+    regime_shock_reversion_short_v3: parseRegimeShockReversionShortV3Config(
+      'regime_shock_reversion_short_v3',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v3), sourceFiles),
+    ),
   };
 
   return buildStrategyRuntimeConfig(strategies, shared.ranking, sourceFiles.sort());
@@ -424,10 +443,15 @@ export function getStrategyParameters(
 ): RegimeMeanReversionStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
+  strategyId: 'regime_shock_reversion_short_v3',
+): RegimeShockReversionShortV3StrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
   strategyId: StrategyId,
 ): TrendPullbackStrategyParameters
   | BreakoutRetestStrategyParameters
   | RegimeMeanReversionStrategyParameters
+  | RegimeShockReversionShortV3StrategyParameters
   | LiquiditySweepReversalStrategyParameters
   | VwapOvernightReversalStrategyParameters {
   return (config ?? DEFAULT_STRATEGY_RUNTIME_CONFIG).strategies[strategyId];
@@ -519,6 +543,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'vwap_overnight_reversal_long',
     'vwap_overnight_reversal_short',
     'regime_shock_reversion_short_v2',
+    'regime_shock_reversion_short_v3',
   ], issues);
 
   const parsed = {
@@ -541,6 +566,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         vwap_overnight_reversal_long: readNumber(strategyPriority, 'vwap_overnight_reversal_long', '$.ranking.strategy_priority', issues),
         vwap_overnight_reversal_short: readNumber(strategyPriority, 'vwap_overnight_reversal_short', '$.ranking.strategy_priority', issues),
         regime_shock_reversion_short_v2: readNumber(strategyPriority, 'regime_shock_reversion_short_v2', '$.ranking.strategy_priority', issues),
+        regime_shock_reversion_short_v3: readNumber(strategyPriority, 'regime_shock_reversion_short_v3', '$.ranking.strategy_priority', issues),
       },
     },
   };
@@ -692,6 +718,92 @@ function parseRegimeMeanReversionConfig(
   }
   if (parsed.target_2_rr < parsed.target_1_rr) {
     issues.push({ path: '$.parameters.target_2_rr', message: 'must be >= target_1_rr' });
+  }
+  throwIfIssues(issues);
+  return parsed;
+}
+
+function parseRegimeShockReversionShortV3Config(
+  strategyId: 'regime_shock_reversion_short_v3',
+  input: unknown,
+): RegimeShockReversionShortV3StrategyParameters {
+  const issues: ConfigValidationIssue[] = [];
+  const { root, parameters } = parseStrategyConfigRoot(strategyId, input, issues);
+  void root;
+  checkUnknownKeys(parameters, '$.parameters', [
+    'vwap_reference',
+    'opening_window_minutes',
+    'high_shock_threshold_neg',
+    'high_shock_threshold_pos',
+    'low_shock_threshold_neg',
+    'low_shock_threshold_pos',
+    'stop_sigma_multiple',
+    'target_1_rr',
+    'target_2_rr',
+    'confidence_score_high',
+    'confidence_score_low',
+    'minimum_target_rr',
+    'vix_pct_overfire_lower_bound',
+    'vix_pct_overfire_upper_bound',
+  ], issues);
+  const parsed = {
+    vwap_reference: readLiteral(parameters, 'vwap_reference', '$.parameters', [
+      'session_vwap',
+      'opening_window_vwap',
+      'prior_day_close',
+    ], issues),
+    opening_window_minutes: readPositiveNumber(parameters, 'opening_window_minutes', '$.parameters', issues),
+    high_shock_threshold_neg: readPositiveNumber(parameters, 'high_shock_threshold_neg', '$.parameters', issues),
+    high_shock_threshold_pos: readPositiveNumber(parameters, 'high_shock_threshold_pos', '$.parameters', issues),
+    low_shock_threshold_neg: readPositiveNumber(parameters, 'low_shock_threshold_neg', '$.parameters', issues),
+    low_shock_threshold_pos: readPositiveNumber(parameters, 'low_shock_threshold_pos', '$.parameters', issues),
+    stop_sigma_multiple: readPositiveNumber(parameters, 'stop_sigma_multiple', '$.parameters', issues),
+    target_1_rr: readPositiveNumber(parameters, 'target_1_rr', '$.parameters', issues),
+    target_2_rr: readPositiveNumber(parameters, 'target_2_rr', '$.parameters', issues),
+    confidence_score_high: readPositiveNumber(parameters, 'confidence_score_high', '$.parameters', issues),
+    confidence_score_low: readPositiveNumber(parameters, 'confidence_score_low', '$.parameters', issues),
+    minimum_target_rr: readPositiveNumber(parameters, 'minimum_target_rr', '$.parameters', issues),
+    vix_pct_overfire_lower_bound: readNonNegativeNumber(parameters, 'vix_pct_overfire_lower_bound', '$.parameters', issues),
+    vix_pct_overfire_upper_bound: readPositiveNumber(parameters, 'vix_pct_overfire_upper_bound', '$.parameters', issues),
+  };
+  if (!Number.isInteger(parsed.opening_window_minutes)) {
+    issues.push({ path: '$.parameters.opening_window_minutes', message: 'must be an integer' });
+  }
+  if (parsed.low_shock_threshold_neg <= parsed.high_shock_threshold_neg) {
+    issues.push({
+      path: '$.parameters.low_shock_threshold_neg',
+      message: 'must be > high_shock_threshold_neg',
+    });
+  }
+  if (parsed.low_shock_threshold_pos <= parsed.high_shock_threshold_pos) {
+    issues.push({
+      path: '$.parameters.low_shock_threshold_pos',
+      message: 'must be > high_shock_threshold_pos',
+    });
+  }
+  if (parsed.confidence_score_low >= parsed.confidence_score_high) {
+    issues.push({
+      path: '$.parameters.confidence_score_low',
+      message: 'must be < confidence_score_high',
+    });
+  }
+  if (parsed.target_1_rr < parsed.minimum_target_rr) {
+    issues.push({ path: '$.parameters.target_1_rr', message: 'must be >= minimum_target_rr' });
+  }
+  if (parsed.target_2_rr < parsed.target_1_rr) {
+    issues.push({ path: '$.parameters.target_2_rr', message: 'must be >= target_1_rr' });
+  }
+  if (parsed.vix_pct_overfire_lower_bound > 1) {
+    issues.push({ path: '$.parameters.vix_pct_overfire_lower_bound', message: 'must be <= 1' });
+  }
+  if (parsed.vix_pct_overfire_upper_bound > 1) {
+    issues.push({ path: '$.parameters.vix_pct_overfire_upper_bound', message: 'must be <= 1' });
+  }
+  if (parsed.vix_pct_overfire_lower_bound >= parsed.vix_pct_overfire_upper_bound) {
+    issues.push({
+      path: '$.parameters.vix_pct_overfire_lower_bound',
+      message: 'must be < vix_pct_overfire_upper_bound',
+    });
   }
   throwIfIssues(issues);
   return parsed;
