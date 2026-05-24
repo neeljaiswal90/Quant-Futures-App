@@ -7,6 +7,7 @@ export * from './regime_mean_reversion_common.js';
 export * from './regime_mean_reversion_long.js';
 export * from './regime_mean_reversion_short.js';
 export * from './regime_shock_reversion_short_v2.js';
+export * from './regime_shock_reversion_short_v3.js';
 export * from './ranking.js';
 export * from './registry.js';
 export * from './trend_pullback_long.js';
