@@ -132,6 +132,7 @@ export function buildReplayFeatureSnapshot(
       today_open: bars[0]?.open ?? null,
       vix_value: null,
       vix_fresh: false,
+      vix_prior_close_percentile: null,
       regime_label: 'unknown',
       opening_range_high: null,
       opening_range_low: null,

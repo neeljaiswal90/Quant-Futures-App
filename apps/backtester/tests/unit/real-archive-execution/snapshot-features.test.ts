@@ -77,6 +77,7 @@ describe('QFA-410c real-archive snapshot features', () => {
       prior_day_low: 99,
       vix_value: 18.25,
       vix_fresh: true,
+      vix_prior_close_percentile: 0.733333,
       regime_label: 'high',
     });
 
@@ -92,6 +93,7 @@ describe('QFA-410c real-archive snapshot features', () => {
       today_open: 100,
       vix_value: 18.25,
       vix_fresh: true,
+      vix_prior_close_percentile: 0.733333,
       regime_label: 'high',
       opening_range_high: 102,
       opening_range_low: 98,
@@ -199,6 +201,7 @@ describe('QFA-410c real-archive snapshot features', () => {
       today_open: null,
       vix_value: null,
       vix_fresh: false,
+      vix_prior_close_percentile: null,
       regime_label: 'unknown',
       opening_range_high: null,
       opening_range_low: null,

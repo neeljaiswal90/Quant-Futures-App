@@ -39,6 +39,7 @@ export interface RealArchiveSessionSource {
   readonly trading_date: string;
   readonly raw_symbol: string;
   readonly regime_label?: RealArchiveRegimeLabel;
+  readonly vix_prior_close_percentile?: number | null;
   readonly prior_day_close?: number | null;
   readonly prior_day_high?: number | null;
   readonly prior_day_low?: number | null;

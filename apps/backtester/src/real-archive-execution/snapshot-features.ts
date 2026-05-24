@@ -29,6 +29,7 @@ export interface SnapshotContextSeed {
   readonly prior_day_low?: number | null;
   readonly vix_value?: number | null;
   readonly vix_fresh?: boolean;
+  readonly vix_prior_close_percentile?: number | null;
   readonly regime_label?: StrategyFeatureSnapshotRegime;
 }
 
@@ -44,6 +45,7 @@ export interface SnapshotContextState {
   readonly prior_day_low: number | null;
   readonly vix_value: number | null;
   readonly vix_fresh: boolean;
+  readonly vix_prior_close_percentile: number | null;
   readonly regime_label: StrategyFeatureSnapshotRegime;
   effective_rth_start_ts_ns: bigint | null;
 }
@@ -88,6 +90,7 @@ export function createSnapshotContextState(seed: SnapshotContextSeed = {}): Snap
     prior_day_low: seed.prior_day_low ?? null,
     vix_value: seed.vix_value ?? null,
     vix_fresh: seed.vix_value === null || seed.vix_value === undefined ? false : (seed.vix_fresh ?? false),
+    vix_prior_close_percentile: seed.vix_prior_close_percentile ?? null,
     regime_label: seed.regime_label ?? 'unknown',
     effective_rth_start_ts_ns: null,
   };
@@ -153,6 +156,7 @@ export function updateSnapshotContextForBar(
     today_open: state.today_open,
     vix_value: state.vix_value,
     vix_fresh: state.vix_fresh,
+    vix_prior_close_percentile: state.vix_prior_close_percentile,
     regime_label: state.regime_label,
     opening_range_high: state.opening_range_high,
     opening_range_low: state.opening_range_low,

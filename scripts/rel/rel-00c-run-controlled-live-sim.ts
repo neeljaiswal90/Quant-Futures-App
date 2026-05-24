@@ -645,6 +645,7 @@ function buildFeatureSnapshot(
       today_open: bars[0] === undefined ? null : round4(bars[0].open),
       vix_value: null,
       vix_fresh: false,
+      vix_prior_close_percentile: null,
       regime_label: 'unknown',
       opening_range_high: null,
       opening_range_low: null,
