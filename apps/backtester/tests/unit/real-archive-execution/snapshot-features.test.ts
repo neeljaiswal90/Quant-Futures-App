@@ -5,6 +5,7 @@ import {
   computeAdx14,
   computeAtr14,
   computeAtrSupertrend,
+  computeSignedShockVwapRecentValues,
   computeStructuralTrend,
   createSignedShockMeasurement,
   createSnapshotContextState,
@@ -108,6 +109,7 @@ describe('QFA-410c real-archive snapshot features', () => {
         sigma_basis: 'atr_14',
         sigma_basis_value: null,
       },
+      signed_shock_vwap_recent_values: null,
       signed_shock_prior_close: {
         value: null,
         anchor_type: 'prior_close',
@@ -185,6 +187,37 @@ describe('QFA-410c real-archive snapshot features', () => {
       sigma_basis: 'atr_14',
       sigma_basis_value: null,
     });
+  });
+
+  it('emits threshold-agnostic recent signed-shock VWAP values and fails closed during warmup', () => {
+    expect(computeSignedShockVwapRecentValues({
+      bars: [],
+      session_vwap: 100,
+      sigma_basis_value: 2,
+    })).toBeNull();
+    expect(computeSignedShockVwapRecentValues({
+      bars: [bar(102), bar(104)],
+      session_vwap: null,
+      sigma_basis_value: 2,
+    })).toBeNull();
+    expect(computeSignedShockVwapRecentValues({
+      bars: [bar(102), bar(104)],
+      session_vwap: 100,
+      sigma_basis_value: null,
+    })).toBeNull();
+    expect(computeSignedShockVwapRecentValues({
+      bars: [bar(102), bar(104)],
+      session_vwap: 100,
+      sigma_basis_value: 2,
+      window_length: 2,
+    })).toEqual([1, 2]);
+
+    const sixtyOneBars = Array.from({ length: 61 }, (_, index) => bar(100 + index));
+    expect(computeSignedShockVwapRecentValues({
+      bars: sixtyOneBars,
+      session_vwap: 100,
+      sigma_basis_value: 10,
+    })).toHaveLength(60);
   });
 
   it('falls closed for missing context inputs before the RTH open', () => {

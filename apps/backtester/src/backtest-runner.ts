@@ -242,6 +242,7 @@ function createNeutralStrategySnapshot(
       session_vwap_band_sigma_pts: null,
       overnight_return_bps: null,
       signed_shock_vwap: createNullSignedShockMeasurement('vwap'),
+      signed_shock_vwap_recent_values: null,
       signed_shock_prior_close: createNullSignedShockMeasurement('prior_close'),
     },
     config: strategyConfigRef(resolved, resolved.strategy_id),
