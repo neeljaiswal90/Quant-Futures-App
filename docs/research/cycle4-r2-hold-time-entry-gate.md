@@ -299,3 +299,62 @@ delay/persistence with VIX-gating in a v5 is a future decision.
 - CF-30 / CF-41 / CF-44 / CF-45 (anti-tuning + amendment-justification
   carry-forwards that bound any v4 amendment proposal)
 - CYCLE4-R1 (the parallel VIX-gate hypothesis; orthogonal to this)
+
+## Errata (2026-05-24)
+
+### Correction: v4-delay DOES require a new snapshot context field
+
+The §"(i) Time-based delay (simpler)" section above states "No new
+feature substrate fields required." **This is incorrect.**
+
+Discovered during coordinator-session drafting of the v4-COMBINED
+worker dispatch packet on 2026-05-24. Tracing the platform's
+strategy-generator architecture clarified that both v4 variants
+require state across snapshot evaluations:
+
+| Variant | What it needs | Current snapshot provides |
+|---|---|---|
+| v4-delay | "When did `signed_shock_vwap` first cross threshold?" | Only an instant value |
+| v4-persist | "How many consecutive bars has the shock been armed?" | Only an instant value |
+
+The platform's strategy-generator contract is **stateless-by-design**:
+`generate*(input)` takes one snapshot and returns a candidate-or-blocked
+with no memory between calls. Wall-clock-based delay violates
+determinism; strategy-local state breaks the stateless contract;
+in-strategy recomputation of `signed_shock` from bar history violates
+ADR-0023 LD-023-1 (SignedShockMeasurement is the canonical typed
+field; consumers shouldn't recompute).
+
+**The clean fix** is a new schema field (or fields) produced by the
+snapshot producer. Same pattern as CYCLE4-S1 added
+`vix_prior_close_percentile`. Proposed prerequisite ticket:
+`CYCLE4-S2`. Specific field design is left to the CYCLE4-S2 worker
+dispatch; the constraint is: causally clean, produced by snapshot
+producer, sufficient for BOTH v4-delay and v4-persist gate logic.
+
+### What this errata does NOT change
+
+- The §"Sub-2-min cohort decomposition" numbers (333 trades, PF 0.872,
+  net −$462) — unchanged.
+- The §"Counterfactual" upper-bound benefit estimates — unchanged.
+- The §"Two implementation patterns" identification — unchanged. Both
+  patterns are still the right hypothesis candidates; they just both
+  require the schema prerequisite.
+- The §"Real-world implementation modeling" caveats — unchanged.
+
+### Dispatch implication
+
+Per CF-45 (applied analogously) + the closure-memo amendment scope 3,
+the corrected dispatch sequence is:
+
+1. CYCLE4-S2 schema PR (new field(s) for signed_shock arm state)
+2. v4-COMBINED implementation PR (consumes the new field(s); lands
+   v4-delay AND v4-persist as REGISTERED_INACTIVE)
+
+The original memo implied v4-delay could land standalone. With this
+errata, the corrected sequence matches the established CYCLE4-S1 →
+v3 pattern.
+
+The original §"(i) Time-based delay (simpler)" text is preserved
+verbatim above this errata for audit lineage.
+
