@@ -69,6 +69,7 @@ const DEFAULT_SESSION_VWAP_BAND_WINDOW = 30;
 const DEFAULT_SUPERTREND_PERIOD = 14;
 const DEFAULT_SUPERTREND_MULTIPLIER = 3;
 const DEFAULT_STRUCTURAL_TREND_WINDOW = 20;
+const DEFAULT_SIGNED_SHOCK_VWAP_RECENT_WINDOW = 60;
 
 export function createSnapshotFeatureState(): SnapshotFeatureState {
   return {
@@ -165,6 +166,7 @@ export function updateSnapshotContextForBar(
     session_vwap_band_sigma_pts: sessionVwapBandSigmaPts,
     overnight_return_bps: overnightReturnBps,
     signed_shock_vwap: createNullSignedShockMeasurement('vwap'),
+    signed_shock_vwap_recent_values: null,
     signed_shock_prior_close: createNullSignedShockMeasurement('prior_close'),
   };
 }
@@ -344,6 +346,31 @@ export function createSignedShockMeasurement(input: {
     sigma_basis: input.sigma_basis,
     sigma_basis_value: round4(sigmaBasisValue),
   };
+}
+
+export function computeSignedShockVwapRecentValues(input: {
+  readonly bars: readonly SnapshotPriceBar[];
+  readonly session_vwap: number | null;
+  readonly sigma_basis_value: number | null;
+  readonly window_length?: number;
+}): readonly (number | null)[] | null {
+  const anchorValue = finiteOrNull(input.session_vwap);
+  const sigmaBasisValue = positiveFiniteOrNull(input.sigma_basis_value);
+  const windowLength = input.window_length ?? DEFAULT_SIGNED_SHOCK_VWAP_RECENT_WINDOW;
+  if (
+    anchorValue === null ||
+    sigmaBasisValue === null ||
+    input.bars.length === 0 ||
+    !Number.isSafeInteger(windowLength) ||
+    windowLength <= 0
+  ) {
+    return null;
+  }
+
+  return input.bars.slice(-windowLength).map((bar) => {
+    const close = finiteOrNull(bar.close);
+    return close === null ? null : round4((close - anchorValue) / sigmaBasisValue);
+  });
 }
 
 export function computeStructuralTrend(

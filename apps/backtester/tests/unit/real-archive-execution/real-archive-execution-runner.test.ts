@@ -87,6 +87,7 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
         sigma_basis: 'atr_14',
         sigma_basis_value: null,
       },
+      signed_shock_vwap_recent_values: null,
       signed_shock_prior_close: {
         value: null,
         anchor_type: 'prior_close',
@@ -128,6 +129,36 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
     });
 
     expect(snapshots[0]?.context.vix_prior_close_percentile).toBeNull();
+  });
+
+  it('populates signed-shock VWAP recent values after ATR warmup', async () => {
+    const snapshots: StrategyFeatureSnapshot[] = [];
+    const prices = Array.from({ length: 16 }, (_, index) => 100 + (index * 0.5));
+    await runFixture(capturingGenerator(snapshots), {
+      sessions: [
+        {
+          session_id: '2026-02-02-rth',
+          trading_date: '2026-02-02',
+          raw_symbol: 'MNQH6',
+          regime_label: 'high',
+          prior_day_close: 99.5,
+          prior_day_high: 101,
+          prior_day_low: 98,
+          rth_start_ts_ns: ns(0n),
+          trades_records: prices.map((price, index) =>
+            trade((BigInt(index) * 60_000_000_000n) + 1_000_000_000n, price)),
+          mbp1_records: prices.map((price, index) =>
+            mbp1((BigInt(index) * 60_000_000_000n) + 1_000_000_000n, price - 0.25, price + 0.25)),
+        },
+      ],
+    });
+
+    const warmedSnapshot = snapshots.find((snapshot) =>
+      snapshot.context.signed_shock_vwap_recent_values !== null);
+    expect(warmedSnapshot).toBeDefined();
+    const values = warmedSnapshot?.context.signed_shock_vwap_recent_values;
+    expect(values).toHaveLength(Math.min(warmedSnapshot?.bars.length ?? 0, 60));
+    expect(values?.[values.length - 1]).toBe(warmedSnapshot?.context.signed_shock_vwap.value);
   });
 });
 

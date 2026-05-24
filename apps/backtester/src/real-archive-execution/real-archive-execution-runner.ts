@@ -62,6 +62,7 @@ import {
   computeAtrSupertrend,
   computeAdx14,
   computeAtr14,
+  computeSignedShockVwapRecentValues,
   computeStructuralTrend,
   createSignedShockMeasurement,
   createSnapshotContextState,
@@ -1025,6 +1026,11 @@ function buildFeatureSnapshot(input: {
       anchor_type: 'vwap',
       anchor_value: input.context.session_vwap,
       sigma_basis: 'atr_14',
+      sigma_basis_value: atr14Pts,
+    }),
+    signed_shock_vwap_recent_values: computeSignedShockVwapRecentValues({
+      bars,
+      session_vwap: input.context.session_vwap,
       sigma_basis_value: atr14Pts,
     }),
     signed_shock_prior_close: createSignedShockMeasurement({

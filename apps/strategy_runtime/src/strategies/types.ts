@@ -85,6 +85,7 @@ export interface StrategyFeatureSnapshotContext {
   readonly session_vwap_band_sigma_pts: number | null;
   readonly overnight_return_bps: number | null;
   readonly signed_shock_vwap: SignedShockMeasurement;
+  readonly signed_shock_vwap_recent_values: readonly (number | null)[] | null;
   readonly signed_shock_prior_close: SignedShockMeasurement;
 }
 
