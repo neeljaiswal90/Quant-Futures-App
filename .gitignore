@@ -16,6 +16,9 @@ reports/
 data/probes/
 data/databento/
 
+# MOC-R2 large parquet output; regenerable via scratch/moc-research/extract-event-paths.mts
+scratch/moc-research/event-stream.parquet
+
 .env
 .env.*
 !.env.example
