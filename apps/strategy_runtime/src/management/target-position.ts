@@ -67,6 +67,7 @@ export interface TargetPositionTimeStopState {
   readonly deadline_ts_ns?: UnixNs;
   readonly pre_pt1_min_unrealized_r: number;
   readonly post_pt1_min_unrealized_r: number;
+  readonly at_deadline_extension: ManagementProfile['time_stop']['at_deadline_extension'];
 }
 
 export interface TargetPositionFailSafeState {
@@ -176,6 +177,7 @@ export interface TargetPositionJournalSummary {
   readonly realized_pnl_usd: number;
   readonly unrealized_pnl_usd: number;
   readonly updated_ts_ns: UnixNs;
+  readonly at_deadline_extension?: Exclude<ManagementProfile['time_stop']['at_deadline_extension'], 'enforce_floor'>;
 }
 
 export function buildTargetPositionFromCandidate(
@@ -406,6 +408,9 @@ export function summarizeTargetPositionForJournal(
     realized_pnl_usd: position.realized_pnl_usd,
     unrealized_pnl_usd: position.unrealized_pnl_usd,
     updated_ts_ns: position.updated_ts_ns,
+    ...(position.time_stop.at_deadline_extension === 'enforce_floor'
+      ? {}
+      : { at_deadline_extension: position.time_stop.at_deadline_extension }),
   };
 }
 
@@ -499,6 +504,7 @@ function buildTargetPosition(input: {
         : undefined,
       pre_pt1_min_unrealized_r: input.profile.time_stop.pre_pt1_min_unrealized_r,
       post_pt1_min_unrealized_r: input.profile.time_stop.post_pt1_min_unrealized_r,
+      at_deadline_extension: input.profile.time_stop.at_deadline_extension,
     },
     fail_safe: {
       enabled: input.profile.fail_safe.enabled,

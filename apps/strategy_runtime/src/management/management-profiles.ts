@@ -51,6 +51,7 @@ const BASE_TIME_STOP = {
   max_hold_minutes: 45,
   pre_pt1_min_unrealized_r: -0.25,
   post_pt1_min_unrealized_r: 0,
+  at_deadline_extension: 'enforce_floor',
   action: 'TIME_STOP_EXIT',
 } as const;
 

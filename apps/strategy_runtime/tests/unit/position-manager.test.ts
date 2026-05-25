@@ -6,6 +6,7 @@ import {
   makeCausationId,
   makeEventId,
   makeFillId,
+  makeManagementActionId,
   makeOrderIntentId,
   makePositionId,
   makeRunId,
@@ -22,10 +23,14 @@ import {
   evaluatePositionManager,
   isBreakEvenTriggerMet,
   resolveManagementProfile,
+  toPositionEventPayload,
+  validateManagementProfile,
   type ManagementProfile,
   type PositionManagerMarketInput,
   type TargetPosition,
 } from '../../src/management/index.js';
+import { loadManagementProfilesConfig } from '../../src/management/management-config.js';
+import { evaluateTimeStop } from '../../src/management/position-manager/time-stops.js';
 import { getActiveStrategyGenerator } from '../../src/strategies/index.js';
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
@@ -1012,7 +1017,380 @@ describe('MGMT-03 position-manager FSM', () => {
       }
     }
   });
+
+  it('D1 defaults omitted at_deadline_extension behavior to enforce_floor', () => {
+    const { profile, position } = openPosition('trend_pullback_long');
+    const managementYamlPath = join(process.cwd(), 'config/management/profiles.yaml');
+    const managementYaml = readFileSync(managementYamlPath, 'utf8');
+    expect(managementYaml).not.toContain('at_deadline_extension');
+    const loadedConfig = loadManagementProfilesConfig({
+      path: 'config/management/profiles.yaml',
+      cwd: process.cwd(),
+      required: true,
+    });
+
+    expect(loadedConfig.fallback_profile.time_stop.at_deadline_extension).toBe('enforce_floor');
+    expect(Object.values(loadedConfig.profiles).every((loadedProfile) => (
+      loadedProfile.time_stop.at_deadline_extension === 'enforce_floor'
+    ))).toBe(true);
+    expect(profile.time_stop.at_deadline_extension).toBe('enforce_floor');
+    const explicit = positionWithDeadlineExtension(position, 'enforce_floor');
+    const tick = market(position, {
+      event_ts_ns: position.time_stop.deadline_ts_ns,
+      mark_price: markAtUnrealizedR(position, -0.1),
+      high_price: position.entry_price,
+      low_price: position.entry_price,
+    });
+
+    expect(deadlineBehavior(evaluatePositionManager({ position, profile, market: tick }))).toEqual(
+      deadlineBehavior(evaluatePositionManager({ position: explicit, profile, market: tick })),
+    );
+  });
+
+  it('omits default at_deadline_extension from POSITION journal payload and defaults on round trip', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'enforce_floor');
+    const { position } = openPosition('trend_pullback_long', profile);
+
+    const payload = toPositionEventPayload(position);
+    expect(payload).not.toHaveProperty('at_deadline_extension');
+
+    const roundTripped = JSON.parse(JSON.stringify(payload, (_key, value: unknown) => (
+      typeof value === 'bigint' ? value.toString() : value
+    ))) as typeof payload;
+    expect(roundTripped.at_deadline_extension ?? 'enforce_floor').toBe('enforce_floor');
+  });
+
+  it('serializes non-default at_deadline_extension in POSITION journal payload', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'move_to_be');
+    const { position } = openPosition('trend_pullback_long', profile);
+
+    expect(toPositionEventPayload(position).at_deadline_extension).toBe('move_to_be');
+  });
+
+  it('accepts BREAKEVEN_ARMED management action journal payloads', () => {
+    const event = createJournalEventEnvelope({
+      event_id: makeEventId('evt-breakeven-armed'),
+      type: 'MGMT_ACTION',
+      ts_ns: NEXT_TS_NS,
+      run_id: makeRunId('run-breakeven-armed'),
+      session_id: makeSessionId('session-breakeven-armed'),
+      causation_id: makeCausationId('evt-breakeven-source'),
+      payload: {
+        management_action_id: makeManagementActionId('mgmt-breakeven-armed'),
+        position_id: makePositionId('position-breakeven-armed'),
+        action_type: 'BREAKEVEN_ARMED',
+        reason: 'time_stop:moved_stop_to_be_at_deadline',
+      },
+    });
+
+    expect(validateJournalEventEnvelope(event).ok).toBe(true);
+  });
+  it('D2 rejects unknown at_deadline_extension values', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'unknown_value' as DeadlineExtensionMode);
+    expect(profileValidationText(profile)).toContain('$.time_stop.at_deadline_extension: must be one of');
+  });
+
+  it('D3 enforce_floor holds pre-PT1 above the unrealized-R floor', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'enforce_floor');
+    const { position } = openPosition('trend_pullback_long', profile);
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, -0.1) });
+
+    expect(result.actions.some((action) => action.action_type === 'TIME_STOP_EXIT')).toBe(false);
+    expect(result.reasons).toContain('time_stop:held_past_deadline_pre_pt1');
+  });
+
+  it('D4 move_to_be exits pre-PT1 when unrealized R is negative despite enforce_floor holding', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'move_to_be');
+    const { position } = openPosition('trend_pullback_long', profile);
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, -0.1) });
+
+    expect(result.fsm_state).toBe('TIME_STOP_EXIT');
+    expect(result.actions.some((action) => action.action_type === 'TIME_STOP_EXIT')).toBe(true);
+  });
+
+  it('D5 move_to_be extends at exactly breakeven and arms BE state', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'move_to_be');
+    const { position } = openPosition('trend_pullback_long', profile);
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, 0) });
+
+    expect(result.actions.some((action) => action.action_type === 'TIME_STOP_EXIT')).toBe(false);
+    expect(result.actions.some((action) => action.action_type === 'BREAKEVEN_ARMED')).toBe(true);
+    expect(result.actions.some((action) => action.reason === 'time_stop:moved_stop_to_be_at_deadline')).toBe(true);
+    expect(result.updated_position.active_stop_price).toBe(position.entry_price);
+    expect(result.updated_position.break_even.moved).toBe(true);
+  });
+
+  it('D6 move_to_be preserves an already-tighter-than-entry stop without widening', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'move_to_be');
+    const opened = openPosition('trend_pullback_long', profile);
+    const position = {
+      ...opened.position,
+      active_stop_price: opened.position.entry_price + opened.position.instrument.tick_size,
+    };
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, 0.1) });
+
+    expect(result.updated_position.active_stop_price).toBe(position.active_stop_price);
+    expect(result.updated_position.break_even.moved).toBe(true);
+  });
+
+  it('D7 move_to_be marks break_even moved so the later break-even stage does not double-arm', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'move_to_be');
+    const { position } = openPosition('trend_pullback_long', profile);
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, 0) });
+
+    expect(result.updated_position.break_even.moved).toBe(true);
+    expect(result.actions.some((action) => action.action_type === 'MARK_BREAKEVEN')).toBe(false);
+  });
+
+  it('move_to_be no-ops when break-even was already armed before the deadline', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'move_to_be');
+    const opened = openPosition('trend_pullback_long', profile);
+    const position = {
+      ...opened.position,
+      active_stop_price: opened.position.entry_price,
+      break_even: {
+        ...opened.position.break_even,
+        moved: true,
+      },
+    };
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, 0.1) });
+
+    expect(result.actions).toEqual([]);
+    expect(result.reasons).toEqual(['position_manager:hold']);
+    expect(result.updated_position.active_stop_price).toBe(position.active_stop_price);
+    expect(result.updated_position.break_even.moved).toBe(true);
+  });
+
+  it('D8 rejects activate_trail when trailing_stop.enabled is false', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: false, mode: 'post_pt1_ticks', distance_ticks: 4 },
+    });
+    expect(profileValidationText(profile)).toContain('activate_trail requires trailing_stop.enabled true');
+  });
+
+  it('D9 rejects activate_trail when trailing_stop.distance_ticks is non-positive', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'post_pt1_ticks', distance_ticks: 0 },
+    });
+    expect(profileValidationText(profile)).toContain('activate_trail requires trailing_stop.distance_ticks > 0');
+  });
+
+  it('D10 activate_trail extends at exactly breakeven and activates trailing state', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'post_pt1_ticks', distance_ticks: 4 },
+    });
+    const { position } = openPosition('trend_pullback_long', profile);
+    const result = evaluateTimeStop(position, deadlineMarketAtR(position, 0, {
+      high_price: position.entry_price + (100 * position.instrument.tick_size),
+      low_price: position.entry_price,
+    }));
+
+    expect(result.actions.some((action) => action.action_type === 'TIME_STOP_EXIT')).toBe(false);
+    expect(result.actions.some((action) => action.action_type === 'ACTIVATE_TRAIL')).toBe(true);
+    expect(result.actions.some((action) => action.reason === 'time_stop:activated_trail_at_deadline')).toBe(true);
+    expect(result.position.trailing_stop.active).toBe(true);
+    expect(result.position.active_stop_price).toBe(position.entry_price);
+  });
+
+  it('D11 activate_trail applies the BE floor when raw trail would be wider than entry', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'post_pt1_ticks', distance_ticks: 40 },
+    });
+    const { position } = openPosition('trend_pullback_long', profile);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: deadlineMarketAtR(position, 0.1),
+    });
+
+    expect(result.updated_position.active_stop_price).toBe(position.entry_price);
+  });
+
+  it('D12 activate_trail preserves an already-tighter-than-entry stop without widening', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'post_pt1_ticks', distance_ticks: 40 },
+    });
+    const opened = openPosition('trend_pullback_long', profile);
+    const position = {
+      ...opened.position,
+      active_stop_price: opened.position.entry_price + opened.position.instrument.tick_size,
+    };
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: deadlineMarketAtR(position, 0.1),
+    });
+
+    expect(result.updated_position.active_stop_price).toBe(position.active_stop_price);
+  });
+
+  it('D13 activate_trail is a no-op when trail is already active before the deadline', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'post_pt1_ticks', distance_ticks: 4 },
+    });
+    const opened = openPosition('trend_pullback_long', profile);
+    const position = {
+      ...opened.position,
+      active_stop_price: opened.position.entry_price,
+      trailing_stop: { ...opened.position.trailing_stop, active: true },
+    };
+    const result = evaluateTimeStop(position, deadlineMarketAtR(position, 0, { high_price: position.entry_price }));
+
+    expect(result.actions).toEqual([]);
+    expect(result.reasons).toEqual([]);
+    expect(result.position.active_stop_price).toBe(position.entry_price);
+  });
+
+  it('D14 deadline-activated trail remains coherent when PT1 fires later', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'post_pt1_ticks', distance_ticks: 4 },
+    });
+    const { position } = openPosition('trend_pullback_long', profile);
+    const first = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, 0) });
+    const later = evaluatePositionManager({
+      position: first.updated_position,
+      profile,
+      market: market(first.updated_position, {
+        event_ts_ns: first.updated_position.time_stop.deadline_ts_ns ?? NEXT_TS_NS,
+        mark_price: first.updated_position.targets[0].price,
+        high_price: first.updated_position.targets[0].price,
+        low_price: first.updated_position.entry_price,
+      }),
+    });
+
+    expect(first.actions.some((action) => action.action_type === 'ACTIVATE_TRAIL')).toBe(true);
+    expect(later.actions.filter((action) => action.action_type === 'ACTIVATE_TRAIL')).toHaveLength(0);
+    expect(later.updated_position.trailing_stop.active).toBe(true);
+  });
+
+  it('D15 unconditional_exit exits at deadline even when favorable', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'unconditional_exit');
+    const { position } = openPosition('trend_pullback_long', profile);
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, 0.5) });
+
+    expect(result.fsm_state).toBe('TIME_STOP_EXIT');
+    expect(result.actions.some((action) => action.action_type === 'TIME_STOP_EXIT')).toBe(true);
+  });
+
+  it('D16 unconditional_exit ignores pre/post thresholds when unfavorable', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'unconditional_exit');
+    const { position } = openPosition('trend_pullback_long', profile);
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, -0.5) });
+
+    expect(result.fsm_state).toBe('TIME_STOP_EXIT');
+    expect(result.actions.some((action) => action.action_type === 'TIME_STOP_EXIT')).toBe(true);
+  });
+
+  it('D17 move_to_be is symmetric for short positions', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_short', 'move_to_be');
+    const { position } = openPosition('trend_pullback_short', profile);
+    const result = evaluatePositionManager({ position, profile, market: deadlineMarketAtR(position, 0) });
+
+    expect(result.actions.some((action) => action.action_type === 'TIME_STOP_EXIT')).toBe(false);
+    expect(result.actions.some((action) => action.action_type === 'BREAKEVEN_ARMED')).toBe(true);
+    expect(result.updated_position.active_stop_price).toBe(position.entry_price);
+  });
+
+  it('D18 activate_trail is symmetric for short positions with BE floor and no widening', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_short', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'post_pt1_ticks', distance_ticks: 40 },
+    });
+    const { position } = openPosition('trend_pullback_short', profile);
+    const result = evaluatePositionManager({
+      position,
+      profile,
+      market: deadlineMarketAtR(position, 0, { low_price: position.entry_price }),
+    });
+
+    expect(result.actions.some((action) => action.action_type === 'TIME_STOP_EXIT')).toBe(false);
+    expect(result.actions.some((action) => action.action_type === 'ACTIVATE_TRAIL')).toBe(true);
+    expect(result.updated_position.active_stop_price).toBe(position.entry_price);
+  });
+
+  it('D19 rejects activate_trail when trailing_stop.mode is disabled', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'disabled', distance_ticks: 4 },
+    });
+    expect(profileValidationText(profile)).toContain('activate_trail requires trailing_stop.mode post_pt1_ticks');
+  });
+
+  it('D20 rejects activate_trail when trailing_stop.mode is post_pt1_sigma', () => {
+    const profile = profileWithDeadlineExtension('trend_pullback_long', 'activate_trail', {
+      trailing_stop: { enabled: true, mode: 'post_pt1_sigma', distance_ticks: 4 },
+    });
+    expect(profileValidationText(profile)).toContain('activate_trail requires trailing_stop.mode post_pt1_ticks');
+  });
 });
+
+
+type DeadlineExtensionMode = TargetPosition['time_stop']['at_deadline_extension'];
+
+function profileWithDeadlineExtension(
+  strategyId: StrategyId,
+  mode: DeadlineExtensionMode,
+  overrides: {
+    readonly trailing_stop?: Partial<ManagementProfile['trailing_stop']>;
+    readonly time_stop?: Partial<ManagementProfile['time_stop']>;
+  } = {},
+): ManagementProfile {
+  const base = resolveManagementProfile(strategyId).profile;
+  return cloneProfile(base, {
+    time_stop: {
+      ...base.time_stop,
+      ...overrides.time_stop,
+      at_deadline_extension: mode,
+    },
+    trailing_stop: {
+      ...base.trailing_stop,
+      ...overrides.trailing_stop,
+    },
+  });
+}
+
+function positionWithDeadlineExtension(
+  position: TargetPosition,
+  mode: DeadlineExtensionMode,
+): TargetPosition {
+  return {
+    ...position,
+    time_stop: {
+      ...position.time_stop,
+      at_deadline_extension: mode,
+    },
+  };
+}
+
+function deadlineMarketAtR(
+  position: TargetPosition,
+  r: number,
+  overrides: Partial<PositionManagerMarketInput> = {},
+): PositionManagerMarketInput {
+  const markPrice = markAtUnrealizedR(position, r);
+  return market(position, {
+    event_ts_ns: position.time_stop.deadline_ts_ns,
+    mark_price: markPrice,
+    high_price: markPrice,
+    low_price: markPrice,
+    ...overrides,
+  });
+}
+
+function profileValidationText(profile: ManagementProfile): string {
+  return validateManagementProfile(profile)
+    .map((issue) => issue.path + ': ' + issue.message)
+    .join('\n');
+}
+
+function deadlineBehavior(result: ReturnType<typeof evaluatePositionManager>): unknown {
+  return {
+    fsm_state: result.fsm_state,
+    action_types: result.actions.map((action) => action.action_type),
+    reasons: result.reasons,
+    active_stop_price: result.updated_position.active_stop_price,
+    break_even_moved: result.updated_position.break_even.moved,
+    trailing_active: result.updated_position.trailing_stop.active,
+  };
+}
 
 function deterministicStringify(value: unknown): string {
   if (typeof value === 'bigint') {

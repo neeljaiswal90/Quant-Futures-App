@@ -29,6 +29,7 @@ import {
   MANAGEMENT_PROFILE_VERSION,
   assertValidManagementProfile,
   validateManagementProfile,
+  TIME_STOP_AT_DEADLINE_EXTENSIONS,
   type BreakEvenPolicy,
   type FailSafePolicy,
   type InitialStopBehavior,
@@ -372,6 +373,7 @@ function parseTimeStop(
     'max_hold_minutes',
     'pre_pt1_min_unrealized_r',
     'post_pt1_min_unrealized_r',
+    'at_deadline_extension',
     'action',
   ], issues);
   return {
@@ -379,6 +381,9 @@ function parseTimeStop(
     max_hold_minutes: readNonNegativeNumber(record, 'max_hold_minutes', path, issues),
     pre_pt1_min_unrealized_r: readNumberAllowNegative(record, 'pre_pt1_min_unrealized_r', path, issues),
     post_pt1_min_unrealized_r: readNumberAllowNegative(record, 'post_pt1_min_unrealized_r', path, issues),
+    at_deadline_extension: record.at_deadline_extension === undefined
+      ? 'enforce_floor'
+      : readLiteral(record, 'at_deadline_extension', path, TIME_STOP_AT_DEADLINE_EXTENSIONS, issues),
     action: readLiteral(record, 'action', path, ['TIME_STOP_EXIT'], issues),
   };
 }
