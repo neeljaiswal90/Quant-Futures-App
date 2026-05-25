@@ -202,6 +202,8 @@ describe('APP-02 contracts', () => {
       'liquidity_sweep_reversal_long',
       'liquidity_sweep_reversal_short',
       'regime_shock_reversion_short_v3',
+      'regime_shock_reversion_short_v5_strict_deadline',
+      'regime_shock_reversion_short_v5_trail_at_deadline',
     ]);
     expect(isStrategyId('vwap_overnight_reversal_long')).toBe(true);
     expect(isStrategyId('breakout_retest_long')).toBe(true);

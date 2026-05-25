@@ -60,6 +60,8 @@ const STRATEGY_ID_TO_RUN_ID_ABBREV: Record<StrategyId, string> = {
   vwap_overnight_reversal_short: 'vor_short',
   regime_shock_reversion_short_v2: 'rsr_short_v2',
   regime_shock_reversion_short_v3: 'rsr_short_v3',
+  regime_shock_reversion_short_v5_strict_deadline: 'rsr_short_v5_sd',
+  regime_shock_reversion_short_v5_trail_at_deadline: 'rsr_short_v5_td',
 };
 
 const TIME_BAR_RE = /^[1-9][0-9]*(s|m|h|d)$/u;

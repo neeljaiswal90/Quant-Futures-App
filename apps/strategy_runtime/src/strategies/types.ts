@@ -104,7 +104,8 @@ export interface StrategyRegistryEntry {
     | 'QFA-7xx-S2'
     | 'QFA-7xx-S1'
     | 'QFA-7xx-S3-v2'
-    | 'CYCLE4-V3-IMPL';
+    | 'CYCLE4-V3-IMPL'
+  | 'STRAT-V5-DEADLINE-VARIANTS-01';
   readonly synthetic_fixture_id: StrategyFixtureId;
   readonly enabled_in_v1: boolean;
 }
@@ -121,7 +122,9 @@ export type StrategyFixtureId =
   | 'fixture_vwap_overnight_reversal_long'
   | 'fixture_vwap_overnight_reversal_short'
   | 'fixture_regime_shock_reversion_short_v2'
-  | 'fixture_regime_shock_reversion_short_v3';
+  | 'fixture_regime_shock_reversion_short_v3'
+  | 'fixture_regime_shock_reversion_short_v5_strict_deadline'
+  | 'fixture_regime_shock_reversion_short_v5_trail_at_deadline';
 
 export interface StrategyFeatureSnapshot {
   readonly feature_snapshot_id: FeatureSnapshotId;

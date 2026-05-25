@@ -466,6 +466,44 @@ export const FALLBACK_MANAGEMENT_PROFILE = {
   ],
 } as const satisfies ManagementProfile;
 
+
+export const REGIME_SHOCK_REVERSION_SHORT_V5_STRICT_DEADLINE_MANAGEMENT_PROFILE: ManagementProfile = {
+  ...REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
+  profile_id: 'regime_shock_reversion_short_v5_strict_deadline_management_v1',
+  strategy_id: 'regime_shock_reversion_short_v5_strict_deadline',
+  display_name: 'Regime Shock Reversion Short V5 Strict Deadline Management V1',
+  reasons: [
+    'management_profile:regime_shock_reversion_short_v5_strict_deadline',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+  time_stop: {
+    ...REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE.time_stop,
+    at_deadline_extension: 'unconditional_exit',
+  },
+};
+
+export const REGIME_SHOCK_REVERSION_SHORT_V5_TRAIL_AT_DEADLINE_MANAGEMENT_PROFILE: ManagementProfile = {
+  ...REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
+  profile_id: 'regime_shock_reversion_short_v5_trail_at_deadline_management_v1',
+  strategy_id: 'regime_shock_reversion_short_v5_trail_at_deadline',
+  display_name: 'Regime Shock Reversion Short V5 Trail At Deadline Management V1',
+  reasons: [
+    'management_profile:regime_shock_reversion_short_v5_trail_at_deadline',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+  time_stop: {
+    ...REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE.time_stop,
+    at_deadline_extension: 'activate_trail',
+  },
+  trailing_stop: {
+    ...REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE.trailing_stop,
+    enabled: true,
+    distance_ticks: 8,
+    mode: 'post_pt1_ticks',
+  },
+};
 export const V1_MANAGEMENT_PROFILES = {
   trend_pullback_long: TREND_PULLBACK_LONG_MANAGEMENT_PROFILE,
   trend_pullback_short: TREND_PULLBACK_SHORT_MANAGEMENT_PROFILE,
@@ -479,6 +517,8 @@ export const V1_MANAGEMENT_PROFILES = {
   vwap_overnight_reversal_short: VWAP_OVERNIGHT_REVERSAL_SHORT_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v2: REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v3: REGIME_SHOCK_REVERSION_SHORT_V3_MANAGEMENT_PROFILE,
+  regime_shock_reversion_short_v5_strict_deadline: REGIME_SHOCK_REVERSION_SHORT_V5_STRICT_DEADLINE_MANAGEMENT_PROFILE,
+  regime_shock_reversion_short_v5_trail_at_deadline: REGIME_SHOCK_REVERSION_SHORT_V5_TRAIL_AT_DEADLINE_MANAGEMENT_PROFILE,
 } as const satisfies Readonly<Record<StrategyId, ManagementProfile>>;
 
 export function resolveManagementProfile(
