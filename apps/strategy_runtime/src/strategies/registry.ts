@@ -8,6 +8,8 @@ import { generateRegimeMeanReversionLong } from './regime_mean_reversion_long.js
 import { generateRegimeMeanReversionShort } from './regime_mean_reversion_short.js';
 import { generateRegimeShockReversionShortV2 } from './regime_shock_reversion_short_v2.js';
 import { generateRegimeShockReversionShortV3 } from './regime_shock_reversion_short_v3.js';
+import { generateRegimeShockReversionShortV5StrictDeadline } from './regime_shock_reversion_short_v5_strict_deadline.js';
+import { generateRegimeShockReversionShortV5TrailAtDeadline } from './regime_shock_reversion_short_v5_trail_at_deadline.js';
 import { generateTrendPullbackLong } from './trend_pullback_long.js';
 import { generateTrendPullbackShort } from './trend_pullback_short.js';
 import { generateVwapOvernightReversalLong } from './vwap_overnight_reversal_long.js';
@@ -139,7 +141,26 @@ const STRATEGY_REGISTRY_ENTRIES = {
     synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v3',
     enabled_in_v1: false,
   },
-} as const satisfies Record<StrategyId, StrategyRegistryEntry>;
+  regime_shock_reversion_short_v5_strict_deadline: {
+    strategy_id: 'regime_shock_reversion_short_v5_strict_deadline',
+    display_name: 'Regime Shock Reversion Short V5 Strict Deadline',
+    direction: 'short',
+    setup_family: 'regime_shock_reversion',
+    implementation_status: 'active',
+    extraction_ticket: 'STRAT-V5-DEADLINE-VARIANTS-01',
+    synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v5_strict_deadline',
+    enabled_in_v1: false,
+  },
+  regime_shock_reversion_short_v5_trail_at_deadline: {
+    strategy_id: 'regime_shock_reversion_short_v5_trail_at_deadline',
+    display_name: 'Regime Shock Reversion Short V5 Trail At Deadline',
+    direction: 'short',
+    setup_family: 'regime_shock_reversion',
+    implementation_status: 'active',
+    extraction_ticket: 'STRAT-V5-DEADLINE-VARIANTS-01',
+    synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v5_trail_at_deadline',
+    enabled_in_v1: false,
+  },} as const satisfies Record<StrategyId, StrategyRegistryEntry>;
 
 export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntry>> =
   STRATEGY_REGISTRY_ENTRIES;
@@ -160,6 +181,8 @@ const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> 
   liquidity_sweep_reversal_long: generateLiquiditySweepReversalLong,
   liquidity_sweep_reversal_short: generateLiquiditySweepReversalShort,
   regime_shock_reversion_short_v3: generateRegimeShockReversionShortV3,
+  regime_shock_reversion_short_v5_strict_deadline: generateRegimeShockReversionShortV5StrictDeadline,
+  regime_shock_reversion_short_v5_trail_at_deadline: generateRegimeShockReversionShortV5TrailAtDeadline,
   ...ACTIVE_STRATEGY_GENERATORS,
 };
 

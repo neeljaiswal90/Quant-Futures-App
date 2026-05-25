@@ -18,7 +18,7 @@ import {
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const EXPECTED_STRATEGY_CONFIG_HASH =
-  'db4c3a6eb916e58a42c14a6d1d75904f99b6f2caac11d04a87f9240efeff2aed';
+  'ec13082c0e8da6c35b8c51b5814a6540a4cadbe387b38b503855f6c8502635e1';
 
 const STRATEGY_CONFIG_FILES = [
   'shared.yaml',
@@ -149,6 +149,8 @@ describe('STRAT-07 strategy config surface', () => {
       vwap_overnight_reversal_short: 100,
       regime_shock_reversion_short_v2: 110,
       regime_shock_reversion_short_v3: 120,
+      regime_shock_reversion_short_v5_strict_deadline: 130,
+      regime_shock_reversion_short_v5_trail_at_deadline: 140,
     });
     expect(config.lineage.strategy_config_hash).toBe(EXPECTED_STRATEGY_CONFIG_HASH);
     expect(config.lineage.canonical_strategy_config_json).toContain(

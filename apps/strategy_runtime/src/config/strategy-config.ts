@@ -122,6 +122,8 @@ export interface StrategyConfigById {
   readonly vwap_overnight_reversal_short: VwapOvernightReversalStrategyParameters;
   readonly regime_shock_reversion_short_v2: RegimeMeanReversionStrategyParameters;
   readonly regime_shock_reversion_short_v3: RegimeShockReversionShortV3StrategyParameters;
+  readonly regime_shock_reversion_short_v5_strict_deadline: RegimeMeanReversionStrategyParameters;
+  readonly regime_shock_reversion_short_v5_trail_at_deadline: RegimeMeanReversionStrategyParameters;
 }
 
 export interface StrategyConfigLineage {
@@ -288,7 +290,17 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     vwap_overnight_reversal_short: 100,
     regime_shock_reversion_short_v2: 110,
     regime_shock_reversion_short_v3: 120,
+  regime_shock_reversion_short_v5_strict_deadline: 130,
+  regime_shock_reversion_short_v5_trail_at_deadline: 140,
   },
+};
+
+export const DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V5_STRICT_DEADLINE_CONFIG: RegimeMeanReversionStrategyParameters = {
+  ...DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
+};
+
+export const DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V5_TRAIL_AT_DEADLINE_CONFIG: RegimeMeanReversionStrategyParameters = {
+  ...DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
 };
 
 export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
@@ -304,6 +316,8 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   vwap_overnight_reversal_short: DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG,
   regime_shock_reversion_short_v2: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
   regime_shock_reversion_short_v3: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V3_CONFIG,
+  regime_shock_reversion_short_v5_strict_deadline: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V5_STRICT_DEADLINE_CONFIG,
+  regime_shock_reversion_short_v5_trail_at_deadline: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V5_TRAIL_AT_DEADLINE_CONFIG,
 };
 
 export const DEFAULT_STRATEGY_RUNTIME_CONFIG = buildStrategyRuntimeConfig(
@@ -325,6 +339,8 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   vwap_overnight_reversal_short: 'vwap_overnight_reversal_short.yaml',
   regime_shock_reversion_short_v2: 'regime_shock_reversion_short_v2.yaml',
   regime_shock_reversion_short_v3: 'regime_shock_reversion_short_v3.yaml',
+  regime_shock_reversion_short_v5_strict_deadline: 'regime_shock_reversion_short_v5_strict_deadline.yaml',
+  regime_shock_reversion_short_v5_trail_at_deadline: 'regime_shock_reversion_short_v5_trail_at_deadline.yaml',
 } as const satisfies Record<StrategyId, string>;
 
 export function loadStrategyRuntimeConfig(
@@ -388,6 +404,14 @@ export function loadStrategyRuntimeConfig(
       'regime_shock_reversion_short_v2',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v2), sourceFiles),
     ),
+    regime_shock_reversion_short_v5_strict_deadline: parseRegimeMeanReversionConfig(
+      'regime_shock_reversion_short_v5_strict_deadline',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v5_strict_deadline), sourceFiles),
+    ),
+    regime_shock_reversion_short_v5_trail_at_deadline: parseRegimeMeanReversionConfig(
+      'regime_shock_reversion_short_v5_trail_at_deadline',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v5_trail_at_deadline), sourceFiles),
+    ),
     regime_shock_reversion_short_v3: parseRegimeShockReversionShortV3Config(
       'regime_shock_reversion_short_v3',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v3), sourceFiles),
@@ -439,7 +463,10 @@ export function getStrategyParameters(
 ): VwapOvernightReversalStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
-  strategyId: 'regime_shock_reversion_short_v2',
+  strategyId:
+    | 'regime_shock_reversion_short_v2'
+    | 'regime_shock_reversion_short_v5_strict_deadline'
+    | 'regime_shock_reversion_short_v5_trail_at_deadline',
 ): RegimeMeanReversionStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
@@ -544,6 +571,8 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'vwap_overnight_reversal_short',
     'regime_shock_reversion_short_v2',
     'regime_shock_reversion_short_v3',
+    'regime_shock_reversion_short_v5_strict_deadline',
+    'regime_shock_reversion_short_v5_trail_at_deadline',
   ], issues);
 
   const parsed = {
@@ -567,6 +596,8 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         vwap_overnight_reversal_short: readNumber(strategyPriority, 'vwap_overnight_reversal_short', '$.ranking.strategy_priority', issues),
         regime_shock_reversion_short_v2: readNumber(strategyPriority, 'regime_shock_reversion_short_v2', '$.ranking.strategy_priority', issues),
         regime_shock_reversion_short_v3: readNumber(strategyPriority, 'regime_shock_reversion_short_v3', '$.ranking.strategy_priority', issues),
+        regime_shock_reversion_short_v5_strict_deadline: readNumber(strategyPriority, 'regime_shock_reversion_short_v5_strict_deadline', '$.ranking.strategy_priority', issues),
+        regime_shock_reversion_short_v5_trail_at_deadline: readNumber(strategyPriority, 'regime_shock_reversion_short_v5_trail_at_deadline', '$.ranking.strategy_priority', issues),
       },
     },
   };
@@ -654,7 +685,12 @@ function parseBreakoutRetestConfig(
 }
 
 function parseRegimeMeanReversionConfig(
-  strategyId: 'regime_mean_reversion_long' | 'regime_mean_reversion_short' | 'regime_shock_reversion_short_v2',
+  strategyId:
+    | 'regime_mean_reversion_long'
+    | 'regime_mean_reversion_short'
+    | 'regime_shock_reversion_short_v2'
+    | 'regime_shock_reversion_short_v5_strict_deadline'
+    | 'regime_shock_reversion_short_v5_trail_at_deadline',
   input: unknown,
 ): RegimeMeanReversionStrategyParameters {
   const issues: ConfigValidationIssue[] = [];

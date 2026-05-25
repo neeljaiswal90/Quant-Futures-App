@@ -16,3 +16,5 @@ export * from './types.js';
 export * from './vwap_overnight_reversal_common.js';
 export * from './vwap_overnight_reversal_long.js';
 export * from './vwap_overnight_reversal_short.js';
+export * from './regime_shock_reversion_short_v5_strict_deadline.js';
+export * from './regime_shock_reversion_short_v5_trail_at_deadline.js';

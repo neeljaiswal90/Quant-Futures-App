@@ -53,6 +53,8 @@ export type ManagementProfileId =
   | 'vwap_overnight_reversal_short_management_v1'
   | 'regime_shock_reversion_short_v2_management_v1'
   | 'regime_shock_reversion_short_v3_management_v1'
+  | 'regime_shock_reversion_short_v5_strict_deadline_management_v1'
+  | 'regime_shock_reversion_short_v5_trail_at_deadline_management_v1'
   | 'fallback_management_v1';
 
 export interface InitialStopBehavior {

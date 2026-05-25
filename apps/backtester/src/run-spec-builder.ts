@@ -34,7 +34,7 @@ export interface BuiltBacktestRunSpec {
   readonly manifest_symbol: string;
 }
 
-const STRATEGY_CONFIG_PATHS: Readonly<Record<StrategyId, string>> = Object.freeze({
+export const STRATEGY_CONFIG_PATHS: Readonly<Record<StrategyId, string>> = Object.freeze({
   trend_pullback_long: 'config/strategies/trend_pullback_long.yaml',
   trend_pullback_short: 'config/strategies/trend_pullback_short.yaml',
   breakout_retest_long: 'config/strategies/breakout_retest_long.yaml',
@@ -47,6 +47,8 @@ const STRATEGY_CONFIG_PATHS: Readonly<Record<StrategyId, string>> = Object.freez
   vwap_overnight_reversal_short: 'config/strategies/vwap_overnight_reversal_short.yaml',
   regime_shock_reversion_short_v2: 'config/strategies/regime_shock_reversion_short_v2.yaml',
   regime_shock_reversion_short_v3: 'config/strategies/regime_shock_reversion_short_v3.yaml',
+  regime_shock_reversion_short_v5_strict_deadline: 'config/strategies/regime_shock_reversion_short_v5_strict_deadline.yaml',
+  regime_shock_reversion_short_v5_trail_at_deadline: 'config/strategies/regime_shock_reversion_short_v5_trail_at_deadline.yaml',
 });
 
 const RECOGNIZED_SCHEMAS: ReadonlySet<string> = new Set([

@@ -16,6 +16,8 @@ export const REGISTERED_INACTIVE_STRATEGY_IDS = [
   'liquidity_sweep_reversal_long',
   'liquidity_sweep_reversal_short',
   'regime_shock_reversion_short_v3',
+  'regime_shock_reversion_short_v5_strict_deadline',
+  'regime_shock_reversion_short_v5_trail_at_deadline',
 ] as const;
 
 export const ALL_STRATEGY_IDS = [
