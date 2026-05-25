@@ -188,6 +188,9 @@ export function toPositionEventPayload(position: TargetPosition): PositionEventP
     quantity_open: summary.remaining_quantity,
     avg_entry_price: summary.entry_price,
     updated_ts_ns: summary.updated_ts_ns,
+    ...(summary.at_deadline_extension === undefined
+      ? {}
+      : { at_deadline_extension: summary.at_deadline_extension }),
   };
 }
 

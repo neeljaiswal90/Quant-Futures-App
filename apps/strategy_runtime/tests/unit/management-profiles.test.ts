@@ -211,6 +211,7 @@ describe('MGMT-01 management profile substrate', () => {
       'TAKE_PROFIT',
       'EXIT_FULL',
       'MARK_BREAKEVEN',
+      'BREAKEVEN_ARMED',
       'ACTIVATE_TRAIL',
       'FAIL_SAFE_EXIT',
       'TIME_STOP_EXIT',

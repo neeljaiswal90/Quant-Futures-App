@@ -233,6 +233,11 @@ export const PROFILE_WIRING_MANIFEST = {
     consultation_kind: 'gate',
     rationale: 'Deadline timestamp gates time-stop evaluation.',
   },
+  'time_stop.at_deadline_extension': {
+    evaluators: ['time-stop'],
+    consultation_kind: 'gate',
+    rationale: 'ADR-0027 LD-027-1: switch dispatch in evaluateTimeStop selects mode for deadline behavior.',
+  },
   'time_stop.pre_pt1_min_unrealized_r': {
     evaluators: ['time-stop'],
     consultation_kind: 'arithmetic',

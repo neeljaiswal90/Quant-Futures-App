@@ -76,6 +76,7 @@ const TARGET_POSITION_FIELD_PATHS = [
   'targets[].reward_risk',
   'targets[].status',
   'time_stop.deadline_ts_ns',
+  'time_stop.at_deadline_extension',
   'time_stop.enabled',
   'time_stop.max_hold_minutes',
   'time_stop.opened_ts_ns',
@@ -111,23 +112,22 @@ describe('management profile wiring manifest', () => {
     for (const fieldPath of PROFILE_WIRING_FIELD_PATHS) {
       expect(pathExists(base.position, fieldPath), `${fieldPath} should exist on TargetPosition`).toBe(true);
     }
-    expect(PROFILE_WIRING_FIELD_PATHS).not.toContain('time_stop.at_deadline_extension');
   });
 
   it('W1 rejects manifest entries that reference non-existent fields', () => {
     const manifest = {
       ...PROFILE_WIRING_MANIFEST,
-      'time_stop.at_deadline_extension': {
+      'time_stop.synthetic_missing_extension_for_test': {
         evaluators: ['time-stop'],
         consultation_kind: 'reserved_for_pending_implementation',
-        consumer_ticket: 'MGMT-DEADLINE-EXTENSION-01',
+        consumer_ticket: 'QFA-SYNTHETIC-TEST-NEVER-MERGED',
         expected_evaluator: 'time-stop',
-        rationale: 'Synthetic check: ADR-only fields must not enter the production manifest early.',
+        rationale: 'Synthetic check: manifest entries must not reference missing fields.',
       },
     } satisfies Readonly<Record<string, ProfileFieldWiringEntry>>;
 
     expect(() => assertManifestFieldsExist(manifest, neutralPosition().position)).toThrow(
-      'manifest entry time_stop.at_deadline_extension references a field that does not exist on TargetPosition',
+      'manifest entry time_stop.synthetic_missing_extension_for_test references a field that does not exist on TargetPosition',
     );
   });
 
@@ -241,6 +241,8 @@ function scenarioFor(fieldPath: FieldPath): ScenarioPair {
       return timeStopEnabledScenario();
     case 'time_stop.deadline_ts_ns':
       return timeStopDeadlineScenario();
+    case 'time_stop.at_deadline_extension':
+      return timeStopDeadlineExtensionScenario();
     case 'time_stop.pre_pt1_min_unrealized_r':
       return timeStopPrePt1FloorScenario();
     case 'time_stop.post_pt1_min_unrealized_r':
@@ -480,6 +482,21 @@ function timeStopDeadlineScenario(): ScenarioPair {
   return pair(
     withPosition(position, { time_stop: { ...position.time_stop, deadline_ts_ns: FUTURE_TS_NS } }),
     withPosition(position, { time_stop: { ...position.time_stop, deadline_ts_ns: NEXT_TS_NS } }),
+    base.profile,
+    market,
+  );
+}
+
+function timeStopDeadlineExtensionScenario(): ScenarioPair {
+  const base = neutralPosition();
+  const position = timeStopReadyPosition(base.position);
+  const market = marketAtUnrealizedR(position, 0, {
+    event_ts_ns: position.time_stop.deadline_ts_ns ?? FUTURE_TS_NS,
+  });
+
+  return pair(
+    withPosition(position, { time_stop: { ...position.time_stop, at_deadline_extension: 'enforce_floor' } }),
+    withPosition(position, { time_stop: { ...position.time_stop, at_deadline_extension: 'unconditional_exit' } }),
     base.profile,
     market,
   );

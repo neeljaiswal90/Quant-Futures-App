@@ -500,6 +500,11 @@ export interface ExecutionRejectEventPayload {
   readonly position_manager_version?: string;
 }
 
+export type TimeStopAtDeadlineExtensionPayload =
+  | 'move_to_be'
+  | 'activate_trail'
+  | 'unconditional_exit';
+
 export interface PositionEventPayload {
   readonly position_id: PositionId;
   readonly candidate_id: CandidateId;
@@ -512,6 +517,7 @@ export interface PositionEventPayload {
   readonly management_profile_hash?: string;
   readonly management_profile_id?: string;
   readonly management_profile_version?: number;
+  readonly at_deadline_extension?: TimeStopAtDeadlineExtensionPayload;
 }
 
 export interface ManagementTickEventPayload {

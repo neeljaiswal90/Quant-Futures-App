@@ -1154,6 +1154,11 @@ function validatePositionPayload(
   optionalNonEmptyString(record.management_profile_hash, `${path}.management_profile_hash`, issues);
   optionalNonEmptyString(record.management_profile_id, `${path}.management_profile_id`, issues);
   optionalNumber(record.management_profile_version, `${path}.management_profile_version`, issues);
+  optionalEnum(record.at_deadline_extension, `${path}.at_deadline_extension`, issues, [
+    'move_to_be',
+    'activate_trail',
+    'unconditional_exit',
+  ]);
 }
 
 function validateManagementTickPayload(
@@ -1189,6 +1194,7 @@ function validateManagementActionPayload(
     'TAKE_PROFIT',
     'EXIT_FULL',
     'MARK_BREAKEVEN',
+    'BREAKEVEN_ARMED',
     'ACTIVATE_TRAIL',
     'FAIL_SAFE_EXIT',
     'TIME_STOP_EXIT',

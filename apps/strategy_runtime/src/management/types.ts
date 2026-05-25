@@ -18,12 +18,27 @@ export const MANAGEMENT_ACTION_TYPES = [
   'TAKE_PROFIT',
   'EXIT_FULL',
   'MARK_BREAKEVEN',
+  'BREAKEVEN_ARMED',
   'ACTIVATE_TRAIL',
   'FAIL_SAFE_EXIT',
   'TIME_STOP_EXIT',
 ] as const satisfies readonly ManagementActionType[];
 
 export type V1ManagementActionType = (typeof MANAGEMENT_ACTION_TYPES)[number];
+
+export const TIME_STOP_AT_DEADLINE_EXTENSIONS = [
+  'enforce_floor',
+  'move_to_be',
+  'activate_trail',
+  'unconditional_exit',
+] as const;
+
+export type TimeStopAtDeadlineExtension = typeof TIME_STOP_AT_DEADLINE_EXTENSIONS[number];
+
+export function isTimeStopAtDeadlineExtension(value: unknown): value is TimeStopAtDeadlineExtension {
+  return typeof value === 'string' &&
+    (TIME_STOP_AT_DEADLINE_EXTENSIONS as readonly string[]).includes(value);
+}
 export type ManagementProfileStrategyId = StrategyId | 'fallback';
 export type ManagementProfileId =
   | 'trend_pullback_long_management_v1'
@@ -77,6 +92,7 @@ export interface TimeStopPolicy {
   readonly max_hold_minutes: number;
   readonly pre_pt1_min_unrealized_r: number;
   readonly post_pt1_min_unrealized_r: number;
+  readonly at_deadline_extension: TimeStopAtDeadlineExtension;
   readonly action: Extract<V1ManagementActionType, 'TIME_STOP_EXIT'>;
 }
 
@@ -183,7 +199,7 @@ export function validateManagementProfile(
   validateTargets(profile.targets, issues);
   validateBreakEven(profile.break_even, issues);
   validateTrailingStop(profile.trailing_stop, issues);
-  validateTimeStop(profile.time_stop, issues);
+  validateTimeStop(profile.time_stop, profile.trailing_stop, issues);
   validateFailSafe(profile.fail_safe, issues);
   validatePartialExit(profile.partial_exit, issues);
 
@@ -413,6 +429,7 @@ function validateTrailingStop(
 
 function validateTimeStop(
   value: TimeStopPolicy | undefined,
+  trailingStop: TrailingStopPolicy | undefined,
   issues: ManagementProfileValidationIssue[],
 ): void {
   if (value === undefined) {
@@ -427,6 +444,40 @@ function validateTimeStop(
   }
   requireFiniteNumber(value.pre_pt1_min_unrealized_r, '$.time_stop.pre_pt1_min_unrealized_r', issues);
   requireFiniteNumber(value.post_pt1_min_unrealized_r, '$.time_stop.post_pt1_min_unrealized_r', issues);
+  if (!isTimeStopAtDeadlineExtension(value.at_deadline_extension)) {
+    addIssue(
+      issues,
+      '$.time_stop.at_deadline_extension',
+      'invalid_field_value',
+      `must be one of ${TIME_STOP_AT_DEADLINE_EXTENSIONS.join(', ')}`,
+    );
+  }
+  if (value.at_deadline_extension === 'activate_trail') {
+    if (trailingStop?.enabled !== true) {
+      addIssue(
+        issues,
+        '$.time_stop.at_deadline_extension',
+        'invalid_field_value',
+        'activate_trail requires trailing_stop.enabled true',
+      );
+    }
+    if (!Number.isFinite(trailingStop?.distance_ticks) || (trailingStop?.distance_ticks ?? 0) <= 0) {
+      addIssue(
+        issues,
+        '$.time_stop.at_deadline_extension',
+        'invalid_field_value',
+        'activate_trail requires trailing_stop.distance_ticks > 0',
+      );
+    }
+    if (trailingStop?.mode !== 'post_pt1_ticks') {
+      addIssue(
+        issues,
+        '$.time_stop.at_deadline_extension',
+        'invalid_field_value',
+        'activate_trail requires trailing_stop.mode post_pt1_ticks',
+      );
+    }
+  }
   if (value.action !== 'TIME_STOP_EXIT') {
     addIssue(issues, '$.time_stop.action', 'invalid_field_value', 'must be TIME_STOP_EXIT');
   }
