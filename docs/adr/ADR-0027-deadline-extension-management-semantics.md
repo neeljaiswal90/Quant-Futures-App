@@ -360,6 +360,7 @@ The MGMT-BUG-FIX-02 packet (PR #240) already established the corrected `'enforce
 - ADR-0023 (SignedShockMeasurement + anti-pattern #4 lock; LD-027-8 enforces anti-pattern #4 for the new enum)
 - ADR-0024 (post-verdict bug re-derivation protocol; LD-027-9 explicitly preserves CF-30 / re-derivation discipline)
 - PR #240 / commit `d1d7461` (MGMT-BUG-FIX-02; corrected runtime that this ADR's schema extension consumes)
+- PR #241 / commit `41beaaf` (REDERIVATION-02 joint invocation memo per ADR-0024 LD-024-2; precipitating authority artifact for this ADR's Cycle4 v5 hypothesis scope)
 - PR #236 / commit `ea3a2ea` (CYCLE4-S2 signed_shock arm state; precedent for schema additions that preserve existing-strategy fingerprints)
 - `docs/research/qfa-611-cycle3-rederivation-02-memo.md` (REDERIVATION-02 substantive findings; precipitating context for this ADR — TBD until Track B closes)
 - `docs/research/strategy-stack-mathematical-validity-audit.md` (analytical context: brief 2's hypothesis framework that includes management-axis vs signal-axis variants)
