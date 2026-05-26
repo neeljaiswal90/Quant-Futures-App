@@ -1,6 +1,8 @@
 // Module under test: data/dbn-loader; ticket QFA-102.
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { zstdCompressSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { DbnFormatError } from '../../../src/data/dbn-errors.js';
 import { loadDbnFile, translateLegacyDbnPath } from '../../../src/data/dbn-loader.js';
@@ -8,6 +10,7 @@ import { loadDbnFile, translateLegacyDbnPath } from '../../../src/data/dbn-loade
 const FIXTURE_DIR = resolve('apps/strategy_runtime/tests/fixtures/dbn');
 const REAL_MBO_PATH =
   'D:/qfa-cache/databento/tier-a-feb-mar-2026/2026-02-03-rth/mbo.dbn.zst';
+const ZSTD_FRAME_MAGIC_BYTES = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 
 async function collectSchemas(path: string, schema: Parameters<typeof loadDbnFile>[1]) {
   const records = [];
@@ -45,6 +48,29 @@ describe('QFA-102 DBN loader', () => {
       'mbo',
     );
     expect(straddled).toEqual(uncompressed);
+  });
+
+  it('uses exact zstd frame lengths when compressed payload contains frame magic bytes', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'qfa-dbn-loader-'));
+    try {
+      const source = readFileSync(resolve(FIXTURE_DIR, 'mbo-minimal.dbn'));
+      const recordsOffset = 8 + source.readUInt32LE(4);
+      const recordLength = source[recordsOffset] * 4;
+      const record = Buffer.from(source.subarray(recordsOffset, recordsOffset + recordLength));
+      ZSTD_FRAME_MAGIC_BYTES.copy(record, 8);
+
+      const compressed = zstdCompressSync(Buffer.concat([source.subarray(0, recordsOffset), record]));
+      expect(compressed.indexOf(ZSTD_FRAME_MAGIC_BYTES, ZSTD_FRAME_MAGIC_BYTES.length)).toBeGreaterThan(0);
+
+      const path = join(tempDir, 'embedded-frame-magic.dbn.zst');
+      writeFileSync(path, compressed);
+
+      const records = await collectSchemas(path, 'mbo');
+      expect(records).toHaveLength(1);
+      expect(records[0]?.schema).toBe('mbo');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('terminates cleanly at EOF', async () => {
