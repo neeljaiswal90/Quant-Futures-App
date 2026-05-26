@@ -77,9 +77,11 @@ import type {
   RealArchiveBacktestResult,
   RealArchiveExecutionFillPolicy,
   RealArchiveExitReason,
+  RealArchivePerTradeExitRecord,
   RealArchivePerTradeRecord,
   RealArchiveRegimeLabel,
   RealArchiveSessionSource,
+  RealArchiveTimeStopAtDeadlineExtension,
   RealArchiveStrategyGenerator,
   RealArchiveTopOfBook,
   SpreadBucket,
@@ -142,6 +144,10 @@ interface EntryMetadata {
   readonly spread_bucket: SpreadBucket;
   readonly queue_ahead_bucket: QueueAheadBucket;
   readonly estimate: PassiveFillEstimate;
+  readonly entry_quantity: number;
+  readonly management_profile_id: string;
+  readonly time_stop_at_deadline_extension: RealArchiveTimeStopAtDeadlineExtension;
+  readonly exits: RealArchivePerTradeExitRecord[];
   exit_reason?: RealArchiveExitReason;
   exit_bar_index?: number;
   max_favorable_excursion_cents?: bigint;
@@ -485,17 +491,21 @@ async function runSession(input: {
       commissionUsd: input.fillPolicy.commission_usd,
     });
     input.events.push(entryFill as AnyJournalEventEnvelope);
+    const managementProfile = resolveManagementProfile(candidate.strategy_id, { allow_fallback: false }).profile;
     const entryMetadata = {
       spread_bucket: spreadBucket(quoteState.latest),
       queue_ahead_bucket: queueAheadBucketFromQuote(candidate.direction, quoteState.latest),
       estimate,
+      entry_quantity: input.fillPolicy.order_quantity,
+      management_profile_id: managementProfile.profile_id,
+      time_stop_at_deadline_extension: managementProfile.time_stop.at_deadline_extension,
+      exits: [],
       exit_reason: 'unknown' as const,
       exit_bar_index: 0,
       max_favorable_excursion_cents: 0n,
       max_adverse_excursion_cents: 0n,
     };
     input.entryMetadataByOrderIntentId.set(String(orderIntent.payload.order_intent_id), entryMetadata);
-    const managementProfile = resolveManagementProfile(candidate.strategy_id, { allow_fallback: false }).profile;
     const targetPosition = applyInitialFillToTargetPosition(
       buildTargetPositionFromCandidate({
         candidate,
@@ -625,6 +635,7 @@ function closeOpenPosition(input: {
       price: action.exit_price!,
     }));
   const preManagementQuantity = input.openPosition.target_position.remaining_quantity;
+  const metadata = input.entryMetadataByOrderIntentId.get(String(input.openPosition.order_intent_id));
   const fullyClosed =
     input.exitReason === 'session_close' ||
     input.postManagementPosition?.lifecycle_state === 'closed' ||
@@ -659,6 +670,13 @@ function closeOpenPosition(input: {
       estimate: input.openPosition.entry_estimate,
     });
     input.events.push(exitFill as AnyJournalEventEnvelope);
+    metadata?.exits.push(Object.freeze({
+      exit_ts_ns: input.bar.last_record_ts_ns,
+      exit_quantity: exitInput.quantity,
+      management_action_reason: exitInput.action?.reason ?? null,
+      management_action_type: exitInput.action?.action_type ?? null,
+      target_label: exitInput.action?.target_label ?? null,
+    }));
     input.events.push(positionEvent({
       runId: input.runId,
       sessionId: input.sessionId,
@@ -678,7 +696,6 @@ function closeOpenPosition(input: {
     return { openPosition: input.openPosition, exitFillCount: exitInputs.length };
   }
 
-  const metadata = input.entryMetadataByOrderIntentId.get(String(input.openPosition.order_intent_id));
   if (metadata !== undefined) {
     metadata.exit_reason = input.exitReason;
     metadata.exit_bar_index = input.barIndex - input.openPosition.entry_bar_index;
@@ -1383,6 +1400,13 @@ function enrichTrades(input: {
       entry_px: trade.average_entry_price,
       exit_px: trade.average_exit_price,
       quantity: trade.exit_quantity,
+      entry_quantity: entryMetadata?.entry_quantity ?? entryExecution.quantity,
+      exit_quantity: trade.exit_quantity,
+      management_profile_id: entryMetadata?.management_profile_id
+        ?? entryFill?.payload.management_profile_id
+        ?? 'unknown',
+      time_stop_at_deadline_extension: entryMetadata?.time_stop_at_deadline_extension ?? 'enforce_floor',
+      exits: Object.freeze([...(entryMetadata?.exits ?? [])]),
       pnl_cents: pnl.net_pnl_cents,
       spread_bucket: entryMetadata?.spread_bucket ?? 'unknown',
       queue_ahead_bucket: entryMetadata?.queue_ahead_bucket ?? queueAheadBucketFromFill(entryFill),

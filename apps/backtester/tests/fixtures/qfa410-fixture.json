@@ -41,17 +41,37 @@
   "trades": [
     {
       "entry_ts_ns": "1000000000",
+      "entry_quantity": 2,
+      "exits": [
+        {
+          "exit_quantity": 1,
+          "exit_ts_ns": "61000000000",
+          "management_action_reason": "target:pt1:hit",
+          "management_action_type": "TAKE_PARTIAL",
+          "target_label": "pt1"
+        },
+        {
+          "exit_quantity": 1,
+          "exit_ts_ns": "121000000000",
+          "management_action_reason": "target:pt2:hit",
+          "management_action_type": "TAKE_PROFIT",
+          "target_label": "pt2"
+        }
+      ],
       "exit_bar_index": 2,
+      "exit_quantity": 2,
       "exit_reason": "target",
       "exit_ts_ns": "121000000000",
       "gross_pnl_cents": "100",
+      "management_profile_id": "test-fixture-management-profile",
       "max_adverse_excursion_cents": "-25",
       "max_favorable_excursion_cents": "150",
       "net_pnl_cents": "75",
       "queue_ahead_bucket": "6-20",
       "regime": "high",
       "side": "long",
-      "spread_bucket": "2-tick"
+      "spread_bucket": "2-tick",
+      "time_stop_at_deadline_extension": "enforce_floor"
     }
   ],
   "walk_forward_policy": {

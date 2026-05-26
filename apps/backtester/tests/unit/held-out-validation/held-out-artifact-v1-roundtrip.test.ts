@@ -48,6 +48,29 @@ describe('HeldOutValidationArtifactV1 writer', () => {
     expect(fixture.strategy_family).toBe('continuation');
     expect(fixture.parameter_lock_source).toBe('test-fixture');
     expect(fixture.trades[0]?.gross_pnl_cents).not.toBe(fixture.trades[0]?.net_pnl_cents);
+    expect(fixture.trades[0]).not.toHaveProperty('quantity');
+    expect(fixture.trades[0]).toMatchObject({
+      entry_quantity: 2,
+      exit_quantity: 2,
+      management_profile_id: 'test-fixture-management-profile',
+      time_stop_at_deadline_extension: 'enforce_floor',
+      exits: [
+        {
+          exit_ts_ns: '61000000000',
+          exit_quantity: 1,
+          management_action_reason: 'target:pt1:hit',
+          management_action_type: 'TAKE_PARTIAL',
+          target_label: 'pt1',
+        },
+        {
+          exit_ts_ns: '121000000000',
+          exit_quantity: 1,
+          management_action_reason: 'target:pt2:hit',
+          management_action_type: 'TAKE_PROFIT',
+          target_label: 'pt2',
+        },
+      ],
+    });
     expect(fixture.session_returns).toHaveLength(5);
   });
 
@@ -68,11 +91,24 @@ describe('HeldOutValidationArtifactV1 writer', () => {
       expect(firstArtifact.gating_pnl_basis).toBe('net');
       expect(firstArtifact.capability_status).toBe('ready_for_replay');
       expect(firstArtifact.trades[0]?.gross_pnl_cents).not.toBe(firstArtifact.trades[0]?.net_pnl_cents);
+      expect(firstArtifact.schema_version).toBe(1);
+      expect(firstArtifact.trades[0]).not.toHaveProperty('quantity');
       expect(firstArtifact.trades[0]).toMatchObject({
+        entry_quantity: 1,
+        exit_quantity: 1,
+        management_profile_id: expect.any(String),
+        time_stop_at_deadline_extension: 'enforce_floor',
         regime: 'high',
         spread_bucket: '2-tick',
         queue_ahead_bucket: '6-20',
         exit_reason: 'fail_safe',
+        exits: [{
+          exit_ts_ns: '121000000000',
+          exit_quantity: 1,
+          management_action_reason: expect.stringMatching(/^fail_safe:/),
+          management_action_type: 'FAIL_SAFE_EXIT',
+          target_label: null,
+        }],
       });
     } finally {
       rmSync(outputDir, { force: true, recursive: true });

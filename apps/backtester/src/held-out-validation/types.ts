@@ -170,6 +170,19 @@ export type HeldOutValidationArtifactRegime = Exclude<RealArchiveRegimeLabel, 'u
 export type HeldOutValidationArtifactSpreadBucket = Exclude<SpreadBucket, 'unknown'>;
 export type HeldOutValidationArtifactQueueAheadBucket = Exclude<QueueAheadBucket, 'unknown'>;
 export type HeldOutValidationArtifactExitReason = Exclude<RealArchiveExitReason, 'unknown' | 'strategy_exit'>;
+export type HeldOutValidationArtifactTimeStopAtDeadlineExtension =
+  | 'enforce_floor'
+  | 'move_to_be'
+  | 'activate_trail'
+  | 'unconditional_exit';
+
+export interface HeldOutValidationArtifactTradeExitV1 {
+  readonly exit_ts_ns: string;
+  readonly exit_quantity: number;
+  readonly management_action_reason: string | null;
+  readonly management_action_type: string | null;
+  readonly target_label: 'pt1' | 'pt2' | 'runner' | null;
+}
 
 export interface HeldOutValidationArtifactTradeV1 {
   readonly entry_ts_ns: string;
@@ -180,6 +193,11 @@ export interface HeldOutValidationArtifactTradeV1 {
   readonly queue_ahead_bucket: HeldOutValidationArtifactQueueAheadBucket;
   readonly gross_pnl_cents: string;
   readonly net_pnl_cents: string;
+  readonly entry_quantity: number;
+  readonly exit_quantity: number;
+  readonly management_profile_id: string;
+  readonly time_stop_at_deadline_extension: HeldOutValidationArtifactTimeStopAtDeadlineExtension;
+  readonly exits: readonly HeldOutValidationArtifactTradeExitV1[];
   readonly exit_reason: HeldOutValidationArtifactExitReason;
   readonly exit_bar_index: number;
   readonly max_favorable_excursion_cents: string;
