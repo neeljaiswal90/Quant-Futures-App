@@ -44,6 +44,12 @@ interface CliArgs {
   readonly walkForwardPolicyPath?: string;
   readonly metadataByStrategyPath?: string;
   readonly regimeLabelsPath: string;
+  /**
+   * Research/replay-only fixed contract override for qfa-410 real-archive
+   * harness runs. Omitted by default so production and standard replay sizing
+   * remain unchanged.
+   */
+  readonly researchFixedContracts?: number;
 }
 
 interface ManifestSession {
@@ -140,6 +146,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     walkForwardPolicyPath: one(values, 'walk-forward-policy'),
     metadataByStrategyPath: one(values, 'metadata-by-strategy'),
     regimeLabelsPath: one(values, 'regime-labels') ?? DEFAULT_REGIME_LABELS,
+    researchFixedContracts: optionalPositiveInteger(values, 'research-fixed-contracts'),
   };
 }
 
@@ -181,6 +188,9 @@ export async function runQfa410bExecute(
         archive_sessions: sessions,
         run_started_at_ns: deterministicRunStartedAtNs(args.runId),
         initial_equity_cents: args.initialEquityCents,
+        fill_policy: args.researchFixedContracts === undefined
+          ? undefined
+          : { order_quantity: args.researchFixedContracts },
         strategy_generators: { [strategyId]: getStrategyGenerator(strategyId) },
         artifact_output: {
           output_dir: args.outputDir,
@@ -393,6 +403,27 @@ function many(
   fallback: readonly string[] = [],
 ): readonly string[] {
   return values.get(key) ?? fallback;
+}
+
+function optionalPositiveInteger(
+  values: ReadonlyMap<string, readonly string[]>,
+  key: string,
+): number | undefined {
+  if (!values.has(key)) {
+    return undefined;
+  }
+  const value = one(values, key);
+  if (value === undefined) {
+    throw new Error(`--${key} requires a positive integer value`);
+  }
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error(`--${key} must be a positive integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`--${key} must be a safe positive integer`);
+  }
+  return parsed;
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {

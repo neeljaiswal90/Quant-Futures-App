@@ -154,6 +154,29 @@ describe('MGMT-02 target-position model', () => {
     ]);
   });
 
+  it('assigns true 50/50 partial quantities for a two-contract replay position', () => {
+    const candidate = fixtureCandidate('breakout_retest_long');
+    const profile = resolveManagementProfile(candidate.strategy_id).profile;
+    const planned = buildTargetPositionFromCandidate({
+      candidate,
+      profile,
+      quantity: 2,
+      opened_ts_ns: OPENED_TS_NS,
+    });
+    const open = applyInitialFillToTargetPosition(planned, makeFill(candidate, 2));
+
+    expect(open.quantity).toBe(2);
+    expect(open.remaining_quantity).toBe(2);
+    expect(open.targets.map((target) => ({
+      label: target.label,
+      quantity: target.quantity,
+      quantity_fraction: target.quantity_fraction,
+    }))).toEqual([
+      { label: 'pt1', quantity: 1, quantity_fraction: 0.5 },
+      { label: 'pt2', quantity: 1, quantity_fraction: 0.5 },
+    ]);
+  });
+
   it('rejects target quantities that exceed total size', () => {
     const position = buildPosition('trend_pullback_long', 2);
     const invalid = {
