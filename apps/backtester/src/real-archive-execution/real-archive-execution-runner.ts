@@ -378,13 +378,13 @@ async function runSession(input: {
         evaluation: management,
         tsNs: bar.last_record_ts_ns,
       });
-      openPosition.target_position = management.updated_position;
-      const exitAction = firstExitAction(management.actions);
-      if (exitAction !== undefined) {
+      const exits = exitActions(management.actions);
+      if (exits.length > 0) {
         const closed = closeOpenPosition({
           openPosition,
-          action: exitAction,
-          exitReason: exitReasonFromManagement(management, exitAction),
+          actions: exits,
+          postManagementPosition: management.updated_position,
+          exitReason: exitReasonFromManagement(management, exits.at(-1)!),
           bar,
           barIndex,
           runId: input.runId,
@@ -395,6 +395,8 @@ async function runSession(input: {
         });
         input.metrics.fill_count += closed.exitFillCount;
         openPosition = closed.openPosition;
+      } else {
+        openPosition.target_position = management.updated_position;
       }
       continue;
     }
@@ -587,13 +589,14 @@ function appendManagementEvents(input: {
   }
 }
 
-function firstExitAction(actions: readonly PositionManagerAction[]): PositionManagerAction | undefined {
-  return actions.find((action) => action.exit_quantity !== undefined && action.exit_price !== undefined);
+function exitActions(actions: readonly PositionManagerAction[]): readonly PositionManagerAction[] {
+  return actions.filter((action) => action.exit_quantity !== undefined && action.exit_price !== undefined);
 }
 
 function closeOpenPosition(input: {
   readonly openPosition: OpenExecutionPosition;
-  readonly action?: PositionManagerAction;
+  readonly actions?: readonly PositionManagerAction[];
+  readonly postManagementPosition?: TargetPosition;
   readonly exitReason: RealArchiveExitReason;
   readonly bar: BuiltBar;
   readonly barIndex: number;
@@ -603,50 +606,76 @@ function closeOpenPosition(input: {
   readonly events: AnyJournalEventEnvelope[];
   readonly entryMetadataByOrderIntentId: Map<string, EntryMetadata>;
 }): { readonly openPosition: OpenExecutionPosition | null; readonly exitFillCount: number } {
-  const exitQuantity = input.action?.exit_quantity ?? input.openPosition.target_position.remaining_quantity;
-  if (exitQuantity <= 0) {
+  const actions = input.actions ?? [];
+  const fallbackExitQuantity = actions.length === 0
+    ? input.openPosition.target_position.remaining_quantity
+    : 0;
+  if (actions.length === 0 && fallbackExitQuantity <= 0) {
     return { openPosition: input.openPosition, exitFillCount: 0 };
   }
-  const exitPrice = input.action?.exit_price ?? priceNumber(input.bar.close);
-  const exitFill = makeFillEvent({
-    runId: input.runId,
-    sessionId: input.sessionId,
-    sequence: input.sequence,
-    orderIntentId: input.openPosition.order_intent_id,
-    positionId: input.openPosition.target_position.position_id,
-    managementActionId: input.action?.management_action_id,
-    managementProfile: input.openPosition.management_profile,
-    side: input.openPosition.candidate.direction === 'long' ? 'sell' : 'buy',
-    price: exitPrice,
-    quantity: exitQuantity,
-    tsNs: input.bar.last_record_ts_ns,
-    causationEventId: input.openPosition.entry_fill.event_id,
-    fillSuffix: `${input.exitReason}-${input.barIndex}`,
-    estimate: input.openPosition.entry_estimate,
-  });
-  input.events.push(exitFill as AnyJournalEventEnvelope);
-
+  const exitInputs = actions.length === 0
+    ? [{
+      action: undefined,
+      quantity: fallbackExitQuantity,
+      price: priceNumber(input.bar.close),
+    }]
+    : actions.map((action) => ({
+      action,
+      quantity: action.exit_quantity!,
+      price: action.exit_price!,
+    }));
+  const preManagementQuantity = input.openPosition.target_position.remaining_quantity;
   const fullyClosed =
     input.exitReason === 'session_close' ||
-    input.openPosition.target_position.lifecycle_state === 'closed' ||
-    input.openPosition.target_position.remaining_quantity - exitQuantity <= 0;
-  input.events.push(positionEvent({
-    runId: input.runId,
-    sessionId: input.sessionId,
-    sequence: input.sequence,
-    candidate: input.openPosition.candidate,
-    status: fullyClosed ? 'closed' : 'open',
-    quantityOpen: fullyClosed
+    input.postManagementPosition?.lifecycle_state === 'closed' ||
+    (input.postManagementPosition?.remaining_quantity ?? preManagementQuantity) <= 0;
+  let cumulativeExitQuantity = 0;
+  for (const [index, exitInput] of exitInputs.entries()) {
+    if (exitInput.quantity <= 0) {
+      continue;
+    }
+    cumulativeExitQuantity += exitInput.quantity;
+    const isFinalExit = index === exitInputs.length - 1;
+    const positionClosedAfterThisExit = fullyClosed && isFinalExit;
+    const quantityOpen = positionClosedAfterThisExit
       ? 0
-      : Math.max(0, input.openPosition.target_position.remaining_quantity - exitQuantity),
-    avgEntryPrice: input.openPosition.entry_fill.payload.price,
-    tsNs: input.bar.last_record_ts_ns,
-    positionId: input.openPosition.target_position.position_id,
-    managementProfile: input.openPosition.management_profile,
-  }));
+      : Math.max(0, preManagementQuantity - cumulativeExitQuantity);
+    const exitFill = makeFillEvent({
+      runId: input.runId,
+      sessionId: input.sessionId,
+      sequence: input.sequence,
+      orderIntentId: input.openPosition.order_intent_id,
+      positionId: input.openPosition.target_position.position_id,
+      managementActionId: exitInput.action?.management_action_id,
+      managementProfile: input.openPosition.management_profile,
+      side: input.openPosition.candidate.direction === 'long' ? 'sell' : 'buy',
+      price: exitInput.price,
+      quantity: exitInput.quantity,
+      tsNs: input.bar.last_record_ts_ns,
+      causationEventId: input.openPosition.entry_fill.event_id,
+      fillSuffix: exitInputs.length === 1
+        ? `${input.exitReason}-${input.barIndex}`
+        : `${input.exitReason}-${input.barIndex}-${index + 1}`,
+      estimate: input.openPosition.entry_estimate,
+    });
+    input.events.push(exitFill as AnyJournalEventEnvelope);
+    input.events.push(positionEvent({
+      runId: input.runId,
+      sessionId: input.sessionId,
+      sequence: input.sequence,
+      candidate: input.openPosition.candidate,
+      status: positionClosedAfterThisExit ? 'closed' : 'open',
+      quantityOpen,
+      avgEntryPrice: input.openPosition.entry_fill.payload.price,
+      tsNs: input.bar.last_record_ts_ns,
+      positionId: input.openPosition.target_position.position_id,
+      managementProfile: input.openPosition.management_profile,
+    }));
+  }
 
   if (!fullyClosed) {
-    return { openPosition: input.openPosition, exitFillCount: 1 };
+    input.openPosition.target_position = input.postManagementPosition ?? input.openPosition.target_position;
+    return { openPosition: input.openPosition, exitFillCount: exitInputs.length };
   }
 
   const metadata = input.entryMetadataByOrderIntentId.get(String(input.openPosition.order_intent_id));
@@ -656,7 +685,7 @@ function closeOpenPosition(input: {
     metadata.max_favorable_excursion_cents = input.openPosition.mfe_cents;
     metadata.max_adverse_excursion_cents = input.openPosition.mae_cents;
   }
-  return { openPosition: null, exitFillCount: 1 };
+  return { openPosition: null, exitFillCount: exitInputs.length };
 }
 
 function exitReasonFromManagement(
