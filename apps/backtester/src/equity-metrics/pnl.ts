@@ -24,12 +24,11 @@ export function computeTradePnl(
   validateClosedTrade(trade);
 
   const quantity = quantityToBigint(trade.exit_quantity);
-  const entryTicks = priceToTicks(trade.average_entry_price, options.valuation.tick_size);
-  const exitTicks = priceToTicks(trade.average_exit_price, options.valuation.tick_size);
+  const tickQuantities = computeExecutionTickQuantities(trade, options, executions);
   const tickDelta = trade.side === 'long'
-    ? exitTicks - entryTicks
-    : entryTicks - exitTicks;
-  const grossPnlCents = tickDelta * options.valuation.tick_value_usd_cents * quantity;
+    ? tickQuantities.exit_tick_quantity - tickQuantities.entry_tick_quantity
+    : tickQuantities.entry_tick_quantity - tickQuantities.exit_tick_quantity;
+  const grossPnlCents = tickDelta * options.valuation.tick_value_usd_cents;
   const costs = sumExecutionCosts(trade, executions);
 
   return {
@@ -38,8 +37,8 @@ export function computeTradePnl(
     closed_at_ns: trade.closed_at_ns,
     side: trade.side,
     quantity,
-    entry_ticks: entryTicks,
-    exit_ticks: exitTicks,
+    entry_tick_quantity: tickQuantities.entry_tick_quantity,
+    exit_tick_quantity: tickQuantities.exit_tick_quantity,
     gross_pnl_cents: grossPnlCents,
     fees_cents: costs.fees_cents,
     commissions_cents: costs.commissions_cents,
@@ -102,6 +101,93 @@ function validatePrice(price: number, path: string): void {
       message: 'closed trade average price must be a positive finite number',
     });
   }
+}
+
+function computeExecutionTickQuantities(
+  trade: ClosedTrade,
+  options: EquityMetricsOptions,
+  executions: readonly LedgerExecution[],
+): {
+  readonly entry_tick_quantity: bigint;
+  readonly exit_tick_quantity: bigint;
+} {
+  const executionIds = new Set(trade.execution_ids);
+  if (executionIds.size === 0 || executionIds.size !== trade.execution_ids.length) {
+    throwEquityMetricsIssue({
+      path: '$.trade.execution_ids',
+      code: 'invalid_quantity',
+      message: 'closed trade must reference a non-empty unique set of component executions',
+    });
+  }
+
+  const entrySide = trade.side === 'long' ? 'buy' : 'sell';
+  const exitSide = trade.side === 'long' ? 'sell' : 'buy';
+  let matchedExecutions = 0;
+  let entryQuantity = 0;
+  let exitQuantity = 0;
+  let entryTickQuantity = 0n;
+  let exitTickQuantity = 0n;
+
+  for (const execution of executions) {
+    if (!executionIds.has(execution.execution_id)) {
+      continue;
+    }
+
+    matchedExecutions += 1;
+    const executionQuantity = validateExecutionQuantity(execution);
+    const executionTickQuantity =
+      priceToTicks(execution.price, options.valuation.tick_size) * BigInt(executionQuantity);
+
+    if (execution.side === entrySide) {
+      entryQuantity += executionQuantity;
+      entryTickQuantity += executionTickQuantity;
+      continue;
+    }
+
+    if (execution.side === exitSide) {
+      exitQuantity += executionQuantity;
+      exitTickQuantity += executionTickQuantity;
+      continue;
+    }
+
+    throwEquityMetricsIssue({
+      path: `$.executions[${execution.execution_id}].side`,
+      code: 'unsupported_trade_side',
+      message: 'execution side must be buy or sell',
+    });
+  }
+
+  if (matchedExecutions !== executionIds.size) {
+    throwEquityMetricsIssue({
+      path: '$.trade.execution_ids',
+      code: 'invalid_quantity',
+      message: 'closed trade references component executions missing from the ledger',
+    });
+  }
+
+  if (entryQuantity !== trade.entry_quantity || exitQuantity !== trade.exit_quantity) {
+    throwEquityMetricsIssue({
+      path: '$.trade.quantity',
+      code: 'invalid_quantity',
+      message: 'component execution quantities must match closed trade entry and exit quantities',
+    });
+  }
+
+  return {
+    entry_tick_quantity: entryTickQuantity,
+    exit_tick_quantity: exitTickQuantity,
+  };
+}
+
+function validateExecutionQuantity(execution: LedgerExecution): number {
+  if (!Number.isSafeInteger(execution.quantity) || execution.quantity <= 0) {
+    throwEquityMetricsIssue({
+      path: `$.executions[${execution.execution_id}].quantity`,
+      code: 'invalid_quantity',
+      message: 'execution quantity must be a positive safe integer',
+    });
+  }
+  return execution.quantity;
 }
 
 function quantityToBigint(quantity: number): bigint {
