@@ -34,6 +34,12 @@ export type RealArchiveExitReason =
   | 'fail_safe'
   | 'unknown';
 
+export type RealArchiveTimeStopAtDeadlineExtension =
+  | 'enforce_floor'
+  | 'move_to_be'
+  | 'activate_trail'
+  | 'unconditional_exit';
+
 export interface RealArchiveSessionSource {
   readonly session_id: string;
   readonly trading_date: string;
@@ -92,6 +98,14 @@ export interface RealArchiveRuntimeMetrics {
   readonly closed_trade_count: number;
 }
 
+export interface RealArchivePerTradeExitRecord {
+  readonly exit_ts_ns: UnixNs;
+  readonly exit_quantity: number;
+  readonly management_action_reason: string | null;
+  readonly management_action_type: string | null;
+  readonly target_label: 'pt1' | 'pt2' | 'runner' | null;
+}
+
 export interface RealArchivePerTradeRecord {
   readonly trade_id: string;
   readonly strategy_id: StrategyId | null;
@@ -103,6 +117,11 @@ export interface RealArchivePerTradeRecord {
   readonly entry_px: number;
   readonly exit_px: number;
   readonly quantity: number;
+  readonly entry_quantity: number;
+  readonly exit_quantity: number;
+  readonly management_profile_id: string;
+  readonly time_stop_at_deadline_extension: RealArchiveTimeStopAtDeadlineExtension;
+  readonly exits: readonly RealArchivePerTradeExitRecord[];
   readonly pnl_cents: bigint;
   readonly spread_bucket: SpreadBucket;
   readonly queue_ahead_bucket: QueueAheadBucket;
