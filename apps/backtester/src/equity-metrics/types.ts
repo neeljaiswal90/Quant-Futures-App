@@ -20,8 +20,8 @@ export interface TradePnl {
   readonly closed_at_ns: UnixNs;
   readonly side: 'long' | 'short';
   readonly quantity: bigint;
-  readonly entry_ticks: bigint;
-  readonly exit_ticks: bigint;
+  readonly entry_tick_quantity: bigint;
+  readonly exit_tick_quantity: bigint;
   readonly gross_pnl_cents: MoneyCents;
   readonly fees_cents: MoneyCents;
   readonly commissions_cents: MoneyCents;

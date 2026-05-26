@@ -21,44 +21,47 @@ const OPTIONS: EquityMetricsOptions = {
 describe('QFA-204 trade PnL', () => {
   it('computes positive long PnL when exit is above entry', () => {
     expect(
-      computeTradePnl(trade({ side: 'long', entry: 100, exit: 100.5, quantity: 2 }), OPTIONS)
-        .gross_pnl_cents,
+      computeTradePnlFor({ side: 'long', entry: 100, exit: 100.5, quantity: 2 }).gross_pnl_cents,
     ).toBe(200n);
   });
 
   it('computes negative long PnL when exit is below entry', () => {
     expect(
-      computeTradePnl(trade({ side: 'long', entry: 100.5, exit: 100, quantity: 2 }), OPTIONS)
-        .gross_pnl_cents,
+      computeTradePnlFor({ side: 'long', entry: 100.5, exit: 100, quantity: 2 }).gross_pnl_cents,
     ).toBe(-200n);
   });
 
   it('computes positive short PnL when exit is below entry', () => {
     expect(
-      computeTradePnl(trade({ side: 'short', entry: 100.5, exit: 100, quantity: 2 }), OPTIONS)
-        .gross_pnl_cents,
+      computeTradePnlFor({ side: 'short', entry: 100.5, exit: 100, quantity: 2 }).gross_pnl_cents,
     ).toBe(200n);
   });
 
   it('computes negative short PnL when exit is above entry', () => {
     expect(
-      computeTradePnl(trade({ side: 'short', entry: 100, exit: 100.5, quantity: 2 }), OPTIONS)
-        .gross_pnl_cents,
+      computeTradePnlFor({ side: 'short', entry: 100, exit: 100.5, quantity: 2 }).gross_pnl_cents,
     ).toBe(-200n);
   });
 
   it('subtracts exact fee and commission cents from net PnL', () => {
+    const closedTrade = trade({ side: 'long', entry: 100, exit: 100.5, quantity: 2 });
     const result = computeTradePnl(
-      trade({ side: 'long', entry: 100, exit: 100.5, quantity: 2 }),
+      closedTrade,
       OPTIONS,
       [
         execution({
           execution_id: 'execution-fill-1',
+          side: 'buy',
+          price: 100,
+          quantity: 2,
           exchange_fee_usd: 1.25,
           commission_usd: 0.75,
         }),
         execution({
           execution_id: 'execution-fill-2',
+          side: 'sell',
+          price: 100.5,
+          quantity: 2,
           exchange_fee_usd: 1,
           commission_usd: 1,
         }),
@@ -73,14 +76,24 @@ describe('QFA-204 trade PnL', () => {
 
   it('rejects missing closed-trade prices and invalid quantity', () => {
     expect(() =>
-      computeTradePnl(trade({ side: 'long', entry: Number.NaN, exit: 100.5, quantity: 2 }), OPTIONS),
+      computeTradePnlFor({ side: 'long', entry: Number.NaN, exit: 100.5, quantity: 2 }),
     ).toThrow('missing_closed_trade_price');
 
     expect(() =>
-      computeTradePnl(trade({ side: 'long', entry: 100, exit: 100.5, quantity: 1.5 }), OPTIONS),
+      computeTradePnlFor({ side: 'long', entry: 100, exit: 100.5, quantity: 1.5 }),
     ).toThrow('invalid_quantity');
   });
 });
+
+function computeTradePnlFor(input: {
+  readonly side: 'long' | 'short';
+  readonly entry: number;
+  readonly exit: number;
+  readonly quantity: number;
+}) {
+  const closedTrade = trade(input);
+  return computeTradePnl(closedTrade, OPTIONS, executionsForTrade(closedTrade));
+}
 
 function trade(input: {
   readonly side: 'long' | 'short';
@@ -107,8 +120,30 @@ function trade(input: {
   };
 }
 
+function executionsForTrade(trade: ClosedTrade): readonly LedgerExecution[] {
+  const entrySide = trade.side === 'long' ? 'buy' : 'sell';
+  const exitSide = trade.side === 'long' ? 'sell' : 'buy';
+  return [
+    execution({
+      execution_id: 'execution-fill-1',
+      side: entrySide,
+      price: trade.average_entry_price,
+      quantity: trade.entry_quantity,
+    }),
+    execution({
+      execution_id: 'execution-fill-2',
+      side: exitSide,
+      price: trade.average_exit_price,
+      quantity: trade.exit_quantity,
+    }),
+  ];
+}
+
 function execution(input: {
   readonly execution_id: string;
+  readonly side: 'buy' | 'sell';
+  readonly price: number;
+  readonly quantity: number;
   readonly exchange_fee_usd?: number;
   readonly commission_usd?: number;
 }): LedgerExecution {
@@ -121,9 +156,9 @@ function execution(input: {
     instrument_id: 1,
     raw_symbol: 'MNQH6',
     instrument_identity_source: 'ledger_options',
-    side: 'buy',
-    price: 100,
-    quantity: 1,
+    side: input.side,
+    price: input.price,
+    quantity: input.quantity,
     ...(input.exchange_fee_usd === undefined ? {} : { exchange_fee_usd: input.exchange_fee_usd }),
     ...(input.commission_usd === undefined ? {} : { commission_usd: input.commission_usd }),
     source_event_type: 'SIM_FILL',
