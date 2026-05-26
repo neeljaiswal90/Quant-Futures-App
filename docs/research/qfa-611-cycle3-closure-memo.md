@@ -243,3 +243,30 @@ New `strategy-selection-v3.json` sha256: `CEE1B8DCE63CFD292487721D38110B2E637646
 Reconciliation decision: **Path A unchanged**. `regime_shock_reversion_short_v2` remains `ADVANCE_TO_PAPER`; `vwap_overnight_reversal_short` and `vwap_overnight_reversal_long` remain `REJECT`.
 
 This amendment supersedes the original verdict table for all downstream dispatch authorization decisions. The original verdict table is preserved above as audit lineage; it is not the authoritative verdict from this point forward.
+
+## REDERIVATION-02 amendment
+
+Track B regenerated Cycle3 held-out artifacts under the corrected management engine authorized by `docs/research/qfa-611-cycle3-rederivation-02-invocation-memo.md` (PR #241 / `41beaaf`). The execution substrate was `0a39938` after PR #248. Track B was originally packet-pinned to `590acac` after MGMT-BUG-FIX-02, ADR-0027, QFA-MGMT-WIRING-TEST-01, and MGMT-DEADLINE-EXTENSION-01, then refreshed onto `0a39938`; PR #248 is methodology-orthogonal v5 registration work and does not change the Cycle3 roster, parameter locks, held-out manifests, or Track B trial accounting.
+
+`strategy-selection-v4.json` SHA256: `f59793975f4c78a7ef43b515965806a1b6c4ff7d032d974af3d636350e70e24e`. The selection driver does not emit a `final_chain_hash` field; the file SHA is the Track B output hash surfaced for audit.
+
+### REDERIVATION-02 active-strategy verdicts
+
+| Strategy | pre-fix verdict | post-fix verdict | post-fix trades | post-fix Sharpe | post-fix DSR | post-fix DSR probability |
+|---|---:|---:|---:|---:|---:|---:|
+| `regime_shock_reversion_short_v2` | ADVANCE_TO_PAPER | REJECT | 572 | -0.311122 | -1.008717 | 0.156555 |
+| `vwap_overnight_reversal_long` | REJECT | REJECT | 67 | -2.210980 | -2.287815 | 0.011074 |
+| `vwap_overnight_reversal_short` | REJECT | REJECT | 37 | 1.275619 | -0.192944 | 0.423502 |
+
+`phase_6_dispatch_authorized` changes from the original closure memo authorization to `false` in the selection-v4 driver summary. This amendment records the data only; LD-024-3 Step 4 verdict reconciliation is coord+operator authority and is deferred until after this evidence PR merges.
+
+### REDERIVATION-02 informational v3 artifact
+
+`regime_shock_reversion_short_v3` was regenerated for archival consistency only. It remains REGISTERED_INACTIVE and cannot activate from Cycle3. Corrected-engine top line: total_trades=363, profit_factor=1.215465, annualized_sharpe=2.194210, dsr_statistic=1.084301, dsr_probability=0.860884.
+
+### REDERIVATION-02 references
+
+- REDERIVATION-02 memo: `docs/research/qfa-611-cycle3-rederivation-02-memo.md`
+- Invocation memo: `docs/research/qfa-611-cycle3-rederivation-02-invocation-memo.md`
+- Selection-v4: `artifacts/strategy-selection/strategy-selection-v4.json` and `.md`
+- Corrected held-out artifacts: `artifacts/held-out-validation/cycle3/*-feb-mar-apr-2026.json`
