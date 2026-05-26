@@ -49,9 +49,95 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
     });
     expect(first.trade_analysis.summary.total_trades).toBe(1);
     expect(first.runtime_metrics.candidate_count).toBe(1);
+    expect(positionEvents(first).at(-1)).toMatchObject({
+      status: 'closed',
+      quantity_open: 0,
+    });
     const candidate = first.journal_events.find((event) => event.type === 'CANDIDATE')?.payload as Candidate | undefined;
     expect(candidate?.targets.map((target) => target.price)).toEqual([100.75, 101.75]);
     expect(hashStable(first.per_trade_records)).toBe(hashStable(second.per_trade_records));
+  });
+
+  it('keeps a two-contract PT1 partial open before session-close fallback', async () => {
+    const result = await runTargetPathFixture({
+      prices: [100, 101, 100.25],
+      runId: 'run-qfa-201b-pt1-open-fixture',
+    });
+    const actions = exitManagementActions(result);
+    const fills = exitFills(result);
+    const positionsAtPt1 = positionEvents(result).filter((payload) => payload.updated_ts_ns === ns(61_000_000_000n));
+
+    expect(actions[0]).toMatchObject({
+      action_type: 'TAKE_PARTIAL',
+      target_label: 'pt1',
+      exit_quantity: 1,
+    });
+    expect(fills[0]).toMatchObject({
+      quantity: 1,
+      price: 100.75,
+    });
+    expect(positionsAtPt1).toHaveLength(1);
+    expect(positionsAtPt1[0]).toMatchObject({
+      status: 'open',
+      quantity_open: 1,
+    });
+    expect(positionEvents(result).at(-1)).toMatchObject({
+      status: 'closed',
+      quantity_open: 0,
+    });
+  });
+
+  it('closes one aggregate trade after PT1 then PT2 across bars', async () => {
+    const result = await runTargetPathFixture({
+      prices: [100, 101, 102],
+      runId: 'run-qfa-201b-pt1-pt2-fixture',
+    });
+
+    expect(exitManagementActions(result).map((payload) => ({
+      action_type: payload.action_type,
+      target_label: payload.target_label,
+      exit_quantity: payload.exit_quantity,
+    }))).toEqual([
+      { action_type: 'TAKE_PARTIAL', target_label: 'pt1', exit_quantity: 1 },
+      { action_type: 'TAKE_PROFIT', target_label: 'pt2', exit_quantity: 1 },
+    ]);
+    expect(exitFills(result).map((payload) => payload.quantity)).toEqual([1, 1]);
+    expect(positionEvents(result).at(-1)).toMatchObject({
+      status: 'closed',
+      quantity_open: 0,
+    });
+    expect(result.trade_ledger.closed_trades).toHaveLength(1);
+    expect(result.per_trade_records).toHaveLength(1);
+    expect(result.per_trade_records[0]).toMatchObject({
+      quantity: 2,
+      exit_reason: 'target',
+    });
+  });
+
+  it('processes same-bar PT1 and PT2 exits in action order', async () => {
+    const result = await runTargetPathFixture({
+      prices: [100, 102],
+      runId: 'run-qfa-201b-same-bar-pt1-pt2-fixture',
+    });
+    const actions = exitManagementActions(result);
+    const fills = exitFills(result);
+    const exitPositions = positionEvents(result).filter((payload) => payload.updated_ts_ns === ns(61_000_000_000n));
+
+    expect(actions.map((payload) => ({
+      action_type: payload.action_type,
+      target_label: payload.target_label,
+      exit_quantity: payload.exit_quantity,
+    }))).toEqual([
+      { action_type: 'TAKE_PARTIAL', target_label: 'pt1', exit_quantity: 1 },
+      { action_type: 'TAKE_PROFIT', target_label: 'pt2', exit_quantity: 1 },
+    ]);
+    expect(fills.map((payload) => payload.quantity)).toEqual([1, 1]);
+    expect(exitPositions).toEqual([
+      expect.objectContaining({ status: 'open', quantity_open: 1 }),
+      expect.objectContaining({ status: 'closed', quantity_open: 0 }),
+    ]);
+    expect(result.trade_ledger.closed_trades).toHaveLength(1);
+    expect(result.per_trade_records[0]?.quantity).toBe(2);
   });
 
   it('preserves the legacy replay-sanity runner by using a separate export', async () => {
@@ -199,6 +285,61 @@ async function runFixture(
     ],
     ...overrides,
   });
+}
+
+async function runTargetPathFixture(input: {
+  readonly prices: readonly number[];
+  readonly runId: string;
+}) {
+  return runFixture(deterministicGenerator(), {
+    run_id: input.runId,
+    fill_policy: {
+      minimum_fill_probability_ppm: 0,
+      order_quantity: 2,
+    },
+    sessions: [
+      {
+        session_id: '2026-02-02-rth',
+        trading_date: '2026-02-02',
+        raw_symbol: 'MNQH6',
+        regime_label: 'high',
+        prior_day_close: 99.5,
+        prior_day_high: 101,
+        prior_day_low: 98,
+        rth_start_ts_ns: ns(0n),
+        trades_records: input.prices.map((price, index) =>
+          trade((BigInt(index) * 60_000_000_000n) + 1_000_000_000n, price)),
+        mbp1_records: input.prices.map((price, index) =>
+          mbp1((BigInt(index) * 60_000_000_000n) + 1_000_000_000n, price - 0.25, price + 0.25)),
+      },
+    ],
+  });
+}
+
+type RealArchiveRunnerResult = Awaited<ReturnType<typeof runFixture>>;
+
+function managementActionPayloads(result: RealArchiveRunnerResult): readonly Record<string, unknown>[] {
+  return result.journal_events
+    .filter((event) => event.type === 'MGMT_ACTION')
+    .map((event) => event.payload as unknown as Record<string, unknown>);
+}
+
+function exitManagementActions(result: RealArchiveRunnerResult): readonly Record<string, unknown>[] {
+  return managementActionPayloads(result).filter((payload) =>
+    payload.exit_quantity !== undefined && payload.exit_price !== undefined);
+}
+
+function exitFills(result: RealArchiveRunnerResult): readonly Record<string, unknown>[] {
+  return result.journal_events
+    .filter((event) => event.type === 'SIM_FILL')
+    .map((event) => event.payload as unknown as Record<string, unknown>)
+    .filter((payload) => payload.management_action_id !== undefined);
+}
+
+function positionEvents(result: RealArchiveRunnerResult): readonly Record<string, unknown>[] {
+  return result.journal_events
+    .filter((event) => event.type === 'POSITION')
+    .map((event) => event.payload as unknown as Record<string, unknown>);
 }
 
 function fixtureRegimeLabels(labels: readonly {
