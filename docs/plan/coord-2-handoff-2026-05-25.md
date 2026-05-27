@@ -1,3 +1,54 @@
+# 2026-05-27 hygiene overlay after PR #257
+
+This overlay supersedes stale status sections below where they conflict. The rest of the handoff remains useful historical context.
+
+## Current role model
+
+Codex is now operating as coord-1 packet drafter/dispatcher. The prior coord-1 operates as coord-2 reviewer. The dual-coord PROCESS-02 pattern remains unchanged: worker PENDING-REVIEW requires dual approval before draft PR; PR READY-FOR-PR requires CI SUCCESS verified with `gh pr checks` plus dual review.
+
+## Current governance state
+
+| Item | Current status |
+|---|---|
+| REDERIVATION-02 Track B | Closed. Corrected-engine selection-v4 reconciles all three current active strategies to `REJECT`; `phase_6_dispatch_authorized=false`. |
+| Cycle4 v5 2MNQ chain | Closed through PR #256. Both v5 deadline variants are informational `REJECT`; strict-vs-trail deadline behavior remains unresolved because deadline-extension exposure was zero. |
+| `ACTIVE_STRATEGY_IDS` | Still contains `vwap_overnight_reversal_long`, `vwap_overnight_reversal_short`, and `regime_shock_reversion_short_v2`; this is intentionally not yet mutated pending operator countersign on follow-up implementation. |
+| `STRATEGY-IDS-RECONCILE-01` | Merged at `baa30a2ca66067f7adc7895df11436f28261617b` via PR #257. Discovery recommends Option A: demote all three current active strategies to registered inactive, yielding zero active strategies, while preserving explicit research replay. |
+| Paper/broker/promotion authority | None. No strategy currently has paper-observation, broker-dispatch, live-dispatch, or promotion authority. |
+
+## Next backlog order
+
+| Order | Item | Status / gate |
+|---|---|---|
+| 1 | `STRATEGY-IDS-RECONCILE-02` | Requires explicit operator countersign before dispatch because it changes the production active roster contract. Recommended scope is Option A from `docs/research/strategy-ids-reconcile-01-discovery.md`. |
+| 2 | `PROCESS-02-A1` | Small protocol PR clarifying draft-first/CI-gated PR discipline for docs-only and memo-only changes. |
+| 3 | `PROCESS-03` | Audit `final_chain_hash` path-invariance and document the drift-class taxonomy established by PR #247/#248/#253. |
+| 4 | Optional deadline-exposure harness | Only if operator wants strict-vs-trail behavior evidence under positions that actually reach deadline-extension logic. |
+| 5 | MOC-R6/R7 | Still valid and independent of management-runtime bug chain; operator routes priority. |
+
+## STRATEGY-IDS-RECONCILE-02 implementation guidance
+
+Use `docs/research/strategy-ids-reconcile-01-discovery.md` as the source of truth. The recommended implementation path is:
+
+| Surface | Expected change |
+|---|---|
+| `apps/strategy_runtime/src/contracts/strategy-ids.ts` | Empty `ACTIVE_STRATEGY_IDS`; move the three former active IDs into `REGISTERED_INACTIVE_STRATEGY_IDS`; leave `CANDIDATE_STRATEGY_IDS` empty. |
+| `apps/strategy_runtime/src/strategies/registry.ts` | Set demoted IDs `enabled_in_v1=false`; empty `ACTIVE_STRATEGY_GENERATORS`; keep demoted generators in `STRATEGY_GENERATORS` for explicit replay. |
+| `config/management/profiles.yaml` | Make active profile YAML compatible with zero active entries; preserve fallback profile. |
+| `scripts/qfa-410b-execute.mts` | Omitted `--strategy-ids` must fail closed when active roster is empty; explicit `--strategy-ids` must remain usable for registered-inactive research replay. |
+| Tests | Use the full test blast-radius list in the discovery memo, including validation-report, validation-gate, held-out-validation, real-archive, strategy-fingerprint, strategy-replay, OOS, management config, runner, and qfa-611 Python tests. |
+
+Hash framing for `STRATEGY-IDS-RECONCILE-02`: expect possible config-input lineage and evidence-surface drift. Strategy YAML hashes and explicit demoted-ID behavior should remain pinned if generator/YAML/runtime logic is untouched. Use same-worktree baseline and narrow-diff proof for any `final_chain_hash` shift.
+
+## Operator decisions still pending
+
+| Decision | Status |
+|---|---|
+| Authorize Option A zero-active roster implementation | Pending |
+| Decide whether to introduce a new rejected/quarantined roster status | Recommended no for immediate cleanup; would likely require ADR work. |
+| Countersign Cycle4 v5 verdict memo ledger operator line | Pending if operator wants the memo ledger updated. |
+
+---
 # Peer-Coordinator (Coord-2) Handoff — 2026-05-25
 
 This document transfers the **peer-coordinator (coord-2) review role** from the retiring Claude session to the incoming Codex peer-coord. The dispatching coordinator (coord-1, current Claude session) remains in place. This handoff covers only what coord-2 needs to operate; it does NOT replace the dispatching-coord-side handoff at `docs/plan/coordinator-handoff-2026-05-24.md`.
@@ -483,3 +534,4 @@ The transition should be quiet. The protocol is designed to handle coord-swaps w
 **End of coord-2 handoff.**
 
 If something is missing from this doc that you needed, that gap is coord-1's fault. Surface it.
+
