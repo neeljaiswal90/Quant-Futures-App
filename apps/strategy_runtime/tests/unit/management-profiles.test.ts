@@ -30,6 +30,11 @@ import { getActiveStrategyGenerator } from '../../src/strategies/index.js';
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const TS_NS = ns('1776957600000000000');
+const DEMOTED_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
+] as const satisfies readonly StrategyId[];
 
 function fixtureCandidate(strategyId: StrategyId): Candidate {
   const result = getActiveStrategyGenerator(strategyId)({
@@ -62,8 +67,24 @@ function cloneCandidate(candidate: Candidate, overrides: Partial<Candidate>): Ca
 describe('MGMT-01 management profile substrate', () => {
   it('resolves and validates a management profile for each active V1 strategy', () => {
     validateAllDefaultManagementProfiles();
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
 
     for (const strategyId of ACTIVE_STRATEGY_IDS) {
+      const resolved = resolveManagementProfile(strategyId);
+
+      expect(resolved).toMatchObject({
+        strategy_id: strategyId,
+        fallback_used: false,
+      });
+      expect(resolved.profile.strategy_id).toBe(strategyId);
+      expect(validateManagementProfile(resolved.profile)).toEqual([]);
+    }
+  });
+
+  it('keeps demoted strategies resolvable through registered-inactive V1 management profiles', () => {
+    validateAllDefaultManagementProfiles();
+
+    for (const strategyId of DEMOTED_REPLAY_STRATEGY_IDS) {
       const resolved = resolveManagementProfile(strategyId);
 
       expect(resolved).toMatchObject({

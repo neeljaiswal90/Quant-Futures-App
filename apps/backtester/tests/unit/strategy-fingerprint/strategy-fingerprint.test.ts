@@ -11,22 +11,24 @@ import {
   computeStrategyFingerprintSet,
   STRATEGY_FINGERPRINT_ALGORITHM,
 } from '../../../src/strategy-fingerprint/index.js';
-import {
-  defaultStrategyReplayIds,
-  replayStrategies,
-} from '../../../src/strategy-replay/index.js';
+import { replayStrategies } from '../../../src/strategy-replay/index.js';
 import { REPLAY_BARS } from '../strategy-replay/fixtures.js';
 
 const SHA_256_HEX = /^[a-f0-9]{64}$/u;
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
+] as const satisfies readonly StrategyId[];
 
 describe('strategy fingerprint computation', () => {
-  it('computes one fingerprint per active strategy', async () => {
+  it('computes one fingerprint per explicit registered-inactive research strategy', async () => {
     const replay = await replayFixture();
-    const fingerprints = computeStrategyFingerprintSet(replay.evaluations, ACTIVE_STRATEGY_IDS);
+    const fingerprints = computeStrategyFingerprintSet(replay.evaluations, EXPLICIT_REPLAY_STRATEGY_IDS);
 
     expect(fingerprints.algorithm).toBe(STRATEGY_FINGERPRINT_ALGORITHM);
     expect(fingerprints.fingerprints.map((fingerprint) => fingerprint.strategy_id)).toEqual(
-      ACTIVE_STRATEGY_IDS,
+      EXPLICIT_REPLAY_STRATEGY_IDS,
     );
     expect(fingerprints.fingerprints.every((fingerprint) => fingerprint.decision_count === 4)).toBe(
       true,
@@ -57,14 +59,14 @@ describe('strategy fingerprint computation', () => {
     const first = await replayFixture();
     const second = await replayFixture();
 
-    expect(computeStrategyFingerprintSet(second.evaluations, ACTIVE_STRATEGY_IDS)).toEqual(
-      computeStrategyFingerprintSet(first.evaluations, ACTIVE_STRATEGY_IDS),
+    expect(computeStrategyFingerprintSet(second.evaluations, EXPLICIT_REPLAY_STRATEGY_IDS)).toEqual(
+      computeStrategyFingerprintSet(first.evaluations, EXPLICIT_REPLAY_STRATEGY_IDS),
     );
   });
 
   it('changes only the affected strategy fingerprint when one decision changes', async () => {
     const replay = await replayFixture();
-    const before = computeStrategyFingerprintSet(replay.evaluations, ACTIVE_STRATEGY_IDS);
+    const before = computeStrategyFingerprintSet(replay.evaluations, EXPLICIT_REPLAY_STRATEGY_IDS);
     const changedStrategyId = replay.evaluations[0]!.strategy_id;
     const changedEvaluations = replay.evaluations.map((evaluation, index) =>
       index === 0
@@ -77,9 +79,9 @@ describe('strategy fingerprint computation', () => {
           }
         : evaluation,
     );
-    const after = computeStrategyFingerprintSet(changedEvaluations, ACTIVE_STRATEGY_IDS);
+    const after = computeStrategyFingerprintSet(changedEvaluations, EXPLICIT_REPLAY_STRATEGY_IDS);
 
-    for (const strategyId of ACTIVE_STRATEGY_IDS) {
+    for (const strategyId of EXPLICIT_REPLAY_STRATEGY_IDS) {
       const prior = before.fingerprints.find((fingerprint) => fingerprint.strategy_id === strategyId);
       const next = after.fingerprints.find((fingerprint) => fingerprint.strategy_id === strategyId);
       expect(next).toBeDefined();
@@ -96,6 +98,7 @@ describe('strategy fingerprint computation', () => {
     expect(computeStrategyFingerprintSet([]).fingerprints).toEqual([]);
 
     const ordered = computeStrategyFingerprintSet([], ACTIVE_STRATEGY_IDS);
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
     expect(ordered.fingerprints).toHaveLength(ACTIVE_STRATEGY_IDS.length);
     expect(ordered.fingerprints.map((fingerprint) => fingerprint.decision_count)).toEqual(
       ACTIVE_STRATEGY_IDS.map(() => 0),
@@ -119,7 +122,7 @@ describe('strategy fingerprint computation', () => {
 });
 
 async function replayFixture(
-  strategyIds: readonly StrategyId[] = defaultStrategyReplayIds(),
+  strategyIds: readonly StrategyId[] = EXPLICIT_REPLAY_STRATEGY_IDS,
 ) {
   return replayStrategies({
     strategy_ids: strategyIds,

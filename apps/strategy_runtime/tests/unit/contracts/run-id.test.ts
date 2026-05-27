@@ -11,7 +11,6 @@ import {
 } from '../../../src/contracts/run-id.js';
 import type { BacktestWindow } from '../../../src/contracts/run-spec.js';
 import {
-  ACTIVE_STRATEGY_IDS,
   ALL_STRATEGY_IDS,
   type StrategyId,
 } from '../../../src/contracts/strategy-ids.js';
@@ -19,6 +18,11 @@ import { buildBacktestWindow, buildMinimalRunSpec } from './helpers/run-spec-bui
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../../..');
 const fixtureDir = join(repoRoot, 'apps/strategy_runtime/tests/fixtures/run-spec');
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
+] as const satisfies readonly StrategyId[];
 
 describe('QFA-115 deriveRunId — fixture cross-check', () => {
   it('produces the exact run-id recorded in minimal-runspec.run-id.txt', () => {
@@ -185,7 +189,7 @@ describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
     [2, 'multi2'],
     [3, 'multi3'],
   ])('multi-strategy with count %d -> %s', (count, expected) => {
-    const ids = ACTIVE_STRATEGY_IDS.slice(0, count) as readonly StrategyId[];
+    const ids = EXPLICIT_REPLAY_STRATEGY_IDS.slice(0, count) as readonly StrategyId[];
     expect(deriveStrategyToken(ids)).toBe(expected);
   });
 

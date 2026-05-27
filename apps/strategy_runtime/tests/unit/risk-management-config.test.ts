@@ -112,17 +112,16 @@ account_equity_usd: 50000
     expect(loaded.lineage.risk_config_hash).toBe(canonical.lineage.risk_config_hash);
   });
 
-  it('loads and validates the committed management YAML with profile hashes', () => {
+  it('loads and validates the committed zero-active management YAML with fallback hash', () => {
     const loaded = loadManagementProfilesConfig({
       cwd: process.cwd(),
       path: 'config/management/profiles.yaml',
       required: true,
     });
 
-    expect(loaded.profiles.vwap_overnight_reversal_long.profile_hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(loaded.lineage.profile_hashes.vwap_overnight_reversal_long).toBe(
-      loaded.profiles.vwap_overnight_reversal_long.profile_hash,
-    );
+    expect(loaded.profiles).toEqual({});
+    expect(loaded.fallback_profile.profile_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(loaded.lineage.profile_hashes.fallback).toBe(loaded.fallback_profile.profile_hash);
     expect(loaded.lineage.management_config_hash).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -144,7 +143,7 @@ account_equity_usd: 50000
 
   it('rejects invalid management trailing settings', () => {
     const source = readFileSync('config/management/profiles.yaml', 'utf8')
-      .replace('mode: post_pt1_ticks', 'mode: sideways');
+      .replace('mode: disabled', 'mode: sideways');
     const { root, fileName } = writeTempFile(source, 'profiles.yaml');
 
     expect(() => loadManagementProfilesConfig({ cwd: root, path: fileName, required: true })).toThrow(
@@ -155,7 +154,7 @@ account_equity_usd: 50000
     } catch (error) {
       expect(error).toBeInstanceOf(ConfigValidationError);
       expect((error as ConfigValidationError).issues).toContainEqual({
-        path: '$.profiles.regime_shock_reversion_short_v2.trailing_stop.mode',
+        path: '$.fallback_profile.trailing_stop.mode',
         message: 'expected one of: disabled, post_pt1_ticks, post_pt1_sigma',
       });
     }
@@ -174,7 +173,7 @@ account_equity_usd: 50000
     } catch (error) {
       expect(error).toBeInstanceOf(ConfigValidationError);
       expect((error as ConfigValidationError).issues).toContainEqual({
-        path: '$.profiles.vwap_overnight_reversal_long.targets',
+        path: '$.fallback_profile.targets',
         message: 'pt2 minimum_reward_risk must be >= pt1 minimum_reward_risk',
       });
     }
@@ -186,7 +185,7 @@ account_equity_usd: 50000
       path: 'config/management/profiles.yaml',
       required: true,
     });
-    const profile = loaded.profiles.vwap_overnight_reversal_long;
+    const profile = loaded.fallback_profile;
     const reordered = {
       reasons: profile.reasons,
       partial_exit: profile.partial_exit,

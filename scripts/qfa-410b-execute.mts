@@ -134,13 +134,23 @@ export function parseArgs(argv: readonly string[]): CliArgs {
   if (runId === undefined || runId.trim() === '') {
     throw new Error('--run-id is required');
   }
-  const strategyIds = many(values, 'strategy-ids')
+  const strategyIdValues = many(values, 'strategy-ids');
+  if (values.has('strategy-ids') && strategyIdValues.length === 0) {
+    throw new Error('--strategy-ids requires at least one strategy id');
+  }
+  const strategyIds = strategyIdValues
     .map((value) => parseStrategyId(value));
+  const resolvedStrategyIds = values.has('strategy-ids') ? strategyIds : ACTIVE_STRATEGY_IDS;
+  if (resolvedStrategyIds.length === 0) {
+    throw new Error(
+      'ACTIVE_STRATEGY_IDS is empty; pass explicit --strategy-ids for registered-inactive research replay',
+    );
+  }
   return {
     archiveRoot: one(values, 'archive-root'),
     manifests: many(values, 'manifests', DEFAULT_MANIFESTS),
     outputDir: one(values, 'output-dir') ?? DEFAULT_OUTPUT_DIR,
-    strategyIds: strategyIds.length === 0 ? ACTIVE_STRATEGY_IDS : strategyIds,
+    strategyIds: resolvedStrategyIds,
     initialEquityCents: BigInt(one(values, 'initial-equity-cents') ?? DEFAULT_INITIAL_EQUITY_CENTS.toString()),
     runId,
     walkForwardPolicyPath: one(values, 'walk-forward-policy'),

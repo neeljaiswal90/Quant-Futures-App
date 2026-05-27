@@ -1,35 +1,38 @@
 import { describe, expect, it } from 'vitest';
 
-import { ACTIVE_STRATEGY_IDS } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { StrategyReplayEvaluation } from '../../../src/strategy-replay/index.js';
 import {
   normalizeStrategyReplayDecisions,
   StrategyFingerprintInputError,
 } from '../../../src/strategy-fingerprint/index.js';
-import {
-  defaultStrategyReplayIds,
-  replayStrategies,
-} from '../../../src/strategy-replay/index.js';
+import { replayStrategies } from '../../../src/strategy-replay/index.js';
 import { REPLAY_BARS } from '../strategy-replay/fixtures.js';
+
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
+] as const satisfies readonly StrategyId[];
 
 describe('strategy fingerprint decision normalizer', () => {
   it('normalizes QFA-301 replay evaluations into fingerprint decisions', async () => {
     const replay = await replayFixture();
     const decisions = normalizeStrategyReplayDecisions(replay.evaluations);
 
-    expect(decisions).toHaveLength(REPLAY_BARS.length * ACTIVE_STRATEGY_IDS.length);
-    expect(decisions.slice(0, ACTIVE_STRATEGY_IDS.length).map((decision) => decision.strategy_id)).toEqual(
-      ACTIVE_STRATEGY_IDS,
+    expect(decisions).toHaveLength(REPLAY_BARS.length * EXPLICIT_REPLAY_STRATEGY_IDS.length);
+    expect(decisions.slice(0, EXPLICIT_REPLAY_STRATEGY_IDS.length).map((decision) => decision.strategy_id)).toEqual(
+      EXPLICIT_REPLAY_STRATEGY_IDS,
     );
     expect(
       decisions
-        .filter((decision) => decision.strategy_id === ACTIVE_STRATEGY_IDS[0])
+        .filter((decision) => decision.strategy_id === EXPLICIT_REPLAY_STRATEGY_IDS[0])
         .map((decision) => decision.sequence),
     ).toEqual([1, 2, 3, 4]);
     expect(decisions[0]).toMatchObject({
       sequence: 1,
       bar_id: 'bar-001',
-      strategy_id: ACTIVE_STRATEGY_IDS[0],
+      strategy_id: EXPLICIT_REPLAY_STRATEGY_IDS[0],
     });
   });
 
@@ -87,7 +90,7 @@ describe('strategy fingerprint decision normalizer', () => {
 
 async function replayFixture() {
   return replayStrategies({
-    strategy_ids: defaultStrategyReplayIds(),
+    strategy_ids: EXPLICIT_REPLAY_STRATEGY_IDS,
     bars: REPLAY_BARS,
   });
 }

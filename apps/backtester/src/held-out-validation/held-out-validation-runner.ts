@@ -232,11 +232,11 @@ export function buildHeldOutValidationResult(
   const replayEvaluations = options.replay_evaluations ?? [];
   const fingerprintSet =
     options.strategy_fingerprint_set ??
-    computeStrategyFingerprintSet(replayEvaluations, ACTIVE_STRATEGY_IDS);
+    computeStrategyFingerprintSet(replayEvaluations, strategyOrder);
   const capabilitySet =
     options.capability_assessment_set ??
     buildCapabilityAssessmentSet(replayEvaluations, fingerprintSet, {
-      strategy_order: ACTIVE_STRATEGY_IDS,
+      strategy_order: strategyOrder,
     });
 
   const validationGateResultSet = evaluateValidationGateSet(

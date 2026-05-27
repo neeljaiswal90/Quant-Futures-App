@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ACTIVE_STRATEGY_IDS,
   type StrategyId,
 } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import { STRATEGY_FINGERPRINT_ALGORITHM } from '../../../src/strategy-fingerprint/index.js';
@@ -26,6 +25,11 @@ import type {
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
 const HASH_C = 'c'.repeat(64);
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
+] as const satisfies readonly StrategyId[];
 const SESSION_ORDER = Object.freeze([
   '2026-02-02-rth',
   '2026-02-03-rth',
@@ -42,7 +46,7 @@ const SESSION_ORDER = Object.freeze([
 describe('QFA-410 held-out validation runner', () => {
   it('builds held-out validation result from deterministic fixture inputs', async () => {
     const result = await runHeldOutValidation(
-      optionsWithPassingArtifacts([ACTIVE_STRATEGY_IDS[0]], 'passed'),
+      optionsWithPassingArtifacts([EXPLICIT_REPLAY_STRATEGY_IDS[0]], 'passed'),
     );
 
     expect(result).toMatchObject({
@@ -60,7 +64,7 @@ describe('QFA-410 held-out validation runner', () => {
 
   it('consumes QFA-403 OOS replay framework result', () => {
     const result = buildHeldOutValidationResult(
-      optionsWithPassingArtifacts([ACTIVE_STRATEGY_IDS[0]], 'passed'),
+      optionsWithPassingArtifacts([EXPLICIT_REPLAY_STRATEGY_IDS[0]], 'passed'),
     );
 
     expect(result.oos_framework_result.result_schema_version).toBe(1);
@@ -70,10 +74,10 @@ describe('QFA-410 held-out validation runner', () => {
 
   it('uses walk-forward test windows only', () => {
     const base = buildHeldOutValidationResult(
-      optionsWithPassingArtifacts([ACTIVE_STRATEGY_IDS[0]], 'passed'),
+      optionsWithPassingArtifacts([EXPLICIT_REPLAY_STRATEGY_IDS[0]], 'passed'),
     );
     const changedTrainValidation = buildHeldOutValidationResult({
-      ...optionsWithPassingArtifacts([ACTIVE_STRATEGY_IDS[0]], 'passed'),
+      ...optionsWithPassingArtifacts([EXPLICIT_REPLAY_STRATEGY_IDS[0]], 'passed'),
       walk_forward_plan: {
         ...walkForwardPlan(),
         windows: walkForwardPlan().windows.map((window) => ({
@@ -88,7 +92,7 @@ describe('QFA-410 held-out validation runner', () => {
   });
 
   it('preserves explicit strategy order', () => {
-    const order = [ACTIVE_STRATEGY_IDS[2], ACTIVE_STRATEGY_IDS[0]] as const;
+    const order = [EXPLICIT_REPLAY_STRATEGY_IDS[2], EXPLICIT_REPLAY_STRATEGY_IDS[0]] as const;
     const result = buildHeldOutValidationResult(optionsWithPassingArtifacts(order, 'passed'));
 
     expect(result.validation_gate_result_set.results.map((item) => item.strategy_id)).toEqual(order);
@@ -125,7 +129,7 @@ describe('QFA-410 held-out validation runner', () => {
 
   it('keeps pending fidelity prerequisites from fabricating fidelity pass/fail', () => {
     const result = buildHeldOutValidationResult(
-      optionsWithPassingArtifacts([ACTIVE_STRATEGY_IDS[0]], 'pending'),
+      optionsWithPassingArtifacts([EXPLICIT_REPLAY_STRATEGY_IDS[0]], 'pending'),
     );
 
     expect(result.window_results[0]).toMatchObject({
@@ -137,7 +141,7 @@ describe('QFA-410 held-out validation runner', () => {
 
   it('blocks held-out results when fidelity prerequisites failed', () => {
     const result = buildHeldOutValidationResult(
-      optionsWithPassingArtifacts([ACTIVE_STRATEGY_IDS[0]], 'failed'),
+      optionsWithPassingArtifacts([EXPLICIT_REPLAY_STRATEGY_IDS[0]], 'failed'),
     );
 
     expect(result.window_results[0]).toMatchObject({
@@ -148,7 +152,7 @@ describe('QFA-410 held-out validation runner', () => {
   });
 
   it('repeated identical input produces deeply equal results', async () => {
-    const options = optionsWithPassingArtifacts(ACTIVE_STRATEGY_IDS, 'passed');
+    const options = optionsWithPassingArtifacts(EXPLICIT_REPLAY_STRATEGY_IDS, 'passed');
 
     expect(await runHeldOutValidation(options)).toEqual(await runHeldOutValidation(options));
   });
@@ -158,7 +162,7 @@ describe('QFA-410 held-out validation runner', () => {
       buildHeldOutValidationResult({
         ...baseOptions('passed'),
         run_id: '',
-        strategy_order: [ACTIVE_STRATEGY_IDS[0], ACTIVE_STRATEGY_IDS[0]],
+        strategy_order: [EXPLICIT_REPLAY_STRATEGY_IDS[0], EXPLICIT_REPLAY_STRATEGY_IDS[0]],
       }),
     ).toThrow(HeldOutValidationInputError);
   });
@@ -171,7 +175,7 @@ function baseOptions(
     run_id: 'qfa-410-test-run',
     input_spec: inputSpec(fidelityStatus),
     walk_forward_plan: walkForwardPlan(),
-    strategy_order: [ACTIVE_STRATEGY_IDS[0]],
+    strategy_order: [EXPLICIT_REPLAY_STRATEGY_IDS[0]],
   };
 }
 

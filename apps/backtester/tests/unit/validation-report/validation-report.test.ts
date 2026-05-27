@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { ACTIVE_STRATEGY_IDS } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import {
   createValidationReport,
   type ValidationGateResultSet,
 } from '../../../src/index.js';
+
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+] as const satisfies readonly StrategyId[];
 
 describe('validation report', () => {
   it('summarizes QFA-310 result fields without re-evaluating policy', () => {
@@ -21,8 +26,8 @@ describe('validation report', () => {
       reason_count: 1,
     });
     expect(report.strategy_results.map((result) => result.strategy_id)).toEqual([
-      ACTIVE_STRATEGY_IDS[1],
-      ACTIVE_STRATEGY_IDS[0],
+      EXPLICIT_REPLAY_STRATEGY_IDS[1],
+      EXPLICIT_REPLAY_STRATEGY_IDS[0],
     ]);
     expect(report.strategy_results[0]).toMatchObject({
       status: 'pass',
@@ -52,7 +57,7 @@ function makeResultSet(): ValidationGateResultSet {
     results: [
       {
         result_schema_version: 1,
-        strategy_id: ACTIVE_STRATEGY_IDS[1]!,
+        strategy_id: EXPLICIT_REPLAY_STRATEGY_IDS[1]!,
         status: 'pass',
         capability_status: 'ready_for_replay',
         fingerprint_sha256: 'a'.repeat(64),
@@ -85,7 +90,7 @@ function makeResultSet(): ValidationGateResultSet {
       },
       {
         result_schema_version: 1,
-        strategy_id: ACTIVE_STRATEGY_IDS[0]!,
+        strategy_id: EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
         status: 'fail',
         capability_status: 'ready_for_replay',
         fingerprint_sha256: null,

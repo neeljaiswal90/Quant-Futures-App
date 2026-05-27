@@ -1,8 +1,4 @@
-export const ACTIVE_STRATEGY_IDS = [
-  'vwap_overnight_reversal_long',
-  'vwap_overnight_reversal_short',
-  'regime_shock_reversion_short_v2',
-] as const;
+export const ACTIVE_STRATEGY_IDS = [] as const;
 
 export const CANDIDATE_STRATEGY_IDS = [] as const;
 
@@ -15,6 +11,9 @@ export const REGISTERED_INACTIVE_STRATEGY_IDS = [
   'regime_mean_reversion_short',
   'liquidity_sweep_reversal_long',
   'liquidity_sweep_reversal_short',
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
   'regime_shock_reversion_short_v3',
   'regime_shock_reversion_short_v5_strict_deadline',
   'regime_shock_reversion_short_v5_trail_at_deadline',
