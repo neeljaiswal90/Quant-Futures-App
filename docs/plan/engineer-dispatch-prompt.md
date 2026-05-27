@@ -233,6 +233,15 @@ Step 8: Coordinator review (mandatory before PR open).
    dual-coord review pattern's value comes from independent gate
    verification, not redundant diff review.
 
+   Docs-only, memo-only, backlog-only, and dispatch-packet PRs are not
+   exempt from this PR gate. They still open as draft first, remain
+   draft until coordinator/operator review confirms file scope and CI
+   status, and only then move to READY-FOR-PR / un-draft authorization.
+   If GitHub runs the standard checks, `gh pr checks <PR#>` must report
+   SUCCESS before READY-FOR-PR. If no check suite is created for a
+   purely documentary change, record CI as not applicable and verify
+   the absence directly in the PR gate report rather than assuming it.
+
 ========================================================================
 4. ESCALATION TRIGGERS (STOP AND ASK)
 ========================================================================
@@ -283,6 +292,8 @@ PR open.
   - PR body uses ## Summary + ## Test plan + ## Risk +
     ## Determinism verification.
   - Open as draft initially.
+  - Draft-first applies to every PR class, including docs-only,
+    memo-only, backlog-only, and dispatch-packet PRs.
   - Do NOT push to remote until verification is green.
   - Do NOT open a PR before §3 Step 8 authorization.
 
