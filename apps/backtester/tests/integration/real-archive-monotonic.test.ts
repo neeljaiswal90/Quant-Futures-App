@@ -10,7 +10,7 @@ import {
   type Candidate,
   type StrategyEvaluation,
 } from '../../../strategy_runtime/src/contracts/index.js';
-import { ACTIVE_STRATEGY_IDS } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import { executeHeldOutValidationAgainstArchive } from '../../src/held-out-validation/index.js';
 import type { RealArchiveStrategyGenerator } from '../../src/real-archive-execution/index.js';
 
@@ -33,7 +33,7 @@ describe('QFA-201d real-archive monotonic source merge', () => {
       throw new Error('missing 2026-02-02-rth in Tier A manifest');
     }
 
-    const strategyId = ACTIVE_STRATEGY_IDS[0];
+    const strategyId = 'vwap_overnight_reversal_long' as const satisfies StrategyId;
     const result = await executeHeldOutValidationAgainstArchive({
       run_id: 'qfa201d-real-archive-monotonic',
       input_spec: {

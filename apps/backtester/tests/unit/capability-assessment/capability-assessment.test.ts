@@ -22,14 +22,37 @@ import {
 } from '../../../src/strategy-replay/index.js';
 import { REPLAY_BARS } from '../strategy-replay/fixtures.js';
 
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
+] as const satisfies readonly StrategyId[];
+
 describe('strategy capability assessment', () => {
-  it('builds one assessment per strategy in ACTIVE_STRATEGY_IDS order', async () => {
+  it('builds an empty assessment set for the empty active roster when requested', async () => {
+    const replay = await replayStrategies({
+      strategy_ids: ACTIVE_STRATEGY_IDS,
+      bars: REPLAY_BARS,
+    });
+    const fingerprints = computeStrategyFingerprintSet(replay.evaluations, ACTIVE_STRATEGY_IDS);
+    const assessment = buildCapabilityAssessmentSet(replay, fingerprints, {
+      strategy_order: ACTIVE_STRATEGY_IDS,
+    });
+
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
+    expect(assessment.assessment_set_schema_version).toBe(1);
+    expect(assessment.assessments).toEqual([]);
+  });
+
+  it('builds one assessment per explicit registered-inactive research strategy order', async () => {
     const { replay, fingerprints } = await replayAndFingerprint();
-    const assessment = buildCapabilityAssessmentSet(replay, fingerprints);
+    const assessment = buildCapabilityAssessmentSet(replay, fingerprints, {
+      strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
+    });
 
     expect(assessment.assessment_set_schema_version).toBe(1);
     expect(assessment.assessments.map((entry) => entry.strategy_id)).toEqual(
-      ACTIVE_STRATEGY_IDS,
+      EXPLICIT_REPLAY_STRATEGY_IDS,
     );
     expect(assessment.assessments.every((entry) => entry.replay_evaluations === 4)).toBe(
       true,
@@ -41,7 +64,7 @@ describe('strategy capability assessment', () => {
 
   it('supports explicit strategy_order', async () => {
     const { replay, fingerprints } = await replayAndFingerprint();
-    const reversed = [...ACTIVE_STRATEGY_IDS].reverse();
+    const reversed = [...EXPLICIT_REPLAY_STRATEGY_IDS].reverse();
     const assessment = buildCapabilityAssessmentSet(replay, fingerprints, {
       strategy_order: reversed,
     });
@@ -52,6 +75,7 @@ describe('strategy capability assessment', () => {
   it('marks replay plus fingerprint as ready_for_replay when all feature categories are real', async () => {
     const { replay, fingerprints } = await replayAndFingerprint();
     const assessment = buildCapabilityAssessmentSet(replay, fingerprints, {
+      strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
       feature_capabilities: allRealFeatureCapabilities(),
     });
 
@@ -65,7 +89,9 @@ describe('strategy capability assessment', () => {
 
   it('maps replay_sanity_v1 placeholders to degraded replay limitations', async () => {
     const { replay, fingerprints } = await replayAndFingerprint();
-    const assessment = buildCapabilityAssessmentSet(replay, fingerprints);
+    const assessment = buildCapabilityAssessmentSet(replay, fingerprints, {
+      strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
+    });
 
     expect(assessment.assessments.every((entry) => entry.status === 'degraded_replay')).toBe(
       true,
@@ -87,14 +113,16 @@ describe('strategy capability assessment', () => {
 
   it('marks missing fingerprint as blocked', async () => {
     const { replay, fingerprints } = await replayAndFingerprint();
-    const missingStrategy = ACTIVE_STRATEGY_IDS[0]!;
+    const missingStrategy = EXPLICIT_REPLAY_STRATEGY_IDS[0]!;
     const partialFingerprints: StrategyFingerprintSet = {
       ...fingerprints,
       fingerprints: fingerprints.fingerprints.filter(
         (fingerprint) => fingerprint.strategy_id !== missingStrategy,
       ),
     };
-    const assessment = buildCapabilityAssessmentSet(replay, partialFingerprints);
+    const assessment = buildCapabilityAssessmentSet(replay, partialFingerprints, {
+      strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
+    });
     const entry = assessment.assessments.find(
       (candidate) => candidate.strategy_id === missingStrategy,
     );
@@ -111,8 +139,9 @@ describe('strategy capability assessment', () => {
 
   it('marks zero-decision fingerprints as degraded when replay exists', async () => {
     const { replay } = await replayAndFingerprint();
-    const zeroDecisionFingerprints = computeStrategyFingerprintSet([], ACTIVE_STRATEGY_IDS);
+    const zeroDecisionFingerprints = computeStrategyFingerprintSet([], EXPLICIT_REPLAY_STRATEGY_IDS);
     const assessment = buildCapabilityAssessmentSet(replay, zeroDecisionFingerprints, {
+      strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
       feature_capabilities: allRealFeatureCapabilities(),
     });
 
@@ -129,6 +158,7 @@ describe('strategy capability assessment', () => {
   it('marks missing replay output as blocked', async () => {
     const { fingerprints } = await replayAndFingerprint();
     const assessment = buildCapabilityAssessmentSet([], fingerprints, {
+      strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
       feature_capabilities: allRealFeatureCapabilities(),
     });
 
@@ -142,7 +172,9 @@ describe('strategy capability assessment', () => {
 
   it('produces deterministic sorted limitations', async () => {
     const { replay, fingerprints } = await replayAndFingerprint();
-    const assessment = buildCapabilityAssessmentSet(replay, fingerprints);
+    const assessment = buildCapabilityAssessmentSet(replay, fingerprints, {
+      strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
+    });
     const first = assessment.assessments[0]!;
 
     expect(first.limitations.map((limitation) => limitation.code)).toEqual([
@@ -159,8 +191,12 @@ describe('strategy capability assessment', () => {
     const first = await replayAndFingerprint();
     const second = await replayAndFingerprint();
 
-    expect(buildCapabilityAssessmentSet(second.replay, second.fingerprints)).toEqual(
-      buildCapabilityAssessmentSet(first.replay, first.fingerprints),
+    expect(buildCapabilityAssessmentSet(second.replay, second.fingerprints, {
+      strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
+    })).toEqual(
+      buildCapabilityAssessmentSet(first.replay, first.fingerprints, {
+        strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
+      }),
     );
   });
 
@@ -174,7 +210,9 @@ describe('strategy capability assessment', () => {
     ] as unknown as readonly StrategyReplayEvaluation[];
 
     expectCapabilityIssue(
-      () => buildCapabilityAssessmentSet(malformedReplay, fingerprints),
+      () => buildCapabilityAssessmentSet(malformedReplay, fingerprints, {
+        strategy_order: EXPLICIT_REPLAY_STRATEGY_IDS,
+      }),
       'unknown_strategy_id',
     );
   });
@@ -186,10 +224,10 @@ describe('strategy capability assessment', () => {
       () =>
         buildCapabilityAssessmentSet(replay, fingerprints, {
           strategy_order: [
-            ACTIVE_STRATEGY_IDS[0]!,
-            ACTIVE_STRATEGY_IDS[0]!,
-            ACTIVE_STRATEGY_IDS[1]!,
-            ACTIVE_STRATEGY_IDS[2]!,
+            EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
+            EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
+            EXPLICIT_REPLAY_STRATEGY_IDS[1]!,
+            EXPLICIT_REPLAY_STRATEGY_IDS[2]!,
           ],
         }),
       'duplicate_strategy_id',
@@ -210,12 +248,12 @@ describe('strategy capability assessment', () => {
 
 async function replayAndFingerprint() {
   const replay = await replayStrategies({
-    strategy_ids: defaultStrategyReplayIds(),
+    strategy_ids: EXPLICIT_REPLAY_STRATEGY_IDS,
     bars: REPLAY_BARS,
   });
   return {
     replay,
-    fingerprints: computeStrategyFingerprintSet(replay.evaluations, ACTIVE_STRATEGY_IDS),
+    fingerprints: computeStrategyFingerprintSet(replay.evaluations, EXPLICIT_REPLAY_STRATEGY_IDS),
   };
 }
 

@@ -9,7 +9,7 @@ import {
   type Candidate,
   type StrategyEvaluation,
 } from '../../../../strategy_runtime/src/contracts/index.js';
-import { ACTIVE_STRATEGY_IDS } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type {
   DbnMbp1Record,
   DbnTradesRecord,
@@ -28,6 +28,7 @@ const CONFIG = {
   config_hash: makeConfigHash('1'.repeat(64)),
   config_version: 1,
 };
+const EXPLICIT_REPLAY_STRATEGY_ID = 'vwap_overnight_reversal_long' as const satisfies StrategyId;
 
 describe('QFA-410b real-archive held-out execution', () => {
   it('executes a held-out test window through QFA-201c and preserves per-trade metadata', async () => {
@@ -36,12 +37,12 @@ describe('QFA-410b real-archive held-out execution', () => {
     expect(result.per_strategy_real_records).toHaveLength(1);
     expect(result.raw_execution_results).toHaveLength(1);
     expect(result.per_strategy_real_records[0]?.windows[0]).toMatchObject({
-      strategy_id: ACTIVE_STRATEGY_IDS[0],
+      strategy_id: EXPLICIT_REPLAY_STRATEGY_ID,
       window_id: 'wf-real-1',
       status: 'executed',
     });
     expect(result.per_strategy_real_records[0]?.windows[0]?.per_trade_records[0]).toMatchObject({
-      strategy_id: ACTIVE_STRATEGY_IDS[0],
+      strategy_id: EXPLICIT_REPLAY_STRATEGY_ID,
       session_id: '2026-02-02-rth',
       regime_label: 'high',
       spread_bucket: '2-tick',
@@ -70,7 +71,7 @@ describe('QFA-410b real-archive held-out execution', () => {
     const trade = result.per_strategy_real_records[0]?.windows[0]?.per_trade_records[0];
 
     expect(trade).toMatchObject({
-      strategy_id: ACTIVE_STRATEGY_IDS[0],
+      strategy_id: EXPLICIT_REPLAY_STRATEGY_ID,
       session_id: '2026-02-04-rth',
       regime_label: 'high',
       exit_reason: 'target',
@@ -130,14 +131,14 @@ async function runFixture(): Promise<HeldOutValidationRealArchiveResult> {
         test: { start_session: '2026-02-02-rth', end_session: '2026-02-03-rth' },
       }],
     },
-    strategy_order: [ACTIVE_STRATEGY_IDS[0]],
+    strategy_order: [EXPLICIT_REPLAY_STRATEGY_ID],
     run_started_at_ns: ns(1n),
     fill_policy: {
       minimum_fill_probability_ppm: 0,
       order_quantity: 2,
     },
     strategy_generators: {
-      [ACTIVE_STRATEGY_IDS[0]]: deterministicGenerator(),
+      [EXPLICIT_REPLAY_STRATEGY_ID]: deterministicGenerator(),
     },
     archive_sessions: [{
       session_id: '2026-02-02-rth',
@@ -186,14 +187,14 @@ async function runTargetFixture(): Promise<HeldOutValidationRealArchiveResult> {
         test: { start_session: '2026-02-04-rth', end_session: '2026-02-05-rth' },
       }],
     },
-    strategy_order: [ACTIVE_STRATEGY_IDS[0]],
+    strategy_order: [EXPLICIT_REPLAY_STRATEGY_ID],
     run_started_at_ns: ns(1n),
     fill_policy: {
       minimum_fill_probability_ppm: 0,
       order_quantity: 2,
     },
     strategy_generators: {
-      [ACTIVE_STRATEGY_IDS[0]]: deterministicGenerator(),
+      [EXPLICIT_REPLAY_STRATEGY_ID]: deterministicGenerator(),
     },
     archive_sessions: [{
       session_id: '2026-02-04-rth',

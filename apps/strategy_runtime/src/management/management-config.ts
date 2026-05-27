@@ -50,12 +50,12 @@ export interface ManagementConfigLineage {
   readonly management_config_hash: string;
   readonly management_config_hash_algorithm: typeof MANAGEMENT_CONFIG_HASH_ALGORITHM;
   readonly canonical_management_config_json: string;
-  readonly profile_hashes: Readonly<Record<ActiveStrategyId | 'fallback', string>>;
+  readonly profile_hashes: Readonly<Partial<Record<StrategyId, string>> & Record<'fallback', string>>;
 }
 
 export interface ManagementProfilesConfig {
   readonly version: typeof MANAGEMENT_CONFIG_SCHEMA_VERSION;
-  readonly profiles: Readonly<Record<ActiveStrategyId, ManagementProfile>>;
+  readonly profiles: Readonly<Partial<Record<StrategyId, ManagementProfile>>> & Readonly<Record<ActiveStrategyId, ManagementProfile>>;
   readonly fallback_profile: ManagementProfile;
   readonly lineage: ManagementConfigLineage;
   readonly source_file: string;
@@ -191,8 +191,15 @@ function buildManagementProfilesConfig(
       strategyId,
       withProfileHash(profiles[strategyId]),
     ]),
-  ) as Readonly<Record<ActiveStrategyId, ManagementProfile>>;
+  ) as Readonly<Partial<Record<StrategyId, ManagementProfile>>> & Readonly<Record<ActiveStrategyId, ManagementProfile>>;
   const hashedFallback = withProfileHash(fallbackProfile);
+  const profileHashEntries = (ACTIVE_STRATEGY_IDS as readonly StrategyId[]).map((strategyId) => {
+    const profile = hashedProfiles[strategyId];
+    if (profile === undefined) {
+      throw new Error(`missing active management profile: ${strategyId}`);
+    }
+    return [strategyId, profile.profile_hash] as const;
+  });
   const configWithoutLineage = {
     version: MANAGEMENT_CONFIG_SCHEMA_VERSION,
     profiles: hashedProfiles,
@@ -208,14 +215,9 @@ function buildManagementProfilesConfig(
       management_config_hash_algorithm: MANAGEMENT_CONFIG_HASH_ALGORITHM,
       canonical_management_config_json: canonical,
       profile_hashes: {
-        ...Object.fromEntries(
-          ACTIVE_STRATEGY_IDS.map((strategyId) => [
-            strategyId,
-            hashedProfiles[strategyId].profile_hash,
-          ]),
-        ),
+        ...Object.fromEntries(profileHashEntries),
         fallback: hashedFallback.profile_hash,
-      } as Readonly<Record<ActiveStrategyId | 'fallback', string>>,
+      } as Readonly<Partial<Record<StrategyId, string>> & Record<'fallback', string>>,
     },
     source_file: sourceFile,
   };
@@ -459,7 +461,7 @@ function compareIssues(left: ConfigValidationIssue, right: ConfigValidationIssue
   return 0;
 }
 
-for (const profile of Object.values(DEFAULT_MANAGEMENT_PROFILES_CONFIG.profiles)) {
+for (const profile of Object.values(DEFAULT_MANAGEMENT_PROFILES_CONFIG.profiles) as ManagementProfile[]) {
   assertValidManagementProfile(profile);
 }
 assertValidManagementProfile(DEFAULT_MANAGEMENT_PROFILES_CONFIG.fallback_profile);

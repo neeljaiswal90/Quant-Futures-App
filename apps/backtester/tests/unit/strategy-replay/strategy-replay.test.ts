@@ -16,6 +16,7 @@ describe('strategy replay sanity harness', () => {
       bars: REPLAY_BARS,
     });
 
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
     expect(result.summary.map((entry) => entry.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
     expect(result.summary).toHaveLength(ACTIVE_STRATEGY_IDS.length);
     expect(result.summary.every((entry) => entry.bars_evaluated === REPLAY_BARS.length)).toBe(true);

@@ -12,12 +12,17 @@ import {
 } from '../../../src/oos-replay/index.js';
 
 const HASH_A = 'a'.repeat(64);
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
+] as const satisfies readonly StrategyId[];
 
 describe('QFA-403 Tier B OOS replay framework', () => {
   it('builds OOS window results from walk-forward test windows only', () => {
     const result = buildTierBOosReplayPlan({
       walk_forward_plan: walkForwardPlan(),
-      strategy_order: [ACTIVE_STRATEGY_IDS[0]],
+      strategy_order: [EXPLICIT_REPLAY_STRATEGY_IDS[0]],
       input_spec: inputSpec('passed'),
     });
 
@@ -40,7 +45,7 @@ describe('QFA-403 Tier B OOS replay framework', () => {
   it('ignores train and validation ranges for OOS result generation', () => {
     const base = buildTierBOosReplayPlan({
       walk_forward_plan: walkForwardPlan(),
-      strategy_order: [ACTIVE_STRATEGY_IDS[0]],
+      strategy_order: [EXPLICIT_REPLAY_STRATEGY_IDS[0]],
       input_spec: inputSpec('passed'),
     });
     const changedTrainValidation = buildTierBOosReplayPlan({
@@ -52,7 +57,7 @@ describe('QFA-403 Tier B OOS replay framework', () => {
           validation: { start_session: 'changed-val-start', end_session: 'changed-val-end' },
         })),
       },
-      strategy_order: [ACTIVE_STRATEGY_IDS[0]],
+      strategy_order: [EXPLICIT_REPLAY_STRATEGY_IDS[0]],
       input_spec: inputSpec('passed'),
     });
 
@@ -60,7 +65,7 @@ describe('QFA-403 Tier B OOS replay framework', () => {
   });
 
   it('preserves explicit strategy order', () => {
-    const order = [ACTIVE_STRATEGY_IDS[2], ACTIVE_STRATEGY_IDS[0]] as const;
+    const order = [EXPLICIT_REPLAY_STRATEGY_IDS[2], EXPLICIT_REPLAY_STRATEGY_IDS[0]] as const;
     const result = buildTierBOosReplayPlan({
       walk_forward_plan: oneWindowPlan(),
       strategy_order: order,
@@ -70,18 +75,19 @@ describe('QFA-403 Tier B OOS replay framework', () => {
     expect(result.windows.map((window) => window.strategy_id)).toEqual(order);
   });
 
-  it('covers all four existing strategies in the standard order', () => {
+  it('returns no OOS windows for the empty default active strategy order', () => {
     const result = buildTierBOosReplayPlan({
       walk_forward_plan: oneWindowPlan(),
       strategy_order: defaultOosStrategyOrder(),
       input_spec: inputSpec('passed'),
     });
 
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
     expect(result.windows.map((window) => window.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
   });
 
   it('keeps pending fidelity from blocking framework construction', () => {
-    const strategyId = ACTIVE_STRATEGY_IDS[0];
+    const strategyId = EXPLICIT_REPLAY_STRATEGY_IDS[0];
     const result = buildTierBOosReplayPlan({
       walk_forward_plan: oneWindowPlan(),
       strategy_order: [strategyId],
@@ -101,7 +107,7 @@ describe('QFA-403 Tier B OOS replay framework', () => {
   });
 
   it('blocks OOS results when fidelity prerequisite failed', () => {
-    const strategyId = ACTIVE_STRATEGY_IDS[0];
+    const strategyId = EXPLICIT_REPLAY_STRATEGY_IDS[0];
     const result = buildTierBOosReplayPlan({
       walk_forward_plan: oneWindowPlan(),
       strategy_order: [strategyId],
@@ -120,7 +126,7 @@ describe('QFA-403 Tier B OOS replay framework', () => {
   it('returns insufficient evidence for framework-only results without replay execution artifacts', () => {
     const result = buildTierBOosReplayPlan({
       walk_forward_plan: oneWindowPlan(),
-      strategy_order: [ACTIVE_STRATEGY_IDS[0]],
+      strategy_order: [EXPLICIT_REPLAY_STRATEGY_IDS[0]],
       input_spec: inputSpec('passed'),
     });
 
@@ -134,7 +140,7 @@ describe('QFA-403 Tier B OOS replay framework', () => {
     expect(() =>
       buildTierBOosReplayPlan({
         walk_forward_plan: oneWindowPlan(),
-        strategy_order: [ACTIVE_STRATEGY_IDS[0], ACTIVE_STRATEGY_IDS[0]],
+        strategy_order: [EXPLICIT_REPLAY_STRATEGY_IDS[0], EXPLICIT_REPLAY_STRATEGY_IDS[0]],
         input_spec: inputSpec('passed'),
       }),
     ).toThrow(OosReplayInputError);

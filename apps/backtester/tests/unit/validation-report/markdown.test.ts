@@ -2,11 +2,16 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { ACTIVE_STRATEGY_IDS } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import {
   renderValidationReportMarkdown,
   type ValidationGateResultSet,
 } from '../../../src/index.js';
+
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+] as const satisfies readonly StrategyId[];
 
 describe('validation report markdown', () => {
   it('renders byte-identical markdown for identical inputs', () => {
@@ -19,8 +24,8 @@ describe('validation report markdown', () => {
   it('uses result set order and supplied check order', () => {
     const markdown = renderValidationReportMarkdown(makeResultSet());
 
-    expect(markdown.indexOf(ACTIVE_STRATEGY_IDS[1]!)).toBeLessThan(
-      markdown.indexOf(ACTIVE_STRATEGY_IDS[0]!),
+    expect(markdown.indexOf(EXPLICIT_REPLAY_STRATEGY_IDS[1]!)).toBeLessThan(
+      markdown.indexOf(EXPLICIT_REPLAY_STRATEGY_IDS[0]!),
     );
     expect(markdown.indexOf('aggregate_profit_factor')).toBeLessThan(
       markdown.indexOf('aggregate_net_pnl'),
@@ -58,7 +63,7 @@ function makeResultSet(): ValidationGateResultSet {
     results: [
       {
         result_schema_version: 1,
-        strategy_id: ACTIVE_STRATEGY_IDS[1]!,
+        strategy_id: EXPLICIT_REPLAY_STRATEGY_IDS[1]!,
         status: 'blocked',
         capability_status: 'blocked',
         fingerprint_sha256: 'b'.repeat(64),
@@ -98,7 +103,7 @@ function makeResultSet(): ValidationGateResultSet {
       },
       {
         result_schema_version: 1,
-        strategy_id: ACTIVE_STRATEGY_IDS[0]!,
+        strategy_id: EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
         status: 'pass',
         capability_status: 'ready_for_replay',
         fingerprint_sha256: null,

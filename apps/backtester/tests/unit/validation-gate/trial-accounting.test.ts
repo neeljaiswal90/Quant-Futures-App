@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { ACTIVE_STRATEGY_IDS } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import {
   DEFAULT_VALIDATION_GATE_POLICY_V1,
   computeEffectiveTrialCount,
   validateTrialAccounting,
   type ValidationTrialAccounting,
 } from '../../../src/validation-gate/index.js';
+
+const EXPLICIT_REPLAY_STRATEGY_ID = 'vwap_overnight_reversal_long' as const satisfies StrategyId;
 
 describe('validation trial accounting', () => {
   it('computes effective trial count from max manual/fingerprint method', () => {
@@ -16,7 +18,7 @@ describe('validation trial accounting', () => {
 
   it('reports invalid trial accounting deterministically', () => {
     const issues = validateTrialAccounting(
-      ACTIVE_STRATEGY_IDS[0]!,
+      EXPLICIT_REPLAY_STRATEGY_ID,
       {
         ...makeTrialAccounting({ manual: 7, distinct: 11 }),
         effective_trial_count: 7,
@@ -36,7 +38,7 @@ function makeTrialAccounting(input: {
 }): ValidationTrialAccounting {
   return {
     trial_accounting_schema_version: 1,
-    strategy_id: ACTIVE_STRATEGY_IDS[0]!,
+    strategy_id: EXPLICIT_REPLAY_STRATEGY_ID,
     campaign_id: 'campaign-qfa310',
     raw_research_trials: 20,
     excluded_determinism_reruns: 0,

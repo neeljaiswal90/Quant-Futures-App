@@ -2,10 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import {
-  ACTIVE_STRATEGY_IDS,
-  type StrategyId,
-} from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type {
   StrategyCapabilityAssessment,
   StrategyCapabilityStatus,
@@ -40,6 +37,11 @@ const CHECK_ORDER: readonly ValidationGateCheckName[] = [
   'trial_accounting_required',
   'trial_accounting_valid',
 ] as const;
+
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+] as const satisfies readonly StrategyId[];
 
 describe('validation gate evaluator', () => {
   it('passes ready replay with sufficient evidence and passing thresholds', () => {
@@ -175,7 +177,7 @@ describe('validation gate evaluator', () => {
     const result = evaluateStrategyValidationGate(
       makeGateInput({
         trialAccounting: {
-          ...makeTrialAccounting(ACTIVE_STRATEGY_IDS[0]!),
+          ...makeTrialAccounting(EXPLICIT_REPLAY_STRATEGY_IDS[0]!),
           effective_trial_count: 1,
         },
       }),
@@ -188,7 +190,7 @@ describe('validation gate evaluator', () => {
   it('warns on high trial count without failing solely because of it', () => {
     const result = evaluateStrategyValidationGate(
       makeGateInput({
-        trialAccounting: makeTrialAccounting(ACTIVE_STRATEGY_IDS[0]!, {
+        trialAccounting: makeTrialAccounting(EXPLICIT_REPLAY_STRATEGY_IDS[0]!, {
           manual: 30,
           distinct: 24,
         }),
@@ -249,16 +251,16 @@ describe('validation gate evaluator', () => {
   });
 
   it('orders result sets by explicit strategy order', () => {
-    const inputA = makeGateInput({ strategyId: ACTIVE_STRATEGY_IDS[0]! });
-    const inputB = makeGateInput({ strategyId: ACTIVE_STRATEGY_IDS[1]! });
+    const inputA = makeGateInput({ strategyId: EXPLICIT_REPLAY_STRATEGY_IDS[0]! });
+    const inputB = makeGateInput({ strategyId: EXPLICIT_REPLAY_STRATEGY_IDS[1]! });
     const result = evaluateValidationGateSet([inputA, inputB], DEFAULT_VALIDATION_GATE_POLICY_V1, [
-      ACTIVE_STRATEGY_IDS[1]!,
-      ACTIVE_STRATEGY_IDS[0]!,
+      EXPLICIT_REPLAY_STRATEGY_IDS[1]!,
+      EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
     ]);
 
     expect(result.results.map((entry) => entry.strategy_id)).toEqual([
-      ACTIVE_STRATEGY_IDS[1],
-      ACTIVE_STRATEGY_IDS[0],
+      EXPLICIT_REPLAY_STRATEGY_IDS[1],
+      EXPLICIT_REPLAY_STRATEGY_IDS[0],
     ]);
   });
 
@@ -286,7 +288,7 @@ describe('validation gate evaluator', () => {
       makeGateInput({
         capabilityStatus: 'degraded_replay',
         windows: [makeDiagnosticWindow('train', 20), makeDiagnosticWindow('validation', 21), ...makeTestWindows()],
-        trialAccounting: makeTrialAccounting(ACTIVE_STRATEGY_IDS[0]!, {
+        trialAccounting: makeTrialAccounting(EXPLICIT_REPLAY_STRATEGY_IDS[0]!, {
           manual: 30,
           distinct: 24,
         }),
@@ -337,7 +339,7 @@ interface GateInputOverrides {
 }
 
 function makeGateInput(overrides: GateInputOverrides = {}): StrategyValidationGateInput {
-  const strategyId = overrides.strategyId ?? ACTIVE_STRATEGY_IDS[0]!;
+  const strategyId = overrides.strategyId ?? EXPLICIT_REPLAY_STRATEGY_IDS[0]!;
   const fingerprint = overrides.fingerprint === undefined ? makeFingerprint(strategyId) : overrides.fingerprint;
   return {
     strategy_id: strategyId,
@@ -391,7 +393,7 @@ interface WindowOverrides {
 function makeTestWindows(overrides: WindowOverrides = {}): readonly StrategyValidationWindowInput[] {
   return Array.from({ length: 8 }, (_, index) =>
     makeWindow({
-      strategyId: overrides.strategyId ?? ACTIVE_STRATEGY_IDS[0]!,
+      strategyId: overrides.strategyId ?? EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
       sequence: index + 1,
       startIndex: index,
       endIndex: index + 1,
@@ -409,7 +411,7 @@ function makeDiagnosticWindow(
   sequence: number,
 ): StrategyValidationWindowInput {
   return makeWindow({
-    strategyId: ACTIVE_STRATEGY_IDS[0]!,
+    strategyId: EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
     sequence,
     startIndex: sequence,
     endIndex: sequence + 1,

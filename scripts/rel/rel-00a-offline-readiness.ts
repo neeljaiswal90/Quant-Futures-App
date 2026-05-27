@@ -19,10 +19,18 @@ import {
   loadAppConfig,
 } from '../../apps/strategy_runtime/src/config/index.js';
 import {
+  makeCausationId,
+  makeCorrelationId,
   createJournalEventEnvelope,
   makeEventId,
+  makeFillId,
+  makeManagementActionId,
+  makeOrderIntentId,
+  makePositionId,
+  makeRiskGateDecisionId,
   makeRunId,
   makeSessionId,
+  makeSizingDecisionId,
   ns,
   stableJsonStringify,
   validateJournalEventEnvelope,
@@ -55,7 +63,10 @@ import {
 import {
   STRATEGY_SYNTHETIC_FIXTURES,
 } from '../../apps/strategy_runtime/tests/fixtures/strategies/synthetic-feature-snapshots.js';
-import type { StrategyFeatureSnapshot } from '../../apps/strategy_runtime/src/strategies/index.js';
+import {
+  getStrategyGenerator,
+  type StrategyFeatureSnapshot,
+} from '../../apps/strategy_runtime/src/strategies/index.js';
 import {
   formatJournalQueryResult,
   runJournalQuery,
@@ -127,6 +138,7 @@ const DEFAULT_FIXTURE_DIR = 'apps/strategy_runtime/tests/fixtures/obs00';
 const DEFAULT_OUTPUT_DIR = 'reports/rel/rel00a';
 const DEFAULT_REPORT_PATH = 'reports/rel/rel00a_offline_readiness_report.json';
 const NEXT_BLOCKER = 'INFRA-01 verification / DATA-01';
+const REL_00A_FIXTURE_STRATEGY_ID = 'vwap_overnight_reversal_long' as const;
 
 export async function runRel00aOfflineReadiness(
   options: Rel00aOptions = {},
@@ -307,20 +319,7 @@ async function runDeterministicRuntimeFixture(
   const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
   await runner.publishExternalEvent(sourceQuoteEvent(snapshot, String(snapshot.source_event_id)));
   const cycle = await runner.processFeatureSnapshot(snapshot);
-  const openPosition = cycle.open_positions[0];
-  if (openPosition !== undefined) {
-    const managementTs = ns(BigInt(snapshot.created_ts_ns) + 60_000_000_000n);
-    const managementSource = await runner.publishExternalEvent(
-      sourceQuoteEvent(snapshot, 'rel00a-management-source', managementTs),
-    );
-    await runner.processManagementTick({
-      cause_event: managementSource,
-      mark_price: openPosition.targets[1]?.price ?? openPosition.entry_price,
-      high_price: openPosition.targets[1]?.price ?? openPosition.entry_price,
-      low_price: openPosition.entry_price,
-      authority: 'authoritative',
-    });
-  }
+  await publishExplicitRegisteredInactiveLifecycle(runner, snapshot, cycle.feature_event);
 
   const journalPath = join(outputDir, `rel00a_runtime_${runLabel}.jsonl`);
   const journalText = mutator?.(serializeJournal(published), runLabel) ?? serializeJournal(published);
@@ -330,6 +329,281 @@ async function runDeterministicRuntimeFixture(
     journal_text: journalText,
     events: published,
   };
+}
+
+async function publishExplicitRegisteredInactiveLifecycle(
+  runner: StrategyRuntimeRunner,
+  snapshot: StrategyFeatureSnapshot,
+  featureEvent: JournalEventEnvelope<'FEATURES', JournalEventPayloadFor<'FEATURES'>>,
+): Promise<void> {
+  const generated = getStrategyGenerator(REL_00A_FIXTURE_STRATEGY_ID)({
+    strategy_id: REL_00A_FIXTURE_STRATEGY_ID,
+    snapshot,
+  });
+  if (generated.candidate === undefined) {
+    throw new Error(`REL-00A fixture strategy ${REL_00A_FIXTURE_STRATEGY_ID} did not emit a candidate`);
+  }
+  const candidate = generated.candidate;
+  const strategyConfigHash = String(candidate.config.config_hash);
+  const correlationId = makeCorrelationId(`corr-${candidate.candidate_id}`);
+  const riskGateDecisionId = makeRiskGateDecisionId(`risk-rel00a-${candidate.candidate_id}`);
+  const sizingDecisionId = makeSizingDecisionId(`sizing-rel00a-${candidate.candidate_id}`);
+  const entryOrderIntentId = makeOrderIntentId(`order-rel00a-entry-${candidate.candidate_id}`);
+  const entryFillId = makeFillId(`fill-rel00a-entry-${candidate.candidate_id}`);
+  const positionId = makePositionId(`position-rel00a-${candidate.candidate_id}`);
+  const managementTs = ns(BigInt(snapshot.created_ts_ns) + 60_000_000_000n);
+  const closeSource = await runner.publishExternalEvent(
+    sourceQuoteEvent(snapshot, 'rel00a-management-source', managementTs),
+  );
+  const managementTickId = makeEventId(`mgmt-tick-rel00a-${positionId}`);
+  const managementActionId = makeManagementActionId(`mgmt-rel00a-close-${positionId}`);
+  const closeOrderIntentId = makeOrderIntentId(`order-rel00a-close-${positionId}`);
+  const closeFillId = makeFillId(`fill-rel00a-close-${positionId}`);
+  const closePrice = candidate.targets.find((target) => target.label === 'pt2')?.price ?? candidate.entry_price;
+
+  const strategyEvaluationPayload: JournalEventPayloadFor<'STRAT_EVAL'> = {
+    strategy_evaluation_id: generated.evaluation.strategy_evaluation_id,
+    strategy_id: generated.evaluation.strategy_id,
+    feature_snapshot_id: generated.evaluation.feature_snapshot_id,
+    gate_state: generated.evaluation.gate_state,
+    ...(generated.evaluation.score === undefined ? {} : { score: generated.evaluation.score }),
+    reasons: generated.evaluation.reasons,
+    strategy_config_hash: strategyConfigHash,
+  };
+  const strategyEvaluation = await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`strat-eval-${generated.evaluation.strategy_evaluation_id}`),
+    type: 'STRAT_EVAL',
+    ts_ns: snapshot.created_ts_ns,
+    causation_id: makeCausationId(String(featureEvent.event_id)),
+    payload: strategyEvaluationPayload,
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`candidate-${candidate.candidate_id}`),
+    type: 'CANDIDATE',
+    ts_ns: snapshot.created_ts_ns,
+    causation_id: makeCausationId(String(strategyEvaluation.event_id)),
+    correlation_id: correlationId,
+    payload: {
+      candidate_id: candidate.candidate_id,
+      strategy_id: candidate.strategy_id,
+      feature_snapshot_id: candidate.feature_snapshot_id,
+      direction: candidate.direction,
+      status: candidate.status,
+      entry_price: candidate.entry_price,
+      stop_price: candidate.stop_price,
+      targets: candidate.targets,
+      confidence: candidate.confidence,
+      reasons: candidate.reasons,
+      strategy_config_hash: strategyConfigHash,
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`sizing-${sizingDecisionId}`),
+    type: 'SIZING',
+    ts_ns: snapshot.created_ts_ns,
+    causation_id: makeCausationId(`candidate-${candidate.candidate_id}`),
+    correlation_id: correlationId,
+    payload: {
+      sizing_decision_id: sizingDecisionId,
+      candidate_id: candidate.candidate_id,
+      quantity: 1,
+      risk_usd: candidate.risk_points * candidate.instrument.point_value,
+      risk_points: candidate.risk_points,
+      strategy_config_hash: strategyConfigHash,
+      risk_manager_version: 'rel00a_explicit_fixture_v1',
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`risk-gate-${riskGateDecisionId}`),
+    type: 'RISK_GATE',
+    ts_ns: snapshot.created_ts_ns,
+    causation_id: makeCausationId(`sizing-${sizingDecisionId}`),
+    correlation_id: correlationId,
+    payload: {
+      risk_gate_decision_id: riskGateDecisionId,
+      candidate_id: candidate.candidate_id,
+      status: 'pass',
+      reasons: ['rel00a:explicit_registered_inactive_fixture'],
+      risk_manager_version: 'rel00a_explicit_fixture_v1',
+      strategy_config_hash: strategyConfigHash,
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`order-intent-${entryOrderIntentId}`),
+    type: 'ORDER_INTENT',
+    ts_ns: snapshot.created_ts_ns,
+    causation_id: makeCausationId(`risk-gate-${riskGateDecisionId}`),
+    correlation_id: correlationId,
+    payload: {
+      order_intent_id: entryOrderIntentId,
+      candidate_id: candidate.candidate_id,
+      sizing_decision_id: sizingDecisionId,
+      side: 'buy',
+      order_type: 'market',
+      quantity: 1,
+      time_in_force: 'ioc',
+      strategy_config_hash: strategyConfigHash,
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`sim-fill-${entryFillId}`),
+    type: 'SIM_FILL',
+    ts_ns: snapshot.created_ts_ns,
+    causation_id: makeCausationId(`order-intent-${entryOrderIntentId}`),
+    correlation_id: correlationId,
+    payload: {
+      fill_id: entryFillId,
+      order_intent_id: entryOrderIntentId,
+      side: 'buy',
+      quantity: 1,
+      price: candidate.entry_price,
+      liquidity: 'taker',
+      slippage_points: 0,
+      exchange_fee_usd: 0,
+      commission_usd: 0,
+      execution_model_version: 'rel00a_explicit_fixture_v1',
+      fill_model: 'bbo_market_taker',
+      input_tier: 'diagnostic_only',
+      strategy_config_hash: strategyConfigHash,
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`position-open-${positionId}`),
+    type: 'POSITION',
+    ts_ns: snapshot.created_ts_ns,
+    causation_id: makeCausationId(`sim-fill-${entryFillId}`),
+    correlation_id: correlationId,
+    payload: {
+      position_id: positionId,
+      candidate_id: candidate.candidate_id,
+      side: 'long',
+      status: 'open',
+      quantity_open: 1,
+      avg_entry_price: candidate.entry_price,
+      updated_ts_ns: snapshot.created_ts_ns,
+      strategy_config_hash: strategyConfigHash,
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: managementTickId,
+    type: 'MGMT_TICK',
+    ts_ns: managementTs,
+    causation_id: makeCausationId(String(closeSource.event_id)),
+    correlation_id: correlationId,
+    payload: {
+      position_id: positionId,
+      mark_price: closePrice,
+      unrealized_pnl_usd: (closePrice - candidate.entry_price) * candidate.instrument.point_value,
+      strategy_config_hash: strategyConfigHash,
+      position_manager_version: 'rel00a_explicit_fixture_v1',
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`mgmt-action-${managementActionId}`),
+    type: 'MGMT_ACTION',
+    ts_ns: managementTs,
+    causation_id: makeCausationId(String(managementTickId)),
+    correlation_id: correlationId,
+    payload: {
+      management_action_id: managementActionId,
+      position_id: positionId,
+      action_type: 'TAKE_PROFIT',
+      reason: 'rel00a:explicit_registered_inactive_fixture_close',
+      exit_quantity: 1,
+      exit_price: closePrice,
+      realized_pnl_usd: (closePrice - candidate.entry_price) * candidate.instrument.point_value,
+      realized_r: candidate.risk_points > 0 ? (closePrice - candidate.entry_price) / candidate.risk_points : 0,
+      strategy_config_hash: strategyConfigHash,
+      position_manager_version: 'rel00a_explicit_fixture_v1',
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`order-intent-${closeOrderIntentId}`),
+    type: 'ORDER_INTENT',
+    ts_ns: managementTs,
+    causation_id: makeCausationId(`mgmt-action-${managementActionId}`),
+    correlation_id: correlationId,
+    payload: {
+      order_intent_id: closeOrderIntentId,
+      candidate_id: candidate.candidate_id,
+      sizing_decision_id: sizingDecisionId,
+      side: 'sell',
+      order_type: 'market',
+      quantity: 1,
+      time_in_force: 'ioc',
+      strategy_config_hash: strategyConfigHash,
+      management_action_id: managementActionId,
+      position_id: positionId,
+      position_manager_version: 'rel00a_explicit_fixture_v1',
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`sim-fill-${closeFillId}`),
+    type: 'SIM_FILL',
+    ts_ns: managementTs,
+    causation_id: makeCausationId(`order-intent-${closeOrderIntentId}`),
+    correlation_id: correlationId,
+    payload: {
+      fill_id: closeFillId,
+      order_intent_id: closeOrderIntentId,
+      side: 'sell',
+      quantity: 1,
+      price: closePrice,
+      liquidity: 'taker',
+      slippage_points: 0,
+      exchange_fee_usd: 0,
+      commission_usd: 0,
+      execution_model_version: 'rel00a_explicit_fixture_v1',
+      fill_model: 'bbo_market_taker',
+      input_tier: 'diagnostic_only',
+      strategy_config_hash: strategyConfigHash,
+      management_action_id: managementActionId,
+      position_id: positionId,
+      position_manager_version: 'rel00a_explicit_fixture_v1',
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
+  await runner.publishExternalEvent(createJournalEventEnvelope({
+    event_id: makeEventId(`position-close-${positionId}`),
+    type: 'POSITION',
+    ts_ns: managementTs,
+    causation_id: makeCausationId(`sim-fill-${closeFillId}`),
+    correlation_id: correlationId,
+    payload: {
+      position_id: positionId,
+      candidate_id: candidate.candidate_id,
+      side: 'long',
+      status: 'closed',
+      quantity_open: 0,
+      avg_entry_price: candidate.entry_price,
+      updated_ts_ns: managementTs,
+      strategy_config_hash: strategyConfigHash,
+    },
+    run_id: makeRunId('run-rel-00a'),
+    session_id: makeSessionId('2026-04-23-rth'),
+  }));
 }
 
 function runJournalSchemaChecks(

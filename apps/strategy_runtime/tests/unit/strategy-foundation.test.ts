@@ -11,6 +11,7 @@ import {
 } from '../../src/contracts/index.js';
 import {
   getStrategyRegistryEntry,
+  getStrategyGenerator,
   listAllStrategyRegistryEntries,
   listExecutableStrategyIds,
   listStrategyIdsByDirection,
@@ -36,9 +37,10 @@ function listStrategySourceFiles(directory = join(process.cwd(), 'apps/strategy_
 }
 
 describe('STRAT-00 synthetic feature snapshots', () => {
-  it('provides one deterministic fixture for each active Cycle3 strategy', () => {
+  it('provides no active synthetic fixtures when the active roster is empty', () => {
     const fixtures = listSyntheticStrategyFixtures();
 
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
     expect(fixtures.map((fixture) => fixture.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
     expect(STRATEGY_SYNTHETIC_FIXTURE_VERSION).toBe(1);
     for (const fixture of fixtures) {
@@ -71,7 +73,11 @@ describe('STRAT-00 synthetic feature snapshots', () => {
   });
 
   it('serializes fixtures byte-stably for future strategy extraction tests', () => {
-    const fixtures = listSyntheticStrategyFixtures() as unknown as JsonValue;
+    const fixtures = [
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long,
+      STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_short,
+      STRATEGY_SYNTHETIC_FIXTURES.regime_shock_reversion_short_v2,
+    ] as unknown as JsonValue;
     const first = stableJsonStringify(fixtures);
     const second = stableJsonStringify(fixtures);
 
@@ -82,10 +88,11 @@ describe('STRAT-00 synthetic feature snapshots', () => {
 });
 
 describe('STRAT-01 active strategy registry', () => {
-  it('registers the three active Cycle3 strategies and preserves inactive lineage', () => {
+  it('keeps active registry empty and preserves registered inactive lineage', () => {
     const entries = listStrategyRegistryEntries();
 
     expect(validateStrategyRegistry()).toEqual([]);
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
     expect(entries.map((entry) => entry.strategy_id)).toEqual(ACTIVE_STRATEGY_IDS);
     expect(entries.every((entry) => isStrategyId(entry.strategy_id))).toBe(true);
     expect(() => getStrategyRegistryEntry('shadow_lob_scalp')).toThrow('Unknown strategy_id');
@@ -99,6 +106,9 @@ describe('STRAT-01 active strategy registry', () => {
       'regime_mean_reversion_short',
       'liquidity_sweep_reversal_long',
       'liquidity_sweep_reversal_short',
+      'vwap_overnight_reversal_long',
+      'vwap_overnight_reversal_short',
+      'regime_shock_reversion_short_v2',
       'regime_shock_reversion_short_v3',
       'regime_shock_reversion_short_v5_strict_deadline',
       'regime_shock_reversion_short_v5_trail_at_deadline',
@@ -124,14 +134,14 @@ describe('STRAT-01 active strategy registry', () => {
     );
     expect(getStrategyRegistryEntry('vwap_overnight_reversal_long')).toEqual(
       expect.objectContaining({
-        enabled_in_v1: true,
+        enabled_in_v1: false,
         extraction_ticket: 'QFA-7xx-S1',
         setup_family: 'vwap_overnight_reversal',
       }),
     );
     expect(getStrategyRegistryEntry('regime_shock_reversion_short_v2')).toEqual(
       expect.objectContaining({
-        enabled_in_v1: true,
+        enabled_in_v1: false,
         extraction_ticket: 'QFA-7xx-S3-v2',
         setup_family: 'regime_shock_reversion',
       }),
@@ -139,13 +149,8 @@ describe('STRAT-01 active strategy registry', () => {
   });
 
   it('groups strategies by direction and setup family deterministically', () => {
-    expect(listStrategyIdsByDirection('long')).toEqual([
-      'vwap_overnight_reversal_long',
-    ]);
-    expect(listStrategyIdsByDirection('short')).toEqual([
-      'vwap_overnight_reversal_short',
-      'regime_shock_reversion_short_v2',
-    ]);
+    expect(listStrategyIdsByDirection('long')).toEqual([]);
+    expect(listStrategyIdsByDirection('short')).toEqual([]);
     expect(listStrategyIdsBySetupFamily('trend_pullback')).toEqual([
     ]);
     expect(listStrategyIdsBySetupFamily('breakout_retest')).toEqual([
@@ -154,38 +159,45 @@ describe('STRAT-01 active strategy registry', () => {
     ]);
     expect(listStrategyIdsBySetupFamily('liquidity_sweep_reversal')).toEqual([
     ]);
-    expect(listStrategyIdsBySetupFamily('vwap_overnight_reversal')).toEqual([
-      'vwap_overnight_reversal_long',
-      'vwap_overnight_reversal_short',
-    ]);
-    expect(listStrategyIdsBySetupFamily('regime_shock_reversion')).toEqual([
-      'regime_shock_reversion_short_v2',
-    ]);
+    expect(listStrategyIdsBySetupFamily('vwap_overnight_reversal')).toEqual([]);
+    expect(listStrategyIdsBySetupFamily('regime_shock_reversion')).toEqual([]);
   });
 
-  it('keeps all Cycle3 active strategies executable', () => {
-    expect(listStrategyRegistryEntries()).toEqual([
+  it('keeps demoted strategies registered-inactive and generator-backed for explicit research replay', () => {
+    expect(listStrategyRegistryEntries()).toEqual([]);
+    for (const strategyId of [
+      'vwap_overnight_reversal_long',
+      'vwap_overnight_reversal_short',
+      'regime_shock_reversion_short_v2',
+    ] as const) {
+      expect(getStrategyRegistryEntry(strategyId)).toEqual(
+        expect.objectContaining({
+          strategy_id: strategyId,
+          implementation_status: 'active',
+          enabled_in_v1: false,
+        }),
+      );
+      expect(getStrategyGenerator(strategyId)).toBeDefined();
+    }
+    expect(getStrategyRegistryEntry('vwap_overnight_reversal_long')).toEqual(
       expect.objectContaining({
         strategy_id: 'vwap_overnight_reversal_long',
         extraction_ticket: 'QFA-7xx-S1',
-        implementation_status: 'active',
       }),
+    );
+    expect(getStrategyRegistryEntry('vwap_overnight_reversal_short')).toEqual(
       expect.objectContaining({
         strategy_id: 'vwap_overnight_reversal_short',
         extraction_ticket: 'QFA-7xx-S1',
-        implementation_status: 'active',
       }),
+    );
+    expect(getStrategyRegistryEntry('regime_shock_reversion_short_v2')).toEqual(
       expect.objectContaining({
         strategy_id: 'regime_shock_reversion_short_v2',
         extraction_ticket: 'QFA-7xx-S3-v2',
-        implementation_status: 'active',
       }),
-    ]);
-    expect(listExecutableStrategyIds()).toEqual([
-      'vwap_overnight_reversal_long',
-      'vwap_overnight_reversal_short',
-      'regime_shock_reversion_short_v2',
-    ]);
+    );
+    expect(listExecutableStrategyIds()).toEqual([]);
   });
 
   it('keeps the strategy foundation free of legacy imports and nondeterministic helpers', () => {

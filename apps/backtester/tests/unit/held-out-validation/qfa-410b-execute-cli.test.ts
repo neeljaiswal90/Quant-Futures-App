@@ -5,10 +5,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { ACTIVE_STRATEGY_IDS } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { HeldOutValidationRealArchiveOptions } from '../../../src/held-out-validation/index.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
+const EXPLICIT_REPLAY_STRATEGY_IDS = [
+  'vwap_overnight_reversal_long',
+  'vwap_overnight_reversal_short',
+  'regime_shock_reversion_short_v2',
+] as const satisfies readonly StrategyId[];
 
 interface Qfa410bExecuteModule {
   readonly parseArgs: (argv: readonly string[]) => {
@@ -28,11 +33,22 @@ describe('qfa-410b-execute CLI', () => {
     const args = qfa410bExecute().parseArgs([
       '--run-id',
       'qfa-410b-fixed-contracts-test',
+      '--strategy-ids',
+      EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
       '--research-fixed-contracts',
       '2',
     ]);
 
     expect(args.researchFixedContracts).toBe(2);
+  });
+
+  it('fails closed when strategy-ids are omitted and the active roster is empty', () => {
+    expect(() =>
+      qfa410bExecute().parseArgs([
+        '--run-id',
+        'qfa-410b-empty-active-test',
+      ]),
+    ).toThrow('ACTIVE_STRATEGY_IDS is empty; pass explicit --strategy-ids');
   });
 
   it.each(['0', '-1', '1.5', 'abc'])(
@@ -41,6 +57,8 @@ describe('qfa-410b-execute CLI', () => {
       expect(() => qfa410bExecute().parseArgs([
         '--run-id',
         'qfa-410b-fixed-contracts-test',
+        '--strategy-ids',
+        EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
         '--research-fixed-contracts',
         value,
       ])).toThrow('--research-fixed-contracts must be a positive integer');
@@ -51,6 +69,8 @@ describe('qfa-410b-execute CLI', () => {
     expect(() => qfa410bExecute().parseArgs([
       '--run-id',
       'qfa-410b-fixed-contracts-test',
+      '--strategy-ids',
+      EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
       '--research-fixed-contracts',
     ])).toThrow('--research-fixed-contracts requires a positive integer value');
   });
@@ -74,7 +94,7 @@ describe('qfa-410b-execute CLI', () => {
     expect(readdirSync(outputDir)).toEqual([]);
   });
 
-  it('emits one artifact per active strategy and preserves partial-evidence discipline', () => {
+  it('emits one artifact per explicit registered-inactive strategy and preserves partial-evidence discipline', () => {
     const root = mkdtempSync(join(tmpdir(), 'qfa-410b-cli-'));
     const outputDir = join(root, 'held-out');
     mkdirSync(outputDir, { recursive: true });
@@ -83,6 +103,8 @@ describe('qfa-410b-execute CLI', () => {
       'scripts/qfa-410b-execute.mts',
       '--run-id',
       'qfa611-cycle1-test',
+      '--strategy-ids',
+      ...EXPLICIT_REPLAY_STRATEGY_IDS,
       '--manifests',
       fixtureManifest(root, 'feb', true),
       fixtureManifest(root, 'mar', false),
@@ -102,9 +124,9 @@ describe('qfa-410b-execute CLI', () => {
     });
     const summary = JSON.parse(stdout);
 
-    expect(summary.strategy_ids).toEqual(ACTIVE_STRATEGY_IDS);
-    expect(summary.artifact_paths).toHaveLength(ACTIVE_STRATEGY_IDS.length);
-    for (const [index, strategyId] of ACTIVE_STRATEGY_IDS.entries()) {
+    expect(summary.strategy_ids).toEqual(EXPLICIT_REPLAY_STRATEGY_IDS);
+    expect(summary.artifact_paths).toHaveLength(EXPLICIT_REPLAY_STRATEGY_IDS.length);
+    for (const [index, strategyId] of EXPLICIT_REPLAY_STRATEGY_IDS.entries()) {
       const artifact = JSON.parse(
         readFileSync(join(outputDir, `${strategyId}-feb-mar-apr-2026.json`), 'utf8'),
       );
@@ -131,7 +153,7 @@ async function runWithCapturedExecute(extraArgs: readonly string[]): Promise<{
     '--run-id',
     'qfa-410b-fixed-contracts-test',
     '--strategy-ids',
-    ACTIVE_STRATEGY_IDS[0]!,
+    EXPLICIT_REPLAY_STRATEGY_IDS[0]!,
     '--manifests',
     fixtureManifest(root, 'feb', false),
     fixtureManifest(root, 'mar', false),
@@ -206,7 +228,7 @@ function fixtureRegimeLabels(root: string): string {
 
 function fixtureMetadata(root: string): string {
   const path = join(root, 'metadata.json');
-  writeFixtureJson(path, Object.fromEntries(ACTIVE_STRATEGY_IDS.map((strategyId, index) => [
+  writeFixtureJson(path, Object.fromEntries(EXPLICIT_REPLAY_STRATEGY_IDS.map((strategyId, index) => [
     strategyId,
     {
       strategy_family: 'continuation',

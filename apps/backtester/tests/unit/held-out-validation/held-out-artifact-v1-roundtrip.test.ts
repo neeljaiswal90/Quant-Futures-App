@@ -11,7 +11,7 @@ import {
   type Candidate,
   type StrategyEvaluation,
 } from '../../../../strategy_runtime/src/contracts/index.js';
-import { ACTIVE_STRATEGY_IDS } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyId } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type {
   DbnMbp1Record,
   DbnTradesRecord,
@@ -35,6 +35,7 @@ const CONFIG = {
   config_hash: makeConfigHash('1'.repeat(64)),
   config_version: 1,
 };
+const EXPLICIT_REPLAY_STRATEGY_ID = 'vwap_overnight_reversal_long' as const satisfies StrategyId;
 
 describe('HeldOutValidationArtifactV1 writer', () => {
   it('round-trips the committed fixture schema with net gating fields', () => {
@@ -79,7 +80,7 @@ describe('HeldOutValidationArtifactV1 writer', () => {
     try {
       const first = await runArtifactFixture(outputDir);
       const outputPath = first.artifact_paths?.[0];
-      expect(outputPath).toBe(join(outputDir, `${ACTIVE_STRATEGY_IDS[0]}-feb-mar-apr-2026.json`));
+      expect(outputPath).toBe(join(outputDir, `${EXPLICIT_REPLAY_STRATEGY_ID}-feb-mar-apr-2026.json`));
 
       const firstBytes = readFileSync(outputPath!, 'utf8');
       const firstArtifact = JSON.parse(firstBytes) as HeldOutValidationArtifactV1;
@@ -144,7 +145,7 @@ async function runArtifactFixture(outputDir: string): Promise<HeldOutValidationR
         test: { start_session: '2026-02-02-rth', end_session: '2026-02-03-rth' },
       }],
     },
-    strategy_order: [ACTIVE_STRATEGY_IDS[0]],
+    strategy_order: [EXPLICIT_REPLAY_STRATEGY_ID],
     run_started_at_ns: ns(1n),
     fill_policy: {
       commission_usd: 0.25,
@@ -154,7 +155,7 @@ async function runArtifactFixture(outputDir: string): Promise<HeldOutValidationR
     },
     initial_equity_cents: 3_000_000n,
     strategy_generators: {
-      [ACTIVE_STRATEGY_IDS[0]]: deterministicGenerator(),
+      [EXPLICIT_REPLAY_STRATEGY_ID]: deterministicGenerator(),
     },
     archive_sessions: [{
       session_id: '2026-02-02-rth',

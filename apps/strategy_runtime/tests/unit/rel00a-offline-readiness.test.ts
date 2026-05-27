@@ -15,6 +15,7 @@ import {
   runRel00aOfflineReadiness,
   type Rel00aReport,
 } from '../../../../scripts/rel/rel-00a-offline-readiness.js';
+import { ACTIVE_STRATEGY_IDS } from '../../src/contracts/index.js';
 
 const FIXTURE_DIR = 'apps/strategy_runtime/tests/fixtures/obs00';
 const TEMP_ROOTS: string[] = [];
@@ -30,12 +31,18 @@ describe('REL-00A offline readiness checker', () => {
     const root = makeTempRoot();
 
     const report = await runReadiness(root);
+    const runtimeEvents = readRuntimeEvents(report);
 
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
     expect(report.status).toBe('pass');
     expect(report.reasons).toEqual([]);
     expect(report.next_blocker).toBe('INFRA-01 verification / DATA-01');
     expect(report.fixture_checks.status).toBe('pass');
     expect(report.traceability_checks.status).toBe('pass');
+    expect(runtimeEvents.some((event) => (
+      event.type === 'CANDIDATE' &&
+      event.payload.strategy_id === 'vwap_overnight_reversal_long'
+    ))).toBe(true);
   });
 
   it('fails when the OBS-00 fixture checksum is broken', async () => {
@@ -170,6 +177,19 @@ function mutateFixtureJournal(
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
   manifest.journal_sha256_lf = sha256Lf(journalText);
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+}
+
+function readRuntimeEvents(report: Rel00aReport): Array<{
+  readonly type: string;
+  readonly payload: Record<string, unknown>;
+}> {
+  return readFileSync(report.generated_output_paths.runtime_journal_a, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as {
+      readonly type: string;
+      readonly payload: Record<string, unknown>;
+    });
 }
 
 function sha256Lf(value: string): string {

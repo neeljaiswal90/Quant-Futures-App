@@ -5,8 +5,11 @@ import { loadAppConfig } from '../../src/config/index.js';
 import {
   ACTIVE_STRATEGY_IDS,
   createJournalEventEnvelope,
+  makeConfigHash,
   makeEventId,
+  makeFillId,
   makeFeatureSnapshotId,
+  makeOrderIntentId,
   makeRunId,
   makeSessionId,
   ns,
@@ -16,12 +19,20 @@ import {
   type JournalEventPayloadFor,
   type JsonValue,
   type SimulatedOrderResult,
+  type StrategyId,
 } from '../../src/contracts/index.js';
 import {
   createSimulatedExecutionAdapter,
   SIMULATED_EXECUTION_VERSION,
   type SimulatedExecutionAdapter,
 } from '../../src/execution/simulated-execution.js';
+import {
+  applyInitialFillToTargetPosition,
+  buildTargetPositionFromCandidate,
+  resolveManagementProfile,
+  type ManagementProfilesConfig,
+  type TargetPosition,
+} from '../../src/management/index.js';
 import {
   collectRuntimeShadowReadGuardViolations,
   createStrategyRuntimeEngineContainer,
@@ -37,7 +48,7 @@ import {
 import {
   STRATEGY_SYNTHETIC_FIXTURES,
 } from '../fixtures/strategies/synthetic-feature-snapshots.js';
-import type { StrategyFeatureSnapshot } from '../../src/strategies/index.js';
+import { getStrategyGenerator, type StrategyFeatureSnapshot } from '../../src/strategies/index.js';
 
 const RUN_ID = makeRunId('run-orch-02');
 const SESSION_ID = makeSessionId('2026-04-23-rth');
@@ -46,6 +57,7 @@ const ETH_TS = ns('1776983400000000000');
 const MAINTENANCE_TS = ns('1776979800000000000');
 const ROLL_BLOCK_TS = ns('1781271600000000000');
 const ROLL_FLATTEN_TS = ns('1781270760000000000');
+const EXPLICIT_REPLAY_STRATEGY_ID = 'vwap_overnight_reversal_long' as const satisfies StrategyId;
 
 function createRunner(options: {
   readonly initialOpenTradeCount?: number;
@@ -192,12 +204,88 @@ function snapshotAt(input: {
 async function openPositionFromSnapshot(
   runner: StrategyRuntimeRunner,
   snapshot: StrategyFeatureSnapshot,
+  strategyId: StrategyId = EXPLICIT_REPLAY_STRATEGY_ID,
 ) {
-  await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id), snapshot.created_ts_ns, {
-    bid_px: snapshot.quote.bid_px,
-    ask_px: snapshot.quote.ask_px,
-  }));
-  return runner.processFeatureSnapshot(snapshot);
+  const result = getStrategyGenerator(strategyId)({
+    strategy_id: strategyId,
+    snapshot,
+  });
+  if (result.candidate === undefined) {
+    throw new Error(`expected ${strategyId} fixture candidate`);
+  }
+  const managementProfiles = (runner as unknown as {
+    managementProfiles: ManagementProfilesConfig;
+  }).managementProfiles;
+  const profile = resolveManagementProfile(strategyId, managementProfiles).profile;
+  const plannedPosition = buildTargetPositionFromCandidate({
+    candidate: result.candidate,
+    profile,
+    quantity: 1,
+    opened_ts_ns: snapshot.created_ts_ns,
+  });
+  const openPosition = applyInitialFillToTargetPosition(plannedPosition, {
+    fill_id: makeFillId(`fill-${result.candidate.candidate_id}`),
+    order_intent_id: makeOrderIntentId(`order-${result.candidate.candidate_id}`),
+    instrument: result.candidate.instrument,
+    side: result.candidate.direction === 'long' ? 'buy' : 'sell',
+    quantity: 1,
+    price: result.candidate.entry_price,
+    liquidity: 'taker',
+    exchange_fee_usd: 0,
+    commission_usd: 0,
+    slippage_points: 0,
+    filled_ts_ns: snapshot.created_ts_ns,
+    config: {
+      config_hash: makeConfigHash('2'.repeat(64)),
+      config_version: 1,
+    },
+  });
+  const sessionRisk = updateSessionRiskState(createSessionRiskState({
+    session_id: snapshot.session.session_id,
+    account_ref: 'sim-account',
+    symbol: snapshot.instrument.symbol,
+    event_ts_ns: snapshot.created_ts_ns,
+  }), {
+    kind: 'trade_opened',
+    event_ts_ns: snapshot.created_ts_ns,
+  });
+  const openPositions = [
+    ...runner.snapshot().open_positions,
+    openPosition,
+  ];
+  (runner as unknown as {
+    openPositions: TargetPosition[];
+    sessionRisk: SessionRiskState;
+  }).openPositions = openPositions;
+  (runner as unknown as {
+    openPositions: TargetPosition[];
+    sessionRisk: SessionRiskState;
+  }).sessionRisk = sessionRisk;
+  return {
+    open_positions: openPositions,
+    position_events: [],
+  };
+}
+
+function createRejectThenFillExecutionAdapter(reason: string): SimulatedExecutionAdapter {
+  const fillingAdapter = createSimulatedExecutionAdapter({
+    venue_costs: loadVenueCostTable(),
+  });
+  let submitCount = 0;
+  return {
+    adapter: 'simulated',
+    version: SIMULATED_EXECUTION_VERSION,
+    async submit(input) {
+      submitCount += 1;
+      if (submitCount === 1) {
+        return rejectedOrderResult(input.intent.order_intent_id, input.intent.submitted_ts_ns, reason);
+      }
+      return fillingAdapter.submit(input);
+    },
+    async cancel(input) {
+      return fillingAdapter.cancel(input);
+    },
+  };
 }
 
 async function processRollFlattenSnapshot(
@@ -230,7 +318,7 @@ function listOrchestrationSourceFiles(directory = join(process.cwd(), 'apps/stra
 }
 
 describe('ORCH-02 deterministic runner loop', () => {
-  it('composes feature snapshot to candidate, risk, simulated fill, and position events', async () => {
+  it('emits no strategy pipeline events when the active roster is empty', async () => {
     const { container, runner } = createRunner();
     const published: JournalEventEnvelope[] = [];
     container.eventBus.subscribe({}, (delivery) => {
@@ -241,33 +329,26 @@ describe('ORCH-02 deterministic runner loop', () => {
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const result = await runner.processFeatureSnapshot(snapshot);
 
-    expect(result.strategy_evaluation_events).toHaveLength(ACTIVE_STRATEGY_IDS.length);
-    expect(result.candidate_events.length).toBeGreaterThan(0);
-    expect([...result.rank_event.payload.ranked_candidate_ids].sort()).toEqual(
-      result.candidate_events.map((event) => event.payload.candidate_id).sort(),
-    );
-    expect(result.sizing_events).toHaveLength(1);
-    expect(result.risk_gate_events.map((event) => event.payload.status)).toEqual(['pass']);
-    expect(result.order_intent_events).toHaveLength(1);
-    expect(result.sim_fill_events).toHaveLength(1);
-    expect(result.position_events).toHaveLength(1);
-    expect(result.session_risk.open_trade_count).toBe(1);
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
+    expect(result.strategy_evaluation_events).toEqual([]);
+    expect(result.candidate_events).toEqual([]);
+    expect(result.rank_event.payload.ranked_candidate_ids).toEqual([]);
+    expect(result.sizing_events).toEqual([]);
+    expect(result.risk_gate_events).toEqual([]);
+    expect(result.order_intent_events).toEqual([]);
+    expect(result.sim_fill_events).toEqual([]);
+    expect(result.position_events).toEqual([]);
+    expect(result.session_risk.open_trade_count).toBe(0);
 
     const publishedTypes = published.map((event) => event.type);
     expect(publishedTypes.slice(0, 3)).toEqual(['QUOTE', 'SESSION_PHASE', 'FEATURES']);
-    expect(publishedTypes.filter((type) => type === 'STRAT_EVAL')).toHaveLength(
-      ACTIVE_STRATEGY_IDS.length,
-    );
-    expect(publishedTypes.filter((type) => type === 'CANDIDATE')).toHaveLength(
-      result.candidate_events.length,
-    );
-    expect(publishedTypes.slice(-5)).toEqual([
-      'SIZING',
-      'RISK_GATE',
-      'ORDER_INTENT',
-      'SIM_FILL',
-      'POSITION',
-    ]);
+    expect(publishedTypes.filter((type) => type === 'STRAT_EVAL')).toHaveLength(0);
+    expect(publishedTypes).not.toContain('CANDIDATE');
+    expect(publishedTypes).not.toContain('SIZING');
+    expect(publishedTypes).not.toContain('RISK_GATE');
+    expect(publishedTypes).not.toContain('ORDER_INTENT');
+    expect(publishedTypes).not.toContain('SIM_FILL');
+    expect(publishedTypes).not.toContain('POSITION');
     expect(
       published
         .filter((event) => event.type !== 'QUOTE')
@@ -285,19 +366,10 @@ describe('ORCH-02 deterministic runner loop', () => {
       candidate_eligible: true,
       active_contract: 'MNQM6',
     });
-    expect(result.candidate_events[0]!.payload.strategy_config_hash).toBe(
-      container.config.strategyConfig?.lineage.strategy_config_hash,
-    );
-    expect(result.position_events[0]!.config?.config_hash).toBe(container.config.lineage.config_hash);
-    expect(result.sizing_events[0]!.payload.risk_config_hash).toBe(
-      container.config.riskConfig?.lineage.risk_config_hash,
-    );
-    expect(result.risk_gate_events[0]!.payload.risk_config_hash).toBe(
-      container.config.riskConfig?.lineage.risk_config_hash,
-    );
-    expect(result.position_events[0]!.payload.management_profile_hash).toBe(
-      container.config.managementProfiles?.profiles.vwap_overnight_reversal_long.profile_hash,
-    );
+    expect(container.config.strategyConfig?.lineage.strategy_config_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(container.config.lineage.config_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(container.config.riskConfig?.lineage.risk_config_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(container.config.managementProfiles?.profiles).toEqual({});
   });
 
   it('refuses shadow payload sections before strategy evaluation', async () => {
@@ -540,6 +612,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     const opening = await openPositionFromSnapshot(
       runner,
       STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_short.snapshot,
+      'vwap_overnight_reversal_short',
     );
     const openPosition = opening.open_positions[0]!;
 
@@ -560,7 +633,7 @@ describe('ORCH-02 deterministic runner loop', () => {
 
   it('journals rejected roll forced-flatten execution without closing the position', async () => {
     const { runner } = createRunner({
-      executionAdapter: createFillThenRejectExecutionAdapter('sim_reject:roll_flatten_no_fill'),
+      executionAdapter: createRejectThenFillExecutionAdapter('sim_reject:roll_flatten_no_fill'),
     });
     const opening = await openPositionFromSnapshot(
       runner,
@@ -600,6 +673,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     await openPositionFromSnapshot(
       runner,
       STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_short.snapshot,
+      'vwap_overnight_reversal_short',
     );
     const expectedOrder = runner.snapshot().open_positions
       .map((position) => String(position.position_id))
@@ -706,8 +780,7 @@ describe('ORCH-02 deterministic runner loop', () => {
   it('keeps existing-position management active while new entries are blocked', async () => {
     const { runner } = createRunner();
     const openingSnapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
-    await runner.publishExternalEvent(sourceQuoteEvent(String(openingSnapshot.source_event_id)));
-    const opening = await runner.processFeatureSnapshot(openingSnapshot);
+    const opening = await openPositionFromSnapshot(runner, openingSnapshot);
     const openPosition = opening.open_positions[0]!;
     const blockedSnapshot = snapshotAt({
       id: 'fixture-eth-management-block',
@@ -731,9 +804,7 @@ describe('ORCH-02 deterministic runner loop', () => {
     });
 
     expect(blocked.candidate_events).toEqual([]);
-    expect(blocked.strategy_evaluation_events[0]!.payload.reasons).toContain(
-      'mnq_eligibility:outside_rth',
-    );
+    expect(blocked.strategy_evaluation_events).toEqual([]);
     expect(management.management_tick_events).toHaveLength(1);
     expect(management.management_tick_events[0]!.ts_ns).toBe(blockedSnapshot.created_ts_ns);
     expect(management.management_results).toHaveLength(1);
@@ -766,24 +837,21 @@ describe('ORCH-02 deterministic runner loop', () => {
     }
   });
 
-  it('routes risk rejection without submitting simulated orders', async () => {
+  it('does not route risk gates when the active roster is empty', async () => {
     const { runner } = createRunner({ initialOpenTradeCount: 3 });
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
 
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const result = await runner.processFeatureSnapshot(snapshot);
 
-    expect(result.risk_gate_events.map((event) => event.payload.status)).toEqual(['reject']);
-    expect(result.risk_gate_events[0]!.payload.reasons).toContain(
-      'session_risk:max_open_trade_count_reached',
-    );
+    expect(result.risk_gate_events).toEqual([]);
     expect(result.order_intent_events).toEqual([]);
     expect(result.sim_fill_events).toEqual([]);
     expect(result.position_events).toEqual([]);
-    expect(result.session_risk.rejected_trade_count).toBe(1);
+    expect(result.session_risk.rejected_trade_count).toBe(0);
   });
 
-  it('journals rejected entry execution without emitting fills', async () => {
+  it('does not journal rejected entry execution when no active candidate is emitted', async () => {
     const { runner } = createRunner({
       executionAdapter: createRejectingExecutionAdapter('sim_reject:no_liquidity'),
     });
@@ -792,31 +860,17 @@ describe('ORCH-02 deterministic runner loop', () => {
     await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
     const result = await runner.processFeatureSnapshot(snapshot);
 
-    expect(result.order_intent_events).toHaveLength(1);
+    expect(result.order_intent_events).toEqual([]);
     expect(result.sim_fill_events).toEqual([]);
     expect(result.position_events).toEqual([]);
     expect(result.open_positions).toEqual([]);
-    expect(result.exec_reject_events).toHaveLength(1);
-    expect(result.exec_reject_events[0]!.causation_id).toBe(result.order_intent_events[0]!.event_id);
-    expect(result.exec_reject_events[0]!.ts_ns).toBe(result.order_intent_events[0]!.ts_ns);
-    expect(result.exec_reject_events[0]!.payload).toMatchObject({
-      order_intent_id: result.order_intent_events[0]!.payload.order_intent_id,
-      status: 'rejected',
-      reason: 'sim_reject:no_liquidity',
-      execution_adapter: 'simulated',
-      execution_version: SIMULATED_EXECUTION_VERSION,
-    });
-    expect(validateJournalEventEnvelope(result.exec_reject_events[0]!)).toMatchObject({
-      ok: true,
-      issues: [],
-    });
+    expect(result.exec_reject_events).toEqual([]);
   });
 
   it('drives open positions through management ticks with causation-safe timestamps', async () => {
     const { runner } = createRunner();
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
-    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
-    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const cycle = await openPositionFromSnapshot(runner, snapshot);
     const openPosition = cycle.open_positions[0]!;
     const managementTs = ns(BigInt(snapshot.created_ts_ns) + 60_000_000_000n);
     const managementSource = await runner.publishExternalEvent(
@@ -828,8 +882,8 @@ describe('ORCH-02 deterministic runner loop', () => {
       mark_price: openPosition.targets[1]!.price,
       high_price: openPosition.targets[1]!.price,
       low_price: openPosition.entry_price,
-      bid_px: openPosition.targets[1]!.price - 0.25,
-      ask_px: openPosition.targets[1]!.price + 0.25,
+      bid_px: openPosition.targets[1]!.price,
+      ask_px: openPosition.targets[1]!.price,
       authority: 'authoritative',
     });
 
@@ -863,9 +917,6 @@ describe('ORCH-02 deterministic runner loop', () => {
       status: 'closed',
       quantity_open: 0,
     });
-    expect(result.position_events[0]!.payload.strategy_config_hash).toBe(
-      cycle.position_events[0]!.payload.strategy_config_hash,
-    );
     expect(result.management_tick_events[0]!.payload.management_profile_hash).toBe(
       cycle.open_positions[0]!.profile_hash,
     );
@@ -896,8 +947,7 @@ describe('ORCH-02 deterministic runner loop', () => {
       },
     });
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
-    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
-    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const cycle = await openPositionFromSnapshot(runner, snapshot);
     const openedPosition = cycle.open_positions[0]!;
     const openPosition = {
       ...openedPosition,
@@ -924,8 +974,8 @@ describe('ORCH-02 deterministic runner loop', () => {
       mark_price: pt1.price,
       high_price: pt1.price,
       low_price: openPosition.entry_price,
-      bid_px: pt1.price - 0.25,
-      ask_px: pt1.price + 0.25,
+      bid_px: pt1.price,
+      ask_px: pt1.price,
       authority: 'authoritative',
     });
 
@@ -954,8 +1004,7 @@ describe('ORCH-02 deterministic runner loop', () => {
   it('executes fail-safe exits through simulated close fills', async () => {
     const { runner } = createRunner();
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
-    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
-    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const cycle = await openPositionFromSnapshot(runner, snapshot);
     const openPosition = cycle.open_positions[0]!;
     const managementTs = ns(BigInt(snapshot.created_ts_ns) + 60_000_000_000n);
     const managementSource = await runner.publishExternalEvent(
@@ -988,11 +1037,10 @@ describe('ORCH-02 deterministic runner loop', () => {
 
   it('journals rejected fail-safe close attempts and keeps the position open', async () => {
     const { runner } = createRunner({
-      executionAdapter: createFillThenRejectExecutionAdapter('sim_reject:failsafe_no_fill'),
+      executionAdapter: createRejectThenFillExecutionAdapter('sim_reject:failsafe_no_fill'),
     });
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
-    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
-    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const cycle = await openPositionFromSnapshot(runner, snapshot);
     const openPosition = cycle.open_positions[0]!;
     const managementTs = ns(BigInt(snapshot.created_ts_ns) + 60_000_000_000n);
     const managementSource = await runner.publishExternalEvent(
@@ -1028,8 +1076,7 @@ describe('ORCH-02 deterministic runner loop', () => {
   it('executes time-stop exits through simulated close fills', async () => {
     const { runner } = createRunner();
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
-    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
-    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const cycle = await openPositionFromSnapshot(runner, snapshot);
     const openPosition = cycle.open_positions[0]!;
     const managementTs = openPosition.time_stop.deadline_ts_ns!;
     const managementSource = await runner.publishExternalEvent(
@@ -1042,8 +1089,8 @@ describe('ORCH-02 deterministic runner loop', () => {
       mark_price: timeStopExitPrice,
       high_price: openPosition.entry_price,
       low_price: timeStopExitPrice,
-      bid_px: timeStopExitPrice - 0.25,
-      ask_px: timeStopExitPrice + 0.25,
+      bid_px: timeStopExitPrice,
+      ask_px: timeStopExitPrice,
       authority: 'authoritative',
     });
 
@@ -1060,11 +1107,10 @@ describe('ORCH-02 deterministic runner loop', () => {
 
   it('journals rejected time-stop close attempts and keeps the position open', async () => {
     const { runner } = createRunner({
-      executionAdapter: createFillThenRejectExecutionAdapter('sim_reject:timestop_no_fill'),
+      executionAdapter: createRejectThenFillExecutionAdapter('sim_reject:timestop_no_fill'),
     });
     const snapshot = STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long.snapshot;
-    await runner.publishExternalEvent(sourceQuoteEvent(String(snapshot.source_event_id)));
-    const cycle = await runner.processFeatureSnapshot(snapshot);
+    const cycle = await openPositionFromSnapshot(runner, snapshot);
     const openPosition = cycle.open_positions[0]!;
     const managementSource = await runner.publishExternalEvent(
       sourceQuoteEvent('source-management-time-stop-reject-1', openPosition.time_stop.deadline_ts_ns!),
@@ -1076,8 +1122,8 @@ describe('ORCH-02 deterministic runner loop', () => {
       mark_price: timeStopExitPrice,
       high_price: openPosition.entry_price,
       low_price: timeStopExitPrice,
-      bid_px: timeStopExitPrice - 0.25,
-      ask_px: timeStopExitPrice + 0.25,
+      bid_px: timeStopExitPrice,
+      ask_px: timeStopExitPrice,
       authority: 'authoritative',
     });
 

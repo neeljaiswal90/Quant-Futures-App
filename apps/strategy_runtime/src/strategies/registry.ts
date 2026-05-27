@@ -109,7 +109,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S1',
     synthetic_fixture_id: 'fixture_vwap_overnight_reversal_long',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   vwap_overnight_reversal_short: {
     strategy_id: 'vwap_overnight_reversal_short',
@@ -119,7 +119,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S1',
     synthetic_fixture_id: 'fixture_vwap_overnight_reversal_short',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   regime_shock_reversion_short_v2: {
     strategy_id: 'regime_shock_reversion_short_v2',
@@ -129,7 +129,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
     implementation_status: 'active',
     extraction_ticket: 'QFA-7xx-S3-v2',
     synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v2',
-    enabled_in_v1: true,
+    enabled_in_v1: false,
   },
   regime_shock_reversion_short_v3: {
     strategy_id: 'regime_shock_reversion_short_v3',
@@ -165,11 +165,7 @@ const STRATEGY_REGISTRY_ENTRIES = {
 export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntry>> =
   STRATEGY_REGISTRY_ENTRIES;
 
-const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
-  vwap_overnight_reversal_long: generateVwapOvernightReversalLong,
-  vwap_overnight_reversal_short: generateVwapOvernightReversalShort,
-  regime_shock_reversion_short_v2: generateRegimeShockReversionShortV2,
-};
+const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {};
 
 const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
   trend_pullback_long: generateTrendPullbackLong,
@@ -180,10 +176,12 @@ const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> 
   regime_mean_reversion_short: generateRegimeMeanReversionShort,
   liquidity_sweep_reversal_long: generateLiquiditySweepReversalLong,
   liquidity_sweep_reversal_short: generateLiquiditySweepReversalShort,
+  vwap_overnight_reversal_long: generateVwapOvernightReversalLong,
+  vwap_overnight_reversal_short: generateVwapOvernightReversalShort,
+  regime_shock_reversion_short_v2: generateRegimeShockReversionShortV2,
   regime_shock_reversion_short_v3: generateRegimeShockReversionShortV3,
   regime_shock_reversion_short_v5_strict_deadline: generateRegimeShockReversionShortV5StrictDeadline,
   regime_shock_reversion_short_v5_trail_at_deadline: generateRegimeShockReversionShortV5TrailAtDeadline,
-  ...ACTIVE_STRATEGY_GENERATORS,
 };
 
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {

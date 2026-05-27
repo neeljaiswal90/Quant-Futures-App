@@ -799,9 +799,5 @@ export const STRATEGY_SYNTHETIC_FIXTURES = {
 } as const satisfies Record<StrategyId, SyntheticStrategyFixture>;
 
 export function listSyntheticStrategyFixtures(): readonly SyntheticStrategyFixture[] {
-  return [
-    STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_long,
-    STRATEGY_SYNTHETIC_FIXTURES.vwap_overnight_reversal_short,
-    STRATEGY_SYNTHETIC_FIXTURES.regime_shock_reversion_short_v2,
-  ];
+  return [];
 }

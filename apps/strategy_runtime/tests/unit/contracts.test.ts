@@ -186,12 +186,8 @@ describe('APP-02 contracts', () => {
     ).toThrow('ts_ns must be a decimal string');
   });
 
-  it('accepts the Cycle3 active IDs while preserving inactive registered lineage', () => {
-    expect(ACTIVE_STRATEGY_IDS).toEqual([
-      'vwap_overnight_reversal_long',
-      'vwap_overnight_reversal_short',
-      'regime_shock_reversion_short_v2',
-    ]);
+  it('keeps the post-Cycle4 active roster empty while preserving registered replay lineage', () => {
+    expect(ACTIVE_STRATEGY_IDS).toEqual([]);
     expect(REGISTERED_INACTIVE_STRATEGY_IDS).toEqual([
       'trend_pullback_long',
       'trend_pullback_short',
@@ -201,6 +197,9 @@ describe('APP-02 contracts', () => {
       'regime_mean_reversion_short',
       'liquidity_sweep_reversal_long',
       'liquidity_sweep_reversal_short',
+      'vwap_overnight_reversal_long',
+      'vwap_overnight_reversal_short',
+      'regime_shock_reversion_short_v2',
       'regime_shock_reversion_short_v3',
       'regime_shock_reversion_short_v5_strict_deadline',
       'regime_shock_reversion_short_v5_trail_at_deadline',
