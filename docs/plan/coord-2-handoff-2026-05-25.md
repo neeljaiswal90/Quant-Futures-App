@@ -1,3 +1,55 @@
+# 2026-05-28 final status overlay after PR #261
+
+This overlay supersedes the 2026-05-27 hygiene overlay below where they conflict. The older overlay remains useful historical context for how the cleanup lane was routed.
+
+## Current role model
+
+Codex is operating as coord-1 packet drafter/dispatcher. The prior coord-1 operates as coord-2 reviewer. PROCESS-02 remains the active dual-coord discipline, now amended by PROCESS-02-A1: docs-only, memo-only, backlog-only, and dispatch-packet PRs still open as draft first and require PR-gate / CI-status verification before READY-FOR-PR.
+
+## Current governance state
+
+| Item | Current status |
+|---|---|
+| REDERIVATION-02 Track B | Closed. Corrected-engine selection-v4 reconciled all three former active strategies to `REJECT`; `phase_6_dispatch_authorized=false`. |
+| Cycle4 v5 2MNQ chain | Closed through PR #256. Both v5 deadline variants are informational `REJECT`; strict-vs-trail deadline behavior remains unresolved because deadline-extension exposure was zero. |
+| `ACTIVE_STRATEGY_IDS` | Empty as of PR #260 (`cef17e51a6e6310d1fa68b2b0980ae40305805c6`). |
+| Former active strategies | `vwap_overnight_reversal_long`, `vwap_overnight_reversal_short`, and `regime_shock_reversion_short_v2` are now `REGISTERED_INACTIVE` and remain generator-backed for explicit research replay. |
+| Default active dispatch | Fails closed when no explicit strategy IDs are supplied and the active roster is empty. Explicit registered-inactive replay remains supported. |
+| Paper/broker/promotion authority | None. No strategy currently has paper-observation, broker-dispatch, live-dispatch, promotion, or Phase 6 authority. |
+
+## Recently closed finish-out chain
+
+| PR | Ticket | Merge commit | Status |
+|---|---|---|---|
+| #257 | `STRATEGY-IDS-RECONCILE-01` discovery | `baa30a2ca66067f7adc7895df11436f28261617b` | Merged |
+| #258 | Handoff/backlog hygiene overlay | `c80b1f1725257c109ccfebbe7fc07d5454d6e4fa` | Merged |
+| #259 | `PROCESS-02-A1` docs-only PR-gate discipline | `6a02cbc60276aea3a7c24157e4e4b62c6d8a1764` | Merged |
+| #260 | `STRATEGY-IDS-RECONCILE-02` zero-active implementation | `cef17e51a6e6310d1fa68b2b0980ae40305805c6` | Merged |
+| #261 | `PROCESS-03` hash-drift taxonomy | `3a9118ce35d8bd21b520739779e26e9d15b07ffa` | Merged |
+
+## Active process guidance now in force
+
+| Guidance | Current source |
+|---|---|
+| Worker dispatch / PR discipline | `docs/plan/engineer-dispatch-prompt.md` |
+| Docs-only draft-first / CI-gated PR rule | PROCESS-02-A1 in `docs/plan/engineer-dispatch-prompt.md` |
+| Hash-drift taxonomy and same-worktree baseline method | `docs/plan/process-03-hash-drift-taxonomy.md` |
+| Zero-active implementation details and blast-radius map | `docs/research/strategy-ids-reconcile-01-discovery.md` plus PR #260 diff |
+
+## Remaining optional lanes
+
+| Lane | Status / gate |
+|---|---|
+| PR #256 operator ledger countersign | Optional. The governance outcome is already merged; only the memo ledger line remains pending if the operator wants it amended. |
+| Deadline-exposure harness | Optional research lane if strict-vs-trail deadline behavior still needs evidence under positions that actually reach deadline-extension logic. |
+| MOC-R6 / MOC-R7 | Still valid and independent of the management-runtime / active-roster cleanup chain. Operator routes priority. |
+| Remote branch cleanup | Non-urgent. Some merged remote branches may still exist because local worktree conflicts blocked branch deletion. Cleanup can happen separately via GitHub UI or direct remote delete. |
+
+## Handoff bottom line
+
+The system is intentionally in a zero-active state. This is not an error condition. It reflects the current governance reality: all previously active strategies were rejected under corrected evidence, while explicit research replay remains available for registered-inactive strategies.
+
+---
 # 2026-05-27 hygiene overlay after PR #257
 
 This overlay supersedes stale status sections below where they conflict. The rest of the handoff remains useful historical context.
