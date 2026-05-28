@@ -110,6 +110,8 @@ describe('STRAT-01 active strategy registry', () => {
       'vwap_overnight_reversal_short',
       'regime_shock_reversion_short_v2',
       'regime_shock_reversion_short_v3',
+      'regime_shock_reversion_short_v4_delay',
+      'regime_shock_reversion_short_v4_persist',
       'regime_shock_reversion_short_v5_strict_deadline',
       'regime_shock_reversion_short_v5_trail_at_deadline',
     ]);
@@ -143,6 +145,20 @@ describe('STRAT-01 active strategy registry', () => {
       expect.objectContaining({
         enabled_in_v1: false,
         extraction_ticket: 'QFA-7xx-S3-v2',
+        setup_family: 'regime_shock_reversion',
+      }),
+    );
+    expect(getStrategyRegistryEntry('regime_shock_reversion_short_v4_delay')).toEqual(
+      expect.objectContaining({
+        enabled_in_v1: false,
+        extraction_ticket: 'CYCLE4-V4-COMBINED-01',
+        setup_family: 'regime_shock_reversion',
+      }),
+    );
+    expect(getStrategyRegistryEntry('regime_shock_reversion_short_v4_persist')).toEqual(
+      expect.objectContaining({
+        enabled_in_v1: false,
+        extraction_ticket: 'CYCLE4-V4-COMBINED-01',
         setup_family: 'regime_shock_reversion',
       }),
     );

@@ -18,7 +18,7 @@ import {
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const EXPECTED_STRATEGY_CONFIG_HASH =
-  'ec13082c0e8da6c35b8c51b5814a6540a4cadbe387b38b503855f6c8502635e1';
+  '0fc4a9b52dbf84f31076df6a80e4f47cc694ae7c41e4df5993b470192efeac0c';
 
 const STRATEGY_CONFIG_FILES = [
   'shared.yaml',
@@ -34,6 +34,10 @@ const STRATEGY_CONFIG_FILES = [
   'vwap_overnight_reversal_short.yaml',
   'regime_shock_reversion_short_v2.yaml',
   'regime_shock_reversion_short_v3.yaml',
+  'regime_shock_reversion_short_v4_delay.yaml',
+  'regime_shock_reversion_short_v4_persist.yaml',
+  'regime_shock_reversion_short_v5_strict_deadline.yaml',
+  'regime_shock_reversion_short_v5_trail_at_deadline.yaml',
 ] as const;
 
 const tempDirs: string[] = [];
@@ -136,6 +140,8 @@ describe('STRAT-07 strategy config surface', () => {
     expect(config.strategies.regime_shock_reversion_short_v2.low_shock_threshold_pos).toBe(2.7);
     expect(config.strategies.regime_shock_reversion_short_v3.vix_pct_overfire_lower_bound).toBe(0.67);
     expect(config.strategies.regime_shock_reversion_short_v3.vix_pct_overfire_upper_bound).toBe(0.85);
+    expect(config.strategies.regime_shock_reversion_short_v4_delay.entry_confirmation_delay_bars).toBe(1);
+    expect(config.strategies.regime_shock_reversion_short_v4_persist.shock_persistence_bars).toBe(3);
     expect(config.ranking.strategy_priority).toEqual({
       trend_pullback_long: 10,
       trend_pullback_short: 20,
@@ -149,8 +155,10 @@ describe('STRAT-07 strategy config surface', () => {
       vwap_overnight_reversal_short: 100,
       regime_shock_reversion_short_v2: 110,
       regime_shock_reversion_short_v3: 120,
-      regime_shock_reversion_short_v5_strict_deadline: 130,
-      regime_shock_reversion_short_v5_trail_at_deadline: 140,
+      regime_shock_reversion_short_v4_delay: 130,
+      regime_shock_reversion_short_v4_persist: 140,
+      regime_shock_reversion_short_v5_strict_deadline: 150,
+      regime_shock_reversion_short_v5_trail_at_deadline: 160,
     });
     expect(config.lineage.strategy_config_hash).toBe(EXPECTED_STRATEGY_CONFIG_HASH);
     expect(config.lineage.canonical_strategy_config_json).toContain(

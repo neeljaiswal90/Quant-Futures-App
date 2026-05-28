@@ -179,6 +179,8 @@ describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
     ['trend_pullback_short', 'tp_short'],
     ['breakout_retest_long', 'bro_long'],
     ['breakdown_retest_short', 'bro_short'],
+    ['regime_shock_reversion_short_v4_delay', 'rsr_short_v4_delay'],
+    ['regime_shock_reversion_short_v4_persist', 'rsr_short_v4_persist'],
     ['regime_shock_reversion_short_v5_strict_deadline', 'rsr_short_v5_sd'],
     ['regime_shock_reversion_short_v5_trail_at_deadline', 'rsr_short_v5_td'],
   ])('single-strategy [%s] -> %s', (id, expected) => {

@@ -47,6 +47,8 @@ export const STRATEGY_CONFIG_PATHS: Readonly<Record<StrategyId, string>> = Objec
   vwap_overnight_reversal_short: 'config/strategies/vwap_overnight_reversal_short.yaml',
   regime_shock_reversion_short_v2: 'config/strategies/regime_shock_reversion_short_v2.yaml',
   regime_shock_reversion_short_v3: 'config/strategies/regime_shock_reversion_short_v3.yaml',
+  regime_shock_reversion_short_v4_delay: 'config/strategies/regime_shock_reversion_short_v4_delay.yaml',
+  regime_shock_reversion_short_v4_persist: 'config/strategies/regime_shock_reversion_short_v4_persist.yaml',
   regime_shock_reversion_short_v5_strict_deadline: 'config/strategies/regime_shock_reversion_short_v5_strict_deadline.yaml',
   regime_shock_reversion_short_v5_trail_at_deadline: 'config/strategies/regime_shock_reversion_short_v5_trail_at_deadline.yaml',
 });

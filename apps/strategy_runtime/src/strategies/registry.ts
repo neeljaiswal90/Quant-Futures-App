@@ -8,6 +8,8 @@ import { generateRegimeMeanReversionLong } from './regime_mean_reversion_long.js
 import { generateRegimeMeanReversionShort } from './regime_mean_reversion_short.js';
 import { generateRegimeShockReversionShortV2 } from './regime_shock_reversion_short_v2.js';
 import { generateRegimeShockReversionShortV3 } from './regime_shock_reversion_short_v3.js';
+import { generateRegimeShockReversionShortV4Delay } from './regime_shock_reversion_short_v4_delay.js';
+import { generateRegimeShockReversionShortV4Persist } from './regime_shock_reversion_short_v4_persist.js';
 import { generateRegimeShockReversionShortV5StrictDeadline } from './regime_shock_reversion_short_v5_strict_deadline.js';
 import { generateRegimeShockReversionShortV5TrailAtDeadline } from './regime_shock_reversion_short_v5_trail_at_deadline.js';
 import { generateTrendPullbackLong } from './trend_pullback_long.js';
@@ -141,6 +143,26 @@ const STRATEGY_REGISTRY_ENTRIES = {
     synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v3',
     enabled_in_v1: false,
   },
+  regime_shock_reversion_short_v4_delay: {
+    strategy_id: 'regime_shock_reversion_short_v4_delay',
+    display_name: 'Regime Shock Reversion Short V4 Delay',
+    direction: 'short',
+    setup_family: 'regime_shock_reversion',
+    implementation_status: 'active',
+    extraction_ticket: 'CYCLE4-V4-COMBINED-01',
+    synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v4_delay',
+    enabled_in_v1: false,
+  },
+  regime_shock_reversion_short_v4_persist: {
+    strategy_id: 'regime_shock_reversion_short_v4_persist',
+    display_name: 'Regime Shock Reversion Short V4 Persist',
+    direction: 'short',
+    setup_family: 'regime_shock_reversion',
+    implementation_status: 'active',
+    extraction_ticket: 'CYCLE4-V4-COMBINED-01',
+    synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v4_persist',
+    enabled_in_v1: false,
+  },
   regime_shock_reversion_short_v5_strict_deadline: {
     strategy_id: 'regime_shock_reversion_short_v5_strict_deadline',
     display_name: 'Regime Shock Reversion Short V5 Strict Deadline',
@@ -180,6 +202,8 @@ const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> 
   vwap_overnight_reversal_short: generateVwapOvernightReversalShort,
   regime_shock_reversion_short_v2: generateRegimeShockReversionShortV2,
   regime_shock_reversion_short_v3: generateRegimeShockReversionShortV3,
+  regime_shock_reversion_short_v4_delay: generateRegimeShockReversionShortV4Delay,
+  regime_shock_reversion_short_v4_persist: generateRegimeShockReversionShortV4Persist,
   regime_shock_reversion_short_v5_strict_deadline: generateRegimeShockReversionShortV5StrictDeadline,
   regime_shock_reversion_short_v5_trail_at_deadline: generateRegimeShockReversionShortV5TrailAtDeadline,
 };
