@@ -203,6 +203,10 @@ Step 7: Report.
      - Tests added (test names + assertions).
      - Verification commands run + exit codes.
      - Determinism / regression-gate results.
+       If reproducibility hashes are compared, include the baseline command
+       and path, baseline and branch hashes, phase2/phase4 hashes, drift
+       class, and changed-component evidence per
+       docs/plan/process-03-hash-drift-taxonomy.md.
      - Anything you'd flag for coordinator review.
      - Transition to STATE: PENDING-REVIEW once Step 6 is fully green.
 
