@@ -249,6 +249,50 @@ def test_aggressor_flow_event_appears_with_family_mapping(tmp_path: Path) -> Non
     assert signals[0].scenario_refs == ("L1",)
 
 
+def test_iceberg_event_appears_with_family_mapping(tmp_path: Path) -> None:
+    now_pt = datetime(2026, 5, 26, 8, 5, tzinfo=PT)
+    live_dir = tmp_path / "live_analysis"
+    live_dir.mkdir()
+    _write_jsonl(
+        live_dir / "2026-05-26_rth_icebergs.jsonl",
+        [
+            {
+                "timestamp_pt": "2026-05-26 08:03:00 PT",
+                "timestamp_ns": _ns(datetime(2026, 5, 26, 8, 3, tzinfo=PT)),
+                "event_type": "iceberg_detected",
+                "level_id": "ref-vah-29425.00",
+                "level_price": 29425.0,
+                "level_text": "VAH 29425",
+                "direction": "short",
+                "side": "ask",
+                "description": "Iceberg-like ask-side refill at VAH",
+                "intensity": 3.0,
+                "confidence": "high",
+            }
+        ],
+    )
+
+    signals = build_recent_signals(
+        live_dir=live_dir,
+        session=determine_session_state(
+            now_pt=now_pt,
+            analytics_root=tmp_path,
+            trading_date_override="2026-05-26",
+            session_override="rth",
+        ),
+        audit=[],
+        scenarios=[_scenario("S1", "short", 29420.0, 29430.0)],
+        levels=compute_level_distances(sample_envelope(), 29424.0, 40.0),
+        now_pt=now_pt,
+    )
+
+    assert len(signals) == 1
+    assert signals[0].family == "iceberg"
+    assert signals[0].label == "Iceberg"
+    assert signals[0].icon == "🧊"
+    assert signals[0].scenario_refs == ("S1",)
+
+
 def _scenario(
     scenario_id: str,
     direction: str,

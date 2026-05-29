@@ -180,6 +180,15 @@ def _cvd_sentence(
             f"{confidence_note}"
         )
 
+    if live_signals is not None and live_signals.iceberg_events:
+        iceberg = live_signals.iceberg_events[0]
+        return (
+            f"Iceberg check: {iceberg.side}-side refill at {iceberg.level_text} "
+            f"({iceberg.level_price:,.2f}); {iceberg.refill_count} refills, "
+            f"{iceberg.total_consumed:,} consumed via OBS confirmation; "
+            f"favors {iceberg.direction}."
+        )
+
     if live_signals is not None and live_signals.aggressor_flow_events:
         event = live_signals.aggressor_flow_events[0]
         if event.event_type == "aggressor_imbalance_extreme":

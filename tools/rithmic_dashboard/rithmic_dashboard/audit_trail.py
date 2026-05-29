@@ -238,6 +238,15 @@ def add_live_signal_events(
                 related_level_id=institutional.level_id,
             )
         )
+    for iceberg in signals.iceberg_events[:6]:
+        updated.append(
+            AuditEntry(
+                timestamp_pt=iceberg.timestamp_pt,
+                event_type=iceberg.event_type,
+                description=iceberg.description,
+                related_level_id=iceberg.level_id,
+            )
+        )
     for aggressor in signals.aggressor_flow_events[:6]:
         updated.append(
             AuditEntry(

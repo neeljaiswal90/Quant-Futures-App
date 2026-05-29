@@ -7,6 +7,7 @@ import pytest
 from rithmic_dashboard.models import (
     AbsorptionProxyEvent,
     DeltaDislocationEvent,
+    IcebergEvent,
     InstitutionalFlowEvent,
     LiveCvd,
     LiveSignals,
@@ -30,6 +31,7 @@ def _signals(
     absorption: tuple[AbsorptionProxyEvent, ...] = (),
     dislocations: tuple[DeltaDislocationEvent, ...] = (),
     institutional: tuple[InstitutionalFlowEvent, ...] = (),
+    icebergs: tuple[IcebergEvent, ...] = (),
 ) -> LiveSignals:
     return LiveSignals(
         trading_date="2026-05-22",
@@ -53,6 +55,7 @@ def _signals(
         absorption_proxies=absorption,
         delta_dislocations=dislocations,
         institutional_flow_events=institutional,
+        iceberg_events=icebergs,
     )
 
 
@@ -109,6 +112,34 @@ def _institutional_event(
         tail_span_minutes=60.0,
         intensity=2.0,
         description="Institutional flow at VPOC",
+    )
+
+
+def _iceberg_event(
+    *,
+    direction: str = "long",
+    timestamp_ns: int = 20,
+    refills: int = 5,
+    consumed: int = 145,
+) -> IcebergEvent:
+    side = "bid" if direction == "long" else "ask"
+    return IcebergEvent(
+        timestamp_pt="2026-05-22 20:00:00 PT",
+        timestamp_ns=timestamp_ns,
+        event_type="iceberg_detected",
+        level_id="vpoc",
+        level_text="VPOC",
+        level_price=29500.0,
+        side=side,
+        direction="short" if direction == "short" else "long",
+        refill_count=refills,
+        total_consumed=consumed,
+        median_refill_size=30.0,
+        window_seconds=30,
+        confidence="high",
+        intensity=2.0,
+        description="Iceberg-like refill at VPOC",
+        metadata={"confirmation_source": "obs_trade_tail"},
     )
 
 
@@ -365,6 +396,101 @@ def test_institutional_cvd_dislocation_cofire_respects_composition_cap() -> None
                 last_15m_cvd=1_000,
                 dislocations=(_dislocation(strong=True),),
                 institutional=(_institutional_event(net_delta=260, side="buy"),),
+            ),
+        ),
+    )
+    assert low == pytest.approx(0.95)
+    assert high == pytest.approx(0.95)
+
+
+def test_iceberg_match_and_oppose_are_mutually_exclusive() -> None:
+    factors = get_adjustment_factors(
+        distance_atr=0.1,
+        matches_session_drift=True,
+        time_into_session_pct=0.2,
+        state="ACTIVE",
+        signal_context=ProbabilitySignalContext(
+            direction="long",
+            entry_zone_low=29495.0,
+            entry_zone_high=29505.0,
+            live_signals=_signals(icebergs=(_iceberg_event(direction="short"),)),
+        ),
+    )
+    names = {factor.name for factor in factors}
+    assert "iceberg_opposing_entry" in names
+    assert "iceberg_at_entry" not in names
+
+
+def test_iceberg_high_intensity_stack_replaces_base_multiplier() -> None:
+    factors = get_adjustment_factors(
+        distance_atr=0.1,
+        matches_session_drift=True,
+        time_into_session_pct=0.2,
+        state="ACTIVE",
+        signal_context=ProbabilitySignalContext(
+            direction="long",
+            entry_zone_low=29495.0,
+            entry_zone_high=29505.0,
+            live_signals=_signals(
+                icebergs=(
+                    _iceberg_event(direction="long", timestamp_ns=20),
+                    _iceberg_event(direction="long", timestamp_ns=21),
+                )
+            ),
+        ),
+    )
+    names = {factor.name for factor in factors}
+    assert "iceberg_high_intensity_stack" in names
+    assert "iceberg_at_entry" not in names
+
+
+def test_iceberg_institutional_cvd_dislocation_cofire_respects_cap_and_tooltips() -> None:
+    factors = get_adjustment_factors(
+        distance_atr=0.1,
+        matches_session_drift=True,
+        time_into_session_pct=0.2,
+        state="ACTIVE",
+        signal_context=ProbabilitySignalContext(
+            direction="long",
+            entry_zone_low=29495.0,
+            entry_zone_high=29505.0,
+            live_signals=_signals(
+                session_cvd=2_000,
+                last_15m_cvd=1_000,
+                dislocations=(_dislocation(strong=True),),
+                institutional=(_institutional_event(net_delta=260, side="buy"),),
+                icebergs=(_iceberg_event(direction="long"),),
+            ),
+        ),
+    )
+    names = {factor.name for factor in factors}
+    assert {
+        "cvd_direction_match",
+        "delta_dislocation_at_entry_strong",
+        "institutional_flow_match",
+        "iceberg_at_entry",
+    } <= names
+    iceberg = next(factor for factor in factors if factor.name == "iceberg_at_entry")
+    assert iceberg.trigger is not None
+    assert "5 bid-side refills, 145 consumed at VPOC via OBS confirmation" in iceberg.trigger
+
+    low, high = adjust(
+        0.80,
+        0.90,
+        distance_atr=0.1,
+        matches_session_drift=True,
+        time_into_session_pct=0.2,
+        state="ACTIVE",
+        signal_context=ProbabilitySignalContext(
+            direction="long",
+            entry_zone_low=29495.0,
+            entry_zone_high=29505.0,
+            live_signals=_signals(
+                session_cvd=2_000,
+                last_15m_cvd=1_000,
+                dislocations=(_dislocation(strong=True),),
+                institutional=(_institutional_event(net_delta=260, side="buy"),),
+                icebergs=(_iceberg_event(direction="long"),),
             ),
         ),
     )

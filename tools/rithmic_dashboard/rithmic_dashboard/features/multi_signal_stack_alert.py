@@ -76,6 +76,7 @@ def _family_label(family: str) -> str:
         "absorption": "absorption",
         "dislocation": "dislocation",
         "institutional_flow": "institutional flow",
+        "iceberg": "iceberg",
         "aggressor_flow": "aggressor flow",
         "day_type": "day type",
         "vol_regime": "vol regime",
@@ -88,9 +89,10 @@ def _ordered_families(families: set[str]) -> tuple[str, ...]:
         "absorption": 1,
         "dislocation": 2,
         "institutional_flow": 3,
-        "aggressor_flow": 4,
-        "day_type": 5,
-        "vol_regime": 6,
-        "generic": 7,
+        "iceberg": 4,
+        "aggressor_flow": 5,
+        "day_type": 6,
+        "vol_regime": 7,
+        "generic": 8,
     }
     return tuple(sorted(families, key=lambda family: (rank.get(family, 9), family)))

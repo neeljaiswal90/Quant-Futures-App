@@ -188,6 +188,7 @@
     .signal-family-absorption { color: var(--orange); border-color: rgba(249, 115, 22, 0.52); }
     .signal-family-dislocation { color: #fca5a5; border-color: rgba(220, 38, 38, 0.62); }
     .signal-family-institutional_flow { color: #e9d5ff; border-color: rgba(168, 85, 247, 0.52); }
+    .signal-family-iceberg { color: #bae6fd; border-color: rgba(14, 165, 233, 0.58); }
     .signal-family-aggressor_flow { color: #67e8f9; border-color: rgba(6, 182, 212, 0.54); }
     .signal-family-vol_regime { color: #a7f3d0; border-color: rgba(16, 185, 129, 0.54); }
     .signal-family-day_type, .signal-family-generic { color: #cbd5e1; }
@@ -221,6 +222,7 @@
     .zone-badge-absorption { color: var(--orange); border-color: rgba(249, 115, 22, 0.52); }
     .zone-badge-dislocation { color: #fca5a5; border-color: rgba(220, 38, 38, 0.62); }
     .zone-badge-institutional_flow { color: #e9d5ff; border-color: rgba(168, 85, 247, 0.52); }
+    .zone-badge-iceberg { color: #bae6fd; border-color: rgba(14, 165, 233, 0.58); }
     .zone-badge-aggressor_flow { color: #67e8f9; border-color: rgba(6, 182, 212, 0.54); }
     .zone-badge-vol_regime { color: #a7f3d0; border-color: rgba(16, 185, 129, 0.54); }
     .zone-badge-day_type, .zone-badge-generic { color: #cbd5e1; }
@@ -744,6 +746,24 @@
                 {% if institutional.top_zone_volume_pct is not none %}({{ institutional.top_zone_volume_pct|pct }}){% endif %}
               {% else %}
                 50-99 institutional / 100+ block classifier
+              {% endif %}
+            </div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Icebergs</div>
+            {% set iceberg = live_signals.iceberg_summary %}
+            <div class="pulse-value {% if iceberg and iceberg.dominant_direction == 'long' %}conv-HIGH{% elif iceberg and iceberg.dominant_direction == 'short' %}dir-above{% endif %}">
+              {% if iceberg and iceberg.active_count %}
+                {{ iceberg.active_count }} active / {{ iceberg.total_consumed }} consumed
+              {% else %}
+                none
+              {% endif %}
+            </div>
+            <div class="pulse-note">
+              {% if iceberg and iceberg.latest_event %}
+                {{ iceberg.latest_event }}
+              {% else %}
+                MBO refill + OBS consumption confirmation
               {% endif %}
             </div>
           </div>

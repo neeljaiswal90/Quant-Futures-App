@@ -564,6 +564,8 @@ def _family_from_event_type(event_type: str) -> str:
         return "dislocation"
     if "institution" in lower or "block" in lower:
         return "institutional_flow"
+    if "iceberg" in lower:
+        return "iceberg"
     if "aggressor" in lower or "v_delta" in lower or "footprint" in lower:
         return "aggressor_flow"
     if "day_type" in lower or "initial_balance" in lower or lower.startswith("ib_"):
@@ -579,6 +581,7 @@ def _icon_for_family(family: str) -> str:
         "absorption": "●",
         "dislocation": "◆",
         "institutional_flow": "■",
+        "iceberg": "🧊",
         "aggressor_flow": "≈",
         "day_type": "📊",
         "vol_regime": "▲",
@@ -591,6 +594,7 @@ def _label_for_family(family: str) -> str:
         "absorption": "Absorption",
         "dislocation": "Dislocation",
         "institutional_flow": "Institutional",
+        "iceberg": "Iceberg",
         "aggressor_flow": "Aggressor",
         "day_type": "Day type",
         "vol_regime": "Vol regime",

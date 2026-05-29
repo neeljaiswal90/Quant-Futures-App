@@ -21,6 +21,7 @@ paths respect `data/dashboard/_pause.flag`. They write:
 - `data/live_analysis/*_delta_dislocations.jsonl`
 - `data/live_analysis/*_delta_dislocation_alerts.jsonl`
 - `data/live_analysis/*_institutional_flow.jsonl`
+- `data/live_analysis/*_icebergs.jsonl`
 - `data/live_analysis/*_aggressor_flow.jsonl`
 - `data/live_analysis/*_aggressor_flow_state.json`
 - `data/live_analysis/*_footprint.jsonl`
@@ -29,6 +30,7 @@ paths respect `data/dashboard/_pause.flag`. They write:
 - `data/live_analysis/*_day_type.jsonl`
 - `data/live_analysis/dislocation_thresholds.json`
 - `data/live_analysis/trade_size_thresholds.json`
+- `data/live_analysis/iceberg_thresholds.json`
 - `data/live_analysis/session_overrides.json`
 - `data/live_analysis/probability_snapshots.jsonl`
 - `data/live_analysis/probability_outcomes.jsonl`
@@ -124,10 +126,11 @@ faded signals are 15-30 minutes old. Older signals drop out.
 
 The sticky multi-signal banner appears when two or more distinct signal
 families, such as sweep plus absorption, sweep plus dislocation, or
-institutional flow plus absorption, or aggressor flow plus sweep, fire at the
-same zone inside the 30-minute window and price is still within 30 points of
-that zone. Multiple sweeps alone, or a concentration plus block that are both
-institutional-flow events, do not trigger the banner. Session-level day-type
+institutional flow plus absorption, iceberg plus absorption, or aggressor flow
+plus sweep, fire at the same zone inside the 30-minute window and price is
+still within 30 points of that zone. Multiple sweeps alone, or a concentration
+plus block that are both institutional-flow events, do not trigger the banner.
+Session-level day-type
 classification rows have no
 `level_id`, so they appear in Recent Signals but do not create badges or
 same-zone stacks. IB-break and IB-extension rows do carry a level and can stack
@@ -140,7 +143,7 @@ Distance To Key Levels always pins VWAP, `+1sd`, `-1sd`, `+2sd`, and `-2sd` rows
 even when those levels are farther away than the normal top-15 distance slice.
 The Signals column shows compact badges for recent sweeps, absorption proxies,
 delta dislocations, institutional-flow events, IB day-type level events, and
-aggressor-flow events, and same-zone stacks.
+iceberg/aggressor-flow events, and same-zone stacks.
 
 Orderflow Pulse is intentionally fail-open. `n/a` means the artifact is missing
 or not yet produced; it does not invalidate the structural sections. Live CVD
@@ -169,6 +172,15 @@ the approved defaults otherwise: `1-9`, `10-49`, `50-99`, and `>=100`
 contracts. It writes broad visibility events for any nearby structural level,
 but scenario probability multipliers apply only when those events occur at a
 scenario entry zone.
+
+Iceberg checks combine normalized MBO order lifecycle with the OBS-01 trade
+tail. MBO add/modify/cancel rows identify visible refills; OBS trades confirm
+actual consumption with aggressor side. Because the current normalized MBO feed
+does not reliably carry `F/T` action rows, an order disappearance without a
+same-price OBS trade inside +/- 50 ms is treated as a cancel, not consumption.
+Ask-side refills confirmed by buy-aggressor trades favor shorts. Bid-side
+refills confirmed by sell-aggressor trades favor longs. Events write to
+`data/live_analysis/<date>_<session>_icebergs.jsonl`.
 
 Aggressor Flow is the fast trade-side decomposition. `liftAsk` is aggressive
 buy volume; `hitBid` is aggressive sell volume; net is `liftAsk - hitBid`.
@@ -211,6 +223,12 @@ Scenario probability tooltips show every active multiplier. Examples:
   scenario direction at entry.
 - `block_trade_at_entry x1.15`: a block trade aligns with the scenario
   direction at entry.
+- `iceberg_at_entry x1.20`: OBS-confirmed iceberg refill aligns with the
+  scenario direction at entry.
+- `iceberg_opposing_entry x0.75`: OBS-confirmed iceberg refill opposes the
+  scenario direction at entry.
+- `iceberg_high_intensity_stack x1.30`: multiple same-direction iceberg events
+  hit the entry zone inside 30 minutes. This replaces `iceberg_at_entry`.
 - `day_type_trend_day_up_long x1.25`: RTH structure favors long continuation
   after the live-event factors have already been composed.
 - `day_type_trend_day_up_mean_reversion x0.60`: trend-day structure discounts
@@ -227,6 +245,7 @@ exist:
 cd D:\Quant-futures-app\tools\rithmic_dashboard
 python -m rithmic_dashboard.cli.calibrate_thresholds --symbol MNQ --lookback-sessions 20
 python -m rithmic_dashboard.cli.calibrate_trade_size_thresholds --symbol MNQ --lookback-sessions 7
+python -m rithmic_dashboard.cli.calibrate_iceberg_thresholds --symbol MNQ --lookback-sessions 30
 ```
 
 Both CLIs are idempotent and write atomically under `data/live_analysis/`. They
@@ -238,9 +257,9 @@ enough completed scenarios accumulate.
 
 Audit Trail remains the capped rolling backstop for state transitions and live
 events. The Recent Signals panel is the primary place to read current sweep,
-absorption, dislocation, institutional-flow, aggressor-flow, day-type, and
-volatility-regime prominence. Missing data warnings appear in the header warning
-panel and should not appear in audit history.
+absorption, dislocation, institutional-flow, iceberg, aggressor-flow, day-type,
+and volatility-regime prominence. Missing data warnings appear in the header
+warning panel and should not appear in audit history.
 
 ## Troubleshooting
 

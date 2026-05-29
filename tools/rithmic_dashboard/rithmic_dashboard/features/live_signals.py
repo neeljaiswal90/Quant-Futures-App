@@ -31,6 +31,14 @@ from rithmic_dashboard.features.delta_dislocation import (
     load_delta_dislocations,
 )
 from rithmic_dashboard.features.ewma_volatility import compute_ewma_volatility_regime
+from rithmic_dashboard.features.iceberg_detector import (
+    append_new_iceberg_events,
+    detect_icebergs,
+    load_iceberg_events,
+    load_iceberg_thresholds,
+    recent_iceberg_events,
+    summarize_icebergs,
+)
 from rithmic_dashboard.features.institutional_flow import (
     append_new_institutional_flow_events,
     compute_institutional_flow,
@@ -38,6 +46,7 @@ from rithmic_dashboard.features.institutional_flow import (
     recent_institutional_flow_events,
     summarize_institutional_flow,
 )
+from rithmic_dashboard.features.mbo_order_tracker import load_mbo_events_from_tail
 from rithmic_dashboard.features.sweep_detector import append_new_sweeps, detect_sweeps, load_sweeps
 from rithmic_dashboard.features.threshold_calibration import load_threshold
 from rithmic_dashboard.features.trade_size_classifier import load_trade_size_thresholds
@@ -101,6 +110,7 @@ def compute_live_signals(
     dislocation_path = live_dir / f"{prefix}_delta_dislocations.jsonl"
     dislocation_alert_path = live_dir / f"{prefix}_delta_dislocation_alerts.jsonl"
     institutional_flow_path = live_dir / f"{prefix}_institutional_flow.jsonl"
+    iceberg_path = live_dir / f"{prefix}_icebergs.jsonl"
     aggressor_flow_path = live_dir / f"{prefix}_aggressor_flow.jsonl"
     aggressor_state_path = live_dir / f"{prefix}_aggressor_flow_state.json"
     footprint_path = live_dir / f"{prefix}_footprint.jsonl"
@@ -161,6 +171,26 @@ def compute_live_signals(
         minutes=60,
     )[:12]
     institutional_summary = summarize_institutional_flow(persisted_institutional_events)
+
+    mbo_result = load_mbo_events_from_tail(
+        _mbo_tail_source_path(capture_path),
+        tail_bytes=tail_bytes,
+        warnings=warnings,
+    )
+    detected_icebergs = detect_icebergs(
+        mbo_events=mbo_result.events,
+        trades=ticks,
+        levels=levels,
+        config=load_iceberg_thresholds(live_dir / "iceberg_thresholds.json"),
+    )
+    append_new_iceberg_events(iceberg_path, detected_icebergs)
+    persisted_iceberg_events = recent_iceberg_events(
+        load_iceberg_events(iceberg_path),
+        now,
+        minutes=60,
+    )[:12]
+    iceberg_summary = summarize_icebergs(persisted_iceberg_events)
+
     aggressor_windows = compute_aggressor_metrics(ticks)
     v_delta, v_delta_event = compute_v_delta(ticks, state_path=aggressor_state_path)
     footprint_bar = build_footprint_bar(ticks)
@@ -203,6 +233,8 @@ def compute_live_signals(
         delta_dislocations=tuple(persisted_dislocations),
         institutional_flow_events=tuple(persisted_institutional_events),
         institutional_flow_summary=institutional_summary,
+        iceberg_events=tuple(persisted_iceberg_events),
+        iceberg_summary=iceberg_summary,
         volatility_regime=volatility_regime,
         aggressor_windows=aggressor_windows,
         v_delta=v_delta,
@@ -257,6 +289,14 @@ def _trade_tail_source_path(capture_path: Path) -> Path:
         obs_path = capture_path.with_name(f"{capture_path.name.removesuffix('.jsonl')}.obs01.jsonl")
         if obs_path.exists() and obs_path.stat().st_size > 0:
             return obs_path
+    return capture_path
+
+
+def _mbo_tail_source_path(capture_path: Path) -> Path:
+    """Use the normalized MBO sibling produced by the local probe normalizer."""
+
+    if capture_path.name.endswith(".jsonl"):
+        return capture_path.with_name(f"{capture_path.name.removesuffix('.jsonl')}.mbo.jsonl")
     return capture_path
 
 

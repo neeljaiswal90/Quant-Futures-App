@@ -85,6 +85,7 @@ Signal logs persist under `data/live_analysis/`:
 - `<date>_<session>_delta_dislocations.jsonl`
 - `<date>_<session>_delta_dislocation_alerts.jsonl`
 - `<date>_<session>_institutional_flow.jsonl`
+- `<date>_<session>_icebergs.jsonl`
 - `<date>_<session>_aggressor_flow.jsonl`
 - `<date>_<session>_aggressor_flow_state.json`
 - `<date>_<session>_footprint.jsonl`
@@ -94,6 +95,7 @@ Signal logs persist under `data/live_analysis/`:
 - `<date>_<session>_day_type.jsonl`
 - `dislocation_thresholds.json`
 - `trade_size_thresholds.json`
+- `iceberg_thresholds.json`
 - `session_overrides.json`
 
 These are dashboard-owned live-analysis logs, separate from the post-session
@@ -172,6 +174,51 @@ thresholds from recent OBS sessions using the `p50/p75/p95` trade-size
 distribution. It writes atomically to
 `data/live_analysis/trade_size_thresholds.json` and exits with code `2` when
 there are too few sessions.
+
+## Iceberg-Like Refills
+
+`rithmic_dashboard.features.iceberg_detector.detect_icebergs()` combines the
+normalized MBO order lifecycle with the OBS-01 trade tail. MBO supplies visible
+order add/modify/cancel state; OBS confirms actual consumption with aggressor
+side. A disappearing MBO order is counted as consumed only when a same-price OBS
+trade with the expected aggressor side appears within +/- 50 ms.
+
+Side mapping:
+
+- MBO `B` is bid-side refill, confirmed by sell-aggressor OBS trades, direction
+  `long`.
+- MBO `A` is ask-side refill, confirmed by buy-aggressor OBS trades, direction
+  `short`.
+
+Default thresholds are `min_refills=3`, `refill_window_seconds=30`,
+`size_consistency_pct=0.40`, and `min_total_consumed=50` MNQ contracts. The
+consumed threshold is MNQ-specific and should be recalibrated for other symbols.
+
+Canonical event file:
+
+- `<date>_<session>_icebergs.jsonl`
+
+Event types:
+
+- `iceberg_detected`: repeated same-side, same-price refills with OBS-confirmed
+  consumption.
+- `iceberg_high_intensity_stack_detected`: reserved for explicit high-intensity
+  stack rows. The current probability layer detects high-intensity stacks from
+  recent same-zone events and applies the replacement multiplier.
+
+The canonical RA-050 family is `iceberg`. Iceberg rows appear in Recent Signals,
+Distance Grid badges, Orderflow Pulse, and same-zone stack banners.
+
+Calibration:
+
+```powershell
+cd D:\Quant-futures-app\tools\rithmic_dashboard
+python -m rithmic_dashboard.cli.calibrate_iceberg_thresholds --symbol MNQ --lookback-sessions 30
+```
+
+The calibrator reads bounded MBO/OBS tails only, grid-searches thresholds toward
+a 5-10 event/session target, and writes
+`data/live_analysis/iceberg_thresholds.json` atomically.
 
 ## Day Type And Initial Balance
 
@@ -279,10 +326,17 @@ distance/session/time/state factors remain, and RA-046 adds live factors:
   the same scenario pass.
 - `block_trade_at_entry`: +15% factor when a block trade at entry aligns with
   the scenario direction. It can compose with concentration at the same zone.
+- `iceberg_at_entry`: +20% factor when OBS-confirmed iceberg refill aligns with
+  the scenario direction at entry.
+- `iceberg_opposing_entry`: -25% factor when OBS-confirmed iceberg refill
+  opposes the scenario direction at entry.
+- `iceberg_high_intensity_stack`: +30% factor when two or more same-direction
+  iceberg events hit the entry zone inside 30 minutes. This replaces
+  `iceberg_at_entry`; it does not stack with it.
 - Day-type factors apply last, after distance, session drift, time, CVD, sweep,
-  absorption, dislocation, institutional-flow, and confluence factors. Tooltip
-  text shows the unclipped composition and the clipped final factor whenever
-  the `[0.4, 1.6]` cap binds.
+  absorption, dislocation, institutional-flow, iceberg, and confluence factors.
+  Tooltip text shows the unclipped composition and the clipped final factor
+  whenever the `[0.4, 1.6]` cap binds.
 
 Day-type multiplier matrix:
 
@@ -343,6 +397,6 @@ The text is a scan aid only; it is not an automated trading instruction.
 `rithmic_dashboard.audit_trail` persists only actionable events:
 scenario transitions, HIGH/SUPER level touches, and HIGH/SUPER confluence
 crosses, plus live sweep, absorption proxy, delta-dislocation, institutional
-flow, day-type, IB-break, IB-extension, and CVD momentum-flip events. Data
-warnings are displayed in the header panel, not the audit trail. Identical
+flow, iceberg, day-type, IB-break, IB-extension, and CVD momentum-flip events.
+Data warnings are displayed in the header panel, not the audit trail. Identical
 consecutive entries inside five minutes are collapsed.

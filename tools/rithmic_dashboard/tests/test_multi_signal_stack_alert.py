@@ -31,6 +31,19 @@ def test_stack_alert_drops_when_price_moves_away() -> None:
     assert build_multi_signal_stack_alerts(recent_signals=signals, current_price=29380.0) == []
 
 
+def test_stack_alert_fires_for_iceberg_plus_absorption() -> None:
+    signals = [
+        _signal("iceberg", "level:ref-vah-29425.00", "VAH 29425", 29425.0, 1),
+        _signal("absorption", "level:ref-vah-29425.00", "VAH 29425", 29425.0, 2),
+    ]
+
+    alerts = build_multi_signal_stack_alerts(recent_signals=signals, current_price=29424.0)
+
+    assert len(alerts) == 1
+    assert alerts[0].families == ("absorption", "iceberg")
+    assert "absorption + iceberg stack" in alerts[0].description
+
+
 def _signal(
     family: str,
     zone_key: str,

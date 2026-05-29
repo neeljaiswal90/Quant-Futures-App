@@ -12,6 +12,7 @@ from rithmic_dashboard.models import (
     AdjustmentFactor,
     DayTypeClassification,
     DeltaDislocationEvent,
+    IcebergEvent,
     InstitutionalFlowEvent,
     LiveSignals,
     ScenarioDirection,
@@ -269,6 +270,18 @@ def _live_signal_factors(context: ProbabilitySignalContext) -> list[AdjustmentFa
             )
         )
 
+    iceberg_factor = _iceberg_factor(
+        _entry_iceberg_events(
+            signals,
+            context.entry_zone_low,
+            context.entry_zone_high,
+            entry_mid,
+        ),
+        context.direction,
+    )
+    if iceberg_factor is not None:
+        factors.append(iceberg_factor)
+
     sweep = _entry_sweep(signals, context.entry_zone_low, context.entry_zone_high, entry_mid)
     if sweep is not None and sweep.recovered_within_5min is False:
         factors.append(
@@ -474,6 +487,76 @@ def _entry_block_event(
 
 def _event_direction(event: InstitutionalFlowEvent) -> ScenarioDirection:
     return "long" if event.side == "buy" else "short"
+
+
+def _entry_iceberg_events(
+    signals: LiveSignals,
+    low: float,
+    high: float,
+    entry_mid: float,
+) -> list[IcebergEvent]:
+    return [
+        event
+        for event in signals.iceberg_events
+        if low <= event.level_price <= high or abs(event.level_price - entry_mid) <= 5.0
+    ]
+
+
+def _iceberg_factor(
+    events: list[IcebergEvent],
+    direction: ScenarioDirection,
+) -> AdjustmentFactor | None:
+    if not events:
+        return None
+    newest = sorted(events, key=lambda event: event.timestamp_ns or 0, reverse=True)[0]
+    same_direction = [
+        event
+        for event in events
+        if event.direction == newest.direction
+        and _within_minutes(newest.timestamp_ns, event.timestamp_ns, minutes=30)
+    ]
+    if newest.direction != direction:
+        return AdjustmentFactor(
+            "iceberg_opposing_entry",
+            0.75,
+            "OBS-confirmed iceberg refill opposes scenario bias",
+            trigger=_iceberg_trigger(newest),
+            is_structural=True,
+        )
+    if len(same_direction) >= 2:
+        total_consumed = sum(event.total_consumed for event in same_direction)
+        return AdjustmentFactor(
+            "iceberg_high_intensity_stack",
+            1.30,
+            "repeated OBS-confirmed iceberg refills align with scenario bias",
+            trigger=(
+                f"{len(same_direction)} iceberg events, "
+                f"{total_consumed:,} total consumed at {newest.level_text}; "
+                "via OBS confirmation"
+            ),
+            is_structural=True,
+        )
+    return AdjustmentFactor(
+        "iceberg_at_entry",
+        1.20,
+        "OBS-confirmed iceberg refill aligns with scenario bias",
+        trigger=_iceberg_trigger(newest),
+        is_structural=True,
+    )
+
+
+def _iceberg_trigger(event: IcebergEvent) -> str:
+    return (
+        f"{event.refill_count} {event.side}-side refills, "
+        f"{event.total_consumed:,} consumed at {event.level_text} "
+        "via OBS confirmation"
+    )
+
+
+def _within_minutes(anchor_ns: int | None, ts_ns: int | None, *, minutes: int) -> bool:
+    if anchor_ns is None or ts_ns is None:
+        return True
+    return abs(anchor_ns - ts_ns) <= minutes * 60_000_000_000
 
 
 def _absorption_count(signals: LiveSignals, low: float, high: float) -> int:

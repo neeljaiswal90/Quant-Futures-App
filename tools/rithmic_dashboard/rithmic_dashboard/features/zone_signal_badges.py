@@ -52,6 +52,7 @@ def build_zone_signal_badges(
             "absorption",
             "dislocation",
             "institutional_flow",
+            "iceberg",
             "aggressor_flow",
             "day_type",
             "vol_regime",

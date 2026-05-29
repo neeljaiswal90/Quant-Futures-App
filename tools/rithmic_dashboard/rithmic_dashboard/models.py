@@ -376,6 +376,54 @@ class AggressorFlowEvent:
 
 
 @dataclass(frozen=True)
+class MboOrderEvent:
+    """Minimal normalized MBO order-lifecycle event from bounded tails."""
+
+    timestamp_ns: int
+    recv_ts_ns: int | None
+    sequence: int | None
+    action: Literal["A", "M", "C", "F", "T"]
+    side: Literal["B", "A"]
+    price: float
+    size: int
+    order_id: str
+
+
+@dataclass(frozen=True)
+class IcebergEvent:
+    """Inferred iceberg-like refill/defended-level event."""
+
+    timestamp_pt: str
+    timestamp_ns: int | None
+    event_type: Literal["iceberg_detected", "iceberg_high_intensity_stack_detected"]
+    level_id: str
+    level_text: str
+    level_price: float
+    side: Literal["bid", "ask"]
+    direction: ScenarioDirection
+    refill_count: int
+    total_consumed: int
+    median_refill_size: float
+    window_seconds: int
+    confidence: Literal["high", "medium", "low"]
+    intensity: float
+    description: str
+    metadata: dict[str, float | int | str | bool | None]
+
+
+@dataclass(frozen=True)
+class IcebergSummary:
+    """Compact iceberg read for the dashboard pulse."""
+
+    active_count: int
+    latest_event: str | None
+    top_level_text: str | None
+    top_level_price: float | None
+    total_consumed: int
+    dominant_direction: ScenarioDirection | Literal["neutral"] | None
+
+
+@dataclass(frozen=True)
 class LiveSignals:
     """All live intra-session signals computed on bounded capture tails."""
 
@@ -398,6 +446,8 @@ class LiveSignals:
     v_delta: VDelta | None = None
     footprint_bar: FootprintBar | None = None
     aggressor_flow_events: tuple[AggressorFlowEvent, ...] = field(default_factory=tuple)
+    iceberg_events: tuple[IcebergEvent, ...] = field(default_factory=tuple)
+    iceberg_summary: IcebergSummary | None = None
     warnings: tuple[DataWarning, ...] = field(default_factory=tuple)
 
 
@@ -536,6 +586,8 @@ class AuditEntry:
         "aggressor_imbalance_extreme",
         "stacked_footprint_imbalance",
         "v_delta_sign_flip",
+        "iceberg_detected",
+        "iceberg_high_intensity_stack_detected",
     ]
     description: str
     related_level_id: str | None = None

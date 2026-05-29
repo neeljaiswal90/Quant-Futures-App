@@ -28,6 +28,18 @@ def _trade(ts: int, price: float, qty: int, side: str = "buy") -> dict[str, obje
     }
 
 
+def _mbo(ts: int, action: str, order_id: str, size: int = 30) -> dict[str, object]:
+    return {
+        "event_ts_ns": ts,
+        "sequence": 1,
+        "action": action,
+        "side": "A",
+        "price": 29425.0,
+        "size": size,
+        "order_id": order_id,
+    }
+
+
 def test_tail_parser_extracts_raw_last_trade_rows(tmp_path: Path) -> None:
     path = tmp_path / "MNQ_globex.jsonl"
     _write_raw(path, [_trade(1_000_000_000, 29500.0, 2, "buy")])
@@ -42,7 +54,7 @@ def test_tail_parser_extracts_raw_last_trade_rows(tmp_path: Path) -> None:
 
 def test_live_signals_compute_vwap_cvd_and_velocity(tmp_path: Path) -> None:
     capture = tmp_path / "analytics" / "data" / "captures" / "2026-05-22" / "MNQ_globex.jsonl"
-    base = 1_779_400_000_000_000_000
+    base = int(datetime(2026, 5, 21, 19, 59, tzinfo=PT).timestamp() * 1_000_000_000)
     rows = [
         _trade(base + i * 60_000_000_000, 29500.0 + i, 2, "buy" if i % 2 == 0 else "sell")
         for i in range(20)
@@ -99,6 +111,41 @@ def test_live_signals_prefers_normalized_obs_trade_tail(tmp_path: Path) -> None:
     assert signals.trade_count == 2
     assert signals.cvd.session_cvd == 7
     assert any("normalized trade tail" in warning.message for warning in signals.warnings)
+
+
+def test_live_signals_writes_iceberg_events_from_mbo_and_obs_tails(tmp_path: Path) -> None:
+    capture = tmp_path / "analytics" / "data" / "captures" / "2026-05-22" / "MNQ_globex.jsonl"
+    obs = capture.with_name("MNQ_globex.obs01.jsonl")
+    mbo = capture.with_name("MNQ_globex.mbo.jsonl")
+    base = int(datetime(2026, 5, 21, 19, 59, tzinfo=PT).timestamp() * 1_000_000_000)
+    obs_rows: list[dict[str, object]] = []
+    mbo_rows: list[dict[str, object]] = []
+    for idx in range(3):
+        add_ts = base + idx * 5_000_000_000
+        cancel_ts = add_ts + 10_000_000
+        mbo_rows.append(_mbo(add_ts, "A", f"ask-{idx}"))
+        mbo_rows.append(_mbo(cancel_ts, "C", f"ask-{idx}"))
+        obs_rows.append(_trade(cancel_ts + 20_000_000, 29425.0, 30, "buy"))
+    _write_raw(capture, [_trade(base, 29425.0, 1, "buy")])
+    _write_raw(obs, obs_rows)
+    _write_raw(mbo, mbo_rows)
+    session = determine_session_state(
+        now_pt=datetime(2026, 5, 21, 20, 0, tzinfo=PT),
+        analytics_root=tmp_path / "analytics",
+    )
+
+    signals = compute_live_signals(
+        capture_path=capture,
+        envelope=sample_envelope(),
+        session=session,
+        dashboard_dir=tmp_path / "dashboard",
+    )
+
+    assert len(signals.iceberg_events) == 1
+    assert signals.iceberg_events[0].direction == "short"
+    assert signals.iceberg_summary is not None
+    assert signals.iceberg_summary.total_consumed == 90
+    assert (tmp_path / "live_analysis" / "2026-05-22_globex_icebergs.jsonl").exists()
 
 
 def test_live_signals_warns_when_tail_under_covers_sixty_minutes(tmp_path: Path) -> None:
