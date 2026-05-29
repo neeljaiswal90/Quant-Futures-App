@@ -182,15 +182,36 @@ export interface HeldOutValidationArtifactTradeExitV1 {
   readonly management_action_reason: string | null;
   readonly management_action_type: string | null;
   readonly target_label: 'pt1' | 'pt2' | 'runner' | null;
+  readonly fail_safe_context: HeldOutValidationArtifactFailSafeContextV1 | null;
+}
+
+export interface HeldOutValidationArtifactFailSafeContextV1 {
+  readonly market_authority: 'unknown' | 'warming' | 'authoritative' | 'stale' | 'gap' | null;
+  readonly market_is_stale: boolean | null;
+  readonly mark_price: number | null;
+  readonly bid_px: number | null;
+  readonly ask_px: number | null;
+  readonly active_stop_price: number | null;
+  readonly remaining_quantity: number | null;
+  readonly position_profile_id: string | null;
+  readonly position_profile_version: number | null;
+  readonly management_profile_id: string | null;
+  readonly management_profile_version: number | null;
+  readonly validation_path: string | null;
 }
 
 export interface HeldOutValidationArtifactTradeV1 {
+  readonly trade_id: string;
+  readonly session_id: string;
   readonly entry_ts_ns: string;
   readonly exit_ts_ns: string;
   readonly side: 'long' | 'short';
   readonly regime: HeldOutValidationArtifactRegime;
+  readonly vix_prior_close_percentile: number | null;
   readonly spread_bucket: HeldOutValidationArtifactSpreadBucket;
   readonly queue_ahead_bucket: HeldOutValidationArtifactQueueAheadBucket;
+  readonly entry_price: number;
+  readonly exit_price: number;
   readonly gross_pnl_cents: string;
   readonly net_pnl_cents: string;
   readonly entry_quantity: number;
