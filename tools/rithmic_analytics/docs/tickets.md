@@ -1175,6 +1175,15 @@ May capture dates (definitive), (2) forward-capture paired databento+Rithmic
 sessions, or (3) a databento-alone concept check (validates front→fill in
 principle, not the Rithmic token mapping).
 
+> **Rithmic-only precision proxy (2026-05-29, `cli/estimate_priority_fill_proxy.py`):**
+> over 23,757 priority-only confirmations, only **12.6%** have NO trade at
+> price+side within ±2s (near-certain cancels) while **55%** have a print within a
+> tight ±50ms — the channel is MOSTLY real signal (precision upper bound ~87.4%,
+> optimistic). So buying ~9 days of databento for a gold-standard number is worth
+> it (not chasing noise). A no-databento **hybrid gate** — admit a priority-only
+> confirmation only when a ≤250ms print exists (captures ~72%, drops the orphans)
+> — is a defensible cautious flip if the signal is wanted before paired data.
+
 **Acceptance (Part B-b):**
 - Per-(price,time)-matched precision/recall of priority-only confirmations vs
   databento F/T across ≥10 paired sessions.

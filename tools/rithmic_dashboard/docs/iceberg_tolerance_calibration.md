@@ -85,3 +85,33 @@ capture dates (definitive), forward-capture paired sessions, or a databento-alon
 concept check (validates front→fill in principle, not the Rithmic token mapping).
 Until B-b clears, `admit_priority_confirmation` stays False and
 `match_tolerance_ms` stays 50 ms.
+
+#### Rithmic-only precision proxy (no databento) — channel is mostly signal
+
+Before buying databento, `cli/estimate_priority_fill_proxy.py` bounds precision
+using only Rithmic: for each priority-only confirmation, is there a trade at the
+same price + expected aggressor within a wide window? Result over **23,757
+confirmations** (2 priority-bearing sessions):
+
+| window | trade present |
+|---|---:|
+| +/- 50 ms | 55.2 % |
+| +/- 250 ms | 71.8 % |
+| +/- 500 ms | 78.3 % |
+| +/- 1000 ms | 83.8 % |
+| +/- 2000 ms | 87.4 % |
+| **none within 2 s** | **12.6 %** |
+
+- **Precision UPPER bound ~87.4 %** — optimistic; presence ≠ this order's volume,
+  so a coincidental print at the price inflates it.
+- **Cancel LOWER bound ~12.6 %** — robust; no print at all at price+side within 2 s.
+- **55 % land within a tight 50 ms** — almost certainly the fill OBS's
+  volume-accounting already claimed for an earlier order at the level.
+
+Verdict: the channel is **mostly real signal, not noise** — only ~1 in 8 is a
+near-certain cancel — so a gold-standard databento number is worth buying (not
+chasing noise). It is NOT clean enough to flip on the proxy alone (12.6 % cancels
++ a wide ambiguous 50 ms–2 s band). No-databento middle path: a **hybrid gate**
+admitting a priority-only confirmation only when a tight-window (≤250 ms) print
+exists would capture the high-confidence ~72 % and drop the orphans — a defensible
+cautious flip if the signal is wanted before paired data is acquired.
