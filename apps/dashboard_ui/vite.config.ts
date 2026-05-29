@@ -33,6 +33,12 @@ export default defineConfig({
     },
   },
   server: {
+    // Bind IPv4 loopback explicitly. Vite's default host is `localhost`, which
+    // on Windows resolves to ::1 (IPv6) — so http://127.0.0.1:5173 (the URL the
+    // launcher + docs print, and what the backend binds) was refused. Pinning
+    // 127.0.0.1 makes the documented URL work and keeps the dev server
+    // loopback-only (not exposed on the LAN).
+    host: "127.0.0.1",
     port: 5173,
     proxy: {
       "/snapshot": {
