@@ -949,6 +949,84 @@ Pre-build sweep first (7 points above + anything from code reading), then green-
 
 ---
 
+## RA-064 · Investigate missing MBO F/T action types in normalized output — SHIPPED 2026-05-28
+
+> SHIPPED 2026-05-28. Outcome: F/T absence is structural and worked around correctly; priority drop is the actual unblock — followups RA-065 + RA-066. See docs/incident_mbo_ft_gap.md.
+
+**Priority**: P1
+**Estimate**: 2 hours
+**Dependencies**: RA-035 MBO normalization, RA-052 incremental normalize, RA-059 iceberg detector
+
+**Description**: RA-059 shipped a principled MBO+OBS hybrid iceberg detector because the current normalized MBO siblings appear to contain `A/M/C` lifecycle rows but no `F/T` fill/trade action rows. That makes OBS timing confirmation the load-bearing consumption source and likely explains the initial iceberg calibration result of `0.00` events/session across the sampled MBO/OBS pairs.
+
+This ticket investigates whether `F/T` rows are missing because the Rithmic probe does not capture them, the raw stream encodes fills differently than expected, or the normalization path drops/filters them. The output is an evidence-backed diagnosis and a recommendation for RA-059 v2, not a detector rewrite.
+
+### Background — why this matters
+
+RA-059 correctly avoids treating every MBO order disappearance as a fill. Without `F/T`, an `A → C → A` sequence could be real consumption or a cancel/repost. The shipped v1 uses OBS trade confirmation inside ±50ms to disambiguate:
+
+- MBO supplies visible order lifecycle/refill state.
+- OBS supplies trade/aggressor confirmation.
+- MBO disappearance without matching OBS trade is treated as cancel.
+
+That is safe, but lossy. Restoring true MBO fill/trade actions would improve iceberg yield and reduce reliance on cross-stream timestamp matching.
+
+### Investigation plan
+
+1. **Probe config trace**
+   - Inspect `scripts/infra/capture-rithmic-probe.py` and wrapper invocation paths.
+   - Confirm requested streams include the MBO feed needed for fill/trade lifecycle rows.
+   - Verify no capture-side filter keeps only add/modify/cancel actions.
+
+2. **Raw capture sampling**
+   - Sample recent raw captures with MBO enabled before normalization.
+   - Count raw action-like fields and stream/type labels.
+   - Determine whether raw records ever contain `F`, `T`, fill, trade, execute, or equivalent fields.
+
+3. **Normalizer trace**
+   - Inspect `rithmic_analytics` normalization code paths that write `*.mbo.jsonl`.
+   - Trace action mapping from raw payload/envelope to normalized `action`.
+   - Verify whether unknown action values are dropped, coerced, or filtered.
+
+4. **Incremental normalize parity**
+   - Confirm RA-052 incremental normalize and full normalize produce identical MBO action distributions on the same raw fixture.
+   - If only one path drops `F/T`, identify the divergent branch.
+
+5. **Evidence artifact**
+   - Write a short markdown note under `docs/` with:
+     - raw sample counts
+     - normalized sample counts
+     - files/functions inspected
+     - root-cause conclusion
+     - recommendation for RA-059 v2
+
+### Acceptance criteria
+
+- Counts action distribution for at least two recent sessions, including one Globex and one RTH when available.
+- Demonstrates whether `F/T` are absent in raw capture, present in raw but dropped in normalization, or encoded under another field/name.
+- Confirms whether full normalize and incremental normalize agree on MBO action distribution.
+- Adds or updates a focused regression test if the root cause is a normalizer mapping/filter bug.
+- Does not modify RA-059 detector behavior unless the investigation finds a one-line normalization bug with an obvious test.
+- Produces a concrete recommendation:
+  - "capture config fix required",
+  - "normalizer bug, fix in follow-up",
+  - "Rithmic retail MBO does not expose F/T; keep OBS hybrid",
+  - or "F/T equivalent exists under alternate field; draft RA-059.1 to consume it."
+
+### Out of scope
+
+- Rewriting the iceberg detector.
+- Changing RA-059 thresholds.
+- Building a heatmap renderer.
+- Adding new trading signals.
+- Auto-trade execution.
+
+### Relationship to RA-059
+
+RA-059 v1 is correct and should remain in production. RA-064 determines whether the input data can be improved so RA-059 v2 can use direct MBO consumption events instead of relying primarily on OBS timing confirmation.
+
+---
+
 ## RA-057 · EOD session-combined CLI for next-day prep
 **Priority**: P2
 **Estimate**: 2-3 hours
@@ -970,6 +1048,314 @@ dashboard and chart-prep docs, and exits clearly when one leg is missing.
   explicit `--allow-partial` flag is passed.
 - `run_eod_full_analytics.ps1` can call it without warning once shipped.
 - Docs in `operations.md` identify this as the final EOD prep step.
+
+---
+
+## RA-065 · Surface MBO `priority` field through to MboOrderTracker (independent iceberg-confirmation channel)
+**Priority**: P1 — unlocks RA-059 v2 without depending on OBS-trade alignment.
+**Estimate**: 4-6 hours
+**Dependencies**: RA-064 investigation (root-cause + drop-point trace).
+RA-035 (MBO sibling production — extends its schema).
+RA-059 (iceberg detector v1 — adds priority channel; v1 stays as fallback).
+
+**Description**: The Rithmic probe emits `depth_order_priority` on every
+MBO order (verified 100% population across 326K orders sampled in
+RA-064). The field is dropped by four downstream layers and never
+reaches the iceberg detector. Plumbing it through enables two new
+detection signals that don't depend on OBS-trade-tail correlation:
+
+- **Queue-position consumption test**: a `delete` event at queue-position-1
+  on its price level is almost certainly a fill (FIFO consumption),
+  independent of whether a LAST_TRADE printed within `match_tolerance_ms`.
+- **Refill-by-priority-jump detection**: when a `new` order appears at a
+  price within the refill window of a `delete` at the front of that
+  queue, a non-contiguous priority jump above the previous tail is the
+  canonical iceberg-refresh fingerprint.
+
+Both signals compute without LAST_TRADE. OBS confirmation becomes a third
+corroborator instead of the single load-bearing input.
+
+**Files to modify** (four sequential plumbing points + tracker
+extension):
+
+1. `rithmic_analytics/ops/normalize_probe.py::parity_mbo_record_to_mbo_dicts`
+   (lines 580-589 + fallback at 541-547) — add
+   `"priority": order.get("priority")` to output dicts.
+2. `rithmic_analytics/core/loader.py::_MBO_DTYPES` — add
+   `"priority": "string"`.
+3. `rithmic_dashboard/rithmic_dashboard/models.py::MboOrderEvent` —
+   add `priority: str | None = None` (default keeps pre-fix siblings
+   loadable).
+4. `rithmic_dashboard/rithmic_dashboard/features/mbo_order_tracker.py::_event_from_record`
+   (lines 272-283) — read `rec.get("priority")` into the constructor;
+   add `priority` to `_TrackedOrder` (lines 44-52); maintain per-(price,
+   side) priority-ordered active-orders state.
+5. Extend `MboOrderTracker._remove` with the queue-position consumption
+   test; extend `MboOrderTracker._add` (or the append path after a
+   recent `_remove` at the same price) with the priority-jump check.
+
+**Tests required**:
+- Backward-compat byte-exact on existing test cases — `priority=None`
+  path must produce numerically identical iceberg output to pre-fix.
+- Queue-position consumption test on synthetic FIFO scenario.
+- Refill-by-priority-jump test on a synthetic iceberg pattern.
+- Regenerated `.mbo.jsonl` carries the priority field populated.
+- Cached sibling invalidation: pre-fix siblings carry no priority;
+  delete-cached + re-normalize regenerates with the field (mirrors
+  the RA-035 / RA-041 invalidation workflow — document in
+  operations.md).
+
+**Acceptance**:
+- All RA-035 and RA-059 tests pass (byte-exact numerics on the
+  no-priority path).
+- New priority-channel tests green.
+- ruff + mypy clean.
+- Smoke against today's regenerated capture: iceberg event count > 0
+  on the same fixture that produced 0.00 events in RA-059 calibration.
+
+**Out of scope**:
+- Modifying the OBS-trade-tail confirmation logic (that's RA-066's
+  domain).
+- Multi-vendor MBO support (Rithmic-specific for v1).
+- Heatmap rendering of priority-ordered ladder state.
+
+---
+
+## RA-066 · Walk-forward calibrate `match_tolerance_ms` for RA-059 OBS-trade confirmation
+**Priority**: P2 — fallback half of the iceberg detector; becomes diagnostic-only if RA-065 ships clean.
+**Estimate**: 2 hours
+**Dependencies**: RA-059 (iceberg detector v1). RA-053-era databento corpus
+(96 sessions Feb-Apr 2026) for the walk-forward fixture base.
+
+**Description**: The RA-059 calibration result of 0.00 events/session on
+the sampled corpus may reflect a mis-tuned `match_tolerance_ms` (default
+50ms) for the OBS-trade-tail confirmation, not just the priority gap
+that RA-065 addresses. Sweep `match_tolerance_ms` across
+`[5, 10, 25, 50, 100, 250]ms` against the 96-session databento corpus,
+plot iceberg event yield per tier, pick the knee.
+
+If RA-065 ships first and yields healthy event counts on its own
+(priority channel is decisive), RA-066 becomes a diagnostic confirming
+the OBS half also works — still worth running to retire the calibration
+question, but no longer load-bearing for production.
+
+**Files to modify** / create:
+- `rithmic_analytics/scripts/calibrate_iceberg_tolerance.py` — new
+  one-shot walk-forward script (not under cli/ since it's not part
+  of the daily loop).
+- `docs/iceberg_tolerance_calibration.md` — methodology + results note
+  (mirrors the `ewma_calibration_methodology.md` documentation style).
+- Update RA-059 default `match_tolerance_ms` if the knee differs
+  meaningfully from 50ms.
+
+**Acceptance**:
+- Calibration script runs against the corpus without error.
+- Per-tolerance event-yield table documented.
+- If the knee shifts the default, the RA-059 test suite is rerun to
+  confirm numerics remain consistent at the new default.
+
+**Out of scope**:
+- Detector logic changes beyond the threshold default.
+- Production rollout of the new threshold without an A/B comparison
+  window.
+
+---
+
+> **v2 REALTIME TRACK — stack locked 2026-05-28** (see `docs/v2_realtime_architecture.md`):
+> React 18 + TypeScript + TradingView lightweight-charts v5.2 frontend ·
+> FastAPI + WebSocket backend importing detectors **as a library** ·
+> greenfield view + serving layer (v1 HTML view is retired, signal
+> pipeline RA-046–RA-059 is retained). Built **contract-first** so RA-060/
+> 061/062/063 fan out to parallel agents after RA-067 lands. Each ticket
+> owns a disjoint directory — see the file-ownership map in the arch doc.
+
+## RA-067 · Realtime event contract + mock emitter + app skeleton (SERIAL — unblocks the fan-out) — SHIPPED 2026-05-28
+
+> **Shipped.** `contracts/realtime/` landed: `events.py` (Pydantic v2 source
+> of truth) + `events.ts` (hand-kept TS mirror) + `config.py`/`config.ts`
+> (alert-config stub for RA-063) + `mock_emitter.py` (FastAPI WS server,
+> synthetic CRITICAL/HIGH/MEDIUM on a timer). 25 tests green; ruff + mypy
+> clean (9 files). Parity tripwire **verified firing** on injected TS drift
+> then reverted. Live uvicorn+websockets round-trip confirms a client
+> receives snapshot→heartbeat→CRITICAL. Skeleton dirs + ownership READMEs
+> created for RA-060/061/062/063. Decisions taken (both spec-permitted):
+> hand-keep+assert for TS⇄Py parity (no codegen toolchain), synthetic mock
+> (no capture-replay fixture dependency). **The fan-out is unblocked** —
+> RA-060/061/062/063 can launch in parallel against the mock.
+
+**Priority**: P0 — nothing in the realtime track starts until this lands.
+**Estimate**: 4-6 hours
+**Dependencies**: RA-046–RA-059 detector modules (the contract describes their outputs).
+**Owns (no other ticket writes here)**: `contracts/realtime/` + the skeleton dirs it creates.
+
+**Why first**: backend, frontend, notifications, and config all bind to one wire format. Define it once, freeze it, and four agents build against it in parallel without colliding. Ships a mock so downstream work needs zero access to a running backend or live capture.
+
+**Deliverables**:
+1. **Wire schema, dual-typed** — single source of truth as Pydantic v2 (`contracts/realtime/events.py`) + TypeScript (`contracts/realtime/events.ts`), kept in sync by a parity test (generate TS via `pydantic-to-typescript`, or hand-keep + assert). Envelope: `type` (snapshot|event|heartbeat|regime|error), `seq` (monotonic; client detects gaps → resync), `ts_ns`/`ts_pt`, `tier` (CRITICAL|HIGH|MEDIUM|null), `schema_version`, `payload` (discriminated union by family: signal, iceberg, absorption, sweep, vol_regime, price_tick, zone_update, …). RA-050 extensibility contract holds: an unknown family round-trips through the envelope and reaches the feed without crashing the renderer.
+2. **Snapshot shape** — full current state for initial load + reconnect resync (price, EWMA σ/regime, all active zones, last N signals, open scenarios).
+3. **Mock emitter** (`contracts/realtime/mock_emitter.py`) — replays a recorded capture OR generates synthetic CRITICAL/HIGH/MEDIUM events on a timer over the same WS interface RA-060 will implement. Frontend + daemon develop entirely against this.
+4. **Repo skeleton** — `services/realtime_backend/`, `apps/dashboard_ui/`, `services/notification_daemon/` stubs, each with a README declaring file ownership.
+
+**Acceptance**:
+- `events.py` and `events.ts` are provably in sync (parity test fails on drift).
+- Mock serves a WS endpoint; a trivial client receives snapshot + heartbeats + a scripted CRITICAL within 60s.
+- Unknown event family round-trips without error (extensibility gate).
+- Disjoint-ownership map documented.
+
+**Out of scope**: real detector wiring (RA-060), any UI (RA-061).
+
+---
+
+## RA-060 · Realtime WebSocket backend — FastAPI, detectors-as-library [parallel after RA-067]
+**Priority**: P1
+**Estimate**: 12-16 hours
+**Dependencies**: RA-067 (contract + skeleton). Imports RA-046–RA-059 feature modules as a library.
+**Owns**: `services/realtime_backend/` only.
+
+**Description**: Greenfield FastAPI + uvicorn service that runs the existing detector modules **in-process as a library** (per the locked scope decision — import `rithmic_dashboard.features.*` directly rather than re-reading JSONL) over the live capture tail, classifies confluence/tier, and pushes contract-shaped events over WebSocket. The RA-067 mock emitter is its functional spec.
+
+**Phases**:
+1. FastAPI + uvicorn scaffold; WS endpoint implementing the RA-067 envelope; connection manager (multi-client, per-client send queue) (~3h)
+2. Capture-tail watcher (watchdog) → in-process detector invocation on append; debounce (~3h)
+3. REST snapshot endpoint (initial load + post-reconnect resync); seq/gap protocol (~2h)
+4. Confluence + tier classification (extends RA-050 multi-stack; CRITICAL/HIGH/MEDIUM) (~3h)
+5. Heartbeat emitter + staleness detection (no capture activity → degraded event) (~1h)
+6. Tests + memory regression (RA-052 < 2GB) + docs (~3h)
+
+**Acceptance criteria**:
+- `python -m realtime_backend.server` boots; WS clients receive snapshot then live events.
+- Detector-as-library path is numerically consistent with the JSONL path on a fixed fixture (parity gate vs existing RA-058/059 outputs).
+- New capture lines reflected in pushed events within 1s.
+- Multi-client; per-client backpressure (drop-oldest, never block the producer).
+- Memory < 2GB after 1h continuous (RA-052 contract).
+- ruff + mypy clean; ~30 tests.
+- New deps: `fastapi`, `uvicorn[standard]`, `websockets`, `watchdog`.
+
+**Out of scope**: auth (localhost tool), multi-symbol (MNQ only), the UI, native toasts.
+
+---
+
+## RA-061 · React + TypeScript realtime UI — lightweight-charts v5 [parallel after RA-067]
+**Priority**: P1
+**Estimate**: 14-18 hours
+**Dependencies**: RA-067 (contract + mock — develop entirely against the mock; zero dependency on RA-060 landing).
+**Owns**: `apps/dashboard_ui/` only.
+
+**Description**: Greenfield SPA. **Vite + React 18 + TypeScript**, importing the RA-067 TS types. WebSocket client with reconnect-with-backoff + seq-gap resync. Price surface uses **TradingView lightweight-charts v5.2** (`npm i lightweight-charts`, Apache-2.0). Replaces the v1 HTML view entirely.
+
+**lightweight-charts mapping (evaluated 2026-05-28 against v5.2.0)**:
+- **Candlestick series** for MNQ price — v5 API `chart.addSeries(CandlestickSeries, {...})` (not the old `addCandlestickSeries()`).
+- **Price lines** (`series.createPriceLine({price, color, lineStyle, title})`) for every horizontal level: ±1σ/±2σ bands, VPOC/VAH/VAL, multi-day demand zones, W-VWAP. RED=short / GREEN=long / YELLOW=no-trade convention carries over.
+- **Series markers** (v5 `createSeriesMarkers` primitive) for discrete events: iceberg, absorption, sweep, CRITICAL confluence.
+- **Second pane** (v5 native panes) for volume + CVD histogram below price.
+- **Realtime via `series.update()`** for per-tick — NOT `setData()` (setData is initial snapshot/resync only; it full-redraws and tanks perf). Maps 1:1 onto the WS `price_tick` family.
+- React integration is the documented `useRef`+`useEffect` lifecycle pattern (no official React component; `chart.remove()` on cleanup). Custom price-scale formatter for the 0.25 tick.
+
+**The 5 tiers** (React components):
+- **Tier 1 ALERT BANNER** (CRITICAL): Web Audio chime + browser Notification; auto-decays on >50pt move or after 30min.
+- **Tier 2 ACTIVE SCENARIOS**: ≤3 within ±100pt, priority-sorted, live price-driven.
+- **Tier 3 LIVE SIGNAL FEED**: last 10, recency+strength, time-decay opacity.
+- **Tier 4 PRICE CONTEXT + CHART**: lightweight-charts surface + price/σ/regime/closest-zones/aggressor snapshot. Always visible.
+- **Tier 5 COLLAPSED HISTORY + SETTINGS**: accordion; full audit + the RA-063 alert-config panel.
+
+**Phases**:
+1. Vite+React+TS scaffold; WS client hook (reconnect/backoff, seq-gap → REST resync); contract types wired (~3h)
+2. lightweight-charts: candles + volume pane + realtime `update()` path (~3h)
+3. Price-line + marker layer driven by zone_update / signal families (~2.5h)
+4. Tier 4 price context + Tier 1 alert banner (audio + Notification) (~3h)
+5. Tier 2 scenarios + Tier 3 feed (~3h)
+6. Tier 5 history + settings panel (RA-063 config) (~2h)
+7. Reconnect/empty/degraded UI states; cross-browser Chrome/Edge/Firefox (~1.5h)
+
+**Acceptance criteria**:
+- Boots `npm run dev`; connects to RA-067 mock; renders snapshot + live updates.
+- Chart: candles render; price lines for all zone types; markers for signals; volume pane; realtime via `update()` (verified — no full redraw per tick).
+- Tier 1 fires within 2s of mock CRITICAL; audio + browser notification.
+- WS drop → visible degraded state → auto-reconnect → seq-gap resync (no stale silent UI).
+- TS strict clean; eslint clean; production build succeeds.
+
+**Out of scope**: native mobile, multi-user/auth, re-deriving signals client-side (backend owns logic).
+
+---
+
+## RA-062 · Native Windows notification daemon [parallel after RA-067]
+**Priority**: P2
+**Estimate**: 4-6 hours
+**Dependencies**: RA-067 (consumes the WS contract; dev against the mock).
+**Owns**: `services/notification_daemon/` only.
+
+**Description**: Headless Python daemon — a second WS client on the RA-067/RA-060 stream. Fires native Windows toasts on CRITICAL. Solves "browser backgrounded, missed the alert."
+
+**Implementation**: `windows-toasts` / `win11toast` (modern, supports actions) over the unmaintained `win10toast`. WS client with reconnect. CRITICAL-only by default (RA-063 config). Toast = zone price + families + 1-line posture. Optional tray icon (regime + connection status).
+
+**Acceptance criteria**:
+- `python -m notification_daemon.run` boots; toast on mock CRITICAL within 3s.
+- Reconnects on WS drop without crash.
+- ~10 subprocess-lifecycle tests; install-as-startup-task doc.
+
+**Out of scope**: Mac/Linux, click-to-act.
+
+---
+
+## RA-063 · Alert configuration system [parallel after RA-067]
+**Priority**: P2
+**Estimate**: 3-4 hours
+**Dependencies**: RA-067 (config schema lives in the contract). Consumed by RA-061 (settings UI), RA-062 (daemon), RA-060 (tier gating).
+**Owns**: `services/realtime_backend/config/` + the config type in `contracts/realtime/`. RA-061 renders it; this ticket defines + serves it.
+
+**Description**: JSON-backed single source of truth for alert prefs, declared as a contract type so frontend + daemon + backend share it without drift. Controls which tiers fire, sound, proximity thresholds, quiet hours.
+
+**Config schema**:
+```json
+{
+  "alerts": {
+    "critical": {"enabled": true, "audio_file": "critical_alert.wav", "browser_notif": true, "windows_toast": true},
+    "high": {"enabled": true, "audio_file": "high_alert.wav", "browser_notif": true, "windows_toast": false},
+    "medium": {"enabled": false, "audio_file": null, "browser_notif": false, "windows_toast": false}
+  },
+  "proximity": {"critical_pt": 50, "high_pt": 100, "medium_pt": 50},
+  "quiet_hours": {"enabled": false, "start_pt": "22:00", "end_pt": "06:00", "audio_only": true}
+}
+```
+
+**Phases**:
+1. Schema in contract + persistence (~1h)
+2. REST get/put endpoint + hot-reload into tier gating (~1.5h)
+3. TS/Py schema parity test (~0.5h)
+4. Docs (~0.5h). (The settings UI itself is RA-061 Phase 6.)
+
+**Acceptance criteria**:
+- Persists to `data/dashboard/alert_config.json`.
+- Changes take effect on next event (no restart).
+- Quiet hours silence audio while keeping visual banners.
+- TS/Py schema parity test green.
+
+---
+
+## RA-068 · Integration + production hardening (CONVERGENCE — after RA-060/061/062/063)
+**Priority**: P1
+**Estimate**: 8-12 hours
+**Dependencies**: RA-060, RA-061, RA-062, RA-063 all merged.
+**Owns**: end-to-end wiring + ops; runs alone (no parallel peer), so it may touch any integration seam.
+
+**Description**: Swap the RA-067 mock for the real RA-060 backend and harden to production. This is where "robust/production-ready" is earned.
+
+**Scope**:
+- Wire real backend ↔ React UI ↔ daemon; remove the mock from the runtime path (keep it as a test fixture).
+- Resilience: reconnect-with-exponential-backoff on every client; heartbeat + staleness banner; seq-gap → snapshot resync verified end-to-end; backpressure under a slow consumer.
+- Failure-mode tests: kill backend mid-stream, drop the capture feed, throttle a client, restart — UI degrades visibly and recovers, daemon survives, no crash/leak.
+- Load: sustained busy-open event rate without UI jank or memory growth.
+- Packaging: backend + daemon as Windows startup tasks; single `run_realtime_stack.ps1`; health endpoint.
+- Full memory regression (RA-052) on the long-running backend.
+- E2E smoke doc + ops runbook in `docs/operations.md`.
+
+**Acceptance criteria**:
+- Cold start via `run_realtime_stack.ps1` brings up backend + UI + daemon.
+- Scripted chaos (kill / drop / throttle) recovers automatically.
+- 1h soak < 2GB, no leak.
+- E2E + failure-mode tests green.
+
+**Out of scope**: auth, multi-symbol, cloud deploy.
 
 ---
 
