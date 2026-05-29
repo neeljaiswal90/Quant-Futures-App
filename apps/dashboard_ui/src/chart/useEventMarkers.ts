@@ -9,13 +9,12 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type {
   IChartApi,
   ISeriesApi,
-  LineData,
   MouseEventParams,
   Time,
-  UTCTimestamp,
 } from "lightweight-charts";
 import { useDashboard } from "../store/context";
 import {
+  anchorSeriesData,
   EVENT_BUBBLE_ID_PREFIX,
   EventBubblePrimitive,
   eventBubbleTooltip,
@@ -56,17 +55,9 @@ export function useEventMarkers(
 
   useEffect(() => {
     primitiveRef.current?.setItems(items);
-    anchorSeriesRef?.current?.setData(
-      [...items]
-        .sort((a, b) => a.time - b.time)
-        .map(
-          (item) =>
-            ({
-              time: item.time as UTCTimestamp,
-              value: item.price,
-            }) satisfies LineData<UTCTimestamp>,
-        ),
-    );
+    // setData requires strictly-ascending UNIQUE times; minute-bucketed signals
+    // share timestamps, so dedupe before feeding the transparent anchor series.
+    anchorSeriesRef?.current?.setData(anchorSeriesData(items));
   }, [anchorSeriesRef, items]);
 
   useEffect(() => {

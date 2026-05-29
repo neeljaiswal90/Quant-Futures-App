@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  anchorSeriesData,
   EVENT_BUBBLE_ID_PREFIX,
   EventBubblePrimitive,
   eventBubbleTooltip,
@@ -95,6 +96,28 @@ describe("event bubbles", () => {
     };
 
     expect(eventBubbleTooltip(item)).toBe("sweep @ 30340.25 - sweep at VPOC");
+  });
+
+  it("collapses same-timestamp events into strictly-ascending unique anchor data", () => {
+    // Minute-bucketed signals legitimately share a timestamp; setData rejects
+    // non-unique / non-ascending times, which previously crashed the chart.
+    const items: EventBubbleItem[] = [
+      { id: "c", time: 200 as UTCTimestamp, price: 30350, tier: null, family: "sweep", text: "c", strength: 0.3 },
+      { id: "a", time: 100 as UTCTimestamp, price: 30340, tier: null, family: "sweep", text: "a", strength: 0.3 },
+      { id: "b", time: 100 as UTCTimestamp, price: 30342, tier: "HIGH", family: "iceberg", text: "b", strength: 0.7 },
+    ];
+
+    const anchor = anchorSeriesData(items);
+
+    expect(anchor.map((d) => d.time)).toEqual([100, 200]);
+    // strictly ascending + unique
+    for (let i = 1; i < anchor.length; i++) {
+      expect(anchor[i].time).toBeGreaterThan(anchor[i - 1].time);
+    }
+  });
+
+  it("returns empty anchor data for no items", () => {
+    expect(anchorSeriesData([])).toEqual([]);
   });
 
   it("expands autoscale around event prices", () => {

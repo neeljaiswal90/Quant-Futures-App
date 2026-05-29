@@ -7,6 +7,7 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
+  LineData,
   PrimitiveHoveredItem,
   SeriesAttachedParameter,
   SeriesType,
@@ -94,6 +95,26 @@ export function projectBubbleItems(
 
 export function eventBubbleTooltip(item: EventBubbleItem): string {
   return `${item.family} @ ${formatMnqPrice(item.price)} - ${item.text}`;
+}
+
+/**
+ * Transparent time-axis foothold for the event bubbles.
+ *
+ * lightweight-charts `setData` requires STRICTLY ascending, UNIQUE times.
+ * Signals are frequently minute-bucketed, so several events legitimately share
+ * one timestamp — feeding those straight in throws "data must be asc ordered by
+ * time" and crashes the chart. The anchor series is invisible and only exists so
+ * event timestamps resolve on the time scale, so collapsing to one point per
+ * unique time (last price wins) is loss-free for its purpose.
+ */
+export function anchorSeriesData(
+  items: readonly EventBubbleItem[],
+): LineData<UTCTimestamp>[] {
+  const byTime = new Map<number, number>();
+  for (const item of items) byTime.set(item.time, item.price);
+  return [...byTime.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([time, value]) => ({ time: time as UTCTimestamp, value }));
 }
 
 function bubbleRadius(item: EventBubbleItem): number {

@@ -104,11 +104,17 @@ export class CandleAggregator {
     }
     this.lastPrice = price;
 
+    // All three series belong to the bucket we are actually in. `this.current.time`
+    // is monotonic non-decreasing by construction; the raw `time` is not (an
+    // out-of-order tick, or the snapshot seed being ahead of the first live tick,
+    // buckets earlier). Returning the raw time made volume/cvd `update()` go
+    // backwards → "Cannot update oldest data" → the per-tick loop halted.
+    const barTime = this.current.time;
     const up = this.current.close >= this.current.open;
     return {
       candle: this.current,
-      volume: { time, value: this.currentVolume, color: up ? UP : DOWN },
-      cvd: { time, value: this.cvd },
+      volume: { time: barTime, value: this.currentVolume, color: up ? UP : DOWN },
+      cvd: { time: barTime, value: this.cvd },
     };
   }
 

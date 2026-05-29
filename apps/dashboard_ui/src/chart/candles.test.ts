@@ -57,4 +57,27 @@ describe("CandleAggregator", () => {
     const r = agg.ingest(tick(102, 2), NS(11.0)); // new bucket -> vol 2
     expect(r.volume.value).toBe(2);
   });
+
+  it("never regresses candle/volume/cvd time on an out-of-order tick", () => {
+    // A stale tick that buckets BEFORE the current candle must not push any of
+    // the three series backwards — lightweight-charts update() rejects an older
+    // time ("Cannot update oldest data") and halts the per-tick loop.
+    const agg = new CandleAggregator(1);
+    agg.ingest(tick(100), NS(20));
+    const r = agg.ingest(tick(101), NS(15)); // earlier bucket
+    expect(r.candle.time).toBe(20);
+    expect(r.volume.time).toBe(20);
+    expect(r.cvd.time).toBe(20);
+  });
+
+  it("aligns volume/cvd time with the seed when the first live tick is earlier", () => {
+    // Snapshot seeds at a wall-clock bucket; the first live trade tick can carry
+    // an earlier timestamp. All series must stay on the seed bucket.
+    const agg = new CandleAggregator(1);
+    agg.seedFromSnapshot(100, NS(50));
+    const r = agg.ingest(tick(105), NS(48));
+    expect(r.candle.time).toBe(50);
+    expect(r.volume.time).toBe(50);
+    expect(r.cvd.time).toBe(50);
+  });
 });
