@@ -8,6 +8,22 @@
 # bootstraps both before collection. Mirrors RA-060's ruff/mypy posture so the
 # lead reviews one consistent style.
 
+# Dependencies RECORDED (not pip-built here) for reproducibility. RA-068 added
+# httpx for the Starlette TestClient HTTP integration tests (test_router_http).
+[project]
+name = "realtime_backend_config"
+version = "0.1.0"
+description = "RA-063 alert-configuration system — persistence + REST + tier gating."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "pydantic>=2",
+  "httpx>=0.27",
+  "pytest>=7",
+  "ruff>=0.1",
+  "mypy>=1.5",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

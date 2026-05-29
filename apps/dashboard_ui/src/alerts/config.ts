@@ -44,8 +44,11 @@ export const DEFAULT_ALERT_CONFIG: AlertConfig = {
   },
 };
 
+// RA-068: the RA-060 backend mounts the RA-063 router at /api/config/alerts
+// (the contract-blessed path). Override with VITE_CONFIG_URL if needed. The
+// RA-067 mock has no config route, so loadConfig/saveConfig still tolerate 404.
 const CONFIG_URL =
-  import.meta.env.VITE_CONFIG_URL ?? "/config";
+  import.meta.env.VITE_CONFIG_URL ?? "/api/config/alerts";
 
 /** Best-effort GET of the served config; falls back to the default. */
 export async function loadConfig(): Promise<AlertConfig> {

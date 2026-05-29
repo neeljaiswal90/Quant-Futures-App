@@ -43,6 +43,12 @@ export default defineConfig({
         target: "http://127.0.0.1:8765",
         changeOrigin: true,
       },
+      // RA-068: proxy the alert-config endpoint to the backend so the
+      // settings panel's same-origin fetch/PUT reaches RA-063's router.
+      "/api/config": {
+        target: "http://127.0.0.1:8765",
+        changeOrigin: true,
+      },
     },
   },
 });

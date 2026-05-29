@@ -30,6 +30,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
+from realtime_backend.config.router import create_config_router
+from realtime_backend.config.store import AlertConfigStore
 from realtime_backend.connection_manager import ConnectionManager
 from realtime_backend.feed import FeedState
 from realtime_backend.settings import Settings, settings_from_env
@@ -45,6 +47,11 @@ class RealtimeBackend:
         self.settings = settings
         self.manager = ConnectionManager(client_queue_maxsize=settings.client_queue_maxsize)
         self.feed = FeedState(manager=self.manager, settings=settings)
+        # RA-068: one shared AlertConfigStore backs both the REST surface
+        # (RA-063 router) and any gating path, so a PUT is visible on the next
+        # read with no restart. Persists to data/dashboard/alert_config.json —
+        # the same file the RA-062 daemon reads.
+        self.config_store = AlertConfigStore()
         self.watcher: CaptureWatcher | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -157,13 +164,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await backend.stop()
 
     app = FastAPI(title="RA-060 realtime backend", lifespan=lifespan)
-    app.state.backend = RealtimeBackend(resolved)
+    backend = RealtimeBackend(resolved)
+    app.state.backend = backend
+    # RA-068: expose the shared store + mount the RA-063 config router so the
+    # UI's settings PUT persists centrally (and reaches the daemon's file read).
+    app.state.config_store = backend.config_store
+    app.include_router(create_config_router(backend.config_store))
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(resolved.cors_origins),
         allow_credentials=True,
-        allow_methods=["GET"],
+        # PUT is required for the alert-config endpoint (RA-063) — the browser
+        # preflights a settings save; GET-only would block it.
+        allow_methods=["GET", "PUT"],
         allow_headers=["*"],
     )
 

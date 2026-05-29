@@ -6,6 +6,27 @@
 # ``rithmic_dashboard`` is installed editable). Mirrors the rithmic_dashboard
 # ruff/mypy posture so the lead reviews one consistent style.
 
+# Dependencies are RECORDED here (this run-in-place package is not pip-built)
+# so the environment is reproducible and not ambient. RA-068 added httpx
+# (Starlette TestClient HTTP integration tests) alongside watchdog (the
+# capture-tail watcher), mirroring the contracts/realtime declaration style.
+[project]
+name = "realtime_backend"
+version = "0.1.0"
+description = "RA-060 realtime WebSocket backend — detectors-as-library over the v2 contract."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "websockets>=12",
+  "watchdog>=4",
+  "httpx>=0.27",
+  "pydantic>=2",
+  "pytest>=7",
+  "ruff>=0.1",
+  "mypy>=1.5",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -43,3 +64,13 @@ mypy_path = "..:../tools/rithmic_dashboard"
 [[tool.mypy.overrides]]
 module = ["watchdog.*", "uvicorn.*"]
 ignore_missing_imports = true
+
+# RA-068: app.py now imports realtime_backend.config.* (the mounted RA-063
+# router + shared store). config/ has its OWN mypy pass (its pyproject) and
+# checks clean there; following into it from the backend pass double-maps the
+# files (services.realtime_backend.config.* vs realtime_backend.config.*) under
+# explicit_package_bases. Treat config as an opaque import here — it is type-
+# checked in its own domain.
+[[tool.mypy.overrides]]
+module = ["realtime_backend.config.*"]
+follow_imports = "skip"
