@@ -27,6 +27,7 @@ from typing import Any
 
 from contracts.realtime.events import (
     HeartbeatPayload,
+    PriceTickPayload,
     RealtimeMessage,
     SnapshotPayload,
     make_message,
@@ -35,6 +36,7 @@ from rithmic_dashboard.features.recent_signals_panel import RecentSignal
 from rithmic_dashboard.models import LiveSignals
 
 from realtime_backend.connection_manager import ConnectionManager
+from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings
 from realtime_backend.signals import (
     build_snapshot_payload,
@@ -59,6 +61,8 @@ class FeedState:
     _last_envelope: dict[str, Any] | None = field(default=None, init=False)
     _last_recent_signals: list[RecentSignal] = field(default_factory=list, init=False)
     _last_append_ts_ns: int | None = field(default=None, init=False)
+    _last_current_price: float | None = field(default=None, init=False)
+    _last_price_tick_key: tuple[int, float, int] | None = field(default=None, init=False)
 
     # ----- seq -----------------------------------------------------------
 
@@ -79,13 +83,18 @@ class FeedState:
         envelope: dict[str, Any] | None,
         recent_signals: list[RecentSignal],
         last_append_ts_ns: int | None,
+        current_price: float | None = None,
+        price_tick: LatestPriceTick | None = None,
     ) -> None:
         """Refresh the cached state used to build snapshots + heartbeats."""
         self._last_signals = signals
         self._last_envelope = envelope
         self._last_recent_signals = recent_signals
+        self._last_current_price = current_price
         if last_append_ts_ns is not None:
             self._last_append_ts_ns = last_append_ts_ns
+        if self._last_price_tick_key is None and price_tick is not None:
+            self._last_price_tick_key = price_tick.dedupe_key
 
     def build_snapshot_message(self, seq: int | None = None) -> RealtimeMessage:
         """Build a snapshot envelope at ``seq`` (defaults to current seq)."""
@@ -93,6 +102,7 @@ class FeedState:
             self._last_signals,
             envelope=self._last_envelope,
             recent_signals=self._last_recent_signals,
+            current_price=self._last_current_price,
         )
         return make_message(
             type="snapshot",
@@ -159,6 +169,36 @@ class FeedState:
             await self._broadcast_and_account(message)
             emitted += 1
         return emitted
+
+    async def emit_price_tick(self, tick: LatestPriceTick | None) -> RealtimeMessage | None:
+        """Broadcast a new trade tick for chart updates, deduped by trade key.
+
+        ``PriceTickPayload.volume`` is the per-trade quantity. The envelope
+        ``ts_ns`` is market/trade time for this family so the chart buckets the
+        candle on exchange event time; other families retain server-stamped
+        event time.
+        """
+        if tick is None:
+            return None
+        if tick.dedupe_key == self._last_price_tick_key:
+            return None
+        payload = PriceTickPayload(
+            price=tick.price,
+            bid=tick.bid,
+            ask=tick.ask,
+            volume=tick.volume,
+        )
+        async with self._lock:
+            seq = await self._next_seq()
+        message = make_message(
+            type="event",
+            payload=payload,
+            seq=seq,
+            ts_ns=tick.trade_ts_ns,
+        )
+        await self._broadcast_and_account(message)
+        self._last_price_tick_key = tick.dedupe_key
+        return message
 
     async def emit_heartbeat(self) -> RealtimeMessage:
         """Broadcast a liveness/staleness heartbeat at the next seq."""

@@ -79,6 +79,7 @@ class RealtimeBackend:
     async def _handle_result(self, result: ComputeResult) -> None:
         """Diff + emit tiered events, then refresh the snapshot cache."""
         try:
+            await self.feed.emit_price_tick(result.price_tick)
             await self.feed.emit_signal_diff(
                 result.signals,
                 envelope=result.envelope,
@@ -91,6 +92,8 @@ class RealtimeBackend:
                 envelope=result.envelope,
                 recent_signals=result.recent_signals,
                 last_append_ts_ns=result.last_append_ts_ns,
+                current_price=result.current_price,
+                price_tick=result.price_tick,
             )
 
     async def _handle_error(self, exc: Exception) -> None:
@@ -132,6 +135,8 @@ class RealtimeBackend:
                 envelope=seed.envelope,
                 recent_signals=seed.recent_signals,
                 last_append_ts_ns=seed.last_append_ts_ns,
+                current_price=seed.current_price,
+                price_tick=seed.price_tick,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("initial seed compute failed: %s", exc)

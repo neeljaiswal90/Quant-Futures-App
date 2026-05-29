@@ -23,7 +23,13 @@ import {
   isVolRegime,
   isZoneUpdate,
 } from "../contract/guards";
-import { isFeedFamily, mergeZones, messageToFeedItem } from "../contract/render";
+import {
+  isFeedFamily,
+  mergeZones,
+  messageToFeedItem,
+  snapshotSignalToFeedItem,
+  type FeedItem,
+} from "../contract/render";
 import {
   type DashboardState,
   FEED_CAP,
@@ -58,8 +64,11 @@ function applyPayload(
   let next = state;
 
   if (isSnapshot(p)) {
+    const snapshotFeed = p.recent_signals.map((signal, index) =>
+      snapshotSignalToFeedItem(signal, msg.seq, msg.ts_ns, index),
+    );
     // Full resync frame — replace authoritative state, preserve session
-    // history + feed (those are client-accumulated, not in the snapshot).
+    // history + feed while hydrating any snapshot recent_signals idempotently.
     next = {
       ...next,
       price: {
@@ -73,6 +82,8 @@ function applyPayload(
       regime: p.regime,
       zones: p.zones,
       scenarios: p.open_scenarios,
+      feed: mergeFeedItems(next.feed, snapshotFeed, FEED_CAP),
+      history: mergeFeedItems(next.history, snapshotFeed, HISTORY_CAP),
       resyncing: false,
     };
     return next;
@@ -139,6 +150,17 @@ function applyPayload(
   }
 
   return next;
+}
+
+function feedDedupeKey(item: FeedItem): string {
+  return item.eventKey ?? `${item.family}|${item.tsNs}|${item.text}`;
+}
+
+function mergeFeedItems(existing: FeedItem[], incoming: FeedItem[], cap: number): FeedItem[] {
+  const byKey = new Map<string, FeedItem>();
+  for (const item of existing) byKey.set(feedDedupeKey(item), item);
+  for (const item of incoming) byKey.set(feedDedupeKey(item), item);
+  return [...byKey.values()].sort((a, b) => a.tsNs - b.tsNs).slice(-cap);
 }
 
 export function reducer(

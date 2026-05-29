@@ -38,6 +38,7 @@ from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 from watchdog.observers.polling import PollingObserver
 
+from realtime_backend.price_ticks import LatestPriceTick, latest_price_tick
 from realtime_backend.settings import Settings
 
 _LOG = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class ComputeResult:
     recent_signals: list[RecentSignal]
     current_price: float | None
     last_append_ts_ns: int | None
+    price_tick: LatestPriceTick | None
 
 
 ResultCallback = Callable[[ComputeResult], None]
@@ -93,7 +95,13 @@ def run_compute(
         tail_bytes=settings.tail_bytes,
         vwap_window_minutes=settings.vwap_window_minutes,
     )
-    current_price = _current_price(signals, envelope)
+    price_tick = latest_price_tick(
+        trade_source_path=signals.source_path,
+        capture_path=session.capture_path,
+    )
+    current_price = (
+        price_tick.price if price_tick is not None else _current_price(signals, envelope)
+    )
     live_dir = settings.scratch_dir.parent / "live_analysis"
     recent_signals = build_recent_signals(
         live_dir=live_dir,
@@ -109,6 +117,7 @@ def run_compute(
         recent_signals=recent_signals,
         current_price=current_price,
         last_append_ts_ns=_last_append_ts_ns(session.capture_path, signals),
+        price_tick=price_tick,
     )
 
 

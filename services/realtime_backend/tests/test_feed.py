@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from rithmic_dashboard.models import (
@@ -16,12 +18,20 @@ from rithmic_dashboard.models import (
 
 from realtime_backend.connection_manager import ConnectionManager
 from realtime_backend.feed import FeedState
+from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings
 
 
 async def _noop(_text: str) -> None:
     """An async send sink that discards frames (mypy-friendly)."""
     return None
+
+
+def _collector(sink: list[str]) -> Callable[[str], Awaitable[None]]:
+    async def _send(text: str) -> None:
+        sink.append(text)
+
+    return _send
 
 
 def _signals(sweeps: tuple[SweepEvent, ...] = ()) -> LiveSignals:
@@ -152,6 +162,53 @@ def test_heartbeat_no_data_is_stale() -> None:
         msg = await feed.emit_heartbeat()
         assert msg.payload.stale is True  # type: ignore[attr-defined]
         assert msg.payload.last_capture_ts_ns is None  # type: ignore[attr-defined]
+
+    asyncio.run(scenario())
+
+
+def test_price_tick_emits_market_time_and_dedupes_on_trade_key() -> None:
+    async def scenario() -> None:
+        feed = _feed()
+        received: list[str] = []
+        await feed.manager.connect(_collector(received))
+
+        first = LatestPriceTick(
+            trade_ts_ns=123,
+            price=29400.25,
+            volume=3,
+            bid=29400.0,
+            ask=29400.5,
+        )
+        duplicate_with_quote_change = LatestPriceTick(
+            trade_ts_ns=123,
+            price=29400.25,
+            volume=3,
+            bid=29399.75,
+            ask=29400.25,
+        )
+        second_trade = LatestPriceTick(
+            trade_ts_ns=124,
+            price=29400.25,
+            volume=3,
+            bid=29399.75,
+            ask=29400.25,
+        )
+
+        msg = await feed.emit_price_tick(first)
+        assert msg is not None
+        assert msg.ts_ns == 123
+        assert msg.payload.family == "price_tick"
+        assert msg.payload.volume == 3  # type: ignore[attr-defined]
+
+        assert await feed.emit_price_tick(duplicate_with_quote_change) is None
+        assert await feed.emit_price_tick(second_trade) is not None
+        await asyncio.sleep(0.05)
+
+        frames = [json.loads(text) for text in received]
+        assert [frame["payload"]["family"] for frame in frames] == [
+            "price_tick",
+            "price_tick",
+        ]
 
     asyncio.run(scenario())
 

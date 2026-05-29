@@ -321,6 +321,27 @@ def test_build_snapshot_payload_carries_price_and_regime() -> None:
     assert snap.family == "snapshot"
 
 
+def test_build_snapshot_payload_uses_last_trade_price_override() -> None:
+    sig = _signals(regime=_regime("NORMAL"))
+    snap = build_snapshot_payload(
+        sig,
+        envelope={"reference_lines": []},
+        recent_signals=[],
+        current_price=29405.25,
+    )
+    assert snap.price == 29405.25
+
+
+def test_build_snapshot_payload_carries_recent_signal_timestamp_metadata() -> None:
+    sig = _signals(regime=_regime("NORMAL"))
+    snap = build_snapshot_payload(
+        sig,
+        envelope={"reference_lines": []},
+        recent_signals=[_recent("sweep", "level:z1", 29425.0, 12345)],
+    )
+    assert snap.recent_signals[0].metadata["timestamp_ns"] == 12345
+
+
 def test_build_snapshot_unknown_regime_is_none() -> None:
     sig = _signals(regime=_regime("UNKNOWN"))
     snap = build_snapshot_payload(sig, envelope=None, recent_signals=[])

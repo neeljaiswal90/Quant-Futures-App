@@ -4,6 +4,7 @@ import {
   criticalSignalFrame,
   heartbeatFrame,
   priceTickFrame,
+  snapshotSignal,
   snapshotFrame,
   sweepFrame,
   unknownFamilyFrame,
@@ -163,6 +164,45 @@ describe("CRITICAL banner", () => {
 });
 
 describe("feed + history", () => {
+  it("hydrates feed and history from snapshot recent_signals with signal timestamps", () => {
+    const signalTs = 1_780_000_000_333_000_000;
+    const s = reducer(
+      initialState(),
+      msg(snapshotFrame(1, [snapshotSignal("sweep_cluster", signalTs, "sweep")])),
+    );
+
+    expect(s.feed).toHaveLength(1);
+    expect(s.history).toHaveLength(1);
+    expect(s.feed[0].family).toBe("sweep");
+    expect(s.feed[0].tsNs).toBe(signalTs);
+    expect(s.feed[0].text).toBe("sweep signal at VPOC");
+  });
+
+  it("merges repeated snapshot recent_signals idempotently", () => {
+    const signal = snapshotSignal("iceberg_detected", 1_780_000_001_000_000_000, "iceberg");
+    let s = reducer(initialState(), msg(snapshotFrame(1, [signal])));
+    s = reducer(s, msg(snapshotFrame(1, [signal])));
+
+    expect(s.feed).toHaveLength(1);
+    expect(s.history).toHaveLength(1);
+  });
+
+  it("caps snapshot-hydrated feed at FEED_CAP", () => {
+    const signals = Array.from({ length: FEED_CAP + 4 }, (_, i) =>
+      snapshotSignal(
+        `snapshot_signal_${i}`,
+        1_780_000_000_000_000_000 + i,
+        "absorption",
+      ),
+    );
+
+    const s = reducer(initialState(), msg(snapshotFrame(1, signals)));
+
+    expect(s.feed).toHaveLength(FEED_CAP);
+    expect(s.history).toHaveLength(FEED_CAP + 4);
+    expect(new Set(s.feed.map((item) => item.eventKey)).size).toBe(FEED_CAP);
+  });
+
   it("caps the live feed at FEED_CAP", () => {
     let s = reducer(initialState(), msg(snapshotFrame(1)));
     for (let i = 0; i < FEED_CAP + 5; i++) {

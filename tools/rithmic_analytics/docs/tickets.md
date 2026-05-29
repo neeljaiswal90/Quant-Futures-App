@@ -1204,6 +1204,54 @@ principle, not the Rithmic token mapping).
 > 061/062/063 fan out to parallel agents after RA-067 lands. Each ticket
 > owns a disjoint directory — see the file-ownership map in the arch doc.
 
+## RA-074 · Hydrate realtime feed/history from snapshot recent_signals
+
+**Priority**: P1 — restores signal visibility immediately after reconnect/resync.
+**Estimate**: 2-3 hours
+**Dependencies**: RA-067 realtime contract, RA-071 V1 retirement, RA-073 signal timestamp metadata.
+
+**Description**: The v2 UI previously showed an empty Live Feed until new
+WebSocket event envelopes arrived, even though the backend snapshot already
+carried recent signals. Add a payload-to-feed mapping path for
+`snapshot.recent_signals`, using `metadata.timestamp_ns` as the event time and
+metadata family values for display/dedupe identity. Merge snapshot-hydrated
+items idempotently into Live Feed and Session History so repeated resync
+snapshots do not duplicate rows.
+
+**Acceptance**:
+- Empty snapshots still do not add feed rows.
+- Snapshots carrying recent signals hydrate Live Feed and Session History.
+- Repeated identical snapshots are idempotent by stable event identity.
+- Feed/history caps are preserved.
+- The existing live-event `messageToFeedItem` path keeps working.
+
+---
+
+## RA-073 · Emit realtime price_tick events from normalized trade tail
+
+**Priority**: P1 — makes the chart candle stream live instead of 5-minute stale.
+**Estimate**: 2-3 hours
+**Dependencies**: RA-067 realtime backend skeleton, RA-068/RA-071 running v2 stack,
+RA-052 normalized capture siblings.
+
+**Description**: Add a backend `price_tick` stream derived from the latest
+normalized `obs01` trade. A tick represents a new trade, so dedupe by
+`(trade_ts_ns, price, per_trade_volume)` and carry bid/ask from the latest MBP1
+quote as context only. Stamp the `price_tick` envelope `ts_ns` with market/trade
+time for candle bucketing, while other families continue to use server/event
+time. Seed snapshots from the same last-trade price basis so the chart does not
+jump from VWAP seed to first last-trade tick.
+
+**Acceptance**:
+- Backend emits `snapshot -> heartbeat -> price_tick` in an in-process smoke
+  without touching the operator's live 8765 backend.
+- Duplicate top-of-book changes do not emit price ticks without a new trade.
+- Snapshot `price` is consistent with the last-trade tick basis.
+- `PriceTickPayload.volume` is documented and tested as per-trade size.
+- Staleness detection remains unchanged; this ticket does not fake liveness.
+
+---
+
 ## RA-071 · Retire V1 static HTML dashboard generator — SHIPPED 2026-05-29
 
 > **Scope correction**: this ticket retires the V1 HTML view only. It does

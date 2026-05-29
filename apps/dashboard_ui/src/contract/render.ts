@@ -11,6 +11,7 @@
 import type {
   RealtimeMessage,
   RealtimePayload,
+  SignalPayload,
   Tier,
   ZoneState,
 } from "@contracts/realtime/events";
@@ -199,6 +200,8 @@ export interface FeedItem {
   tsNs: number;
   tier: Tier | null;
   family: string;
+  /** Stable identity used to merge snapshot-hydrated rows idempotently. */
+  eventKey?: string;
   /** Human-readable headline for the feed row. */
   text: string;
   /** Relative ordering strength 0..1 for recency+strength sort. */
@@ -223,6 +226,44 @@ function payloadText(p: RealtimePayload): string {
   return typeof desc === "string" && desc ? desc : p.family;
 }
 
+function displayFamily(p: RealtimePayload): string {
+  if (isSignal(p)) {
+    const family = p.metadata?.family;
+    return typeof family === "string" && family ? family : p.family;
+  }
+  return p.family;
+}
+
+function payloadEventKey(p: RealtimePayload, tsNs: number): string {
+  if (isSignal(p)) {
+    const family = displayFamily(p);
+    return [family, p.event_type, p.level_id ?? "", tsNs, p.description].join("|");
+  }
+  if (isSweep(p)) {
+    return [p.family, p.level_id ?? "", tsNs, p.price, p.direction].join("|");
+  }
+  if (isIceberg(p)) {
+    return [p.family, p.level_id ?? "", tsNs, p.price, p.side, p.refills].join("|");
+  }
+  if (isAbsorption(p)) {
+    return [p.family, p.level_id ?? "", tsNs, p.price, p.side].join("|");
+  }
+  if (isVolRegime(p)) {
+    return [p.family, tsNs, p.regime, p.sigma].join("|");
+  }
+  return [p.family, tsNs, payloadText(p)].join("|");
+}
+
+function metadataTimestampNs(signal: SignalPayload, fallbackTsNs: number): number {
+  const raw = signal.metadata?.timestamp_ns;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallbackTsNs;
+}
+
 /** True for families that belong in the rolling event feed (Tier 3). */
 export function isFeedFamily(family: string): boolean {
   return (
@@ -235,13 +276,34 @@ export function isFeedFamily(family: string): boolean {
 }
 
 export function messageToFeedItem(msg: RealtimeMessage): FeedItem {
+  const family = displayFamily(msg.payload);
   return {
     seq: msg.seq,
     tsNs: msg.ts_ns,
     tier: msg.tier,
-    family: msg.payload.family,
+    family,
+    eventKey: payloadEventKey(msg.payload, msg.ts_ns),
     text: payloadText(msg.payload),
     strength: msg.tier ? TIER_STRENGTH[msg.tier] : 0.15,
+  };
+}
+
+export function snapshotSignalToFeedItem(
+  signal: SignalPayload,
+  snapshotSeq: number,
+  fallbackTsNs: number,
+  index: number,
+): FeedItem {
+  const tsNs = metadataTimestampNs(signal, fallbackTsNs);
+  const family = displayFamily(signal);
+  return {
+    seq: snapshotSeq * 10_000 + index,
+    tsNs,
+    tier: null,
+    family,
+    eventKey: payloadEventKey(signal, tsNs),
+    text: payloadText(signal),
+    strength: signal.intensity,
   };
 }
 

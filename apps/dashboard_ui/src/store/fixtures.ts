@@ -5,7 +5,12 @@
  * These are deliberately plain objects (not constructed via contract classes)
  * so tests exercise the same untyped `unknown` path the socket feeds.
  */
-import type { RealtimeMessage, RealtimePayload, Tier } from "@contracts/realtime/events";
+import type {
+  RealtimeMessage,
+  RealtimePayload,
+  SignalPayload,
+  Tier,
+} from "@contracts/realtime/events";
 
 let counter = 0;
 function nextTsNs(): number {
@@ -31,7 +36,10 @@ export function envelope(
   };
 }
 
-export const snapshotFrame = (seq = 1): RealtimeMessage =>
+export const snapshotFrame = (
+  seq = 1,
+  recentSignals: SignalPayload[] = [],
+): RealtimeMessage =>
   envelope("snapshot", seq, {
     family: "snapshot",
     price: 30080,
@@ -44,7 +52,7 @@ export const snapshotFrame = (seq = 1): RealtimeMessage =>
       { id: "sigma1_up", kind: "sigma1", price: 30092.5, label: "+1σ" },
       { id: "sigma1_dn", kind: "sigma1", price: 30067.5, label: "-1σ" },
     ],
-    recent_signals: [],
+    recent_signals: recentSignals,
     open_scenarios: [
       {
         id: "scn-long-val",
@@ -54,6 +62,20 @@ export const snapshotFrame = (seq = 1): RealtimeMessage =>
       },
     ],
   });
+
+export const snapshotSignal = (
+  eventType: string,
+  timestampNs: number,
+  family = "sweep",
+): SignalPayload => ({
+  family: "signal",
+  event_type: eventType,
+  level_id: "vpoc",
+  description: `${family} signal at VPOC`,
+  intensity: 0.7,
+  confidence: "high",
+  metadata: { family, timestamp_ns: timestampNs },
+});
 
 export const heartbeatFrame = (seq: number, stale = false): RealtimeMessage =>
   envelope("heartbeat", seq, {

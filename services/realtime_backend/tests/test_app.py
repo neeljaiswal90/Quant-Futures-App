@@ -13,7 +13,9 @@ import json
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 
+from contracts.realtime.events import SnapshotPayload
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.routing import WebSocketRoute
 
@@ -122,3 +124,55 @@ def test_snapshot_handler_returns_current_seq(tmp_path: Path) -> None:
             await backend.stop()
 
     asyncio.run(scenario())
+
+
+def test_backend_smoke_snapshot_heartbeat_price_tick_after_append(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        settings = _fixture_settings(tmp_path)
+        capture = (
+            settings.analytics_root
+            / "data"
+            / "captures"
+            / "2026-05-22"
+            / "MNQ_globex.jsonl"
+        )
+        backend = RealtimeBackend(settings)
+        received: list[str] = []
+        await backend.start()
+        try:
+            snapshot = backend.feed.build_snapshot_message()
+            assert snapshot.type == "snapshot"
+            snapshot_payload = cast(SnapshotPayload, snapshot.payload)
+            assert snapshot_payload.price == 29404.0  # latest fixture trade, not VWAP
+
+            await backend.manager.connect(_collector(received))
+            await asyncio.sleep(0.15)
+
+            with capture.open("a", encoding="utf-8") as f:
+                ts = int(datetime(2026, 5, 21, 19, 59, tzinfo=PT).timestamp() * 1_000_000_000)
+                f.write(json.dumps(trade(ts, 29412.25, 7, "buy")) + "\n")
+            assert backend.watcher is not None
+            backend.watcher.trigger()
+            deadline = asyncio.get_running_loop().time() + 5.0
+            frames: list[dict[str, Any]] = []
+            while asyncio.get_running_loop().time() < deadline:
+                await asyncio.sleep(0.05)
+                frames = [json.loads(text) for text in received]
+                if any(_payload(frame)["family"] == "price_tick" for frame in frames):
+                    break
+        finally:
+            await backend.stop()
+
+        families = [_payload(frame)["family"] for frame in frames]
+        assert "heartbeat" in families
+        assert "price_tick" in families
+        tick = next(frame for frame in frames if _payload(frame)["family"] == "price_tick")
+        assert tick["ts_ns"] == int(datetime(2026, 5, 21, 19, 59, tzinfo=PT).timestamp() * 1_000_000_000)
+        assert _payload(tick)["price"] == 29412.25
+        assert _payload(tick)["volume"] == 7
+
+    asyncio.run(scenario())
+
+
+def _payload(frame: dict[str, Any]) -> dict[str, Any]:
+    return cast(dict[str, Any], frame["payload"])

@@ -493,13 +493,14 @@ def build_snapshot_payload(
     *,
     envelope: dict[str, Any] | None,
     recent_signals: list[RecentSignal],
+    current_price: float | None = None,
 ) -> SnapshotPayload:
     """Assemble the full SnapshotPayload for initial load / resync."""
     price: float | None = None
     sigma: float | None = None
     regime: Regime | None = None
     if signals is not None:
-        price = signals.live_vwap.vwap
+        price = current_price if current_price is not None else signals.live_vwap.vwap
         sigma = signals.live_vwap.sigma
         if signals.volatility_regime is not None:
             regime = _to_regime(signals.volatility_regime.regime)
@@ -511,7 +512,11 @@ def build_snapshot_payload(
             description=rs.description,
             intensity=_recent_intensity(rs),
             confidence=_recent_confidence(rs),  # type: ignore[arg-type]
-            metadata={"family": rs.family, "zone_text": rs.zone_text},
+            metadata={
+                "family": rs.family,
+                "zone_text": rs.zone_text,
+                "timestamp_ns": rs.timestamp_ns,
+            },
         )
         for rs in recent_signals
     ]

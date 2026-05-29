@@ -6,6 +6,7 @@ import {
   mergeZones,
   messageToFeedItem,
   messageToMarker,
+  snapshotSignalToFeedItem,
   sortFeed,
   zoneColorRole,
   zoneStyle,
@@ -16,6 +17,7 @@ import {
   criticalSignalFrame,
   heartbeatFrame,
   priceTickFrame,
+  snapshotSignal,
   sweepFrame,
 } from "../store/fixtures";
 import type { ZoneState } from "@contracts/realtime/events";
@@ -108,6 +110,19 @@ describe("feed", () => {
   it("derives strength from tier", () => {
     expect(messageToFeedItem(criticalSignalFrame(2)).strength).toBe(1);
     expect(messageToFeedItem(sweepFrame(3)).strength).toBeCloseTo(0.66);
+  });
+
+  it("maps snapshot signals using metadata family and timestamp", () => {
+    const item = snapshotSignalToFeedItem(
+      snapshotSignal("delta_dislocation", 1_780_000_000_500_000_000, "delta_dislocation"),
+      7,
+      1,
+      0,
+    );
+
+    expect(item.family).toBe("delta_dislocation");
+    expect(item.tsNs).toBe(1_780_000_000_500_000_000);
+    expect(item.eventKey).toContain("delta_dislocation");
   });
 
   it("sorts by strength then recency", () => {
