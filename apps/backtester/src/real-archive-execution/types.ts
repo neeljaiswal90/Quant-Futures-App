@@ -98,12 +98,35 @@ export interface RealArchiveRuntimeMetrics {
   readonly closed_trade_count: number;
 }
 
+export type RealArchiveMarketAuthority =
+  | 'unknown'
+  | 'warming'
+  | 'authoritative'
+  | 'stale'
+  | 'gap';
+
+export interface RealArchiveFailSafeContextRecord {
+  readonly market_authority: RealArchiveMarketAuthority | null;
+  readonly market_is_stale: boolean | null;
+  readonly mark_price: number | null;
+  readonly bid_px: number | null;
+  readonly ask_px: number | null;
+  readonly active_stop_price: number | null;
+  readonly remaining_quantity: number | null;
+  readonly position_profile_id: string | null;
+  readonly position_profile_version: number | null;
+  readonly management_profile_id: string | null;
+  readonly management_profile_version: number | null;
+  readonly validation_path: string | null;
+}
+
 export interface RealArchivePerTradeExitRecord {
   readonly exit_ts_ns: UnixNs;
   readonly exit_quantity: number;
   readonly management_action_reason: string | null;
   readonly management_action_type: string | null;
   readonly target_label: 'pt1' | 'pt2' | 'runner' | null;
+  readonly fail_safe_context: RealArchiveFailSafeContextRecord | null;
 }
 
 export interface RealArchivePerTradeRecord {
@@ -111,6 +134,7 @@ export interface RealArchivePerTradeRecord {
   readonly strategy_id: StrategyId | null;
   readonly session_id: string;
   readonly regime_label: RealArchiveRegimeLabel;
+  readonly vix_prior_close_percentile: number | null;
   readonly side: 'long' | 'short';
   readonly entry_ts_ns: UnixNs;
   readonly exit_ts_ns: UnixNs;

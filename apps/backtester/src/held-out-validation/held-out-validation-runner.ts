@@ -470,12 +470,17 @@ function artifactTrade(
     throw new Error(`missing trade pnl for artifact trade ${trade.trade_id}`);
   }
   return Object.freeze({
+    trade_id: trade.trade_id,
+    session_id: trade.session_id,
     entry_ts_ns: trade.entry_ts_ns.toString(),
     exit_ts_ns: trade.exit_ts_ns.toString(),
     side: trade.side,
     regime: knownRegime(trade.regime_label),
+    vix_prior_close_percentile: trade.vix_prior_close_percentile,
     spread_bucket: knownSpreadBucket(trade.spread_bucket),
     queue_ahead_bucket: knownQueueAheadBucket(trade.queue_ahead_bucket),
+    entry_price: trade.entry_px,
+    exit_price: trade.exit_px,
     gross_pnl_cents: pnl.gross_pnl_cents.toString(),
     net_pnl_cents: pnl.net_pnl_cents.toString(),
     entry_quantity: trade.entry_quantity,
@@ -488,6 +493,7 @@ function artifactTrade(
       management_action_reason: exit.management_action_reason,
       management_action_type: exit.management_action_type,
       target_label: exit.target_label,
+      fail_safe_context: exit.fail_safe_context,
     })),
     exit_reason: artifactExitReason(trade.exit_reason),
     exit_bar_index: trade.exit_bar_index,

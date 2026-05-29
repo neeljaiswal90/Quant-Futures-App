@@ -110,6 +110,45 @@ class Qfa611DriverTests(unittest.TestCase):
             self.assertEqual(first["verdict"], "RESEARCH_FURTHER")
             self.assertEqual(first["verdict_reason"], "missing_per_trade_metadata")
 
+    def test_additive_evidence_surface_fields_are_ignored_by_selection(self) -> None:
+        def mutate(artifact: dict, index: int) -> None:
+            if index != 0:
+                return
+            trade = artifact["trades"][0]
+            trade["trade_id"] = "selection-driver-ignored-trade-id"
+            trade["session_id"] = "selection-driver-ignored-session"
+            trade["entry_price"] = 100.25
+            trade["exit_price"] = 100.5
+            trade["vix_prior_close_percentile"] = 0.72
+            trade["exits"][0]["fail_safe_context"] = {
+                "active_stop_price": 99.75,
+                "ask_px": 100.75,
+                "bid_px": 100.25,
+                "management_profile_id": "selection-driver-ignored-profile",
+                "management_profile_version": 1,
+                "market_authority": "authoritative",
+                "market_is_stale": False,
+                "mark_price": 100.5,
+                "position_profile_id": "selection-driver-ignored-position-profile",
+                "position_profile_version": 1,
+                "remaining_quantity": 1,
+                "validation_path": None,
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline_dir, baseline_manifest = write_case(root / "baseline")
+            mutated_dir, mutated_manifest = write_case(root / "mutated", mutate=mutate)
+            baseline = json.loads(run_driver(root, baseline_dir, baseline_manifest).read_text(encoding="utf-8"))
+            mutated = json.loads(run_driver(root, mutated_dir, mutated_manifest).read_text(encoding="utf-8"))
+
+            self.assertEqual(baseline["summary"], mutated["summary"])
+            self.assertEqual(baseline["per_strategy"][0]["verdict"], mutated["per_strategy"][0]["verdict"])
+            self.assertEqual(
+                baseline["per_strategy"][0]["held_out_evidence"],
+                mutated["per_strategy"][0]["held_out_evidence"],
+            )
+
     def test_canonical_json_writes_lf_only_bytes(self) -> None:
         from artifact_writer import write_canonical_json
 
@@ -280,7 +319,7 @@ def write_case(
     manifest_hash_for_first: str | None = None,
 ) -> tuple[Path, Path]:
     held_out_dir = root / "held-out"
-    held_out_dir.mkdir()
+    held_out_dir.mkdir(parents=True)
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     strategies = []
     for index, strategy_id in enumerate(STRATEGIES):

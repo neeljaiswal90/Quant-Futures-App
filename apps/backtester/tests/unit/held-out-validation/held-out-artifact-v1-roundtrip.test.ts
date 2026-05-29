@@ -51,6 +51,11 @@ describe('HeldOutValidationArtifactV1 writer', () => {
     expect(fixture.trades[0]?.gross_pnl_cents).not.toBe(fixture.trades[0]?.net_pnl_cents);
     expect(fixture.trades[0]).not.toHaveProperty('quantity');
     expect(fixture.trades[0]).toMatchObject({
+      trade_id: expect.any(String),
+      session_id: '2026-02-04-rth',
+      entry_price: expect.any(Number),
+      exit_price: expect.any(Number),
+      vix_prior_close_percentile: null,
       entry_quantity: 2,
       exit_quantity: 2,
       management_profile_id: 'test-fixture-management-profile',
@@ -62,6 +67,7 @@ describe('HeldOutValidationArtifactV1 writer', () => {
           management_action_reason: 'target:pt1:hit',
           management_action_type: 'TAKE_PARTIAL',
           target_label: 'pt1',
+          fail_safe_context: null,
         },
         {
           exit_ts_ns: '121000000000',
@@ -69,6 +75,7 @@ describe('HeldOutValidationArtifactV1 writer', () => {
           management_action_reason: 'target:pt2:hit',
           management_action_type: 'TAKE_PROFIT',
           target_label: 'pt2',
+          fail_safe_context: null,
         },
       ],
     });
@@ -95,6 +102,11 @@ describe('HeldOutValidationArtifactV1 writer', () => {
       expect(firstArtifact.schema_version).toBe(1);
       expect(firstArtifact.trades[0]).not.toHaveProperty('quantity');
       expect(firstArtifact.trades[0]).toMatchObject({
+        trade_id: expect.any(String),
+        session_id: '2026-02-02-rth',
+        entry_price: expect.any(Number),
+        exit_price: expect.any(Number),
+        vix_prior_close_percentile: null,
         entry_quantity: 1,
         exit_quantity: 1,
         management_profile_id: expect.any(String),
@@ -109,6 +121,16 @@ describe('HeldOutValidationArtifactV1 writer', () => {
           management_action_reason: expect.stringMatching(/^fail_safe:/),
           management_action_type: 'FAIL_SAFE_EXIT',
           target_label: null,
+          fail_safe_context: expect.objectContaining({
+            market_authority: 'authoritative',
+            market_is_stale: null,
+            mark_price: expect.any(Number),
+            active_stop_price: expect.any(Number),
+            remaining_quantity: 1,
+            position_profile_version: 1,
+            management_profile_version: 1,
+            validation_path: null,
+          }),
         }],
       });
     } finally {

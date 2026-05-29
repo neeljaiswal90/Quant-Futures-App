@@ -77,6 +77,8 @@ import type {
   RealArchiveBacktestResult,
   RealArchiveExecutionFillPolicy,
   RealArchiveExitReason,
+  RealArchiveFailSafeContextRecord,
+  RealArchiveMarketAuthority,
   RealArchivePerTradeExitRecord,
   RealArchivePerTradeRecord,
   RealArchiveRegimeLabel,
@@ -138,6 +140,17 @@ interface SessionDailyOhl {
   readonly close: number;
   readonly high: number;
   readonly low: number;
+}
+
+interface ManagementMarketContext {
+  readonly event_ts_ns: UnixNs;
+  readonly mark_price: number;
+  readonly high_price?: number;
+  readonly low_price?: number;
+  readonly bid_px?: number;
+  readonly ask_px?: number;
+  readonly authority?: RealArchiveMarketAuthority;
+  readonly is_stale?: boolean;
 }
 
 interface EntryMetadata {
@@ -361,20 +374,21 @@ async function runSession(input: {
 
     if (openPosition !== null) {
       updateExcursions(openPosition, bar);
+      const managementMarket: ManagementMarketContext = {
+        event_ts_ns: bar.last_record_ts_ns,
+        mark_price: priceNumber(bar.close),
+        high_price: priceNumber(bar.high),
+        low_price: priceNumber(bar.low),
+        ...(quoteState.latest === null ? {} : {
+          bid_px: quoteState.latest.bid_px,
+          ask_px: quoteState.latest.ask_px,
+          authority: 'authoritative' as const,
+        }),
+      };
       const management = evaluatePositionManager({
         position: openPosition.target_position,
         profile: openPosition.management_profile,
-        market: {
-          event_ts_ns: bar.last_record_ts_ns,
-          mark_price: priceNumber(bar.close),
-          high_price: priceNumber(bar.high),
-          low_price: priceNumber(bar.low),
-          ...(quoteState.latest === null ? {} : {
-            bid_px: quoteState.latest.bid_px,
-            ask_px: quoteState.latest.ask_px,
-            authority: 'authoritative' as const,
-          }),
-        },
+        market: managementMarket,
       });
       appendManagementEvents({
         events: input.events,
@@ -390,6 +404,7 @@ async function runSession(input: {
           openPosition,
           actions: exits,
           postManagementPosition: management.updated_position,
+          market: managementMarket,
           exitReason: exitReasonFromManagement(management, exits.at(-1)!),
           bar,
           barIndex,
@@ -607,6 +622,7 @@ function closeOpenPosition(input: {
   readonly openPosition: OpenExecutionPosition;
   readonly actions?: readonly PositionManagerAction[];
   readonly postManagementPosition?: TargetPosition;
+  readonly market?: ManagementMarketContext;
   readonly exitReason: RealArchiveExitReason;
   readonly bar: BuiltBar;
   readonly barIndex: number;
@@ -676,6 +692,12 @@ function closeOpenPosition(input: {
       management_action_reason: exitInput.action?.reason ?? null,
       management_action_type: exitInput.action?.action_type ?? null,
       target_label: exitInput.action?.target_label ?? null,
+      fail_safe_context: failSafeContextFromExit({
+        action: exitInput.action,
+        market: input.market,
+        position: input.openPosition.target_position,
+        profile: input.openPosition.management_profile,
+      }),
     }));
     input.events.push(positionEvent({
       runId: input.runId,
@@ -703,6 +725,43 @@ function closeOpenPosition(input: {
     metadata.max_adverse_excursion_cents = input.openPosition.mae_cents;
   }
   return { openPosition: null, exitFillCount: exitInputs.length };
+}
+
+function failSafeContextFromExit(input: {
+  readonly action?: PositionManagerAction;
+  readonly market?: ManagementMarketContext;
+  readonly position: TargetPosition;
+  readonly profile: ManagementProfile;
+}): RealArchiveFailSafeContextRecord | null {
+  const reason = input.action?.reason ?? null;
+  if (input.action?.action_type !== 'FAIL_SAFE_EXIT' && reason?.startsWith('fail_safe:') !== true) {
+    return null;
+  }
+  return Object.freeze({
+    market_authority: input.market?.authority ?? null,
+    market_is_stale: input.market?.is_stale ?? null,
+    mark_price: finiteNumberOrNull(input.market?.mark_price),
+    bid_px: finiteNumberOrNull(input.market?.bid_px),
+    ask_px: finiteNumberOrNull(input.market?.ask_px),
+    active_stop_price: finiteNumberOrNull(input.position.active_stop_price),
+    remaining_quantity: Number.isFinite(input.position.remaining_quantity)
+      ? input.position.remaining_quantity
+      : null,
+    position_profile_id: input.position.profile_id ?? null,
+    position_profile_version: input.position.profile_version ?? null,
+    management_profile_id: input.profile.profile_id,
+    management_profile_version: input.profile.profile_version,
+    validation_path: failSafeValidationPath(reason),
+  });
+}
+
+function failSafeValidationPath(reason: string | null): string | null {
+  const prefix = 'fail_safe:invalid_target_position:';
+  return reason?.startsWith(prefix) === true ? reason.slice(prefix.length) : null;
+}
+
+function finiteNumberOrNull(value: number | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function exitReasonFromManagement(
@@ -1394,6 +1453,7 @@ function enrichTrades(input: {
       strategy_id: trade.strategy_id,
       session_id: sessionId,
       regime_label: session?.regime_label ?? 'unknown',
+      vix_prior_close_percentile: session?.vix_prior_close_percentile ?? null,
       side: trade.side,
       entry_ts_ns: trade.opened_at_ns,
       exit_ts_ns: trade.closed_at_ns,
