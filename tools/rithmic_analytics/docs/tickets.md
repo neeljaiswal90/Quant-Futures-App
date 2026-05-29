@@ -1121,43 +1121,62 @@ extension):
 
 ---
 
-## RA-066 · Walk-forward calibrate `match_tolerance_ms` for RA-059 OBS-trade confirmation
-**Priority**: P2 — fallback half of the iceberg detector; becomes diagnostic-only if RA-065 ships clean.
-**Estimate**: 2 hours
-**Dependencies**: RA-059 (iceberg detector v1). RA-053-era databento corpus
-(96 sessions Feb-Apr 2026) for the walk-forward fixture base.
+## RA-066 · Calibrate iceberg `match_tolerance_ms` + gate the RA-065 priority channel — PART A SHIPPED 2026-05-29
+**Priority**: P2
+**Estimate**: Part A ~2h (done); Part B ~1-2 days (databento F/T ground truth)
+**Dependencies**: RA-059, RA-065, RA-069 (the `admit_priority_confirmation` gate
+this calibrates), RA-053 databento corpus + loader (Part B).
 
-**Description**: The RA-059 calibration result of 0.00 events/session on
-the sampled corpus may reflect a mis-tuned `match_tolerance_ms` (default
-50ms) for the OBS-trade-tail confirmation, not just the priority gap
-that RA-065 addresses. Sweep `match_tolerance_ms` across
-`[5, 10, 25, 50, 100, 250]ms` against the 96-session databento corpus,
-plot iceberg event yield per tier, pick the knee.
+> **Part A finding (2026-05-29 — `cli/calibrate_iceberg_tolerance.py`, 14 local
+> Rithmic sessions × 20MB tails, priority 100%-populated post-RA-065):**
+> `match_tolerance_ms` IS a real lever on OBS-only iceberg yield, and tighter is
+> higher: 9 icebergs at 5ms → 6 at 25ms → 5 at the 50ms default → 3 at 250ms
+> (a wider window lets early deletes consume the shared trade volume, starving
+> later deletes and breaking refill runs). The priority channel (RA-065) adds
+> little on top: +0–2 icebergs, on ~22–26% extra raw consumption confirmations
+> (~21–25k priority-only vs ~96k OBS). Full table →
+> `data/live_analysis/iceberg_tolerance_sweep.json`.
+> CONCLUSION: 5ms is the yield-MAXIMIZING candidate (≈2× the default's yield),
+> but yield ≠ correctness — the extra detections at 5ms may be false positives,
+> so the default STAYS 50ms until Part B (databento F/T) measures precision/recall
+> per tolerance. `admit_priority_confirmation` stays False until Part B validates
+> FIFO. (NB: an earlier 2-session/5MB smoke showed OBS≈0 — a small-tail artifact
+> corrected by the full 14-session run.)
 
-If RA-065 ships first and yields healthy event counts on its own
-(priority channel is decisive), RA-066 becomes a diagnostic confirming
-the OBS half also works — still worth running to retire the calibration
-question, but no longer load-bearing for production.
+**Part A — tolerance + priority-contribution sweep (SHIPPED).**
+- `rithmic_dashboard/cli/calibrate_iceberg_tolerance.py`: sweeps
+  `match_tolerance_ms` × `admit_priority_confirmation` over local MBO/OBS capture
+  pairs; reports per-tolerance OBS-only vs with-priority iceberg yield + raw
+  priority-only consumption counts; picks the smallest tolerance at ≥90% of max
+  OBS yield (5ms here) — reported as a yield candidate, NOT auto-applied; moving
+  the default needs Part B precision/recall (see finding).
+- Tests: `tests/test_iceberg_tolerance_calibration.py`.
+- Output: `data/live_analysis/iceberg_tolerance_sweep.json`.
 
-**Files to modify** / create:
-- `rithmic_analytics/scripts/calibrate_iceberg_tolerance.py` — new
-  one-shot walk-forward script (not under cli/ since it's not part
-  of the daily loop).
-- `docs/iceberg_tolerance_calibration.md` — methodology + results note
-  (mirrors the `ewma_calibration_methodology.md` documentation style).
-- Update RA-059 default `match_tolerance_ms` if the knee differs
-  meaningfully from 50ms.
+**Part B — databento F/T ground-truth validation (the flip-gate, PENDING).**
+The only thing that justifies flipping `admit_priority_confirmation` on in
+production. Rithmic has no F/T (RA-064), so ground truth comes from databento:
+- Load the 96-session databento corpus (RA-053 loader, `.dbn.zst`) which carries
+  F/T fill actions.
+- On dates with BOTH a databento session and a Rithmic capture, label which
+  Rithmic MBO deletes were real fills (databento F/T at matching price/time),
+  then measure whether the priority channel's `at_queue_front` predicate — and
+  the `FIFO_ASCENDING_IS_FRONT` direction assumption — actually predicts fills:
+  precision/recall of priority-only confirmations vs ground truth.
+- NOTE: databento MBO encodes queue position implicitly (FIFO by arrival), not as
+  an explicit `depth_order_priority` token like Rithmic — so this is a genuine
+  cross-feed alignment task, not a drop-in corpus read.
 
-**Acceptance**:
-- Calibration script runs against the corpus without error.
-- Per-tolerance event-yield table documented.
-- If the knee shifts the default, the RA-059 test suite is rerun to
-  confirm numerics remain consistent at the new default.
+**Acceptance (Part B):**
+- Per-(price,time)-matched precision/recall of priority-only confirmations vs
+  databento F/T across ≥10 paired sessions.
+- A measured go/no-go on `admit_priority_confirmation`. If GO: flip the gate +
+  de-hardcode the downstream OBS-worded narrative (`probability_adjuster.py`
+  522/531/542, `posture_synthesis.py:188`) so priority-confirmed icebergs read
+  accurately + rerun the RA-059 suite. If FIFO is inverted: flip
+  `FIFO_ASCENDING_IS_FRONT` and re-measure.
 
-**Out of scope**:
-- Detector logic changes beyond the threshold default.
-- Production rollout of the new threshold without an A/B comparison
-  window.
+**Out of scope:** detector logic changes beyond the gate flip + tolerance default.
 
 ---
 
