@@ -58,14 +58,30 @@ Output: `data/live_analysis/iceberg_tolerance_sweep.json`.
 - **Keep `admit_priority_confirmation = False`** (RA-069). Both the tolerance
   move and the gate flip are blocked on Part B.
 
-## Part B (the flip-gate — pending)
+## Part B — split into direction (B-a, done) and fill-precision (B-b, blocked)
 
-Ground truth requires F/T, which Rithmic lacks (RA-064). Use the RA-053 databento
-corpus (`.dbn.zst`, carries F/T fills): on dates with both a databento session
-and a Rithmic capture, label which Rithmic deletes were real fills (databento
-F/T at matching price/time), then measure **precision/recall per tolerance** and
-the precision of priority-only `at_queue_front` confirmations (validating the
-`FIFO_ASCENDING_IS_FRONT` direction). Caveat: databento encodes queue position
-implicitly (FIFO by arrival), not as Rithmic's explicit `depth_order_priority` —
-a genuine cross-feed alignment task. Outcome: a measured go/no-go on the 5 ms
-default and on flipping the priority channel on.
+The priority-channel flip rests on two separable questions.
+
+### B-a — FIFO direction (VALIDATED 2026-05-29, no databento needed)
+
+`cli/verify_fifo_direction.py` checks, within each (price-bucket, side) level,
+whether `depth_order_priority` rises with arrival time across consecutive ADDs.
+Result on the 2 priority-bearing sessions (the only captures normalized
+post-RA-065 — older siblings predate the priority plumbing): **88,191 within-level
+adjacent ADD pairs, increasing_fraction = 1.0000** — zero decreasing, zero equal,
+zero counterexamples. The token rises strictly with arrival, so the oldest order
+at a level (FIFO front, fills first) carries the lowest token → `min == front` →
+**`FIFO_ASCENDING_IS_FRONT=True` is confirmed correct.** Two sessions suffice
+because the pair count is enormous and the result is exact (no violations).
+
+### B-b — fill precision (BLOCKED on paired data)
+
+Whether a front-of-queue delete is a real FILL (vs a cancel) needs F/T ground
+truth, which Rithmic lacks (RA-064). databento has F/T but **does not overlap our
+captures**: corpus = 2026-02-02 → 04-30 (92 sessions), Rithmic captures =
+05-19 → 05-29 — **zero paired sessions**. So the date-matched cross-feed
+precision/recall is not runnable today. Options: acquire databento for the May
+capture dates (definitive), forward-capture paired sessions, or a databento-alone
+concept check (validates front→fill in principle, not the Rithmic token mapping).
+Until B-b clears, `admit_priority_confirmation` stays False and
+`match_tolerance_ms` stays 50 ms.

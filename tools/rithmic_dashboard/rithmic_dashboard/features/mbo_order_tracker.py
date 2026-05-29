@@ -26,10 +26,14 @@ TICK_SIZE = 0.25
 #
 # *** HIGHEST-UNCERTAINTY ASSUMPTION — flagged for RA-066 calibration. ***
 # Rithmic's depth_order_priority is a large monotonically-increasing token
-# (~1e11 in the live captures), and the ascending-is-front interpretation is an
-# educated guess, not a documented contract. RA-066 can flip this single
-# constant cheaply if walk-forward calibration disagrees; nothing else in the
-# channel encodes the direction.
+# (~1e11 in the live captures). RA-066 Part B-a empirically CONFIRMED the
+# ascending-is-front direction from captures alone: across 88,191 within-level
+# adjacent ADD pairs the token rose with arrival time 100% of the time (zero
+# counterexamples), so the oldest order at a level (the FIFO front, which fills
+# first) carries the lowest token -> min == front. See
+# cli/verify_fifo_direction.py + docs/iceberg_tolerance_calibration.md. (Whether
+# front-of-queue deletes are real fills vs cancels — the precision question —
+# still needs F/T ground truth: RA-066 Part B-b.)
 FIFO_ASCENDING_IS_FRONT = True
 
 # RA-065: confirmation-source tags carried on ConsumedOrder. The all-None

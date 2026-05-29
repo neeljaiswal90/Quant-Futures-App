@@ -1121,7 +1121,7 @@ extension):
 
 ---
 
-## RA-066 · Calibrate iceberg `match_tolerance_ms` + gate the RA-065 priority channel — PART A SHIPPED 2026-05-29
+## RA-066 · Calibrate iceberg `match_tolerance_ms` + gate the RA-065 priority channel — PART A + B-a SHIPPED 2026-05-29 (B-b blocked on paired data)
 **Priority**: P2
 **Estimate**: Part A ~2h (done); Part B ~1-2 days (databento F/T ground truth)
 **Dependencies**: RA-059, RA-065, RA-069 (the `admit_priority_confirmation` gate
@@ -1153,28 +1153,35 @@ this calibrates), RA-053 databento corpus + loader (Part B).
 - Tests: `tests/test_iceberg_tolerance_calibration.py`.
 - Output: `data/live_analysis/iceberg_tolerance_sweep.json`.
 
-**Part B — databento F/T ground-truth validation (the flip-gate, PENDING).**
-The only thing that justifies flipping `admit_priority_confirmation` on in
-production. Rithmic has no F/T (RA-064), so ground truth comes from databento:
-- Load the 96-session databento corpus (RA-053 loader, `.dbn.zst`) which carries
-  F/T fill actions.
-- On dates with BOTH a databento session and a Rithmic capture, label which
-  Rithmic MBO deletes were real fills (databento F/T at matching price/time),
-  then measure whether the priority channel's `at_queue_front` predicate — and
-  the `FIFO_ASCENDING_IS_FRONT` direction assumption — actually predicts fills:
-  precision/recall of priority-only confirmations vs ground truth.
-- NOTE: databento MBO encodes queue position implicitly (FIFO by arrival), not as
-  an explicit `depth_order_priority` token like Rithmic — so this is a genuine
-  cross-feed alignment task, not a drop-in corpus read.
+**Part B-a — FIFO direction (VALIDATED 2026-05-29, SHIPPED, no databento needed).**
+`cli/verify_fifo_direction.py` checks whether `depth_order_priority` rises with
+arrival time within each (price-bucket, side) level. Result on the 2
+priority-bearing capture sessions (the only ones normalized post-RA-065): **88,191
+within-level adjacent ADD pairs, increasing_fraction = 1.0000** (zero decreasing,
+zero equal). Oldest order at a level = lowest token = FIFO front → `min == front`
+→ `FIFO_ASCENDING_IS_FRONT=True` confirmed. The scariest assumption in the
+priority channel is now empirically grounded (see
+`docs/iceberg_tolerance_calibration.md`).
 
-**Acceptance (Part B):**
+**Part B-b — fill precision (the flip-gate, BLOCKED on paired data).**
+Whether a front-of-queue delete is a real FILL vs a cancel needs F/T ground truth
+(Rithmic has none — RA-064). FEASIBILITY (2026-05-29): the databento corpus
+(2026-02-02 → 04-30, 92 sessions) has **zero date overlap** with our Rithmic
+captures (05-19 → 05-29) — so the date-matched cross-feed precision/recall is NOT
+runnable today. NOTE: databento MBO encodes queue position implicitly (FIFO by
+arrival), not as Rithmic's explicit `depth_order_priority` — a cross-feed
+alignment task even with paired dates. To unblock: (1) acquire databento for the
+May capture dates (definitive), (2) forward-capture paired databento+Rithmic
+sessions, or (3) a databento-alone concept check (validates front→fill in
+principle, not the Rithmic token mapping).
+
+**Acceptance (Part B-b):**
 - Per-(price,time)-matched precision/recall of priority-only confirmations vs
   databento F/T across ≥10 paired sessions.
 - A measured go/no-go on `admit_priority_confirmation`. If GO: flip the gate +
   de-hardcode the downstream OBS-worded narrative (`probability_adjuster.py`
   522/531/542, `posture_synthesis.py:188`) so priority-confirmed icebergs read
-  accurately + rerun the RA-059 suite. If FIFO is inverted: flip
-  `FIFO_ASCENDING_IS_FRONT` and re-measure.
+  accurately + rerun the RA-059 suite.
 
 **Out of scope:** detector logic changes beyond the gate flip + tolerance default.
 
