@@ -8,14 +8,16 @@ A FastAPI :class:`~fastapi.APIRouter` exposing the full-document get/put:
   unknown key a ``422`` — intended: PUT is a whole-document replace, not a
   patch). The persisted document is returned.
 
-The router is wired against an :class:`AlertConfigStore` so the same cached
-config object backs both the REST surface and RA-060's gating path (PUT mutates
-the cache + persists -> next event sees it; no restart, no poller).
+The router is wired against an :class:`AlertConfigStore` whose cache backs the
+REST surface and whose write-through persists to the shared
+``alert_config.json``. Alert gating is enforced by the consumers (the
+notification daemon and the UI), which read the current config; the RA-060 feed
+emits every signal. A PUT takes effect with no restart.
 
 RA-060 mounts this on its app with one line — see this package's ``README.md``.
 The default router (:data:`router`) is backed by a process-wide store at the
 default path; RA-060 should instead call :func:`create_config_router` with its
-own shared store so the REST cache and the gating cache are the *same* object.
+own shared store so REST reads and persistence go through one object.
 """
 
 from __future__ import annotations

@@ -75,10 +75,24 @@ def test_no_tier_does_not_fire() -> None:
     assert should_notify(hb, default_alert_config(), _MIDDAY) is False
 
 
-def test_quiet_hours_suppresses_critical() -> None:
+def test_quiet_hours_audio_only_keeps_toast() -> None:
+    # RA-069: audio_only=True (the default) silences audio but keeps visual
+    # channels, so the Windows toast still fires inside the quiet window —
+    # matching realtime_backend.config.gating.should_fire.
     cfg = default_alert_config()
     cfg.quiet_hours = QuietHoursConfig(enabled=True, start_pt="22:00", end_pt="06:00")
+    assert cfg.quiet_hours.audio_only is True
     # 23:30 PT is inside the wrap-around window.
+    midnight_ish = datetime(2026, 5, 28, 23, 30, tzinfo=PT)
+    assert should_notify(_critical_msg(), cfg, midnight_ish) is True
+
+
+def test_quiet_hours_full_suppresses_toast() -> None:
+    # audio_only=False = a full quiet window: the visual toast is suppressed too.
+    cfg = default_alert_config()
+    cfg.quiet_hours = QuietHoursConfig(
+        enabled=True, start_pt="22:00", end_pt="06:00", audio_only=False
+    )
     midnight_ish = datetime(2026, 5, 28, 23, 30, tzinfo=PT)
     assert should_notify(_critical_msg(), cfg, midnight_ish) is False
 

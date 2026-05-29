@@ -56,7 +56,10 @@ def test_e2e_scripted_critical_reaches_fake_notifier(monkeypatch: pytest.MonkeyP
 
 def test_e2e_quiet_hours_suppresses(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = default_alert_config()
+    # RA-069: only a FULL quiet window (audio_only=False) suppresses the visual
+    # toast; audio_only=True keeps visual channels firing (see test_gate.py).
     cfg.quiet_hours.enabled = True  # default window 22:00-06:00
+    cfg.quiet_hours.audio_only = False
     night = datetime(2026, 5, 28, 23, 30, tzinfo=PT)
     monkeypatch.setattr("notification_daemon.run._now_pt", lambda: night)
 
@@ -69,7 +72,7 @@ def test_e2e_quiet_hours_suppresses(monkeypatch: pytest.MonkeyPatch) -> None:
             await daemon.on_message(f)
 
     asyncio.run(drive())
-    assert fake.calls == [], "quiet hours must fully suppress the toast"
+    assert fake.calls == [], "full quiet hours (audio_only=False) must suppress the toast"
 
 
 def _start_mock_server() -> tuple[object, int]:

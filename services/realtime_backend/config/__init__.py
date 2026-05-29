@@ -8,13 +8,16 @@ Three pieces, each pure or narrowly-scoped:
 - :mod:`realtime_backend.config.store` — :class:`AlertConfigStore`, a
   load-or-seed-defaults persistence layer with atomic write
   (tmp-in-same-dir + :func:`os.replace`), an in-memory cache, and
-  write-through on every replace. The cache *is* the hot-reload mechanism:
-  PUT mutates the shared cached :class:`AlertConfig` and persists, and the
-  gating path reads that same object on every event (no mtime poller).
+  write-through on every replace. The cache backs the REST surface and
+  write-through persists to the shared ``alert_config.json`` that
+  out-of-process consumers (the notification daemon) also read — so a PUT
+  takes effect with no restart.
 
 - :mod:`realtime_backend.config.gating` — the pure
   :func:`should_fire` decision: tier-enabled -> proximity-armed ->
-  quiet-hours audio-suppression, returning an :class:`AlertDisposition`.
+  quiet-hours audio-suppression, returning an :class:`AlertDisposition`. This
+  is the canonical gating semantics the alert consumers apply (the daemon gates
+  toasts; the UI gates audio/browser alerts); the feed emits every signal.
 
 - :mod:`realtime_backend.config.router` — a mountable FastAPI
   ``APIRouter`` exposing ``GET``/``PUT`` ``/api/config/alerts`` backed by the

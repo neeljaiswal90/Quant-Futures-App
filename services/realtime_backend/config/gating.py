@@ -4,9 +4,14 @@
 through which channels?* It is a pure function of the current
 :class:`AlertConfig`, the tier, the price distance, and the current PT
 wall-clock — no I/O, no globals, no clock reads (``now_pt`` is injected so the
-truth table is deterministic). The caller (RA-060's dispatch path) reads the
-store's cached config and passes it in on every event, which is what makes a
-PUT take effect on the next event with no restart.
+truth table is deterministic). It is the canonical gating semantics for the
+shared contract: the alert *consumers* apply it — the notification daemon gates
+toasts (``notification_daemon.gate``) and the React UI gates audio/browser
+alerts, each reading the current config. The RA-060 feed itself emits every
+signal so the dashboard feed, chart, and history stay complete; alert gating is
+a notification-layer concern, not a data-flow filter. A PUT to
+``/api/config/alerts`` persists immediately, so the next decision a consumer
+makes reflects it (no restart).
 
 Decision pipeline (short-circuits in this order):
 

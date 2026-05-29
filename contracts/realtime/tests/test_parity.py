@@ -95,6 +95,32 @@ def test_signal_payload_fields_match() -> None:
     assert ts_fields == py_fields
 
 
+def test_all_known_payload_fields_match() -> None:
+    """Field-level TS<->Pydantic parity for EVERY known payload family.
+
+    RA-069 MEDIUM fix: previously only SignalPayload was field-checked, so a
+    Python-only field add/rename on any of the other nine families passed the
+    tripwire silently while the TS mirror diverged.
+    """
+    for family, model in ev._PAYLOAD_REGISTRY.items():
+        ts_fields = _interface_fields(_EVENTS_TS, model.__name__)
+        py_fields = list(model.model_fields.keys())
+        assert ts_fields == py_fields, (
+            f"{family} ({model.__name__}) TS<->Py field drift: ts={ts_fields} py={py_fields}"
+        )
+
+
+def test_nested_state_fields_match() -> None:
+    """ZoneState / ScenarioState are nested inside zone_update + snapshot payloads
+    and were previously unchecked by the tripwire."""
+    for model in (ev.ZoneState, ev.ScenarioState):
+        ts_fields = _interface_fields(_EVENTS_TS, model.__name__)
+        py_fields = list(model.model_fields.keys())
+        assert ts_fields == py_fields, (
+            f"{model.__name__} TS<->Py field drift: ts={ts_fields} py={py_fields}"
+        )
+
+
 # --------------------------------------------------------------------------
 # config.py ⇄ config.ts
 # --------------------------------------------------------------------------
@@ -122,3 +148,14 @@ def test_config_alert_config_fields_match() -> None:
     ts_fields = _interface_fields(_CONFIG_TS, "AlertConfig")
     py_fields = list(cfg.AlertConfig.model_fields.keys())
     assert ts_fields == py_fields
+
+
+def test_config_nested_fields_match() -> None:
+    """ProximityConfig / QuietHoursConfig are nested inside AlertConfig and were
+    previously unchecked by the tripwire (RA-069 MEDIUM fix)."""
+    for model in (cfg.ProximityConfig, cfg.QuietHoursConfig):
+        ts_fields = _interface_fields(_CONFIG_TS, model.__name__)
+        py_fields = list(model.model_fields.keys())
+        assert ts_fields == py_fields, (
+            f"{model.__name__} TS<->Py field drift: ts={ts_fields} py={py_fields}"
+        )

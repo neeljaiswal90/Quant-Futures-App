@@ -65,6 +65,31 @@ describe("seq-gap detection", () => {
     expect(s.lastSeq).toBe(1); // snapshot rebases the sequence
   });
 
+  it("bumps resyncEpoch on every gap so repeated gaps re-fire resync (RA-069)", () => {
+    let s = reducer(initialState(), msg(snapshotFrame(1)));
+    s = reducer(s, msg(sweepFrame(5))); // gap 1
+    const afterFirst = s.resyncEpoch;
+    expect(afterFirst).toBeGreaterThan(0);
+    // A second gap must advance the epoch even though resyncing is already true
+    // (the boolean alone would be a no-op transition and wedge the resync).
+    s = reducer(s, msg(sweepFrame(9))); // gap 2 (6,7,8 missing)
+    expect(s.resyncing).toBe(true);
+    expect(s.resyncEpoch).toBe(afterFirst + 1);
+  });
+
+  it("resync-failed clears resyncing but keeps the epoch monotonic (RA-069)", () => {
+    let s = reducer(initialState(), msg(snapshotFrame(1)));
+    s = reducer(s, msg(sweepFrame(5))); // gap -> resyncing true
+    const epoch = s.resyncEpoch;
+    s = reducer(s, { kind: "resync-failed" });
+    expect(s.resyncing).toBe(false);
+    expect(s.resyncEpoch).toBe(epoch); // not reset
+    // a later gap still advances the epoch and re-arms resync
+    s = reducer(s, msg(sweepFrame(9)));
+    expect(s.resyncEpoch).toBe(epoch + 1);
+    expect(s.resyncing).toBe(true);
+  });
+
   it("ignores duplicate / out-of-order non-snapshot frames", () => {
     let s = reducer(initialState(), msg(snapshotFrame(1)));
     s = reducer(s, msg(sweepFrame(3)));

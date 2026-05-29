@@ -97,15 +97,21 @@ export function useRealtime(): RealtimeApi {
   const resync = useCallback(async () => {
     if (resyncInFlight.current) return;
     resyncInFlight.current = true;
+    let applied = false;
     try {
       const res = await fetch(snapshotUrl, { cache: "no-store" });
       if (!res.ok) return;
       const body: unknown = await res.json();
       applyFrame(body);
+      applied = true;
     } catch {
       // Resync best-effort; reconnect's re-snapshot is the fallback.
     } finally {
       resyncInFlight.current = false;
+      // On a failed fetch the snapshot never applied, so `resyncing` would stay
+      // true forever (no state transition) and wedge future gap-driven resyncs.
+      // Clear it explicitly; the next gap bumps resyncEpoch and re-fires.
+      if (!applied) dispatch({ kind: "resync-failed" });
     }
   }, [snapshotUrl, applyFrame]);
 
@@ -169,12 +175,14 @@ export function useRealtime(): RealtimeApi {
 
   connectRef.current = connect;
 
-  // Drive resync whenever the reducer flags a seq gap.
+  // Drive resync on EVERY seq gap. Keyed on the monotonic resyncEpoch (not the
+  // `resyncing` boolean) so a fresh gap always re-fires — even if a prior
+  // resync failed and left `resyncing` true (true->true is no transition).
   useEffect(() => {
-    if (state.resyncing && !resyncInFlight.current) {
+    if (state.resyncEpoch > 0 && !resyncInFlight.current) {
       void resync();
     }
-  }, [state.resyncing, resync]);
+  }, [state.resyncEpoch, resync]);
 
   // Connection lifecycle + a 1s clock pulse for staleness/decay re-eval.
   useEffect(() => {

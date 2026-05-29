@@ -11,10 +11,11 @@ JSON document on disk (``data/dashboard/alert_config.json`` by default):
   directory then :func:`os.replace` swaps it in, so a reader never observes a
   half-written file and a crash mid-write cannot corrupt the live document.
 - **in-memory cache + write-through**: :meth:`get` returns the cached
-  object; :meth:`replace` swaps the cache *and* persists. The cached object is
-  the single source of truth the gating path reads on every event — that is
-  the hot-reload mechanism (no mtime poller). :meth:`reload_from_disk` exists
-  for out-of-band edits.
+  object; :meth:`replace` swaps the cache *and* persists. The cache backs the
+  REST surface (GET returns it; PUT swaps + persists), and write-through goes to
+  the shared ``alert_config.json`` that out-of-process consumers (the
+  notification daemon) also read — so a PUT takes effect with no restart.
+  :meth:`reload_from_disk` exists for out-of-band edits.
 
 The path is injectable so tests can point at a ``tmp_path``.
 """

@@ -158,8 +158,12 @@ export function reducer(
       return { ...state, conn: action.status };
     }
 
-    case "resync-start":
-      return { ...state, resyncing: true };
+    case "resync-failed":
+      // A resync attempt concluded without a snapshot (fetch failed / bad
+      // body). Clear the pending flag so the UI is not wedged "resyncing"
+      // forever; the next gap bumps resyncEpoch and re-fires, and a reconnect
+      // re-snapshots as the ultimate fallback.
+      return { ...state, resyncing: false };
 
     case "dismiss-critical":
       return { ...state, critical: null };
@@ -205,9 +209,11 @@ export function reducer(
       next.schemaVersion = msg.schema_version ?? next.schemaVersion;
 
       if (gap) {
-        // Mark resync pending; the hook fetches /snapshot. We still applied
-        // this frame's payload so the UI is not frozen while resync lands.
-        next = { ...next, resyncing: true };
+        // Mark resync pending + bump the monotonic epoch the hook keys on, so
+        // each gap re-fires a resync even if a prior one failed (no false->true
+        // transition needed). We still applied this frame's payload so the UI
+        // is not frozen while resync lands.
+        next = { ...next, resyncing: true, resyncEpoch: state.resyncEpoch + 1 };
       }
 
       return next;

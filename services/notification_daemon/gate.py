@@ -9,15 +9,14 @@ unit-testable. A toast fires iff **all** of:
    HIGH/MEDIUM false by default but a user may opt in);
 4. we are **not** inside the quiet-hours window.
 
-Quiet-hours interpretation (documented deviation point): the real-time
-contract's :class:`QuietHoursConfig` is ``audio_only`` — it is meant to
-silence *audio* while keeping visual banners. This daemon has **no audio
-channel**; its only output is a visual toast. Treating ``audio_only`` as
-"suppress audio, keep visual" would make quiet-hours a no-op here, which
-defeats the user's intent ("be quiet at night"). So when quiet-hours is
-enabled we **fully suppress the toast** during the window, regardless of
-``audio_only``. This is the daemon's single, deliberate reading of the
-shared contract; surfaced in the ship report.
+Quiet-hours interpretation (RA-069 — reconciled with the backend gating
+contract): the contract's :class:`QuietHoursConfig.audio_only` means
+"silence *audio* during the window, keep visual channels." A Windows toast is
+a visual channel, so under ``audio_only=True`` the toast still fires; only a
+**full** quiet window (``audio_only=False``) suppresses it. This matches
+``realtime_backend.config.gating.should_fire`` exactly, so the single shared
+:class:`AlertConfig` can no longer yield contradictory toast behavior across
+consumers. A user who wants total night silence sets ``audio_only=False``.
 """
 
 from __future__ import annotations
@@ -84,7 +83,13 @@ def should_notify(msg: RealtimeMessage, config: AlertConfig, now_pt: datetime) -
     tier_cfg = _tier_config(config, tier)
     if not (tier_cfg.enabled and tier_cfg.windows_toast):
         return False
-    return not in_quiet_hours(config, now_pt)
+    if in_quiet_hours(config, now_pt):
+        # RA-069: honor audio_only consistently with the backend gating
+        # contract. The toast is a VISUAL channel, so audio_only=True (silence
+        # audio, keep visual) leaves it firing; only a full quiet window
+        # (audio_only=False) suppresses it.
+        return config.quiet_hours.audio_only
+    return True
 
 
 __all__ = ["should_notify", "in_quiet_hours"]

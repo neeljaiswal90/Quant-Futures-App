@@ -40,6 +40,12 @@ export interface DashboardState {
   lastSeq: number;
   /** True once a seq gap is detected and a resync is pending. */
   resyncing: boolean;
+  /**
+   * Monotonic counter bumped on EVERY detected seq gap. The WS hook keys its
+   * resync effect on this (not `resyncing`) so repeated gaps always re-fire a
+   * resync — even after a prior resync failed and left no state transition.
+   */
+  resyncEpoch: number;
   schemaVersion: number | null;
 
   price: PriceState;
@@ -71,6 +77,7 @@ export function initialState(): DashboardState {
     conn: "connecting",
     lastSeq: -1,
     resyncing: false,
+    resyncEpoch: 0,
     schemaVersion: null,
     price: { price: null, bid: null, ask: null, volume: null, tsNs: null },
     heartbeat: {
@@ -93,7 +100,7 @@ export function initialState(): DashboardState {
 export type StoreAction =
   | { kind: "conn"; status: ConnStatus }
   | { kind: "message"; raw: unknown; nowMs: number }
-  | { kind: "resync-start" }
+  | { kind: "resync-failed" }
   | { kind: "dismiss-critical" }
   | { kind: "tick-clock"; nowMs: number };
 
