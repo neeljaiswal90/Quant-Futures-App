@@ -1,0 +1,60 @@
+[project]
+name = "notification_daemon"
+version = "0.1.0"
+description = "RA-062 — native Windows notification daemon: a headless WS client that fires Windows toasts on CRITICAL realtime alerts."
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2",
+  "websockets>=14",
+  "windows-toasts>=1.3",
+  # Test/dev only (mock emitter round-trip + tooling):
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "pytest>=7",
+  "ruff>=0.1",
+  "mypy>=1.5",
+]
+
+[tool.pytest.ini_options]
+# Put `services/` (for `import notification_daemon`) and the repo root (for
+# `import contracts.realtime`) on sys.path *before* collection imports the
+# package — the package `__init__` imports the contract, so the paths must
+# exist at import time. `..` = services/, `../..` = repo root, relative to
+# this pyproject (the pytest rootdir).
+pythonpath = ["..", "../.."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011", "E501"]
+# __init__.py re-exports the public daemon surface.
+"__init__.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true
+strict_optional = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_optional = true
+check_untyped_defs = true
+namespace_packages = true
+explicit_package_bases = true
+# mypy is invoked from the repo root (see README "Verify"):
+#     mypy --config-file services/notification_daemon/pyproject.toml \
+#          services/notification_daemon
+# mypy_path is CWD-relative (CWD = repo root): "." resolves `contracts.*`
+# and "services" is the single base for `notification_daemon.*` (avoids the
+# "source found twice" ambiguity that arises if repo root is also a base for
+# the package files).
+mypy_path = ["services"]
+# windows_toasts has no type stubs; it is lazy-imported behind a Protocol.
+[[tool.mypy.overrides]]
+module = ["windows_toasts.*"]
+ignore_missing_imports = true
