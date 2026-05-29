@@ -436,6 +436,29 @@ export const REGIME_SHOCK_REVERSION_SHORT_V3_MANAGEMENT_PROFILE = {
   ],
 } as const satisfies ManagementProfile;
 
+export const REGIME_SHOCK_REVERSION_SHORT_V4_DELAY_MANAGEMENT_PROFILE: ManagementProfile = {
+  ...REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
+  profile_id: 'regime_shock_reversion_short_v4_delay_management_v1',
+  strategy_id: 'regime_shock_reversion_short_v4_delay',
+  display_name: 'Regime Shock Reversion Short V4 Delay Management V1',
+  reasons: [
+    'management_profile:regime_shock_reversion_short_v4_delay',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+};
+
+export const REGIME_SHOCK_REVERSION_SHORT_V4_PERSIST_MANAGEMENT_PROFILE: ManagementProfile = {
+  ...REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
+  profile_id: 'regime_shock_reversion_short_v4_persist_management_v1',
+  strategy_id: 'regime_shock_reversion_short_v4_persist',
+  display_name: 'Regime Shock Reversion Short V4 Persist Management V1',
+  reasons: [
+    'management_profile:regime_shock_reversion_short_v4_persist',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+};
 export const FALLBACK_MANAGEMENT_PROFILE = {
   profile_id: 'fallback_management_v1',
   profile_version: MANAGEMENT_PROFILE_VERSION,
@@ -517,6 +540,8 @@ export const V1_MANAGEMENT_PROFILES = {
   vwap_overnight_reversal_short: VWAP_OVERNIGHT_REVERSAL_SHORT_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v2: REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v3: REGIME_SHOCK_REVERSION_SHORT_V3_MANAGEMENT_PROFILE,
+  regime_shock_reversion_short_v4_delay: REGIME_SHOCK_REVERSION_SHORT_V4_DELAY_MANAGEMENT_PROFILE,
+  regime_shock_reversion_short_v4_persist: REGIME_SHOCK_REVERSION_SHORT_V4_PERSIST_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v5_strict_deadline: REGIME_SHOCK_REVERSION_SHORT_V5_STRICT_DEADLINE_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v5_trail_at_deadline: REGIME_SHOCK_REVERSION_SHORT_V5_TRAIL_AT_DEADLINE_MANAGEMENT_PROFILE,
 } as const satisfies Readonly<Record<StrategyId, ManagementProfile>>;
