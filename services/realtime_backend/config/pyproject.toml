@@ -1,0 +1,57 @@
+# RA-063 alert-config package — lint/type/test config.
+#
+# Scoped to ``services/realtime_backend/config/`` so RA-063 ships its own
+# green ruff/mypy/pytest without depending on RA-060's config or touching it.
+# The package is run in-place (no install): it imports as
+# ``realtime_backend.config`` with ``services/`` on sys.path and the repo root
+# on sys.path (for ``contracts.*``). ``conftest.py`` at this directory root
+# bootstraps both before collection. Mirrors RA-060's ruff/mypy posture so the
+# lead reviews one consistent style.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["realtime_backend"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011", "E501"]
+# __init__.py re-exports the public package surface.
+"__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+# Put ``services/`` (for ``realtime_backend``) and the repo root (for
+# ``contracts.*``) on sys.path *before* collection, so importing the test
+# package — which walks ``realtime_backend.config.__init__`` — resolves.
+# Paths are relative to this rootdir (config/).
+pythonpath = ["../..", "../../.."]
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true
+strict_optional = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_optional = true
+check_untyped_defs = true
+namespace_packages = true
+explicit_package_bases = true
+# Resolve ``contracts.*`` from the repo root. Run mypy from ``services/`` (see
+# the README) so the implicit base makes the package ``realtime_backend.config``
+# — matching the runtime import name. Adding ``services/`` here too would make
+# mypy see the files under two names (``services.realtime_backend.config.*`` and
+# ``realtime_backend.config.*``) and error, because ``services/__init__.py``
+# exists. The repo-root base has no ``__init__.py`` so it stays unambiguous.
+# Relative to the cwd mypy is invoked from (``services/``), so ``..`` = repo root.
+mypy_path = ".."
+
+[[tool.mypy.overrides]]
+module = ["uvicorn.*"]
+ignore_missing_imports = true
