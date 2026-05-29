@@ -1,0 +1,237 @@
+:root {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --muted: #8b949e;
+  --red: #f85149;
+  --green: #3fb950;
+  --yellow: #e3b341;
+  --blue: #58a6ff;
+  --violet: #a371f7;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+  height: 100%;
+  gap: 8px;
+  padding: 8px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+
+.status-pill {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.status-open { color: var(--green); border-color: var(--green); }
+.status-connecting,
+.status-reconnecting { color: var(--yellow); border-color: var(--yellow); }
+.status-closed { color: var(--red); border-color: var(--red); }
+
+.banner {
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.banner-critical {
+  background: rgba(248, 81, 73, 0.16);
+  border: 1px solid var(--red);
+  color: #ffb3ae;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.banner-degraded {
+  background: rgba(227, 179, 65, 0.14);
+  border: 1px solid var(--yellow);
+  color: #f5d990;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(248, 81, 73, 0); }
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 8px;
+  min-height: 0;
+}
+
+.chart-col {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+  min-height: 0;
+}
+
+.chart-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.side-col {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 8px;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.price-context {
+  display: flex;
+  gap: 18px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.price-big {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.kv {
+  font-size: 12px;
+  color: var(--muted);
+}
+.kv b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.scenario {
+  border-left: 3px solid var(--blue);
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.scenario .prob {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.tier-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+.tier-CRITICAL { background: var(--red); color: #fff; }
+.tier-HIGH { background: var(--yellow); color: #000; }
+.tier-MEDIUM { background: var(--blue); color: #000; }
+.tier-none { background: var(--border); color: var(--muted); }
+
+.footer {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  padding: 4px;
+}
+.footer a {
+  color: var(--muted);
+}
+
+button.btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+button.btn:hover {
+  border-color: var(--blue);
+}
+button.btn-primary {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.settings dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  font-size: 12px;
+  margin: 0;
+}
+.settings label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.history-toggle {
+  cursor: pointer;
+  user-select: none;
+}
