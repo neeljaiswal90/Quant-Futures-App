@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from rithmic_dashboard.features.iceberg_detector import detect_icebergs, load_iceberg_thresholds
@@ -17,6 +18,7 @@ def _mbo(
     side: str = "A",
     price: float = 30220.0,
     size: int = 30,
+    priority: str | None = None,
 ) -> MboOrderEvent:
     return MboOrderEvent(
         timestamp_ns=ts,
@@ -27,6 +29,7 @@ def _mbo(
         price=price,
         size=size,
         order_id=order_id,
+        priority=priority,
     )
 
 
@@ -100,6 +103,82 @@ def test_ignores_refills_outside_window() -> None:
     events, trades = _ask_refill_sequence(quantities=[30, 30, 30], gap_seconds=60)
 
     assert detect_icebergs(mbo_events=events, trades=trades, levels=_levels()) == ()
+
+
+# ---------------------------------------------------------------------------
+# RA-065: byte-exact backward-compat gate + priority does not perturb detector
+# ---------------------------------------------------------------------------
+
+
+def test_ra065_all_none_priority_iceberg_output_is_byte_exact() -> None:
+    """FROZEN GOLDEN GATE: running the canonical OBS-confirmed iceberg fixture
+    with priority ABSENT on every event must emit an IcebergEvent that is
+    byte-identical (asdict equality) to the pre-RA-065 output — including
+    confirmation_source='obs_trade_tail' and every numeric. Priority absent =>
+    the new channel touches NOTHING."""
+    events, trades = _ask_refill_sequence(quantities=[30, 25, 30, 30, 30])
+    detected = detect_icebergs(mbo_events=events, trades=trades, levels=_levels())
+    assert len(detected) == 1
+
+    # This dict is the pre-RA-065 frozen golden output for this fixture. If the
+    # additive priority channel ever perturbs the all-None path, this fails.
+    assert asdict(detected[0]) == {
+        "timestamp_pt": detected[0].timestamp_pt,  # tz-formatting is unchanged logic
+        "timestamp_ns": detected[0].timestamp_ns,
+        "event_type": "iceberg_detected",
+        "level_id": "w-plus-2",
+        "level_text": "W+2σ short zone",
+        "level_price": 30220.0,
+        "side": "ask",
+        "direction": "short",
+        "refill_count": 5,
+        "total_consumed": 145,
+        "median_refill_size": 30.0,
+        "window_seconds": 30,
+        "confidence": "high",
+        "intensity": detected[0].intensity,
+        "description": (
+            "Iceberg-like ask-side refill at W+2σ short zone: 5 refills, "
+            "145 consumed via OBS confirmation"
+        ),
+        "metadata": {
+            "price": 30220.0,
+            "side": "ask",
+            "mbo_side": "A",
+            "refill_count": 5,
+            "total_consumed": 145,
+            "median_refill_size": 30.0,
+            "window_seconds": 30,
+            "size_consistency_pct": 0.40,
+            "aggressor_side": "buy",
+            "confirmation_source": "obs_trade_tail",
+            "match_tolerance_ms": 50,
+        },
+    }
+
+
+def test_ra065_priority_present_does_not_change_obs_confirmed_iceberg() -> None:
+    """Threading non-None priority through the SAME OBS-confirmed fixture must
+    not change the detector output: the detector reads only the legacy
+    ConsumedOrder fields, so the iceberg is identical with or without priority."""
+    events_no_prio, trades = _ask_refill_sequence(quantities=[30, 25, 30, 30, 30])
+    # Same sequence, but every event now carries a (monotonic) priority.
+    events_with_prio = tuple(
+        _mbo(
+            action=e.action if e.action in {"A", "M"} else "C",
+            ts=e.timestamp_ns,
+            order_id=e.order_id,
+            side=e.side,
+            price=e.price,
+            size=e.size,
+            priority=str(1000 + i),
+        )
+        for i, e in enumerate(events_no_prio)
+    )
+    without = detect_icebergs(mbo_events=events_no_prio, trades=trades, levels=_levels())
+    with_prio = detect_icebergs(mbo_events=events_with_prio, trades=trades, levels=_levels())
+    assert len(without) == len(with_prio) == 1
+    assert asdict(without[0]) == asdict(with_prio[0])
 
 
 def test_loads_calibrated_thresholds(tmp_path: Path) -> None:

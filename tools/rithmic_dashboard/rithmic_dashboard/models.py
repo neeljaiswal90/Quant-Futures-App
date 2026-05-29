@@ -387,6 +387,11 @@ class MboOrderEvent:
     price: float
     size: int
     order_id: str
+    # RA-065: Rithmic depth_order_priority (FIFO queue position) carried as a
+    # raw string. Defaulted so pre-RA-065 ``.mbo.jsonl`` siblings (which lack
+    # the field) and existing call sites stay loadable; parsed to int lazily
+    # inside MboOrderTracker. None on the backward-compat path.
+    priority: str | None = None
 
 
 @dataclass(frozen=True)

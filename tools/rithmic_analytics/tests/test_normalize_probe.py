@@ -851,6 +851,72 @@ def test_mbo_databento_passthrough_for_forward_compat() -> None:
 
 
 # ---------------------------------------------------------------------------
+# RA-065: priority through-flow (depth_order_priority → normalized MBO row)
+# ---------------------------------------------------------------------------
+
+
+def test_ra065_priority_carried_from_orders_array() -> None:
+    """Priority on a nested order surfaces as a str on the normalized row."""
+    from rithmic_analytics.ops.normalize_probe import parity_mbo_record_to_mbo_dicts
+    rec = _parity_mbo_record(orders=[
+        {"action": "new", "side": "buy", "price": 27380.0, "size": 5,
+         "order_id": "o1", "priority": "104910029979"},
+        {"action": "delete", "side": "sell", "price": 27385.0, "size": 3,
+         "order_id": "o2", "priority": "104910029983"},
+    ])
+    result = parity_mbo_record_to_mbo_dicts(rec)
+    assert isinstance(result, list)
+    assert result[0]["priority"] == "104910029979"
+    assert result[1]["priority"] == "104910029983"
+
+
+def test_ra065_priority_carried_from_hoisted_top_level_fields() -> None:
+    """The single-order hoisted fallback also carries priority."""
+    from rithmic_analytics.ops.normalize_probe import parity_mbo_record_to_mbo_dicts
+    rec = _parity_mbo_record()  # hoisted single order, no orders[]
+    rec["priority"] = "777"
+    result = parity_mbo_record_to_mbo_dicts(rec)
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0]["priority"] == "777"
+
+
+def test_ra065_priority_coerced_to_string() -> None:
+    """A numeric priority is normalized to str (probe emits str, but be defensive)."""
+    from rithmic_analytics.ops.normalize_probe import parity_mbo_record_to_mbo_dicts
+    rec = _parity_mbo_record(orders=[
+        {"action": "new", "side": "buy", "price": 27380.0, "size": 5,
+         "order_id": "o1", "priority": 104910029979},
+    ])
+    result = parity_mbo_record_to_mbo_dicts(rec)
+    assert isinstance(result, list)
+    assert result[0]["priority"] == "104910029979"
+
+
+def test_ra065_priority_absent_byte_exact_backward_compat() -> None:
+    """BYTE-EXACT GATE (normalize side): when priority is absent on input, the
+    normalized row equals the pre-RA-065 8-key dict plus exactly one additive
+    key ``priority=None`` — every other field byte-identical."""
+    from rithmic_analytics.ops.normalize_probe import parity_mbo_record_to_mbo_dicts
+    rec = _parity_mbo_record(action="new", side="buy")  # no priority field
+    result = parity_mbo_record_to_mbo_dicts(rec)
+    assert isinstance(result, list)
+    assert result[0] == {
+        # the exact pre-RA-065 dict literal ...
+        "ts_event_ns": "1779000000000000001",
+        "ts_recv_ns": "1779000000000000000",
+        "sequence": "9000001",
+        "action": "A",
+        "side": "B",
+        "price": 27381.25,
+        "size": 10,
+        "order_id": "order-42",
+        # ... plus the single additive key, defaulting to None.
+        "priority": None,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Whole-file MBO routing
 # ---------------------------------------------------------------------------
 

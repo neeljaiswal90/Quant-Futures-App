@@ -506,6 +506,8 @@ def parity_mbo_record_to_mbo_dicts(
         ``price``                → ``price`` (NaN-tolerated)
         ``size``                 → ``size``
         ``order_id``             → ``order_id``
+        ``priority``             → ``priority`` (RA-065; str | None, absent on
+                                   pre-RA-065 siblings)
 
     Returns:
         On success: a list of MBO row dicts (length ≥ 1).
@@ -544,6 +546,9 @@ def parity_mbo_record_to_mbo_dicts(
             "price": rec.get("price"),
             "size": rec.get("size"),
             "order_id": rec.get("order_id"),
+            # RA-065: carry the FIFO queue-position when the probe hoists a
+            # single order to the top level rather than nesting it in orders[].
+            "priority": rec.get("priority"),
         }]
     else:
         return None, "missing_orders"
@@ -577,6 +582,16 @@ def parity_mbo_record_to_mbo_dicts(
 
         order_id = str(order.get("order_id") or "")
 
+        # RA-065: surface Rithmic's depth_order_priority (FIFO queue position)
+        # end-to-end so the dashboard can run an independent iceberg-confirmation
+        # channel (queue-position-1 consumption + priority-jump refill). The
+        # probe writes it as a string at 100% population; absent on pre-RA-065
+        # siblings. Carry str | None — keep it stringly-typed here and parse
+        # lazily in the tracker, so non-numeric vendor priorities don't break
+        # normalization and the all-None backward-compat path stays byte-exact.
+        priority_raw = order.get("priority")
+        priority = str(priority_raw) if priority_raw is not None else None
+
         rows.append({
             "ts_event_ns": str(ts_event),
             "ts_recv_ns": str(ts_recv),
@@ -586,6 +601,7 @@ def parity_mbo_record_to_mbo_dicts(
             "price": price,
             "size": size,
             "order_id": order_id,
+            "priority": priority,
         })
 
     if not rows:
