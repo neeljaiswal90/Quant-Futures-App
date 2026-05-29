@@ -246,26 +246,15 @@ function Invoke-RefreshOnce {
         ) | Out-Null
     }
 
-    if (-not $SkipDashboard) {
-        $dashboardArgs = @(
-            "-m", "rithmic_dashboard.cli.generate",
-            "--analytics-root", $AnalyticsRoot,
-            "--trading-date", $ResolvedDate,
-            "--output-path", "data\dashboard\index.html",
-            "--force"
-        )
-        if ($ResolvedSessions.Count -eq 1) {
-            $dashboardArgs += @("--session", $ResolvedSessions[0])
-        }
-        Invoke-Step -Name "dashboard generate" -WorkingDirectory $DashboardRoot -Arguments $dashboardArgs | Out-Null
+    if ($SkipDashboard) {
+        Write-Status "SKIP  V1 dashboard generation retired; -SkipDashboard is retained for compatibility"
     } else {
-        Write-Status "SKIP  dashboard"
+        Write-Status "SKIP  V1 dashboard generation retired; use the v2 realtime stack"
     }
 
-    $dashboardPath = Join-Path $DashboardRoot "data\dashboard\index.html"
-    Write-Status "DONE  dashboard=$dashboardPath"
-    if ($OpenDashboard -and -not $DryRun) {
-        Start-Process $dashboardPath
+    Write-Status "DONE  refresh complete; normalize and daily_zones preserved; v1_html=retired"
+    if ($OpenDashboard) {
+        Write-Status "WARN  -OpenDashboard is retired with the V1 HTML page; start v2 with D:\Quant-futures-app\run_realtime_stack.ps1"
     }
 }
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rithmic_dashboard"
 version = "0.1.0"
-description = "Local MNQ futures prep dashboard generated from rithmic_analytics artifacts."
+description = "Realtime MNQ futures dashboard and local signal pipeline helpers."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Neel Jaiswal" }]
@@ -23,7 +23,7 @@ include = ["rithmic_dashboard*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-rithmic_dashboard = ["templates/*.j2"]
+"rithmic_dashboard.legacy_v1" = ["templates/*.j2"]
 
 [tool.ruff]
 line-length = 100

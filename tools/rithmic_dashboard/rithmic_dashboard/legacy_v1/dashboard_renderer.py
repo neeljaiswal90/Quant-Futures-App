@@ -160,7 +160,7 @@ def _volatility_regime(live_signals: LiveSignals | None) -> VolatilityRegime | N
 
 def _environment() -> Environment:
     env = Environment(
-        loader=PackageLoader("rithmic_dashboard", "templates"),
+        loader=PackageLoader("rithmic_dashboard.legacy_v1", "templates"),
         autoescape=select_autoescape(["html", "j2"]),
     )
     env.filters["price"] = _fmt_price

@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from rithmic_dashboard.confluence import compute_confluence_groups
-from rithmic_dashboard.dashboard_renderer import render_dashboard, render_error_page
+from rithmic_dashboard.legacy_v1.dashboard_renderer import render_dashboard, render_error_page
 from rithmic_dashboard.level_distances import compute_level_distances
 from rithmic_dashboard.models import (
     ActivePosture,

@@ -1,79 +1,68 @@
 # Rithmic Dashboard
 
-Local static dashboard for MNQ futures prep, generated from the sibling
-`rithmic_analytics` data artifacts. The generated page is written to
-`data/dashboard/index.html` and is safe to open directly with a browser.
-
-Run:
+Realtime MNQ futures dashboard support package. The old static V1 HTML page at
+`data/dashboard/index.html` is retired; the active view is the v2 realtime
+stack launched from the repository tools root:
 
 ```powershell
-python -m rithmic_dashboard.cli.generate --output-path data\dashboard\index.html
+D:\Quant-futures-app\run_realtime_stack.ps1
 ```
 
-To run the full local probe-to-dashboard refresh from a terminal, use:
+The data pipeline remains here. `scripts/run_local_probe_refresh.ps1` still
+normalizes active captures and runs intraday-light analytics so the v2 backend
+has fresh normalized siblings and zone/live-analysis artifacts.
 
 ```powershell
-.\scripts\run_local_probe_refresh.ps1
+cd D:\Quant-futures-app\tools\rithmic_dashboard
+.\scripts\run_local_probe_refresh.ps1 -TradingDate 2026-05-29 -Session rth -Loop -IntervalMinutes 5
 ```
 
-That script finds the latest `MNQ_*.jsonl` raw probe capture, normalizes it to
-OBS-01/MBP1/MBO siblings incrementally, runs `daily_zones --mode light` with
-absorption, probability cards, and adaptive bins, then regenerates the dashboard
-HTML. Pressure and cancellation scans are EOD-only; use
-`.\scripts\run_eod_full_analytics.ps1 -TradingDate <YYYY-MM-DD> -Session rth`
-after RTH close, or explicitly pass `-EmitHeavyAnalytics` for a one-off full run.
+Default behavior:
+
+- Incremental normalize to OBS-01/MBP1/MBO siblings.
+- `daily_zones --mode light` with absorption, probability cards, and adaptive bins.
+- No pressure/cancellation full MBO scan.
+- No V1 HTML generation.
+
+For EOD/full analytics after RTH close:
+
+```powershell
+.\scripts\run_eod_full_analytics.ps1 -TradingDate <YYYY-MM-DD> -Session rth
+```
+
+That path keeps the full normalize plus `daily_zones --mode full` behavior, but
+also no longer generates V1 HTML.
 
 Useful options:
 
 ```powershell
-# Check the exact commands without running heavy analytics
+# Check the exact commands without running analytics
 .\scripts\run_local_probe_refresh.ps1 -DryRun
 
-# Process a specific session/date and open the dashboard afterward
-.\scripts\run_local_probe_refresh.ps1 -TradingDate 2026-05-22 -Session rth -OpenDashboard
+# Process a specific session/date
+.\scripts\run_local_probe_refresh.ps1 -TradingDate 2026-05-29 -Session rth
 
-# Keep it running locally in your terminal every 5 minutes
+# Keep it running locally every 5 minutes
 .\scripts\run_local_probe_refresh.ps1 -Loop
 
-# Remove the dashboard pause banner before rendering
-.\scripts\run_local_probe_refresh.ps1 -ClearPauseFlag
+# Cutover-only: use after RA60_SELF_NORMALIZE=1 is enabled on the backend
+.\scripts\run_local_probe_refresh.ps1 -SkipNormalize
 
 # Try threshold calibration too; exits nonzero only inside that optional step
 .\scripts\run_local_probe_refresh.ps1 -TryCalibrateThresholds -LookbackSessions 20
 ```
 
-## RA-045/RA-046 sections
+`python -m rithmic_dashboard.cli.generate` is intentionally retired and exits
+non-zero with v2 guidance. The historical implementation is archived under
+`rithmic_dashboard/legacy_v1/` for reference only.
 
-The loader now merges the selected volume-profile envelope with same-date RTH
-statistical reference lines. Combined session VP remains the structural source
-for VPOC/VAH/VAL/HVN/LVN, while RTH VWAP and sigma bands are overlaid for
-distance and scenario logic. If `+/-2sd` lines are absent upstream, the dashboard
-derives them from VWAP and `+/-1sd` so the grid always shows VWAP, `+1sd`,
-`-1sd`, `+2sd`, and `-2sd`.
+## Signal Pipeline
 
-The Active Posture block is a three-sentence scan layer: price regime, active or
-watching scenarios, then CVD confirmation/contradiction. It is informational and
-does not place or recommend trades.
+The package still owns the completed RA-046 through RA-059 signal modules:
+live CVD, sweeps, absorption proxy, delta dislocations, institutional flow,
+EWMA volatility regime, aggressor flow, footprint, and iceberg detection.
+These modules are reused by the v2 backend as library code.
 
-The Orderflow Pulse reads completed local artifacts only: normalized trades for
-session and last-60-minute CVD, MBP1 for recent spread quality, absorption JSON
-for the latest emitted event, and order-pressure summary JSON for top spoof bins.
-Missing artifacts render as `n/a` with a visible warning; one missing orderflow
-source never blocks the rest of the page.
-
-RA-046 adds bounded-tail live signals from the active capture: rolling live
-VWAP, session/60m/15m CVD, volume velocity, structural sweeps, and absorption
-proxy events. These feed transparent probability multipliers in the scenario
-tooltips and write provenance logs under `data/live_analysis/`.
-
-Audit trail entries are now restricted to actionable state-machine events.
-Data-quality warnings stay in the header warning panel, and identical actionable
-entries inside five minutes are collapsed.
-
-Pause automation by creating:
-
-```powershell
-New-Item -ItemType File data\dashboard\_pause.flag
-```
-
-Resume by deleting that flag.
+Audit trail and calibration artifacts remain under `data/live_analysis/` and
+`data/dashboard/` as compatibility data/log locations. They are not a static
+HTML dashboard surface anymore.

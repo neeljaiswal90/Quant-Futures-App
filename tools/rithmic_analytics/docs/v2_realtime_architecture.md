@@ -22,6 +22,12 @@ iceberg RA-059, aggressor RA-058, absorption, sweep, VPOC/VAH/VAL, zones).
 What is **retired**: the v1 HTML dashboard generator and its 5-min refresh
 view. The realtime backend calls the detectors directly.
 
+RA-071 retires only the V1 HTML view. The normalization pipeline is retained:
+until the operator performs the RA-070 cutover, `run_local_probe_refresh.ps1`
+continues to own incremental normalize and `daily_zones`. After cutover, the
+backend self-normalizer owns the same normalized siblings. Exactly one
+normalizer should run at a time.
+
 ---
 
 ## 2. Architecture

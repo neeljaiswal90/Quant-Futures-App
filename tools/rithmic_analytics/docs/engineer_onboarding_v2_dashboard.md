@@ -56,8 +56,9 @@ The detection layer is COMPLETE. You're building the alert + display layer.
    that all live-path code must respect (< 2GB peak RSS).
 3. **`ewma_calibration_methodology.md`** — example of the documentation style
    expected for new modules.
-4. **`run_local_probe_refresh.ps1`** — the operational loop that drives the
-   current dashboard. Your v2 server will run alongside it, not replace it.
+4. **`run_local_probe_refresh.ps1`** — the operational loop that maintains
+   normalized siblings and zone/live-analysis artifacts. The V1 HTML output is
+   retired; the data pipeline remains active until the RA-070 cutover.
 5. **Existing dispatch prompts** (`ra046_dispatch.md` through `ra059_dispatch.md`)
    — read 2-3 to absorb the pre-build sweep discipline. Your v2 work follows
    the same pattern.
@@ -118,19 +119,20 @@ Currently registered families: `sweep`, `absorption`, `delta_dislocation`,
 Each multiplier has provenance (which event triggered it) for tooltip display.
 v2 surfaces these in the new prioritized scenario panel.
 
-### Operational layer (RA-052)
+### Operational layer (RA-052 + RA-071)
 
 `run_local_probe_refresh.ps1` runs every 5 minutes:
 1. Incremental normalize (`normalize_probe_incremental`)
 2. Light daily_zones compute (`daily_zones --mode light`)
-3. Dashboard HTML generation
+3. Detector/live-analysis artifact refresh through the retained pipeline
 4. **All under 2GB peak RSS**
 
-Your v2 server runs IN ADDITION TO this loop, not as a replacement: the
-RA-052 refresh loop keeps producing the detector JSONL + per-session state
-the v2 backend reads. (Whether the v1 HTML view is retired or retained is a
-stack decision — see [`v2_realtime_architecture.md`](./v2_realtime_architecture.md);
-the current plan retires it in favor of the realtime UI.)
+RA-071 removed the V1 HTML-generation step from this loop. Your v2 server runs
+alongside the retained data pipeline until the operator performs the RA-070
+self-normalize cutover. At that cutover, the operator must ensure exactly one
+normalizer is active: either the loop pre-cutover, or the backend after
+`RA60_SELF_NORMALIZE=1` is enabled and the loop is started with
+`-SkipNormalize`.
 
 ---
 
@@ -225,7 +227,7 @@ the detectors or the 5-min loop they run in.**
 | `rithmic_dashboard` | `D:\Quant-futures-app\tools\rithmic_dashboard\` | Live signals, probability adjuster, renderer, scenario state |
 | Data captures | `D:\Quant-futures-app\tools\rithmic_analytics\data\captures\<date>\` | Raw + normalized JSONL |
 | Live analysis | `D:\Quant-futures-app\tools\rithmic_dashboard\data\live_analysis\` | Per-session detector outputs |
-| Dashboard state | `D:\Quant-futures-app\tools\rithmic_dashboard\data\dashboard\` | Audit, scenarios, state, generated HTML |
+| Dashboard data/logs | `D:\Quant-futures-app\tools\rithmic_dashboard\data\dashboard\` | Refresh logs and compatibility audit/state files; V1 generated HTML is retired |
 | Calibration corpus | `D:\Quant-futures-app\tools\rithmic_analytics\data\calibration_corpus\` | EWMA decay, per-session stats |
 | Databento corpus | `D:\qfa-cache\databento\` + `D:\Quant-futures-app\data\databento\sim03_corpus\` | 92 RTH sessions Feb-Apr 2026 |
 

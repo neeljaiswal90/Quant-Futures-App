@@ -56,10 +56,10 @@ it. Spec is in `tickets.md`; the split is:
 
 **You CAN build (code/docs — no running-process risk):**
 1. Reshape `tools/rithmic_dashboard/scripts/run_local_probe_refresh.ps1`: drop the
-   **normalize** step (the backend owns it now via RA-070) and the **`cli.generate`
-   HTML** step (v1 view retired); keep `daily_zones` (+EOD heavy). It still feeds
-   the v2 chart's zone lines, reading the backend-maintained `obs01` siblings, at
-   the 5-min cadence (zones change slowly — fine).
+   **`cli.generate` HTML** step (v1 view retired) while preserving normalize and
+   `daily_zones`. Normalize ownership is an operator cutover: pre-cutover the
+   loop owns it; post-cutover the backend owns it via `RA60_SELF_NORMALIZE=1`
+   and the operator starts the loop with `-SkipNormalize`.
 2. Retire `rithmic_dashboard.cli.generate` + `templates/dashboard.html.j2`
    (**archive, do not delete** — keep history/reference).
 3. Docs → v2-only: `operations.md`, the onboarding doc, the architecture doc.

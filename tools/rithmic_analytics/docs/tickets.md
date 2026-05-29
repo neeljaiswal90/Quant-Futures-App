@@ -1204,6 +1204,42 @@ principle, not the Rithmic token mapping).
 > 061/062/063 fan out to parallel agents after RA-067 lands. Each ticket
 > owns a disjoint directory — see the file-ownership map in the arch doc.
 
+## RA-071 · Retire V1 static HTML dashboard generator — SHIPPED 2026-05-29
+
+> **Scope correction**: this ticket retires the V1 HTML view only. It does
+> **not** retire normalization. The RA-052 refresh loop remains the active
+> data-pipeline owner until the operator performs the RA-070 self-normalize
+> cutover with the existing `-SkipNormalize` flag and `RA60_SELF_NORMALIZE=1`.
+
+**Priority**: P0 ops cleanup
+**Estimate**: 4-6 hours
+**Dependencies**: RA-070 backend self-normalize flag shipped off by default;
+RA-068 realtime stack runs against normalized capture siblings.
+
+**Description**: Complete the migration away from the static V1 HTML view.
+Remove scheduled/local script calls to `rithmic_dashboard.cli.generate`,
+archive the static generator/template implementation, and make direct manual
+calls fail loudly with v2 guidance. Preserve normalize and `daily_zones` so the
+v2 backend continues to receive `obs01`/MBO/MBP siblings and zone artifacts.
+
+**Acceptance**:
+- `run_local_probe_refresh.ps1` still runs incremental normalize and
+  `daily_zones --mode light`, but no longer calls the V1 HTML generator.
+- `run_eod_full_analytics.ps1` still runs full normalize and
+  `daily_zones --mode full`, but no longer calls the V1 HTML generator.
+- Direct `python -m rithmic_dashboard.cli.generate ...` exits non-zero with a
+  clear retired-command message pointing to the v2 realtime stack.
+- The archived V1 implementation remains under `rithmic_dashboard/legacy_v1/`
+  for historical reference.
+- Operations/onboarding/architecture docs and dashboard README point operators
+  to the v2 realtime dashboard and explicitly separate V1 retirement from the
+  later RA-070 normalize-ownership cutover.
+
+**Out of scope**: flipping `RA60_SELF_NORMALIZE`, stopping live refresh loops,
+editing scheduler entries, or changing capture/probe code.
+
+---
+
 ## RA-067 · Realtime event contract + mock emitter + app skeleton (SERIAL — unblocks the fan-out) — SHIPPED 2026-05-28
 
 > **Shipped.** `contracts/realtime/` landed: `events.py` (Pydantic v2 source

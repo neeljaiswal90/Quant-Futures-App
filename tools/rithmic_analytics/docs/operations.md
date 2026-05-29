@@ -897,7 +897,7 @@ The 2026-05-27 memory incident established a hard operational split:
 
 | Tier | Cadence | Command shape | Purpose |
 |---|---|---|---|
-| Intraday-light | Every 5 minutes during active capture | `daily_zones --mode light` | Normalize new probe records incrementally, refresh VP/probability/dashboard, avoid full MBO scans |
+| Intraday-light | Every 5 minutes during active capture | `daily_zones --mode light` | Normalize new probe records incrementally, refresh VP/probability/live-analysis artifacts, avoid full MBO scans |
 | EOD-heavy | Once at 13:15 PT after RTH close | `daily_zones --mode full` | Rebuild normalized siblings and run pressure/cancellation analytics intentionally |
 
 The intraday runner is:
@@ -911,6 +911,7 @@ Default behavior:
 
 - Calls `python -m rithmic_analytics.cli.normalize_probe_incremental`.
 - Calls `python -m rithmic_analytics.cli.daily_zones --mode light`.
+- Does **not** call the retired V1 static HTML generator.
 - Does **not** run `--emit-pressure-json` or `--emit-cancellation-analysis`.
 
 The EOD-heavy runner is:
@@ -921,9 +922,28 @@ D:\Quant-futures-app\tools\rithmic_dashboard\scripts\run_eod_full_analytics.ps1 
 ```
 
 It performs a full `cli.normalize --force` rebuild first, then runs
-`daily_zones --mode full`. If an operator manually passes
+`daily_zones --mode full`. It does not generate V1 HTML. If an operator manually passes
 `-EmitHeavyAnalytics` to `run_local_probe_refresh.ps1`, that is treated as
 an explicit EOD-style opt-in and maps to `daily_zones --mode full`.
+
+### RA-071 V1 HTML retirement
+
+The old `python -m rithmic_dashboard.cli.generate` static HTML dashboard is
+retired. Direct calls now fail loudly and point to the v2 realtime stack. The
+archived implementation is kept under `rithmic_dashboard/legacy_v1/` only for
+historical reference.
+
+Use the realtime stack instead:
+
+```powershell
+D:\Quant-futures-app\run_realtime_stack.ps1
+```
+
+RA-071 does **not** change normalize ownership. Before the RA-070 cutover, the
+5-minute loop should keep normalizing. After the operator enables
+`RA60_SELF_NORMALIZE=1`, start the loop with `-SkipNormalize` so exactly one
+normalizer writes the capture siblings. Do not run loop normalize and backend
+self-normalize at the same time.
 
 ### Mode guard rules
 
@@ -961,6 +981,7 @@ Check `data/dashboard/local_probe_refresh_<date>.log`:
 
 - Healthy intraday line: `normalize incremental <session>`.
 - Healthy intraday line: `daily_zones ... --mode light`.
+- Healthy RA-071 line: `V1 dashboard generation retired`.
 - Investigate immediately: repeated `normalize_state_missing_fallback_full`
   events in `_audit.json`.
 - Investigate immediately: `--emit-pressure-json` or
@@ -977,7 +998,7 @@ calendar config; if rollover ever produces unexpected behaviour, see
 
 ## When in doubt
 
-1. Open the dashboard. If it's green, the pipeline is fine.
+1. Open the v2 realtime dashboard. If it's green, the pipeline is fine.
 2. Read the relevant log under `logs/` or `data/captures/<date>/`.
 3. Check [`architecture.md`](./architecture.md) for the *why* behind a
    surprising behaviour — many design choices were deliberate (e.g.

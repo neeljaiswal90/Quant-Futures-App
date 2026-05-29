@@ -1,3 +1,3 @@
-"""Static MNQ dashboard generated from local Rithmic analytics artifacts."""
+"""MNQ realtime dashboard signal helpers and archived V1 static renderer."""
 
 __version__ = "0.1.0"

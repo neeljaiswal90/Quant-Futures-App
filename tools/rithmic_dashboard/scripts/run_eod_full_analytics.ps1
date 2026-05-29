@@ -164,23 +164,13 @@ try {
             "--root-symbol", $RootSymbol
         ) | Out-Null
     } else {
-        Write-Status "WARN  session_combined CLI not present; RA-053 should track this EOD-prep gap if needed"
+        Write-Status "WARN  session_combined CLI not present; RA-057 should track this EOD-prep gap if needed"
     }
 
-    if (-not $SkipDashboard) {
-        $dashboardArgs = @(
-            "-m", "rithmic_dashboard.cli.generate",
-            "--analytics-root", $AnalyticsRoot,
-            "--trading-date", $ResolvedDate,
-            "--output-path", "data\dashboard\index.html",
-            "--force"
-        )
-        if ($ResolvedSessions.Count -eq 1) {
-            $dashboardArgs += @("--session", $ResolvedSessions[0])
-        }
-        Invoke-Step -Name "dashboard generate" -WorkingDirectory $DashboardRoot -Arguments $dashboardArgs | Out-Null
+    if ($SkipDashboard) {
+        Write-Status "SKIP  V1 dashboard generation retired; -SkipDashboard is retained for compatibility"
     } else {
-        Write-Status "SKIP  dashboard"
+        Write-Status "SKIP  V1 dashboard generation retired; EOD full analytics now stops after data artifacts"
     }
 
     Write-Status "DONE  EOD full analytics"
