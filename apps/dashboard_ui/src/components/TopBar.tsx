@@ -4,6 +4,7 @@
  */
 import { useDashboard } from "../store/context";
 import { useAlerts } from "../alerts/AlertProvider";
+import { EndDayButton } from "./EndDayButton";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "Connecting",
@@ -38,6 +39,7 @@ export function TopBar() {
           {notificationsGranted ? " + notifications" : ""}
         </span>
       )}
+      <EndDayButton />
     </div>
   );
 }

@@ -226,6 +226,27 @@ button.btn-primary {
   border-color: var(--green);
   color: var(--green);
 }
+button.btn-danger {
+  border-color: var(--red);
+  color: #ffb3ae;
+}
+button.btn-danger:hover {
+  border-color: var(--red);
+  background: rgba(248, 81, 73, 0.14);
+}
+button.btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+.end-day-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.shutdown-status {
+  color: var(--red);
+  font-size: 12px;
+}
 
 .settings dl {
   display: grid;

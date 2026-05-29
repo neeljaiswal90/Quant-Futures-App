@@ -26,7 +26,7 @@ import logging
 from collections.abc import AsyncIterator
 
 from contracts.realtime.events import ErrorPayload, make_message
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
@@ -35,6 +35,7 @@ from realtime_backend.config.store import AlertConfigStore
 from realtime_backend.connection_manager import ConnectionManager
 from realtime_backend.feed import FeedState
 from realtime_backend.settings import Settings, settings_from_env
+from realtime_backend.shutdown import EndDayShutdownService, ShutdownTarget
 from realtime_backend.watcher import CaptureWatcher, ComputeResult
 
 logger = logging.getLogger("ra60.realtime_backend")
@@ -155,6 +156,17 @@ class RealtimeBackend:
         await self.manager.close_all()
 
 
+async def _execute_end_day_shutdown(app: FastAPI, targets: list[ShutdownTarget]) -> None:
+    """Run after the HTTP response: stop in-process services, then kill targets."""
+
+    await asyncio.sleep(0.2)
+    backend: RealtimeBackend = app.state.backend
+    with contextlib.suppress(Exception):
+        await backend.stop()
+    service: EndDayShutdownService = app.state.shutdown_service
+    await asyncio.to_thread(service.execute_plan, targets)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the FastAPI app bound to ``settings`` (env defaults if None)."""
     resolved = settings or settings_from_env()
@@ -171,6 +183,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="RA-060 realtime backend", lifespan=lifespan)
     backend = RealtimeBackend(resolved)
     app.state.backend = backend
+    app.state.shutdown_service = EndDayShutdownService(backend_port=resolved.port)
     # RA-068: expose the shared store + mount the RA-063 config router so the
     # UI's settings PUT persists centrally (and reaches the daemon's file read).
     app.state.config_store = backend.config_store
@@ -182,7 +195,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         # PUT is required for the alert-config endpoint (RA-063) — the browser
         # preflights a settings save; GET-only would block it.
-        allow_methods=["GET", "PUT"],
+        # POST is required for the explicit end-day shutdown endpoint.
+        allow_methods=["GET", "PUT", "POST"],
         allow_headers=["*"],
     )
 
@@ -203,6 +217,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         backend: RealtimeBackend = app.state.backend
         message = backend.feed.build_snapshot_message()
         return JSONResponse(content=message.model_dump())
+
+    @app.post("/api/shutdown/end-day")
+    def end_day_shutdown(background_tasks: BackgroundTasks) -> JSONResponse:
+        """Explicit operator-triggered shutdown for the full local live stack."""
+        service: EndDayShutdownService = app.state.shutdown_service
+        targets = service.build_plan()
+        background_tasks.add_task(_execute_end_day_shutdown, app, targets)
+        return JSONResponse(content=service.response_payload(targets))
 
     @app.websocket("/ws")
     async def ws_endpoint(websocket: WebSocket) -> None:

@@ -16,11 +16,13 @@ from pathlib import Path
 from typing import Any, cast
 
 from contracts.realtime.events import SnapshotPayload
+from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.routing import WebSocketRoute
 
 from realtime_backend.app import RealtimeBackend, create_app
 from realtime_backend.settings import Settings
+from realtime_backend.shutdown import ShutdownTarget
 
 from .conftest import PT, sample_envelope, trade, write_raw
 
@@ -62,6 +64,7 @@ def test_app_registers_mock_compatible_routes(tmp_path: Path) -> None:
     paths = {getattr(r, "path", None) for r in app.routes}
     assert "/health" in paths
     assert "/snapshot" in paths
+    assert "/api/shutdown/end-day" in paths
     assert any(isinstance(r, WebSocketRoute) and r.path == "/ws" for r in app.routes)
 
 
@@ -73,7 +76,29 @@ def test_cors_allow_list_is_vite_dev_origin_not_wildcard(tmp_path: Path) -> None
     assert isinstance(raw_origins, list)
     assert "http://localhost:5173" in raw_origins
     assert "http://127.0.0.1:5173" in raw_origins
+    raw_methods = cors[0].kwargs["allow_methods"]
+    assert isinstance(raw_methods, list)
+    assert "POST" in raw_methods
     assert "*" not in raw_origins
+
+
+def test_end_day_shutdown_route_schedules_background_task(tmp_path: Path) -> None:
+    app = create_app(_fixture_settings(tmp_path))
+
+    class FakeShutdownService:
+        def build_plan(self) -> list[ShutdownTarget]:
+            return [ShutdownTarget(kind="dashboard_ui", pid=123, reason="test")]
+
+        def response_payload(self, targets: list[ShutdownTarget]) -> dict[str, object]:
+            return {"status": "scheduled", "target_count": len(targets)}
+
+    app.state.shutdown_service = FakeShutdownService()
+    route = next(r for r in app.routes if getattr(r, "path", None) == "/api/shutdown/end-day")
+    background_tasks = BackgroundTasks()
+    response = route.endpoint(background_tasks)  # type: ignore[attr-defined]
+
+    assert json.loads(response.body) == {"status": "scheduled", "target_count": 1}
+    assert len(background_tasks.tasks) == 1
 
 
 def test_health_handler_reports_status(tmp_path: Path) -> None:
