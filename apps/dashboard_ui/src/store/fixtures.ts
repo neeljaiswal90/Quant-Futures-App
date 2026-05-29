@@ -67,6 +67,7 @@ export const snapshotSignal = (
   eventType: string,
   timestampNs: number,
   family = "sweep",
+  price = 30080,
 ): SignalPayload => ({
   family: "signal",
   event_type: eventType,
@@ -74,7 +75,7 @@ export const snapshotSignal = (
   description: `${family} signal at VPOC`,
   intensity: 0.7,
   confidence: "high",
-  metadata: { family, timestamp_ns: timestampNs },
+  metadata: { family, timestamp_ns: timestampNs, level_price: price },
 });
 
 export const heartbeatFrame = (seq: number, stale = false): RealtimeMessage =>

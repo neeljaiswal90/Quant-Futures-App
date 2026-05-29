@@ -112,9 +112,18 @@ describe("feed", () => {
     expect(messageToFeedItem(sweepFrame(3)).strength).toBeCloseTo(0.66);
   });
 
+  it("preserves event price for price-anchored chart bubbles", () => {
+    expect(messageToFeedItem(sweepFrame(3)).price).toBe(30085);
+  });
+
   it("maps snapshot signals using metadata family and timestamp", () => {
     const item = snapshotSignalToFeedItem(
-      snapshotSignal("delta_dislocation", 1_780_000_000_500_000_000, "delta_dislocation"),
+      snapshotSignal(
+        "delta_dislocation",
+        1_780_000_000_500_000_000,
+        "delta_dislocation",
+        30082.5,
+      ),
       7,
       1,
       0,
@@ -122,6 +131,7 @@ describe("feed", () => {
 
     expect(item.family).toBe("delta_dislocation");
     expect(item.tsNs).toBe(1_780_000_000_500_000_000);
+    expect(item.price).toBe(30082.5);
     expect(item.eventKey).toContain("delta_dislocation");
   });
 

@@ -1,83 +1,123 @@
 /**
- * Event -> marker layer (Phase 3).
+ * Event bubble layer.
  *
- * Discrete contract events (signal / sweep / iceberg / absorption) become
- * chart markers via the v5 createSeriesMarkers primitive. The marker
- * descriptors come from the pure messageToMarker mapping; this hook only
- * owns the lightweight-charts plumbing + reconciliation.
- *
- * Markers are derived from the store's session history so they persist on the
- * chart as the price scrolls. Low-frequency -> React-state driven.
+ * Series markers are time/bar-anchored, so they cannot answer "what price did
+ * this event happen at?" RA-077a replaces them with a lightweight-charts series
+ * primitive that draws dots at the event's actual `(time, price)` coordinate.
  */
-import { useEffect, useRef, type RefObject } from "react";
-import {
-  createSeriesMarkers,
-  type ISeriesApi,
-  type ISeriesMarkersPluginApi,
-  type SeriesMarker,
-  type Time,
-  type UTCTimestamp,
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import type {
+  IChartApi,
+  ISeriesApi,
+  LineData,
+  MouseEventParams,
+  Time,
+  UTCTimestamp,
 } from "lightweight-charts";
 import { useDashboard } from "../store/context";
-import type { MarkerDescriptor } from "../contract/render";
-import type { FeedItem } from "../contract/render";
-
-/** Rebuild a marker descriptor from a stored feed item (ts + tier + family). */
-function feedItemToMarker(item: FeedItem): SeriesMarker<UTCTimestamp> | null {
-  const time = Math.floor(item.tsNs / 1e9) as UTCTimestamp;
-  const TIER_COLOR: Record<string, string> = {
-    CRITICAL: "#f85149",
-    HIGH: "#e3b341",
-    MEDIUM: "#58a6ff",
-  };
-  const color = item.tier ? TIER_COLOR[item.tier] : "#8b949e";
-
-  let marker: Omit<MarkerDescriptor, "time"> | null = null;
-  switch (item.family) {
-    case "signal":
-      marker = { position: "aboveBar", shape: "circle", color, text: item.text.slice(0, 24) };
-      break;
-    case "sweep":
-      marker = { position: "belowBar", shape: "arrowUp", color, text: "sweep" };
-      break;
-    case "iceberg":
-      marker = { position: "belowBar", shape: "square", color, text: "iceberg" };
-      break;
-    case "absorption":
-      marker = { position: "aboveBar", shape: "circle", color, text: "absorb" };
-      break;
-    default:
-      return null; // vol_regime and others: no marker
-  }
-  return { time, position: marker.position, shape: marker.shape, color, text: marker.text };
-}
+import {
+  EVENT_BUBBLE_ID_PREFIX,
+  EventBubblePrimitive,
+  eventBubbleTooltip,
+  feedItemToBubbleItem,
+  projectBubbleItems,
+  type EventBubbleItem,
+  type HoveredEventBubble,
+} from "./eventBubbles";
 
 export function useEventMarkers(
+  chartRef: RefObject<IChartApi | null>,
   seriesRef: RefObject<ISeriesApi<"Candlestick"> | null>,
-) {
+  anchorSeriesRef?: RefObject<ISeriesApi<"Line"> | null>,
+): HoveredEventBubble | null {
   const { state } = useDashboard();
-  const pluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const primitiveRef = useRef<EventBubblePrimitive | null>(null);
+  const [hovered, setHovered] = useState<HoveredEventBubble | null>(null);
+
+  const items = useMemo(
+    () =>
+      state.history
+        .map(feedItemToBubbleItem)
+        .filter((item): item is EventBubbleItem => item !== null),
+    [state.history],
+  );
 
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
-    let plugin = pluginRef.current;
-    if (!plugin) {
-      plugin = createSeriesMarkers(series, []);
-      pluginRef.current = plugin;
-    }
-    const markers: SeriesMarker<Time>[] = state.history
-      .map(feedItemToMarker)
-      .filter((m): m is SeriesMarker<UTCTimestamp> => m !== null)
-      // lightweight-charts requires markers sorted ascending by time.
-      .sort((a, b) => (a.time as number) - (b.time as number));
-    plugin.setMarkers(markers);
-  }, [state.history, seriesRef]);
+    const primitive = new EventBubblePrimitive();
+    series.attachPrimitive(primitive);
+    primitiveRef.current = primitive;
+    return () => {
+      series.detachPrimitive(primitive);
+      if (primitiveRef.current === primitive) primitiveRef.current = null;
+    };
+  }, [seriesRef]);
 
   useEffect(() => {
-    return () => {
-      pluginRef.current?.detach();
-      pluginRef.current = null;
+    primitiveRef.current?.setItems(items);
+    anchorSeriesRef?.current?.setData(
+      [...items]
+        .sort((a, b) => a.time - b.time)
+        .map(
+          (item) =>
+            ({
+              time: item.time as UTCTimestamp,
+              value: item.price,
+            }) satisfies LineData<UTCTimestamp>,
+        ),
+    );
+  }, [anchorSeriesRef, items]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const handleMove = (param: MouseEventParams<Time>) => {
+      const objectId = param.hoveredInfo?.objectId ?? param.hoveredObjectId;
+      if (
+        typeof objectId === "string" &&
+        objectId.startsWith(EVENT_BUBBLE_ID_PREFIX) &&
+        param.point
+      ) {
+        const item = primitiveRef.current?.itemById(objectId);
+        if (item) {
+          setHovered({
+            item,
+            point: { x: param.point.x, y: param.point.y },
+          });
+          return;
+        }
+      }
+      const series = seriesRef.current;
+      if (param.point && series) {
+        const nearest = projectBubbleItems(
+          items,
+          (time) => chart.timeScale().timeToCoordinate(time),
+          (price) => series.priceToCoordinate(price),
+        )
+          .map((point) => ({
+            point,
+            distance: Math.hypot(point.x - param.point!.x, point.y - param.point!.y),
+          }))
+          .filter(({ point, distance }) => distance <= point.radius + 6)
+          .sort((a, b) => a.distance - b.distance)[0];
+        if (nearest) {
+          setHovered({
+            item: nearest.point,
+            point: { x: nearest.point.x, y: nearest.point.y },
+          });
+          return;
+        }
+      }
+      setHovered(null);
     };
-  }, []);
+    chart.subscribeCrosshairMove(handleMove);
+    return () => {
+      chart.unsubscribeCrosshairMove(handleMove);
+    };
+  }, [chartRef, items, seriesRef]);
+
+  return hovered;
 }
+
+export { eventBubbleTooltip };

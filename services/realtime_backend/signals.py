@@ -516,6 +516,9 @@ def build_snapshot_payload(
                 "family": rs.family,
                 "zone_text": rs.zone_text,
                 "timestamp_ns": rs.timestamp_ns,
+                "level_price": rs.level_price,
+                "price": rs.price,
+                "zone_price": rs.zone_price,
             },
         )
         for rs in recent_signals

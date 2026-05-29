@@ -175,6 +175,7 @@ describe("feed + history", () => {
     expect(s.history).toHaveLength(1);
     expect(s.feed[0].family).toBe("sweep");
     expect(s.feed[0].tsNs).toBe(signalTs);
+    expect(s.feed[0].price).toBe(30080);
     expect(s.feed[0].text).toBe("sweep signal at VPOC");
   });
 

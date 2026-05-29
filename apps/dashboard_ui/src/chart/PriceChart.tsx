@@ -31,7 +31,7 @@ import { useDashboard } from "../store/context";
 import { CandleAggregator } from "./candles";
 import { MNQ_TICK, formatMnqPrice } from "../contract/render";
 import { useZonePriceLines } from "./useZonePriceLines";
-import { useEventMarkers } from "./useEventMarkers";
+import { eventBubbleTooltip, useEventMarkers } from "./useEventMarkers";
 import { isPriceTick } from "../contract/guards";
 
 export function PriceChart() {
@@ -40,6 +40,7 @@ export function PriceChart() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const eventAnchorRef = useRef<ISeriesApi<"Line"> | null>(null);
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const cvdRef = useRef<ISeriesApi<"Line"> | null>(null);
   const aggRef = useRef(new CandleAggregator(1));
@@ -81,6 +82,15 @@ export function PriceChart() {
       priceFormat: { type: "price", precision: 2, minMove: MNQ_TICK },
     });
     candleRef.current = candle;
+
+    const eventAnchor = chart.addSeries(LineSeries, {
+      color: "rgba(0, 0, 0, 0)",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    eventAnchorRef.current = eventAnchor;
 
     // Second pane (index 1) for volume + CVD.
     const volume = chart.addSeries(
@@ -133,6 +143,7 @@ export function PriceChart() {
       chart.remove();
       chartRef.current = null;
       candleRef.current = null;
+      eventAnchorRef.current = null;
       volumeRef.current = null;
       cvdRef.current = null;
       agg.reset();
@@ -195,13 +206,28 @@ export function PriceChart() {
 
   // Phase 3 layers: zones -> price lines, events -> markers.
   useZonePriceLines(candleRef);
-  useEventMarkers(candleRef);
+  const hoveredEvent = useEventMarkers(chartRef, candleRef, eventAnchorRef);
 
   return (
     <div
-      ref={containerRef}
-      style={{ width: "100%", height: "100%", minHeight: 320 }}
-      aria-label="MNQ price chart"
-    />
+      style={{ position: "relative", width: "100%", height: "100%", minHeight: 320 }}
+    >
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: "100%" }}
+        aria-label="MNQ price chart"
+      />
+      {hoveredEvent && (
+        <div
+          className="event-bubble-tooltip"
+          style={{
+            left: hoveredEvent.point.x + 12,
+            top: hoveredEvent.point.y + 12,
+          }}
+        >
+          {eventBubbleTooltip(hoveredEvent.item)}
+        </div>
+      )}
+    </div>
   );
 }

@@ -200,6 +200,8 @@ export interface FeedItem {
   tsNs: number;
   tier: Tier | null;
   family: string;
+  /** Optional event price used by the price-anchored chart primitive. */
+  price?: number;
   /** Stable identity used to merge snapshot-hydrated rows idempotently. */
   eventKey?: string;
   /** Human-readable headline for the feed row. */
@@ -232,6 +234,26 @@ function displayFamily(p: RealtimePayload): string {
     return typeof family === "string" && family ? family : p.family;
   }
   return p.family;
+}
+
+function metadataNumber(p: SignalPayload, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = p.metadata?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function payloadPrice(p: RealtimePayload): number | undefined {
+  if (isSignal(p)) {
+    return metadataNumber(p, "level_price", "price", "zone_price");
+  }
+  if (isSweep(p) || isIceberg(p) || isAbsorption(p)) return p.price;
+  return undefined;
 }
 
 function payloadEventKey(p: RealtimePayload, tsNs: number): string {
@@ -282,6 +304,7 @@ export function messageToFeedItem(msg: RealtimeMessage): FeedItem {
     tsNs: msg.ts_ns,
     tier: msg.tier,
     family,
+    price: payloadPrice(msg.payload),
     eventKey: payloadEventKey(msg.payload, msg.ts_ns),
     text: payloadText(msg.payload),
     strength: msg.tier ? TIER_STRENGTH[msg.tier] : 0.15,
@@ -301,6 +324,7 @@ export function snapshotSignalToFeedItem(
     tsNs,
     tier: null,
     family,
+    price: payloadPrice(signal),
     eventKey: payloadEventKey(signal, tsNs),
     text: payloadText(signal),
     strength: signal.intensity,
