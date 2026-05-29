@@ -10,12 +10,17 @@
  * whole set every render.
  */
 import { useEffect, useRef, type RefObject } from "react";
-import { LineStyle, type IPriceLine, type ISeriesApi } from "lightweight-charts";
+import {
+  LineStyle,
+  type IPriceLine,
+  type ISeriesApi,
+  type SeriesType,
+} from "lightweight-charts";
 import { useDashboard } from "../store/context";
 import { zoneToPriceLine } from "../contract/render";
 
-export function useZonePriceLines(
-  seriesRef: RefObject<ISeriesApi<"Candlestick"> | null>,
+export function useZonePriceLines<T extends SeriesType>(
+  seriesRef: RefObject<ISeriesApi<T> | null>,
 ) {
   const { state } = useDashboard();
   const linesRef = useRef<Map<string, IPriceLine>>(new Map());

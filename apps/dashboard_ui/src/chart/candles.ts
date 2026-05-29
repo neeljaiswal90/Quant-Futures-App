@@ -71,8 +71,11 @@ export class CandleAggregator {
     this.lastPrice = null;
   }
 
-  /** Signed volume for a tick: +vol if uptick, -vol if downtick. */
+  /** Signed volume: backend orderflow delta when present, else uptick proxy. */
   private signedVolume(tick: PriceTickPayload): number {
+    if (typeof tick.orderflow?.last_trade_delta === "number") {
+      return tick.orderflow.last_trade_delta;
+    }
     const vol = tick.volume ?? 0;
     if (this.lastPrice == null) return 0;
     if (tick.price > this.lastPrice) return vol;

@@ -40,7 +40,7 @@ export const DEFAULT_ALERT_CONFIG: AlertConfig = {
     enabled: false,
     start_pt: "22:00",
     end_pt: "06:00",
-    audio_only: false,
+    audio_only: true,
   },
 };
 

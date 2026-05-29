@@ -8,6 +8,24 @@ const tick = (price: number, volume = 1): PriceTickPayload => ({
   bid: price - 0.25,
   ask: price + 0.25,
   volume,
+  orderflow: null,
+});
+
+const tickWithDelta = (
+  price: number,
+  volume: number,
+  delta: number,
+): PriceTickPayload => ({
+  ...tick(price, volume),
+  orderflow: {
+    quality: "high",
+    last_trade_aggressor: delta >= 0 ? "buy" : "sell",
+    last_trade_delta: delta,
+    cvd: null,
+    aggressor_windows: [],
+    v_delta: null,
+    footprint: null,
+  },
 });
 
 const NS = (sec: number) => sec * 1e9;
@@ -48,6 +66,13 @@ describe("CandleAggregator", () => {
     expect(r.cvd.value).toBe(3);
     r = agg.ingest(tick(99, 4), NS(10.4)); // downtick -4
     expect(r.cvd.value).toBe(-1);
+  });
+
+  it("uses backend orderflow delta when it is present", () => {
+    const agg = new CandleAggregator(1);
+    agg.ingest(tickWithDelta(100, 5, 5), NS(10.0));
+    const r = agg.ingest(tickWithDelta(99, 4, 4), NS(10.2));
+    expect(r.cvd.value).toBe(9);
   });
 
   it("resets volume per bucket", () => {

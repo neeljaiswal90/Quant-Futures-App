@@ -33,12 +33,13 @@ from pathlib import Path
 from contracts.realtime.config import AlertConfig
 from contracts.realtime.events import (
     PT,
+    PriceTickPayload,
     RealtimeMessage,
     SnapshotPayload,
     ZoneUpdatePayload,
 )
-from notification_daemon.config_loader import load_alert_config
-from notification_daemon.gate import should_notify
+from notification_daemon.config_loader import default_config_path, load_alert_config
+from notification_daemon.gate import NotificationGateState, should_notify
 from notification_daemon.notifier import (
     FakeNotifier,
     Notifier,
@@ -69,7 +70,11 @@ class NotificationDaemon:
 
     notifier: Notifier
     config: AlertConfig
+    config_path: Path | None = None
     zones: ZonePriceMap = field(default_factory=ZonePriceMap)
+    gate_state: NotificationGateState = field(default_factory=NotificationGateState)
+    current_price: float | None = None
+    _config_mtime_ns: int | None = None
     notified: int = 0
     seen: int = 0
 
@@ -79,14 +84,35 @@ class NotificationDaemon:
         if isinstance(payload, (SnapshotPayload, ZoneUpdatePayload)):
             self.zones.update(payload.zones)
             logger.debug("zone map now has %d levels", len(self.zones))
+        if isinstance(payload, (SnapshotPayload, PriceTickPayload)):
+            self.current_price = payload.price
+
+    def _reload_config_if_changed(self) -> None:
+        if self.config_path is None:
+            return
+        try:
+            mtime_ns = self.config_path.stat().st_mtime_ns
+        except OSError:
+            return
+        if mtime_ns == self._config_mtime_ns:
+            return
+        self._config_mtime_ns = mtime_ns
+        self.config = load_alert_config(self.config_path)
 
     async def on_message(self, msg: RealtimeMessage) -> None:
         """Handle one inbound frame: maybe update zones, maybe fire a toast."""
         self.seen += 1
         self._ingest_zones(msg)
+        self._reload_config_if_changed()
 
         now_pt = _now_pt()
-        if not should_notify(msg, self.config, now_pt):
+        if not should_notify(
+            msg,
+            self.config,
+            now_pt,
+            current_price=self.current_price,
+            state=self.gate_state,
+        ):
             return
 
         title, body = render_toast(msg, self.zones)
@@ -140,13 +166,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 async def _run_async(args: argparse.Namespace) -> None:
-    config = load_alert_config(Path(args.config) if args.config else None)
+    config_path = Path(args.config) if args.config else default_config_path()
+    config = load_alert_config(config_path)
     notifier = _build_notifier(args.no_toast)
 
     if args.tray:
         logger.info("--tray requested but tray support is DEFERRED (pystray not installed)")
 
-    daemon = NotificationDaemon(notifier=notifier, config=config)
+    daemon = NotificationDaemon(notifier=notifier, config=config, config_path=config_path)
     stop_event = asyncio.Event()
     client = RealtimeClient(args.url, daemon.on_message, stop_event=stop_event)
 

@@ -202,6 +202,10 @@ export interface FeedItem {
   family: string;
   /** Optional event price used by the price-anchored chart primitive. */
   price?: number;
+  /** Optional location/direction fields used by alert cooldown/proximity. */
+  levelId?: string | null;
+  side?: string;
+  direction?: string;
   /** Stable identity used to merge snapshot-hydrated rows idempotently. */
   eventKey?: string;
   /** Human-readable headline for the feed row. */
@@ -256,6 +260,32 @@ function payloadPrice(p: RealtimePayload): number | undefined {
   return undefined;
 }
 
+function metadataText(p: SignalPayload, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = p.metadata?.[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return undefined;
+}
+
+function payloadLevelId(p: RealtimePayload): string | null | undefined {
+  if (isSignal(p) || isSweep(p) || isIceberg(p) || isAbsorption(p)) return p.level_id;
+  return undefined;
+}
+
+function payloadSide(p: RealtimePayload): string | undefined {
+  if (isSignal(p)) return metadataText(p, "side", "aggressor_side", "stacked_side");
+  if (isIceberg(p) || isAbsorption(p)) return p.side;
+  return undefined;
+}
+
+function payloadDirection(p: RealtimePayload): string | undefined {
+  if (isSignal(p)) return metadataText(p, "direction", "session_direction");
+  if (isSweep(p)) return p.direction;
+  if (isVolRegime(p)) return p.regime;
+  return undefined;
+}
+
 function payloadEventKey(p: RealtimePayload, tsNs: number): string {
   if (isSignal(p)) {
     const family = displayFamily(p);
@@ -305,6 +335,9 @@ export function messageToFeedItem(msg: RealtimeMessage): FeedItem {
     tier: msg.tier,
     family,
     price: payloadPrice(msg.payload),
+    levelId: payloadLevelId(msg.payload),
+    side: payloadSide(msg.payload),
+    direction: payloadDirection(msg.payload),
     eventKey: payloadEventKey(msg.payload, msg.ts_ns),
     text: payloadText(msg.payload),
     strength: msg.tier ? TIER_STRENGTH[msg.tier] : 0.15,
@@ -325,6 +358,9 @@ export function snapshotSignalToFeedItem(
     tier: null,
     family,
     price: payloadPrice(signal),
+    levelId: payloadLevelId(signal),
+    side: payloadSide(signal),
+    direction: payloadDirection(signal),
     eventKey: payloadEventKey(signal, tsNs),
     text: payloadText(signal),
     strength: signal.intensity,

@@ -46,13 +46,29 @@ describe("isDegraded", () => {
 describe("activeCritical", () => {
   it("returns the banner while near price within the time window", () => {
     let s = reducer(initialState(), msg(snapshotFrame(1), 1_000));
-    s = reducer(s, msg(criticalSignalFrame(2), 2_000));
+    s = reducer(s, {
+      kind: "raise-critical",
+      critical: {
+        seq: 2,
+        triggerPrice: 30080,
+        description: "critical",
+        raisedAtMs: 2_000,
+      },
+    });
     expect(activeCritical(s, 3_000)).not.toBeNull();
   });
 
   it("drops the banner after a >50pt move", () => {
     let s = reducer(initialState(), msg(snapshotFrame(1), 1_000)); // price 30080
-    s = reducer(s, msg(criticalSignalFrame(2), 2_000)); // trigger 30080
+    s = reducer(s, {
+      kind: "raise-critical",
+      critical: {
+        seq: 2,
+        triggerPrice: 30080,
+        description: "critical",
+        raisedAtMs: 2_000,
+      },
+    });
     // push a tick 60pt away
     s = reducer(
       s,
@@ -65,6 +81,7 @@ describe("activeCritical", () => {
             bid: 30149.75,
             ask: 30150.25,
             volume: 1,
+            orderflow: null,
           },
         },
         3_000,

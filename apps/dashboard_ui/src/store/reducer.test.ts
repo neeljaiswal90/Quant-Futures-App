@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialState, parseMessage, reducer } from "./reducer";
 import {
-  criticalSignalFrame,
   heartbeatFrame,
   priceTickFrame,
   snapshotSignal,
@@ -144,12 +143,46 @@ describe("price ticks", () => {
     expect(s.price.price).toBe(30090.25);
     expect(s.price.bid).toBe(30090);
   });
+
+  it("retains the latest non-null orderflow across fast null ticks", () => {
+    let s = reducer(initialState(), msg(snapshotFrame(1)));
+    s = reducer(
+      s,
+      msg({
+        ...priceTickFrame(2, 30090.25),
+        payload: {
+          ...priceTickFrame(2, 30090.25).payload,
+          orderflow: {
+            quality: "high",
+            last_trade_aggressor: "buy",
+            last_trade_delta: 3,
+            cvd: null,
+            aggressor_windows: [],
+            v_delta: null,
+            footprint: null,
+          },
+        },
+      }),
+    );
+    expect(s.price.orderflow?.last_trade_aggressor).toBe("buy");
+    s = reducer(s, msg(priceTickFrame(3, 30091)));
+    expect(s.price.price).toBe(30091);
+    expect(s.price.orderflow?.last_trade_aggressor).toBe("buy");
+  });
 });
 
 describe("CRITICAL banner", () => {
   it("raises a banner anchored to current price", () => {
     let s = reducer(initialState(), msg(snapshotFrame(1), 5_000));
-    s = reducer(s, msg(criticalSignalFrame(2), 6_000));
+    s = reducer(s, {
+      kind: "raise-critical",
+      critical: {
+        seq: 2,
+        triggerPrice: 30080,
+        description: "critical",
+        raisedAtMs: 6_000,
+      },
+    });
     expect(s.critical).not.toBeNull();
     expect(s.critical?.triggerPrice).toBe(30080);
     expect(s.critical?.raisedAtMs).toBe(6_000);
@@ -157,7 +190,15 @@ describe("CRITICAL banner", () => {
 
   it("can be dismissed", () => {
     let s = reducer(initialState(), msg(snapshotFrame(1)));
-    s = reducer(s, msg(criticalSignalFrame(2)));
+    s = reducer(s, {
+      kind: "raise-critical",
+      critical: {
+        seq: 2,
+        triggerPrice: 30080,
+        description: "critical",
+        raisedAtMs: 6_000,
+      },
+    });
     s = reducer(s, { kind: "dismiss-critical" });
     expect(s.critical).toBeNull();
   });

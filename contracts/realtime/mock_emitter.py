@@ -160,6 +160,7 @@ _SCHEDULE: tuple[_ScheduleEntry, ...] = (
             bid=_BASE_PRICE,
             ask=_BASE_PRICE + 0.5,
             volume=3,
+            orderflow=None,
         ),
         None,
     ),

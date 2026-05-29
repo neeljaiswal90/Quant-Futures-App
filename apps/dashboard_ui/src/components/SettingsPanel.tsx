@@ -24,6 +24,18 @@ export function SettingsPanel() {
     setConfig({ ...config, [tier]: { ...config[tier], ...patch } });
   };
 
+  const updateProximity = (
+    key: keyof AlertConfig["proximity"],
+    value: string,
+  ) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    setConfig({
+      ...config,
+      proximity: { ...config.proximity, [key]: parsed },
+    });
+  };
+
   const onSave = async () => {
     const ok = await persist();
     setSaveMsg(ok ? "Saved." : "Applied locally (config endpoint unavailable).");
@@ -105,11 +117,29 @@ export function SettingsPanel() {
             <strong style={{ fontSize: 12 }}>Proximity (pt)</strong>
             <dl>
               <span>critical</span>
-              <b>{config.proximity.critical_pt}</b>
+              <input
+                type="number"
+                min={0}
+                step={0.25}
+                value={config.proximity.critical_pt}
+                onChange={(e) => updateProximity("critical_pt", e.target.value)}
+              />
               <span>high</span>
-              <b>{config.proximity.high_pt}</b>
+              <input
+                type="number"
+                min={0}
+                step={0.25}
+                value={config.proximity.high_pt}
+                onChange={(e) => updateProximity("high_pt", e.target.value)}
+              />
               <span>medium</span>
-              <b>{config.proximity.medium_pt}</b>
+              <input
+                type="number"
+                min={0}
+                step={0.25}
+                value={config.proximity.medium_pt}
+                onChange={(e) => updateProximity("medium_pt", e.target.value)}
+              />
             </dl>
           </div>
 
@@ -132,9 +162,52 @@ export function SettingsPanel() {
                 />
                 enabled
               </label>
-              <b>
-                {config.quiet_hours.start_pt}–{config.quiet_hours.end_pt}
-              </b>
+              <span />
+              <span>start</span>
+              <input
+                type="time"
+                value={config.quiet_hours.start_pt}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    quiet_hours: {
+                      ...config.quiet_hours,
+                      start_pt: e.target.value,
+                    },
+                  })
+                }
+              />
+              <span>end</span>
+              <input
+                type="time"
+                value={config.quiet_hours.end_pt}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    quiet_hours: {
+                      ...config.quiet_hours,
+                      end_pt: e.target.value,
+                    },
+                  })
+                }
+              />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={config.quiet_hours.audio_only}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      quiet_hours: {
+                        ...config.quiet_hours,
+                        audio_only: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                keep visual alerts
+              </label>
+              <span />
             </dl>
           </div>
 

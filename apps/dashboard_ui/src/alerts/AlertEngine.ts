@@ -14,7 +14,7 @@
  * HARD RULE: read-only decision support. An alert never triggers an action;
  * it only notifies the human.
  */
-import type { AlertConfig, AlertTier } from "@contracts/realtime/config";
+import type { AlertTier } from "@contracts/realtime/config";
 import type { Tier } from "@contracts/realtime/events";
 
 export function tierToAlertTier(tier: Tier): AlertTier {
@@ -25,6 +25,11 @@ export interface AlertContext {
   tier: Tier;
   title: string;
   body: string;
+}
+
+export interface AlertChannels {
+  audio: boolean;
+  notification: boolean;
 }
 
 export class AlertEngine {
@@ -73,29 +78,24 @@ export class AlertEngine {
     this.enabled = false;
   }
 
-  private tierConfig(config: AlertConfig, tier: Tier) {
-    const key = tierToAlertTier(tier);
-    return config[key];
-  }
-
   /**
-   * Fire alert side-effects for an event, gated by config + permission state.
+   * Fire alert side-effects for an event, gated by the pure decision module
+   * plus permission state.
    * Returns the channels actually fired (useful for tests / UI feedback).
    */
   fire(
     ctx: AlertContext,
-    config: AlertConfig,
+    channels: AlertChannels,
   ): { audio: boolean; notification: boolean } {
-    const tierCfg = this.tierConfig(config, ctx.tier);
     const result = { audio: false, notification: false };
-    if (!this.enabled || !tierCfg.enabled) return result;
+    if (!this.enabled) return result;
 
-    if (tierCfg.audio_file != null) {
+    if (channels.audio) {
       this.beep(ctx.tier);
       result.audio = true;
     }
 
-    if (tierCfg.browser_notif && this.notifGranted && "Notification" in window) {
+    if (channels.notification && this.notifGranted && "Notification" in window) {
       try {
         new Notification(ctx.title, { body: ctx.body, tag: `mnq-${ctx.tier}` });
         result.notification = true;

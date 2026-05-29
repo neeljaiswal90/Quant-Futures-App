@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlertEngine, tierToAlertTier } from "./AlertEngine";
-import { DEFAULT_ALERT_CONFIG } from "./config";
-import type { AlertConfig } from "@contracts/realtime/config";
 
 // Minimal AudioContext stub so beep() does not throw in jsdom.
 class FakeAudioContext {
@@ -64,7 +62,7 @@ describe("AlertEngine gating", () => {
     const e = new AlertEngine();
     const r = e.fire(
       { tier: "CRITICAL", title: "t", body: "b" },
-      DEFAULT_ALERT_CONFIG,
+      { audio: true, notification: true },
     );
     expect(r).toEqual({ audio: false, notification: false });
   });
@@ -75,28 +73,30 @@ describe("AlertEngine gating", () => {
     expect(e.isEnabled()).toBe(true);
     const r = e.fire(
       { tier: "CRITICAL", title: "CRIT", body: "stacked" },
-      DEFAULT_ALERT_CONFIG,
+      { audio: true, notification: true },
     );
     expect(r.audio).toBe(true);
     expect(r.notification).toBe(true);
     expect(notifSpy).toHaveBeenCalledOnce();
   });
 
-  it("respects per-tier disable", async () => {
+  it("respects the pure decision module returning no channels", async () => {
     const e = new AlertEngine();
     await e.enable();
-    const cfg: AlertConfig = {
-      ...DEFAULT_ALERT_CONFIG,
-      high: { ...DEFAULT_ALERT_CONFIG.high, enabled: false },
-    };
-    const r = e.fire({ tier: "HIGH", title: "h", body: "b" }, cfg);
+    const r = e.fire(
+      { tier: "HIGH", title: "h", body: "b" },
+      { audio: false, notification: false },
+    );
     expect(r).toEqual({ audio: false, notification: false });
   });
 
   it("MEDIUM (no audio_file, no browser_notif) fires no audio and no notif", async () => {
     const e = new AlertEngine();
     await e.enable();
-    const r = e.fire({ tier: "MEDIUM", title: "m", body: "b" }, DEFAULT_ALERT_CONFIG);
+    const r = e.fire(
+      { tier: "MEDIUM", title: "m", body: "b" },
+      { audio: false, notification: false },
+    );
     expect(r.audio).toBe(false); // audio_file is null for medium by default
     expect(r.notification).toBe(false); // browser_notif false for medium
   });

@@ -21,7 +21,9 @@ consumers. A user who wants total night silence sets ``audio_only=False``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, time
+from typing import Any
 
 from contracts.realtime.config import AlertConfig, TierAlertConfig
 from contracts.realtime.events import RealtimeMessage, Tier
@@ -32,6 +34,15 @@ _TIER_ATTR: dict[Tier, str] = {
     "HIGH": "high",
     "MEDIUM": "medium",
 }
+
+COOLDOWN_SECONDS = 5 * 60
+
+
+@dataclass
+class NotificationGateState:
+    """Small in-memory cooldown cache shared by the daemon process."""
+
+    last_fired_by_key: dict[str, float] = field(default_factory=dict)
 
 
 def _tier_config(config: AlertConfig, tier: Tier) -> TierAlertConfig:
@@ -75,7 +86,14 @@ def in_quiet_hours(config: AlertConfig, now_pt: datetime) -> bool:
     return now >= start or now < end
 
 
-def should_notify(msg: RealtimeMessage, config: AlertConfig, now_pt: datetime) -> bool:
+def should_notify(
+    msg: RealtimeMessage,
+    config: AlertConfig,
+    now_pt: datetime,
+    *,
+    current_price: float | None = None,
+    state: NotificationGateState | None = None,
+) -> bool:
     """Return ``True`` iff ``msg`` should produce a Windows toast right now."""
     tier = msg.tier
     if tier not in _TIER_ATTR:
@@ -83,13 +101,76 @@ def should_notify(msg: RealtimeMessage, config: AlertConfig, now_pt: datetime) -
     tier_cfg = _tier_config(config, tier)
     if not (tier_cfg.enabled and tier_cfg.windows_toast):
         return False
-    if in_quiet_hours(config, now_pt):
-        # RA-069: honor audio_only consistently with the backend gating
-        # contract. The toast is a VISUAL channel, so audio_only=True (silence
-        # audio, keep visual) leaves it firing; only a full quiet window
-        # (audio_only=False) suppresses it.
-        return config.quiet_hours.audio_only
+    if in_quiet_hours(config, now_pt) and not config.quiet_hours.audio_only:
+        # RA-069: audio_only=True means silence audio but keep visual toasts;
+        # audio_only=False is a full quiet window and suppresses toasts too.
+        return False
+    if not _within_proximity(msg, config, current_price):
+        return False
+    if state is not None:
+        key = _alert_key(msg)
+        now_ts = now_pt.timestamp()
+        last = state.last_fired_by_key.get(key)
+        if last is not None and now_ts - last < COOLDOWN_SECONDS:
+            return False
+        state.last_fired_by_key[key] = now_ts
     return True
 
 
-__all__ = ["should_notify", "in_quiet_hours"]
+def _within_proximity(
+    msg: RealtimeMessage,
+    config: AlertConfig,
+    current_price: float | None,
+) -> bool:
+    if current_price is None or msg.tier is None:
+        return True
+    price = _event_price(msg)
+    if price is None:
+        return True
+    threshold = {
+        "CRITICAL": config.proximity.critical_pt,
+        "HIGH": config.proximity.high_pt,
+        "MEDIUM": config.proximity.medium_pt,
+    }[msg.tier]
+    return abs(price - current_price) <= threshold
+
+
+def _event_price(msg: RealtimeMessage) -> float | None:
+    payload: Any = msg.payload
+    price = getattr(payload, "price", None)
+    if isinstance(price, (int, float)):
+        return float(price)
+    metadata = getattr(payload, "metadata", None)
+    if isinstance(metadata, dict):
+        for key in ("level_price", "price", "zone_price"):
+            value = metadata.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                try:
+                    return float(value)
+                except ValueError:
+                    pass
+    return None
+
+
+def _alert_key(msg: RealtimeMessage) -> str:
+    payload: Any = msg.payload
+    price = _event_price(msg)
+    level = getattr(payload, "level_id", None)
+    side = getattr(payload, "side", None) or getattr(payload, "direction", None)
+    if side is None and isinstance(getattr(payload, "metadata", None), dict):
+        side = payload.metadata.get("side") or payload.metadata.get("direction")
+    price_bucket = "session" if price is None else round(price / 0.25) * 0.25
+    return "|".join(
+        str(part)
+        for part in (
+            getattr(payload, "family", "unknown"),
+            level or price_bucket,
+            side or "",
+            msg.tier or "",
+        )
+    )
+
+
+__all__ = ["NotificationGateState", "should_notify", "in_quiet_hours"]

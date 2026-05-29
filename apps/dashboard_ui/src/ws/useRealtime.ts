@@ -21,7 +21,7 @@ import { initialState, reducer } from "../store/reducer";
 import { parseMessage } from "../store/reducer";
 import type { DashboardState, StoreAction } from "../store/types";
 import { isPriceTick, isSnapshot } from "../contract/guards";
-import type { RealtimeMessage } from "@contracts/realtime/events";
+import type { OrderflowStats, RealtimeMessage } from "@contracts/realtime/events";
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:8765/ws";
 const DEFAULT_SNAPSHOT_URL = "/snapshot";
@@ -31,6 +31,7 @@ export interface LiveTick {
   bid: number | null;
   ask: number | null;
   volume: number | null;
+  orderflow: OrderflowStats | null;
   tsNs: number;
 }
 
@@ -74,6 +75,7 @@ export function useRealtime(): RealtimeApi {
           bid: msg.payload.bid,
           ask: msg.payload.ask,
           volume: msg.payload.volume,
+          orderflow: msg.payload.orderflow ?? liveTickRef.current?.orderflow ?? null,
           tsNs: msg.ts_ns,
         };
         tickEpoch.current += 1;
@@ -85,6 +87,7 @@ export function useRealtime(): RealtimeApi {
             bid: liveTickRef.current?.bid ?? null,
             ask: liveTickRef.current?.ask ?? null,
             volume: liveTickRef.current?.volume ?? null,
+            orderflow: liveTickRef.current?.orderflow ?? null,
             tsNs: msg.ts_ns,
           };
           tickEpoch.current += 1;

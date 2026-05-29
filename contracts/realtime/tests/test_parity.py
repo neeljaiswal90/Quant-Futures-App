@@ -89,6 +89,16 @@ def test_confidence_and_regime_literals_match() -> None:
     assert _const_string_array(_EVENTS_TS, "REGIMES") == ["LOW", "NORMAL", "HIGH"]
 
 
+def test_orderflow_literals_match() -> None:
+    assert _const_string_array(_EVENTS_TS, "FLOW_DIRECTIONS") == list(ev.FLOW_DIRECTIONS)
+    assert _const_string_array(_EVENTS_TS, "TRADE_AGGRESSORS") == list(ev.TRADE_AGGRESSORS)
+    assert _const_string_array(_EVENTS_TS, "INFERRED_DIRECTIONS") == list(ev.INFERRED_DIRECTIONS)
+    assert _const_string_array(_EVENTS_TS, "FOOTPRINT_SIDES") == list(ev.FOOTPRINT_SIDES)
+    assert _const_string_array(_EVENTS_TS, "ORDERFLOW_QUALITIES") == list(
+        ev.ORDERFLOW_QUALITIES
+    )
+
+
 def test_signal_payload_fields_match() -> None:
     ts_fields = _interface_fields(_EVENTS_TS, "SignalPayload")
     py_fields = list(ev.SignalPayload.model_fields.keys())
@@ -111,9 +121,20 @@ def test_all_known_payload_fields_match() -> None:
 
 
 def test_nested_state_fields_match() -> None:
-    """ZoneState / ScenarioState are nested inside zone_update + snapshot payloads
-    and were previously unchecked by the tripwire."""
-    for model in (ev.ZoneState, ev.ScenarioState):
+    """Nested payload models are field-checked too.
+
+    ZoneState / ScenarioState are nested inside zone_update + snapshot payloads;
+    the orderflow models are nested inside price_tick.
+    """
+    for model in (
+        ev.ZoneState,
+        ev.ScenarioState,
+        ev.CvdStats,
+        ev.AggressorWindowStats,
+        ev.VDeltaStats,
+        ev.FootprintStats,
+        ev.OrderflowStats,
+    ):
         ts_fields = _interface_fields(_EVENTS_TS, model.__name__)
         py_fields = list(model.model_fields.keys())
         assert ts_fields == py_fields, (

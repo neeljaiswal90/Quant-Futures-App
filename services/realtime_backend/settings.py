@@ -82,6 +82,12 @@ class Settings:
     # guards collapse redundant triggers, so this is cheap.
     poll_fallback_interval_seconds: float = 2.0
 
+    # RA-073b: cheap raw-tail latest-trade poller for the decision map. This
+    # path intentionally reads only a tiny suffix of the raw capture and emits
+    # orderflow=null ticks; heavy detector/orderflow fields come from compute.
+    fast_price_poll_interval_seconds: float = 0.100
+    fast_price_tail_bytes: int = 32_768
+
     # WS backpressure (GREEN-LIT).
     client_queue_maxsize: int = 256
 

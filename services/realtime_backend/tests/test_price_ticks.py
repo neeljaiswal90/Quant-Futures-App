@@ -37,6 +37,7 @@ def test_latest_price_tick_reads_normalized_trade_and_mbp1_context(tmp_path: Pat
                     "exchange_event_ts_ns": "200",
                     "price": 30341.25,
                     "quantity": 5,
+                    "aggressor_side": "sell",
                 },
             },
         ],
@@ -52,6 +53,7 @@ def test_latest_price_tick_reads_normalized_trade_and_mbp1_context(tmp_path: Pat
     assert tick.trade_ts_ns == 200
     assert tick.price == 30341.25
     assert tick.volume == 5
+    assert tick.aggressor_side == "sell"
     assert tick.bid == 30341.0
     assert tick.ask == 30341.5
     assert tick.dedupe_key == (200, 30341.25, 5)

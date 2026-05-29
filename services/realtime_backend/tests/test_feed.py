@@ -18,6 +18,7 @@ from rithmic_dashboard.models import (
 
 from realtime_backend.connection_manager import ConnectionManager
 from realtime_backend.feed import FeedState
+from realtime_backend.orderflow import build_orderflow_stats
 from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings
 
@@ -199,6 +200,7 @@ def test_price_tick_emits_market_time_and_dedupes_on_trade_key() -> None:
         assert msg.ts_ns == 123
         assert msg.payload.family == "price_tick"
         assert msg.payload.volume == 3  # type: ignore[attr-defined]
+        assert msg.payload.orderflow is None  # type: ignore[attr-defined]
 
         assert await feed.emit_price_tick(duplicate_with_quote_change) is None
         assert await feed.emit_price_tick(second_trade) is not None
@@ -209,6 +211,37 @@ def test_price_tick_emits_market_time_and_dedupes_on_trade_key() -> None:
             "price_tick",
             "price_tick",
         ]
+
+    asyncio.run(scenario())
+
+
+def test_compute_orderflow_can_enrich_a_fast_path_duplicate() -> None:
+    async def scenario() -> None:
+        feed = _feed()
+        received: list[str] = []
+        await feed.manager.connect(_collector(received))
+        tick = LatestPriceTick(
+            trade_ts_ns=123,
+            price=29400.25,
+            volume=3,
+            bid=29400.0,
+            ask=29400.5,
+            aggressor_side="buy",
+        )
+
+        fast = await feed.emit_price_tick(tick, orderflow=None)
+        enriched = await feed.emit_price_tick(
+            tick,
+            orderflow=build_orderflow_stats(_signals(), tick),
+        )
+        assert fast is not None
+        assert enriched is not None
+        assert enriched.payload.orderflow is not None  # type: ignore[attr-defined]
+        assert enriched.payload.orderflow.last_trade_aggressor == "buy"  # type: ignore[attr-defined]
+        assert await feed.emit_price_tick(
+            tick,
+            orderflow=build_orderflow_stats(_signals(), tick),
+        ) is None
 
     asyncio.run(scenario())
 

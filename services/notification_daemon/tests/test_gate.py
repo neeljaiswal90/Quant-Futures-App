@@ -11,7 +11,7 @@ from contracts.realtime.config import (
     default_alert_config,
 )
 from contracts.realtime.events import PT, RealtimeMessage, make_message
-from notification_daemon.gate import in_quiet_hours, should_notify
+from notification_daemon.gate import NotificationGateState, in_quiet_hours, should_notify
 
 
 def _critical_msg() -> RealtimeMessage:
@@ -60,6 +60,33 @@ def test_high_opt_in_fires() -> None:
     cfg = default_alert_config()
     cfg.high = TierAlertConfig(enabled=True, windows_toast=True)
     assert should_notify(_high_msg(), cfg, _MIDDAY) is True
+
+
+def test_price_less_critical_skips_proximity_gate() -> None:
+    assert (
+        should_notify(
+            _critical_msg(), default_alert_config(), _MIDDAY, current_price=30300
+        )
+        is True
+    )
+
+
+def test_priced_event_outside_proximity_is_suppressed() -> None:
+    cfg = default_alert_config()
+    cfg.high = TierAlertConfig(enabled=True, windows_toast=True)
+    assert should_notify(_high_msg(), cfg, _MIDDAY, current_price=30300) is False
+
+
+def test_cooldown_suppresses_repeated_logical_toast() -> None:
+    state = NotificationGateState()
+    first = should_notify(
+        _critical_msg(), default_alert_config(), _MIDDAY, state=state
+    )
+    second = should_notify(
+        _critical_msg(), default_alert_config(), _MIDDAY, state=state
+    )
+    assert first is True
+    assert second is False
 
 
 def test_critical_disabled_does_not_fire() -> None:

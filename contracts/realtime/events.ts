@@ -21,6 +21,11 @@ export const MESSAGE_TYPES = ["snapshot", "event", "heartbeat", "regime", "error
 export const TIERS = ["CRITICAL", "HIGH", "MEDIUM"] as const;
 export const CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
 export const REGIMES = ["LOW", "NORMAL", "HIGH"] as const;
+export const FLOW_DIRECTIONS = ["bullish", "bearish", "neutral"] as const;
+export const TRADE_AGGRESSORS = ["buy", "sell", "unknown"] as const;
+export const INFERRED_DIRECTIONS = ["bullish", "bearish", "neutral", "unknown"] as const;
+export const FOOTPRINT_SIDES = ["buy", "sell", "none", "unknown"] as const;
+export const ORDERFLOW_QUALITIES = ["high", "inferred", "stale_l1", "unavailable"] as const;
 
 export const KNOWN_FAMILIES = [
   "signal",
@@ -51,6 +56,11 @@ export type MessageType = (typeof MESSAGE_TYPES)[number];
 export type Tier = (typeof TIERS)[number];
 export type Confidence = (typeof CONFIDENCE_LEVELS)[number];
 export type Regime = (typeof REGIMES)[number];
+export type FlowDirection = (typeof FLOW_DIRECTIONS)[number];
+export type TradeAggressor = (typeof TRADE_AGGRESSORS)[number];
+export type InferredDirection = (typeof INFERRED_DIRECTIONS)[number];
+export type FootprintSide = (typeof FOOTPRINT_SIDES)[number];
+export type OrderflowQuality = (typeof ORDERFLOW_QUALITIES)[number];
 export type Family = (typeof KNOWN_FAMILIES)[number];
 
 // --- Payload families ------------------------------------------------------
@@ -100,12 +110,75 @@ export interface VolRegimePayload {
   description: string;
 }
 
+/**
+ * Inference-derived CVD summary. Rithmic F/T action types are not currently
+ * present in the normalized stream (RA-064), so direction is inferred from
+ * aggressor/L1 logic rather than exchange-provided truth.
+ */
+export interface CvdStats {
+  session_cvd: number;
+  last_60m_cvd: number;
+  last_15m_cvd: number;
+  session_direction: FlowDirection;
+  last_15m_direction: FlowDirection;
+  momentum_flip: boolean;
+}
+
+export interface AggressorWindowStats {
+  window_seconds: number;
+  label: string;
+  lift_ask: number;
+  hit_bid: number;
+  net: number;
+  ratio: number;
+  total_volume: number;
+  direction: InferredDirection;
+}
+
+export interface VDeltaStats {
+  window_seconds: number;
+  value: number;
+  direction: InferredDirection;
+  sign_flip: boolean;
+  prior_direction: InferredDirection;
+  confirmed_seconds: number;
+}
+
+/**
+ * Latest footprint summary. `stacked_side` uses trade-side vocabulary
+ * (buy/sell/none), distinct from flow-bias vocabulary
+ * (bullish/bearish/neutral).
+ */
+export interface FootprintStats {
+  bar_start_ns: number | null;
+  bar_end_ns: number | null;
+  stacked_side: FootprintSide;
+  stacked_count: number;
+  stacked_low_price: number | null;
+  stacked_high_price: number | null;
+}
+
+/**
+ * Optional compute-path orderflow context. Fast-path price ticks carry null;
+ * the UI retains the latest non-null value for the orderflow panel.
+ */
+export interface OrderflowStats {
+  quality: OrderflowQuality;
+  last_trade_aggressor: TradeAggressor;
+  last_trade_delta: number | null;
+  cvd: CvdStats | null;
+  aggressor_windows: AggressorWindowStats[];
+  v_delta: VDeltaStats | null;
+  footprint: FootprintStats | null;
+}
+
 export interface PriceTickPayload {
   family: "price_tick";
   price: number;
   bid: number | null;
   ask: number | null;
   volume: number | null;
+  orderflow: OrderflowStats | null;
 }
 
 export interface ZoneState {

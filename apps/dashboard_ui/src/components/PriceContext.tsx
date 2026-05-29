@@ -16,7 +16,9 @@ const REGIME_COLOR: Record<string, string> = {
 
 export function PriceContext() {
   const { state } = useDashboard();
-  const { price, bid, ask } = state.price;
+  const { price, bid, ask, orderflow } = state.price;
+  const cvd = orderflow?.cvd;
+  const vDelta = orderflow?.v_delta;
 
   return (
     <div className="panel">
@@ -39,6 +41,15 @@ export function PriceContext() {
           <b style={{ color: REGIME_COLOR[state.regime ?? "NORMAL"] }}>
             {state.regime ?? "—"}
           </b>
+        </span>
+        <span className="kv">
+          CVD <b>{cvd ? cvd.session_cvd.toLocaleString() : "—"}</b>
+        </span>
+        <span className="kv">
+          vΔ <b>{vDelta ? vDelta.value.toLocaleString() : "—"}</b>
+        </span>
+        <span className="kv">
+          flow <b>{orderflow?.quality ?? "—"}</b>
         </span>
       </div>
     </div>

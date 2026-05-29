@@ -52,6 +52,17 @@ Confidence = Literal["high", "medium", "low"]
 
 Regime = Literal["LOW", "NORMAL", "HIGH"]
 
+FlowDirection = Literal["bullish", "bearish", "neutral"]
+TradeAggressor = Literal["buy", "sell", "unknown"]
+InferredDirection = Literal["bullish", "bearish", "neutral", "unknown"]
+FootprintSide = Literal["buy", "sell", "none", "unknown"]
+OrderflowQuality = Literal["high", "inferred", "stale_l1", "unavailable"]
+FLOW_DIRECTIONS: tuple[str, ...] = ("bullish", "bearish", "neutral")
+TRADE_AGGRESSORS: tuple[str, ...] = ("buy", "sell", "unknown")
+INFERRED_DIRECTIONS: tuple[str, ...] = ("bullish", "bearish", "neutral", "unknown")
+FOOTPRINT_SIDES: tuple[str, ...] = ("buy", "sell", "none", "unknown")
+ORDERFLOW_QUALITIES: tuple[str, ...] = ("high", "inferred", "stale_l1", "unavailable")
+
 # Known payload families. Adding a family here REQUIRES a matching entry in
 # events.ts KNOWN_FAMILIES or the parity test fails.
 KNOWN_FAMILIES: tuple[str, ...] = (
@@ -159,14 +170,92 @@ class VolRegimePayload(RealtimePayload):
     description: str = ""
 
 
+class CvdStats(BaseModel):
+    """Inference-derived CVD summary from normalized trades.
+
+    Rithmic does not currently provide normalized F/T action types in this
+    stack (RA-064), so CVD direction is inferred from aggressor/L1 logic.
+    """
+
+    session_cvd: int
+    last_60m_cvd: int
+    last_15m_cvd: int
+    session_direction: FlowDirection
+    last_15m_direction: FlowDirection
+    momentum_flip: bool
+
+
+class AggressorWindowStats(BaseModel):
+    """Inference-derived lift-ask / hit-bid window metrics."""
+
+    window_seconds: int
+    label: str
+    lift_ask: int
+    hit_bid: int
+    net: int
+    ratio: float
+    total_volume: int
+    direction: InferredDirection
+
+
+class VDeltaStats(BaseModel):
+    """Inference-derived short-window delta velocity."""
+
+    window_seconds: int
+    value: int
+    direction: InferredDirection
+    sign_flip: bool
+    prior_direction: InferredDirection
+    confirmed_seconds: int
+
+
+class FootprintStats(BaseModel):
+    """Inference-derived footprint summary for the latest aggregation bar.
+
+    ``stacked_side`` uses trade-side vocabulary (buy/sell/none), not flow-bias
+    vocabulary (bullish/bearish/neutral).
+    """
+
+    bar_start_ns: int | None = None
+    bar_end_ns: int | None = None
+    stacked_side: FootprintSide
+    stacked_count: int
+    stacked_low_price: float | None = None
+    stacked_high_price: float | None = None
+
+
+class OrderflowStats(BaseModel):
+    """Optional orderflow context attached to compute-path price ticks.
+
+    Fast-path price ticks set this field to ``None``. Compute-path ticks carry
+    inference-derived CVD, aggressor, v-delta, and footprint context from the
+    detector stack. ``quality`` reflects how reliable the aggressor/L1 inputs
+    were for that inference; these fields are not exchange-provided truth.
+    """
+
+    quality: OrderflowQuality
+    last_trade_aggressor: TradeAggressor
+    last_trade_delta: int | None = None
+    cvd: CvdStats | None = None
+    aggressor_windows: list[AggressorWindowStats] = Field(default_factory=list)
+    v_delta: VDeltaStats | None = None
+    footprint: FootprintStats | None = None
+
+
 class PriceTickPayload(RealtimePayload):
-    """Top-of-book / last-trade tick. Routes to chart ``series.update()``."""
+    """Top-of-book / last-trade tick. Routes to chart ``series.update()``.
+
+    ``orderflow`` is ``None`` for low-latency fast-path ticks and populated on
+    compute-path ticks. The client retains the latest non-null struct for the
+    orderflow panel while accepting null fast ticks for price motion.
+    """
 
     family: Literal["price_tick"] = "price_tick"
     price: float
     bid: float | None = None
     ask: float | None = None
     volume: int | None = None
+    orderflow: OrderflowStats | None = None
 
 
 class ZoneState(BaseModel):
@@ -328,6 +417,16 @@ __all__ = [
     "Tier",
     "Confidence",
     "Regime",
+    "FLOW_DIRECTIONS",
+    "TRADE_AGGRESSORS",
+    "INFERRED_DIRECTIONS",
+    "FOOTPRINT_SIDES",
+    "ORDERFLOW_QUALITIES",
+    "FlowDirection",
+    "TradeAggressor",
+    "InferredDirection",
+    "FootprintSide",
+    "OrderflowQuality",
     "PT",
     "now_pt_iso",
     "RealtimePayload",
@@ -336,6 +435,11 @@ __all__ = [
     "AbsorptionPayload",
     "SweepPayload",
     "VolRegimePayload",
+    "CvdStats",
+    "AggressorWindowStats",
+    "VDeltaStats",
+    "FootprintStats",
+    "OrderflowStats",
     "PriceTickPayload",
     "ZoneState",
     "ZoneUpdatePayload",

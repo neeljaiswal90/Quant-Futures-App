@@ -27,6 +27,7 @@ from typing import Any
 
 from contracts.realtime.events import (
     HeartbeatPayload,
+    OrderflowStats,
     PriceTickPayload,
     RealtimeMessage,
     SnapshotPayload,
@@ -63,6 +64,7 @@ class FeedState:
     _last_append_ts_ns: int | None = field(default=None, init=False)
     _last_current_price: float | None = field(default=None, init=False)
     _last_price_tick_key: tuple[int, float, int] | None = field(default=None, init=False)
+    _last_price_tick_had_orderflow: bool = field(default=False, init=False)
 
     # ----- seq -----------------------------------------------------------
 
@@ -170,7 +172,12 @@ class FeedState:
             emitted += 1
         return emitted
 
-    async def emit_price_tick(self, tick: LatestPriceTick | None) -> RealtimeMessage | None:
+    async def emit_price_tick(
+        self,
+        tick: LatestPriceTick | None,
+        *,
+        orderflow: OrderflowStats | None = None,
+    ) -> RealtimeMessage | None:
         """Broadcast a new trade tick for chart updates, deduped by trade key.
 
         ``PriceTickPayload.volume`` is the per-trade quantity. The envelope
@@ -180,13 +187,20 @@ class FeedState:
         """
         if tick is None:
             return None
-        if tick.dedupe_key == self._last_price_tick_key:
+        if tick.observed_at_ns is not None:
+            self._last_append_ts_ns = tick.observed_at_ns
+        self._last_current_price = tick.price
+        if (
+            tick.dedupe_key == self._last_price_tick_key
+            and (orderflow is None or self._last_price_tick_had_orderflow)
+        ):
             return None
         payload = PriceTickPayload(
             price=tick.price,
             bid=tick.bid,
             ask=tick.ask,
             volume=tick.volume,
+            orderflow=orderflow,
         )
         async with self._lock:
             seq = await self._next_seq()
@@ -198,6 +212,7 @@ class FeedState:
         )
         await self._broadcast_and_account(message)
         self._last_price_tick_key = tick.dedupe_key
+        self._last_price_tick_had_orderflow = orderflow is not None
         return message
 
     async def emit_heartbeat(self) -> RealtimeMessage:

@@ -9,6 +9,7 @@ not change the frozen wire contract.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,8 @@ class LatestPriceTick:
     volume: int
     bid: float | None = None
     ask: float | None = None
+    aggressor_side: str = "unknown"
+    observed_at_ns: int | None = None
 
     @property
     def dedupe_key(self) -> tuple[int, float, int]:
@@ -51,6 +54,8 @@ def latest_price_tick(
         volume=trade.volume,
         bid=bid,
         ask=ask,
+        aggressor_side=trade.aggressor_side,
+        observed_at_ns=time.time_ns(),
     )
 
 
@@ -59,6 +64,7 @@ class _TradeOnly:
     trade_ts_ns: int
     price: float
     volume: int
+    aggressor_side: str
 
 
 def _latest_trade(path: Path, *, tail_bytes: int) -> _TradeOnly | None:
@@ -66,7 +72,8 @@ def _latest_trade(path: Path, *, tail_bytes: int) -> _TradeOnly | None:
         payload = _payload_dict(rec)
         stream = rec.get("stream")
         event_type = rec.get("type")
-        if stream not in {"LAST_TRADE", "TRADE"} and event_type != "TRADE" and "price" not in rec:
+        has_price = rec.get("price") is not None or payload.get("price") is not None
+        if stream not in {"LAST_TRADE", "TRADE"} and event_type != "TRADE" and not has_price:
             continue
         price = _float(_first_present(rec, payload, "price"))
         volume = _int(_first_present(rec, payload, "size", "quantity", "qty"))
@@ -82,7 +89,12 @@ def _latest_trade(path: Path, *, tail_bytes: int) -> _TradeOnly | None:
         )
         if price is None or volume is None or volume <= 0 or ts_ns is None:
             continue
-        return _TradeOnly(trade_ts_ns=ts_ns, price=price, volume=volume)
+        return _TradeOnly(
+            trade_ts_ns=ts_ns,
+            price=price,
+            volume=volume,
+            aggressor_side=_aggressor_side(rec, payload),
+        )
     return None
 
 
@@ -135,6 +147,25 @@ def _payload_dict(rec: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     return {str(key): value for key, value in payload.items()}
+
+
+def _aggressor_side(rec: dict[str, Any], payload: dict[str, Any]) -> str:
+    value = _first_present(
+        rec,
+        payload,
+        "aggressor_side",
+        "aggressor",
+        "trade_aggressor",
+        "side",
+    )
+    if value is None:
+        return "unknown"
+    text = str(value).strip().lower()
+    if text in {"buy", "a", "ask", "buyer", "lift", "lift_ask", "at_ask"}:
+        return "buy"
+    if text in {"sell", "b", "bid", "seller", "hit", "hit_bid", "at_bid"}:
+        return "sell"
+    return "unknown"
 
 
 def _float(value: Any) -> float | None:

@@ -124,6 +124,7 @@ export const priceTickFrame = (seq: number, price: number): RealtimeMessage =>
     bid: price - 0.25,
     ask: price + 0.25,
     volume: 3,
+    orderflow: null,
   });
 
 export const zoneUpdateFrame = (seq: number): RealtimeMessage =>

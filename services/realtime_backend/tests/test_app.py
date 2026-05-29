@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -55,6 +56,7 @@ def _fixture_settings(tmp_path: Path) -> Settings:
         session_override="globex",
         trading_date_override="2026-05-22",
         poll_fallback_interval_seconds=0.0,
+        fast_price_poll_interval_seconds=0.0,
         heartbeat_interval_seconds=0.1,
     )
 
@@ -132,6 +134,51 @@ def test_backend_lifecycle_seeds_snapshot_and_emits_heartbeat(tmp_path: Path) ->
         assert any(f["type"] == "heartbeat" for f in frames)
         seqs = [f["seq"] for f in frames]
         assert seqs == sorted(seqs)  # monotonic non-decreasing on the wire
+
+    asyncio.run(scenario())
+
+
+def test_backend_fast_price_poller_emits_without_compute_trigger(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        settings = replace(
+            _fixture_settings(tmp_path),
+            fast_price_poll_interval_seconds=0.05,
+            fast_price_tail_bytes=8_192,
+        )
+        capture = (
+            settings.analytics_root
+            / "data"
+            / "captures"
+            / "2026-05-22"
+            / "MNQ_globex.jsonl"
+        )
+        backend = RealtimeBackend(settings)
+        received: list[str] = []
+        await backend.start()
+        try:
+            await backend.manager.connect(_collector(received))
+            await asyncio.sleep(0.15)
+            received.clear()
+
+            with capture.open("a", encoding="utf-8") as f:
+                ts = int(datetime(2026, 5, 21, 20, 1, tzinfo=PT).timestamp() * 1_000_000_000)
+                f.write(json.dumps(trade(ts, 29418.25, 2, "sell")) + "\n")
+
+            deadline = asyncio.get_running_loop().time() + 2.0
+            frames: list[dict[str, Any]] = []
+            while asyncio.get_running_loop().time() < deadline:
+                await asyncio.sleep(0.05)
+                frames = [json.loads(text) for text in received]
+                if any(_payload(frame)["family"] == "price_tick" for frame in frames):
+                    break
+        finally:
+            await backend.stop()
+
+        tick = next(frame for frame in frames if _payload(frame)["family"] == "price_tick")
+        payload = _payload(tick)
+        assert payload["price"] == 29418.25
+        assert payload["volume"] == 2
+        assert payload["orderflow"] is None
 
     asyncio.run(scenario())
 

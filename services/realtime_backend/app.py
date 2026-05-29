@@ -34,6 +34,8 @@ from realtime_backend.config.router import create_config_router
 from realtime_backend.config.store import AlertConfigStore
 from realtime_backend.connection_manager import ConnectionManager
 from realtime_backend.feed import FeedState
+from realtime_backend.orderflow import build_orderflow_stats
+from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings, settings_from_env
 from realtime_backend.shutdown import EndDayShutdownService, ShutdownTarget
 from realtime_backend.watcher import CaptureWatcher, ComputeResult
@@ -77,10 +79,22 @@ class RealtimeBackend:
             lambda: asyncio.ensure_future(self._handle_error(exc))
         )
 
+    def _on_price_tick_threadsafe(self, tick: LatestPriceTick) -> None:
+        """Fast-price callback from watcher thread; emits orderflow=null."""
+        loop = self._loop
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(
+            lambda: asyncio.ensure_future(self._handle_fast_price_tick(tick))
+        )
+
     async def _handle_result(self, result: ComputeResult) -> None:
         """Diff + emit tiered events, then refresh the snapshot cache."""
         try:
-            await self.feed.emit_price_tick(result.price_tick)
+            await self.feed.emit_price_tick(
+                result.price_tick,
+                orderflow=build_orderflow_stats(result.signals, result.price_tick),
+            )
             await self.feed.emit_signal_diff(
                 result.signals,
                 envelope=result.envelope,
@@ -96,6 +110,9 @@ class RealtimeBackend:
                 current_price=result.current_price,
                 price_tick=result.price_tick,
             )
+
+    async def _handle_fast_price_tick(self, tick: LatestPriceTick) -> None:
+        await self.feed.emit_price_tick(tick, orderflow=None)
 
     async def _handle_error(self, exc: Exception) -> None:
         logger.warning("detector pass failed: %s", exc)
@@ -125,6 +142,7 @@ class RealtimeBackend:
         self.watcher = CaptureWatcher(
             self.settings,
             self._on_result_threadsafe,
+            on_price_tick=self._on_price_tick_threadsafe,
             on_error=self._on_error_threadsafe,
         )
         # Seed one compute up-front (blocking, off the loop) so /snapshot has

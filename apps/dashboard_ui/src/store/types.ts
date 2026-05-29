@@ -8,6 +8,7 @@
  */
 import type {
   Regime,
+  OrderflowStats,
   ScenarioState,
   Tier,
   ZoneState,
@@ -22,6 +23,8 @@ export interface PriceState {
   bid: number | null;
   ask: number | null;
   volume: number | null;
+  /** Latest non-null compute-path orderflow context retained across fast ticks. */
+  orderflow: OrderflowStats | null;
   /** ts_ns of the last price update (tick or snapshot). */
   tsNs: number | null;
 }
@@ -70,7 +73,7 @@ export interface DashboardState {
 }
 
 export const FEED_CAP = 10;
-export const HISTORY_CAP = 200;
+export const HISTORY_CAP = 5_000;
 
 export function initialState(): DashboardState {
   return {
@@ -79,7 +82,14 @@ export function initialState(): DashboardState {
     resyncing: false,
     resyncEpoch: 0,
     schemaVersion: null,
-    price: { price: null, bid: null, ask: null, volume: null, tsNs: null },
+    price: {
+      price: null,
+      bid: null,
+      ask: null,
+      volume: null,
+      orderflow: null,
+      tsNs: null,
+    },
     heartbeat: {
       serverTsNs: null,
       lastCaptureTsNs: null,
@@ -100,6 +110,7 @@ export function initialState(): DashboardState {
 export type StoreAction =
   | { kind: "conn"; status: ConnStatus }
   | { kind: "message"; raw: unknown; nowMs: number }
+  | { kind: "raise-critical"; critical: CriticalBanner }
   | { kind: "resync-failed" }
   | { kind: "dismiss-critical" }
   | { kind: "tick-clock"; nowMs: number };

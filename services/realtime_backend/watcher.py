@@ -57,6 +57,7 @@ class ComputeResult:
 
 
 ResultCallback = Callable[[ComputeResult], None]
+PriceTickCallback = Callable[[LatestPriceTick], None]
 
 
 def resolve_session(settings: Settings, *, now_pt: datetime | None = None) -> DashboardSession:
@@ -261,6 +262,7 @@ class CaptureWatcher:
         settings: Settings,
         on_result: ResultCallback,
         *,
+        on_price_tick: PriceTickCallback | None = None,
         on_error: Callable[[Exception], None] | None = None,
         use_polling: bool | None = None,
         now_pt_factory: Callable[[], datetime | None] | None = None,
@@ -272,11 +274,14 @@ class CaptureWatcher:
             on_error=on_error,
             now_pt_factory=now_pt_factory,
         )
+        self._on_price_tick = on_price_tick
         polling = settings.use_polling_observer if use_polling is None else use_polling
         self._observer: BaseObserver = PollingObserver() if polling else Observer()
         self._started = False
         self._backstop_stop = threading.Event()
         self._backstop_thread: threading.Thread | None = None
+        self._fast_price_stop = threading.Event()
+        self._fast_price_thread: threading.Thread | None = None
 
     @property
     def watch_dir(self) -> Path:
@@ -299,6 +304,7 @@ class CaptureWatcher:
         self._observer.schedule(handler, str(watch_dir), recursive=False)
         self._observer.start()
         self._start_backstop()
+        self._start_fast_price_poller()
         self._started = True
 
     def _start_backstop(self) -> None:
@@ -321,6 +327,43 @@ class CaptureWatcher:
         )
         self._backstop_thread.start()
 
+    def _start_fast_price_poller(self) -> None:
+        """Poll a tiny raw-capture suffix for latest trade ticks.
+
+        This is intentionally separate from the detector runner: it keeps the
+        price line moving at sub-second latency while full orderflow/context
+        still arrives from debounced compute passes.
+        """
+        if self._on_price_tick is None:
+            return
+        on_price_tick = self._on_price_tick
+        interval = self._settings.fast_price_poll_interval_seconds
+        if interval <= 0:
+            return
+        tail_bytes = self._settings.fast_price_tail_bytes
+
+        def _loop() -> None:
+            last_key: tuple[int, float, int] | None = None
+            while not self._fast_price_stop.wait(timeout=interval):
+                try:
+                    session = resolve_session(self._settings)
+                    tick = latest_price_tick(
+                        trade_source_path=session.capture_path,
+                        capture_path=session.capture_path,
+                        tail_bytes=tail_bytes,
+                    )
+                    if tick is None or tick.dedupe_key == last_key:
+                        continue
+                    last_key = tick.dedupe_key
+                    on_price_tick(tick)
+                except Exception as exc:  # noqa: BLE001
+                    _LOG.debug("fast price poll failed: %s", exc)
+
+        self._fast_price_thread = threading.Thread(
+            target=_loop, name="ra60-fast-price", daemon=True
+        )
+        self._fast_price_thread.start()
+
     def trigger(self) -> None:
         """Manually request a recompute (used by tests)."""
         self._runner.trigger()
@@ -329,6 +372,10 @@ class CaptureWatcher:
         if not self._started:
             return
         self._backstop_stop.set()
+        self._fast_price_stop.set()
+        if self._fast_price_thread is not None:
+            self._fast_price_thread.join(timeout=5.0)
+            self._fast_price_thread = None
         if self._backstop_thread is not None:
             self._backstop_thread.join(timeout=5.0)
             self._backstop_thread = None

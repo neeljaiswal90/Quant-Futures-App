@@ -10,6 +10,7 @@ import type {
   IChartApi,
   ISeriesApi,
   MouseEventParams,
+  SeriesType,
   Time,
 } from "lightweight-charts";
 import { useDashboard } from "../store/context";
@@ -24,9 +25,11 @@ import {
   type HoveredEventBubble,
 } from "./eventBubbles";
 
-export function useEventMarkers(
+const MAX_DRAWN_EVENT_BUBBLES = 600;
+
+export function useEventMarkers<T extends SeriesType>(
   chartRef: RefObject<IChartApi | null>,
-  seriesRef: RefObject<ISeriesApi<"Candlestick"> | null>,
+  seriesRef: RefObject<ISeriesApi<T> | null>,
   anchorSeriesRef?: RefObject<ISeriesApi<"Line"> | null>,
 ): HoveredEventBubble | null {
   const { state } = useDashboard();
@@ -39,6 +42,10 @@ export function useEventMarkers(
         .map(feedItemToBubbleItem)
         .filter((item): item is EventBubbleItem => item !== null),
     [state.history],
+  );
+  const drawnItems = useMemo(
+    () => items.slice(-MAX_DRAWN_EVENT_BUBBLES),
+    [items],
   );
 
   useEffect(() => {
@@ -54,11 +61,11 @@ export function useEventMarkers(
   }, [seriesRef]);
 
   useEffect(() => {
-    primitiveRef.current?.setItems(items);
+    primitiveRef.current?.setItems(drawnItems);
     // setData requires strictly-ascending UNIQUE times; minute-bucketed signals
     // share timestamps, so dedupe before feeding the transparent anchor series.
-    anchorSeriesRef?.current?.setData(anchorSeriesData(items));
-  }, [anchorSeriesRef, items]);
+    anchorSeriesRef?.current?.setData(anchorSeriesData(drawnItems));
+  }, [anchorSeriesRef, drawnItems]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -82,7 +89,7 @@ export function useEventMarkers(
       const series = seriesRef.current;
       if (param.point && series) {
         const nearest = projectBubbleItems(
-          items,
+          drawnItems,
           (time) => chart.timeScale().timeToCoordinate(time),
           (price) => series.priceToCoordinate(price),
         )
@@ -106,7 +113,7 @@ export function useEventMarkers(
     return () => {
       chart.unsubscribeCrosshairMove(handleMove);
     };
-  }, [chartRef, items, seriesRef]);
+  }, [chartRef, drawnItems, seriesRef]);
 
   return hovered;
 }

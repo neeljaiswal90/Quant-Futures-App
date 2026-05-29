@@ -58,7 +58,7 @@ export function parseMessage(raw: unknown): RealtimeMessage | null {
 function applyPayload(
   state: DashboardState,
   msg: RealtimeMessage,
-  nowMs: number,
+  _nowMs: number,
 ): DashboardState {
   const p: RealtimePayload = msg.payload;
   let next = state;
@@ -76,6 +76,7 @@ function applyPayload(
         bid: next.price.bid,
         ask: next.price.ask,
         volume: next.price.volume,
+        orderflow: next.price.orderflow,
         tsNs: msg.ts_ns,
       },
       sigma: p.sigma,
@@ -97,6 +98,7 @@ function applyPayload(
         bid: p.bid,
         ask: p.ask,
         volume: p.volume,
+        orderflow: p.orderflow ?? next.price.orderflow,
         tsNs: msg.ts_ns,
       },
     };
@@ -121,21 +123,6 @@ function applyPayload(
   if (isError(p)) {
     next = { ...next, lastError: { code: p.code, message: p.message } };
     return next;
-  }
-
-  // Tier-1 CRITICAL banner: any CRITICAL-tier signal raises a banner anchored
-  // to the current price. We do not re-derive — the backend decided CRITICAL.
-  if (msg.tier === "CRITICAL" && isSignal(p)) {
-    const triggerPrice = next.price.price ?? 0;
-    next = {
-      ...next,
-      critical: {
-        seq: msg.seq,
-        triggerPrice,
-        description: p.description || p.event_type,
-        raisedAtMs: nowMs,
-      },
-    };
   }
 
   // Feed + history accumulation for the discrete event families.
@@ -189,6 +176,9 @@ export function reducer(
 
     case "dismiss-critical":
       return { ...state, critical: null };
+
+    case "raise-critical":
+      return { ...state, critical: action.critical };
 
     case "tick-clock":
       // Pure clock pulse — used to re-evaluate staleness / decay at render.

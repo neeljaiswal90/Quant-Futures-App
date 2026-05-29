@@ -21,6 +21,7 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Footer } from "./components/Footer";
 import { PriceChart } from "./chart/PriceChart";
+import { ChartErrorBoundary } from "./chart/ChartErrorBoundary";
 import { isEmpty } from "./store/selectors";
 
 function ChartArea() {
@@ -32,7 +33,9 @@ function ChartArea() {
           Awaiting first snapshot from the realtime feed…
         </div>
       ) : (
-        <PriceChart />
+        <ChartErrorBoundary>
+          <PriceChart />
+        </ChartErrorBoundary>
       )}
     </div>
   );

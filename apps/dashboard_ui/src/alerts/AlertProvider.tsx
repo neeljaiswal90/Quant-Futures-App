@@ -22,6 +22,7 @@ import {
 import type { AlertConfig } from "@contracts/realtime/config";
 import { AlertEngine } from "./AlertEngine";
 import { DEFAULT_ALERT_CONFIG, loadConfig, saveConfig } from "./config";
+import { createAlertMemory, decideAlert } from "./decision";
 import { useDashboard } from "../store/context";
 
 interface AlertApi {
@@ -38,13 +39,14 @@ const AlertContext = createContext<AlertApi | null>(null);
 
 export function AlertProvider({ children }: { children: ReactNode }) {
   const engineRef = useRef<AlertEngine>(new AlertEngine());
-  const { state } = useDashboard();
+  const { state, dispatch } = useDashboard();
 
   const [enabled, setEnabled] = useState(false);
   const [notificationsGranted, setNotificationsGranted] = useState(false);
   const [config, setConfigState] = useState<AlertConfig>(DEFAULT_ALERT_CONFIG);
 
-  const lastFiredSeq = useRef<number>(-1);
+  const lastSeenSeq = useRef<number>(-1);
+  const alertMemory = useRef(createAlertMemory());
 
   useEffect(() => {
     void loadConfig().then(setConfigState);
@@ -62,17 +64,34 @@ export function AlertProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const latest = state.feed[state.feed.length - 1];
     if (!latest || !latest.tier) return;
-    if (latest.seq <= lastFiredSeq.current) return;
-    lastFiredSeq.current = latest.seq;
+    if (latest.seq <= lastSeenSeq.current) return;
+    lastSeenSeq.current = latest.seq;
+    const decision = decideAlert(latest, {
+      currentPrice: state.price.price,
+      config,
+      nowMs: Date.now(),
+      memory: alertMemory.current,
+    });
+    if (decision.banner && latest.tier === "CRITICAL") {
+      dispatch({
+        kind: "raise-critical",
+        critical: {
+          seq: latest.seq,
+          triggerPrice: latest.price ?? state.price.price ?? 0,
+          description: latest.text,
+          raisedAtMs: Date.now(),
+        },
+      });
+    }
     engineRef.current.fire(
       {
         tier: latest.tier,
         title: `${latest.tier} — ${latest.family}`,
         body: latest.text,
       },
-      config,
+      { audio: decision.audio, notification: decision.notification },
     );
-  }, [state.feed, config]);
+  }, [state.feed, state.price.price, config, dispatch]);
 
   const setConfig = useCallback((next: AlertConfig) => {
     setConfigState(next);
