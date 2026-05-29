@@ -151,6 +151,13 @@ export function PriceChart() {
         const tick = liveTickRef.current;
         const candle = candleRef.current;
         if (tick && tick.price != null && candle) {
+          // RA-069 (LOW, known/accepted): on a resync the snapshot price arrives
+          // via liveTickRef and flows through ingest() like any tick rather than
+          // reseeding the aggregator, so the in-progress 1s bucket's OHLC/volume
+          // can carry a transient value until the next rollover. Accepted: the
+          // chart is presentation-only (never fed back into decisions) and the
+          // window is sub-second. Clean fix = reseed+setData keyed on a snapshot
+          // epoch; deferred as cosmetic.
           const { candle: c, volume, cvd } = aggRef.current.ingest(
             {
               family: "price_tick",

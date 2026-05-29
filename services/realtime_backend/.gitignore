@@ -1,0 +1,5 @@
+# RA-060 backend-owned disk-stateful scratch: compute_live_signals output
+# (dashboard/, live_analysis/) plus soak-harness artifacts. Runtime-only; the
+# package writes here on purpose so the detector never touches capture dirs or
+# the real dashboard output. Never committed.
+_scratch/

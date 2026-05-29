@@ -281,7 +281,9 @@ class RealtimeMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: MessageType
-    seq: int
+    # RA-069 (LOW): monotonic-by-emitter-discipline; ge=0 rejects a negative seq
+    # at the envelope boundary (the emitter starts at 0 and only increments).
+    seq: int = Field(ge=0)
     ts_ns: int
     ts_pt: str
     tier: Tier | None = None

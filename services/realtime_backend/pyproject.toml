@@ -55,6 +55,10 @@ no_implicit_optional = true
 check_untyped_defs = true
 namespace_packages = true
 explicit_package_bases = true
+# RA-069: the backend-owned _scratch/ holds runtime output + the gitignored soak
+# harness — never source. Keep it out of the type pass (mirrors the package
+# .gitignore) so a stray scratch .py can't trip the gate.
+exclude = ["_scratch/"]
 # Let mypy resolve the cross-package imports the runtime bootstrap provides:
 # the repo root (for ``contracts.*``) and the editable rithmic_dashboard
 # package dir. These are untyped (no py.typed) so they are followed as source

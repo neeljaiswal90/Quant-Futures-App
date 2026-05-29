@@ -137,6 +137,10 @@ class MboOrderTracker:
         self._priority_index: dict[tuple[int, str], dict[str, int]] = {}
         # RA-065: last-seen queue tail priority per (price_bucket, side) and the
         # ns at which it was observed, used for refill-by-priority-jump detection.
+        # Intentionally NOT pruned (unlike _priority_index): it holds one small
+        # tuple per distinct price bucket, bounded by the day's price range, and
+        # the tracker is rebuilt per detect_icebergs call — so it stays in the KB
+        # range and cannot leak across the RA-052 light path.
         self._last_tail_priority: dict[tuple[int, str], tuple[int, int]] = {}
 
     def process(

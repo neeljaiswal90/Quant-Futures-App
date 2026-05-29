@@ -192,11 +192,12 @@ def _absorption_side(side_inferred: str) -> str:
 
 
 def _absorption_score(event: AbsorptionProxyEvent) -> float:
-    """Synthesize a 0..1 score from the proxy's confidence + volume.
+    """Synthesize a 0..1 score from the proxy's confidence.
 
-    The RA-046 proxy carries ``confidence`` (high/low) and ``volume`` but no
-    explicit score; the contract's AbsorptionPayload requires one. High
-    confidence floors at 0.7; low at 0.4.
+    The RA-046 proxy exposes ``confidence`` (high/low) but no explicit score,
+    while the contract's AbsorptionPayload requires one: high maps to 0.7, low
+    to 0.4. ``event.volume`` is intentionally NOT folded in — confidence is the
+    only graded signal the proxy provides; revisit if RA-046 emits a real score.
     """
     return 0.7 if event.confidence == "high" else 0.4
 

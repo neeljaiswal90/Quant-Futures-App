@@ -1,12 +1,17 @@
-"""Detector-as-library parity gate (RA-060 ship requirement).
+"""Detector-as-library determinism gate (RA-060 ship requirement).
 
-Asserts the in-process projection (``compute_live_signals`` →
-contract-payload mapping) is identical whether we read the *fresh* compute or
-the state the detector persisted to JSONL and reloaded. ``compute_live_signals``
-is disk-stateful (append-then-reload), so a second call over the same fixture
-reloads the persisted JSONL — the two projections must match exactly. Drift
-here means the library path diverged from the JSONL path and the swap-in
-guarantee for the UI/daemon is broken.
+Asserts the in-process projection (``compute_live_signals`` → contract-payload
+mapping) reproduces IDENTICALLY across two independent runs over the same raw
+fixture. ``compute_live_signals`` is disk-stateful — it persists events to JSONL
+and reads them back within the call — so each run's projection is already the
+post-reload state; running twice against fresh scratch dirs proves the detector
+library path is deterministic and the JSONL it round-trips through is stable.
+
+NOTE (RA-069): this is a determinism gate, not a separate in-memory-vs-JSONL
+diff — both sides go through the same persist+reload. A true wire round-trip
+(``parse_payload`` / ``RealtimeMessage`` re-encode) would be the stronger future
+check. Drift here means the library path is non-deterministic and the swap-in
+guarantee for the UI/daemon is unreliable.
 """
 
 from __future__ import annotations
@@ -45,7 +50,8 @@ def _projection(signals: LiveSignals) -> list[dict[str, object]]:
 
 
 def test_detector_library_output_matches_jsonl_path(tmp_path: Path) -> None:
-    """Library projection == reloaded-JSONL projection on the fixed fixture."""
+    """Projection reproduces identically across two independent runs (the
+    detector library path is deterministic over the same raw fixture)."""
     analytics_root = tmp_path / "analytics"
     fixture = build_parity_fixture(analytics_root)
 
