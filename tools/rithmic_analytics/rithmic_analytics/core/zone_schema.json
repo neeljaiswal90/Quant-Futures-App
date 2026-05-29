@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rithmic-analytics.local/schemas/zone-envelope/v1.json",
+  "title": "Zone Envelope",
+  "description": "Canonical zone JSON emitted by rithmic_analytics. Stable contract across data sources (rithmic, tradingview). Versioned via top-level schema_version.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "symbol",
+    "timeframe",
+    "bars_used",
+    "computed_at",
+    "data_source",
+    "vpoc",
+    "vah",
+    "val",
+    "atr_14",
+    "bin_size_ticks",
+    "zones",
+    "reference_lines"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version. Bump on incompatible change."
+    },
+    "symbol": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Root symbol (e.g. 'MNQ'). NOT the front-month contract — rollover resolution lives in ops/rollover_calendar.py."
+    },
+    "timeframe": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Free-form timeframe label: 'rth', 'globex', '5m', '15m', 'multi', etc."
+    },
+    "bars_used": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of source bars / aggregation units that fed this envelope."
+    },
+    "computed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 with timezone (UTC preferred)."
+    },
+    "data_source": {
+      "type": "string",
+      "enum": ["rithmic", "tradingview"],
+      "description": "Provenance of the underlying market data."
+    },
+    "vpoc": { "type": ["number", "null"] },
+    "vah": { "type": ["number", "null"] },
+    "val": { "type": ["number", "null"] },
+    "atr_14": { "type": ["number", "null"] },
+    "bin_size_ticks": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Bin width in ticks. 20 ticks = 5 points for MNQ (tick_size 0.25)."
+    },
+    "zones": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/zone" }
+    },
+    "reference_lines": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reference_line" }
+    }
+  },
+  "$defs": {
+    "zone": {
+      "type": "object",
+      "required": ["id", "top", "bot", "type", "conviction", "text", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Deterministic identifier (e.g. 'hvn-27380' or 'hvn-27380.25'). Stable across reruns on the same input."
+        },
+        "top": { "type": "number" },
+        "bot": { "type": "number" },
+        "type": {
+          "type": "string",
+          "enum": ["support", "resistance"]
+        },
+        "conviction": {
+          "type": "string",
+          "enum": ["SUPER", "HIGH", "MED", "LOW"]
+        },
+        "text": { "type": "string" },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Provenance tags: 'hvn_5m', 'weekly_avwap_band', 'ema50', 'vah', 'val', 'round_27500', etc. Consumed by grade_zone()."
+        },
+        "volume_pct": { "type": ["number", "null"] },
+        "multi_tf_count": { "type": ["integer", "null"] },
+        "multi_session_count": { "type": ["integer", "null"] }
+      }
+    },
+    "reference_line": {
+      "type": "object",
+      "required": ["price", "text", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "price": { "type": "number" },
+        "text": { "type": "string" },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provenance tag: 'vpoc', 'vah', 'val', 'lvn_5m', etc."
+        }
+      }
+    }
+  }
+}

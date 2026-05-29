@@ -1,0 +1,24 @@
+{
+  "corpus_median_sigma_pts": 27.632839148345212,
+  "corpus_provenance": {
+    "rejected_count": 30,
+    "rejected_reasons": "duplicate_session=30",
+    "roots": [
+      "D:\\qfa-cache\\databento",
+      "D:\\Quant-futures-app\\data\\databento\\sim03_corpus"
+    ],
+    "summary_line": "corpus_loaded: 62 verified sessions from 92 total directories (rejected 30: duplicate_session=30)",
+    "total_directories": 92,
+    "verified_sessions": 62
+  },
+  "generated_at_utc": "2026-05-29T02:09:19Z",
+  "lambda_value": 0.85,
+  "sessions_used": 62,
+  "stats_path": "data\\calibration_corpus\\per_session_stats.parquet",
+  "symbol": "MNQ",
+  "train_rmse": 6.5597520391574955,
+  "train_sessions": 49,
+  "validation_rmse": 5.7427928551413014,
+  "validation_rmse_ratio": 0.875458831501637,
+  "validation_sessions": 13
+}

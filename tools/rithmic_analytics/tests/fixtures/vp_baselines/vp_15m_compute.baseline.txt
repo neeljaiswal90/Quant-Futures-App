@@ -1,0 +1,36 @@
+Loaded 338 15m bars
+  Earliest: 2026-05-11 00:15 ET
+  Latest:   2026-05-14 15:30 ET
+  RTH bars:    103
+  GLOBEX bars: 235
+
+Combined total vol: 8,195,860
+  Combined  VPOC mid=29157.5  VAL=28765.0  VAH=29480.0
+  GLOBEX    VPOC mid=29302.5  VAL=29260.0  VAH=29635.0
+  RTH       VPOC mid=29157.5  VAL=28800.0  VAH=29490.0
+
+=== Top 10 HVN bins (combined, dedup 15pt) ===
+     29155-29160  mid= 29157.5  vol=    364,980  ( 4.45%)  NEW         
+     29325-29330  mid= 29327.5  vol=    283,169  ( 3.46%)  CONFLUENT   HTF-S5 29334-29374 (HTF-support)
+     29370-29375  mid= 29372.5  vol=    257,874  ( 3.15%)  CONFLUENT   HTF-S5 29334-29374 (HTF-support)
+     29685-29690  mid= 29687.5  vol=    203,471  ( 2.48%)  NEW         
+     29225-29230  mid= 29227.5  vol=    201,819  ( 2.46%)  NEW         
+     29415-29420  mid= 29417.5  vol=    164,311  ( 2.00%)  CONFLUENT   HTF-S4 29403-29427 (HTF-support)
+     29580-29585  mid= 29582.5  vol=    162,685  ( 1.98%)  CONFLUENT   D5 29565-29580 (5m-demand)
+     29175-29180  mid= 29177.5  vol=    147,855  ( 1.80%)  CONFLUENT   HTF-S6 29169-29193 (HTF-support)
+     29130-29135  mid= 29132.5  vol=    138,680  ( 1.69%)  NEW         
+     29340-29345  mid= 29342.5  vol=    137,055  ( 1.67%)  CONFLUENT   HTF-S5 29334-29374 (HTF-support)
+
+=== Top 6 LVN bins (combined, lowest vol in range) ===
+     29255-29260  mid= 29257.5  vol=      3,572  ( 0.04%)  GAP-NEW       
+     29395-29400  mid= 29397.5  vol=      4,678  ( 0.06%)  GAP-AT-ZONE   HTF-S4 29403-29427 (HTF-support)
+     29630-29635  mid= 29632.5  vol=      5,068  ( 0.06%)  GAP-AT-ZONE   D4 29615-29640 (5m-demand)
+     29245-29250  mid= 29247.5  vol=      5,984  ( 0.07%)  GAP-NEW       
+     29210-29215  mid= 29212.5  vol=      6,505  ( 0.08%)  GAP-NEW       
+     29260-29265  mid= 29262.5  vol=      6,851  ( 0.08%)  GAP-NEW       
+
+ATR(14) 15m, Wilder: 56.73 pts
+
+=== Session opens (search 15m bars) ===
+  Today RTH open  (5/14 09:30 ET): 29476.25
+  Today GLOBEX open (5/13 17:00 ET): None

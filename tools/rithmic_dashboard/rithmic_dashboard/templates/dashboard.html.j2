@@ -1,0 +1,943 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>MNQ Dashboard</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel: #121417;
+      --panel-2: #171b20;
+      --line: #2b3139;
+      --text: #e5e5e5;
+      --muted: #9ca3af;
+      --soft: #64748b;
+      --green: #84cc16;
+      --cyan: #22d3ee;
+      --yellow: #eab308;
+      --orange: #f97316;
+      --red: #dc2626;
+      --blue: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    a { color: inherit; }
+    .shell { width: min(1480px, calc(100vw - 28px)); margin: 0 auto; padding: 14px 0 28px; }
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(260px, 0.95fr) minmax(230px, 0.65fr) minmax(420px, 1.4fr);
+      gap: 14px;
+      align-items: stretch;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 14px;
+    }
+    .price-block, .meta-block, .status-block, .market-block, .top-scenarios-block, section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .price-block { padding: 14px 16px; }
+    .price-label, .label, th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0; }
+    .price { font: 700 34px/1 ui-monospace, SFMono-Regular, Consolas, monospace; margin-top: 4px; }
+    .market-block { padding: 14px; display: grid; gap: 8px; }
+    .market-title { font-size: 18px; font-weight: 800; line-height: 1.15; }
+    .market-detail { color: var(--muted); font-size: 13px; }
+    .market-bull { border-color: rgba(132, 204, 22, 0.45); }
+    .market-bear { border-color: rgba(220, 38, 38, 0.5); }
+    .market-neutral { border-color: rgba(56, 189, 248, 0.38); }
+    .price-block { display: grid; gap: 8px; }
+    .price-meta { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
+    .top-scenarios-block { padding: 14px; min-width: 0; }
+    .top-scenario-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+    .top-scenario { border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); padding: 10px; min-width: 0; }
+    .top-scenario-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .top-scenario-id { font: 800 18px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .top-scenario-main { font-weight: 700; }
+    .top-scenario-detail { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .meta-block { padding: 12px 14px; display: grid; gap: 4px; color: var(--muted); }
+    .status-block { padding: 12px 14px; min-width: 230px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      color: var(--text);
+      background: var(--panel-2);
+    }
+    .session-globex_active { border-color: rgba(132, 204, 22, 0.55); color: var(--green); }
+    .session-rth_active { border-color: rgba(34, 211, 238, 0.55); color: var(--cyan); }
+    .session-between_sessions { color: var(--muted); }
+    .alerts { display: grid; gap: 8px; margin: 14px 0; }
+    .alert {
+      border: 1px solid rgba(220, 38, 38, 0.65);
+      background: rgba(220, 38, 38, 0.1);
+      color: #fecaca;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-weight: 700;
+    }
+    .stack-alerts { display: grid; gap: 8px; margin-top: 14px; }
+    .stack-alert {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      border: 1px solid rgba(249, 115, 22, 0.72);
+      background: rgba(249, 115, 22, 0.12);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: #fed7aa;
+    }
+    .stack-kicker {
+      color: #fdba74;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+    .stack-description { color: #fff7ed; font-weight: 800; }
+    .stack-detail { color: #fed7aa; font-size: 12px; margin-top: 2px; }
+    .stack-dismiss {
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(253, 186, 116, 0.42);
+      border-radius: 5px;
+      color: #fed7aa;
+      background: rgba(10, 10, 10, 0.22);
+      cursor: pointer;
+      font: 700 18px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .caveat-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 0;
+      align-items: center;
+    }
+    .caveat-kicker { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .caveat-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      max-width: 100%;
+      border: 1px solid rgba(234, 179, 8, 0.28);
+      background: rgba(234, 179, 8, 0.055);
+      color: #fde68a;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 12px;
+      cursor: help;
+      white-space: nowrap;
+    }
+    .caveat-chip.info { border-color: rgba(56, 189, 248, 0.25); color: #bae6fd; background: rgba(56, 189, 248, 0.055); }
+    section { margin-top: 14px; padding: 14px; }
+    h2 { margin: 0 0 12px; font-size: 16px; line-height: 1.2; color: #f8fafc; }
+    table { width: 100%; border-collapse: collapse; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    tbody tr:hover td { background: rgba(255, 255, 255, 0.025); }
+    .grid-two { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr); gap: 14px; }
+    .posture { border-color: rgba(132, 204, 22, 0.32); background: rgba(132, 204, 22, 0.035); }
+    .posture h2 { margin-bottom: 8px; }
+    .posture-lines { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .posture-card { border: 1px solid rgba(132, 204, 22, 0.22); background: rgba(10, 10, 10, 0.18); border-radius: 6px; padding: 10px; min-width: 0; }
+    .posture-card-title { color: #bef264; font-size: 10px; text-transform: uppercase; font-weight: 800; margin-bottom: 4px; }
+    .posture-card-body { color: #f7fee7; font-size: 13px; line-height: 1.35; }
+    .recent-signals { border-color: rgba(56, 189, 248, 0.28); }
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .recent-signal-list { display: grid; gap: 7px; }
+    .recent-signal-row {
+      display: grid;
+      grid-template-columns: 82px 34px minmax(0, 1fr) minmax(92px, auto);
+      gap: 8px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.025);
+      padding: 8px 10px;
+      min-width: 0;
+    }
+    .recent-signal-row.signal-urgency-high { border-color: rgba(220, 38, 38, 0.48); }
+    .recent-signal-row.signal-urgency-medium { border-color: rgba(234, 179, 8, 0.42); }
+    .signal-age-fresh { box-shadow: inset 3px 0 0 rgba(132, 204, 22, 0.85); }
+    .signal-age-normal { box-shadow: inset 3px 0 0 rgba(56, 189, 248, 0.55); }
+    .signal-age-faded { opacity: 0.58; }
+    .signal-time { color: var(--muted); font-size: 12px; }
+    .signal-icon {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      font: 800 14px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      background: var(--panel-2);
+    }
+    .signal-family-sweep { color: var(--blue); border-color: rgba(56, 189, 248, 0.56); }
+    .signal-family-absorption { color: var(--orange); border-color: rgba(249, 115, 22, 0.52); }
+    .signal-family-dislocation { color: #fca5a5; border-color: rgba(220, 38, 38, 0.62); }
+    .signal-family-institutional_flow { color: #e9d5ff; border-color: rgba(168, 85, 247, 0.52); }
+    .signal-family-aggressor_flow { color: #67e8f9; border-color: rgba(6, 182, 212, 0.54); }
+    .signal-family-vol_regime { color: #a7f3d0; border-color: rgba(16, 185, 129, 0.54); }
+    .signal-family-day_type, .signal-family-generic { color: #cbd5e1; }
+    .signal-copy { min-width: 0; }
+    .signal-title { color: #f8fafc; font-weight: 800; overflow-wrap: anywhere; }
+    .signal-description { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .signal-scenarios { display: flex; justify-content: flex-end; gap: 4px; flex-wrap: wrap; }
+    .scenario-chip {
+      border: 1px solid rgba(132, 204, 22, 0.4);
+      border-radius: 4px;
+      color: #bef264;
+      background: rgba(132, 204, 22, 0.08);
+      padding: 2px 5px;
+      font: 700 11px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .zone-badge-list { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; }
+    .zone-signal-badge {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      font: 800 12px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+      cursor: help;
+    }
+    .zone-badge-stack { color: #fef3c7; border-color: rgba(234, 179, 8, 0.7); }
+    .zone-badge-sweep { color: var(--blue); border-color: rgba(56, 189, 248, 0.55); }
+    .zone-badge-absorption { color: var(--orange); border-color: rgba(249, 115, 22, 0.52); }
+    .zone-badge-dislocation { color: #fca5a5; border-color: rgba(220, 38, 38, 0.62); }
+    .zone-badge-institutional_flow { color: #e9d5ff; border-color: rgba(168, 85, 247, 0.52); }
+    .zone-badge-aggressor_flow { color: #67e8f9; border-color: rgba(6, 182, 212, 0.54); }
+    .zone-badge-vol_regime { color: #a7f3d0; border-color: rgba(16, 185, 129, 0.54); }
+    .zone-badge-day_type, .zone-badge-generic { color: #cbd5e1; }
+    .pulse-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .pulse-cell { border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); padding: 10px; min-width: 0; }
+    .pulse-value { margin-top: 3px; font: 700 16px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .pulse-note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .footprint-wrap { margin-top: 12px; overflow-x: auto; }
+    .footprint-table { min-width: 520px; }
+    .footprint-table th, .footprint-table td { padding: 6px 8px; }
+    .imbalance-buy { color: #86efac; }
+    .imbalance-sell { color: #fca5a5; }
+    .day-type-card { border-color: rgba(14, 165, 233, 0.32); }
+    .day-type-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .day-type-cell { border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); padding: 10px; min-width: 0; }
+    .day-type-main { font: 800 16px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; color: #e0f2fe; overflow-wrap: anywhere; }
+    .scenario-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .scenario-card { border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); padding: 12px; min-width: 0; }
+    .scenario-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; margin-bottom: 10px; }
+    .scenario-title { font-weight: 700; font-size: 14px; }
+    .scenario-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .scenario-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+    .field .label { display: block; margin-bottom: 2px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .state-DORMANT { color: var(--muted); }
+    .state-WATCHING { color: var(--yellow); border-color: rgba(234, 179, 8, 0.6); }
+    .state-ACTIVE { color: var(--green); border-color: rgba(132, 204, 22, 0.7); }
+    .state-IN_PROGRESS { color: var(--orange); border-color: rgba(249, 115, 22, 0.7); }
+    .state-COMPLETED { color: var(--soft); }
+    .conv-SUPER { color: #fca5a5; font-weight: 800; }
+    .conv-HIGH { color: #fde047; font-weight: 700; }
+    .conv-MED { color: #cbd5e1; }
+    .conv-LOW { color: var(--muted); }
+    .dir-above { color: var(--red); }
+    .dir-below { color: var(--cyan); }
+    .dir-at { color: var(--green); font-weight: 700; }
+    .cluster-list { display: grid; gap: 10px; }
+    .cluster-card { border: 1px solid var(--line); border-radius: 6px; padding: 12px; background: var(--panel-2); }
+    .cluster-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+    .cluster-price { font: 800 20px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .cluster-relation { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .cluster-read { margin-top: 8px; color: #dbeafe; }
+    .method-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .method-tag { border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; color: var(--text); background: rgba(255, 255, 255, 0.035); font-size: 11px; font-weight: 700; }
+    .audit-list { display: grid; gap: 7px; }
+    .audit-item { display: grid; grid-template-columns: 150px 1fr; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 7px; }
+    .details-stack { display: grid; gap: 10px; margin-top: 14px; }
+    details.detail-panel {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+    details.detail-panel[open] { padding-bottom: 14px; }
+    .detail-panel summary {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      cursor: pointer;
+      color: #f8fafc;
+      font-weight: 800;
+      list-style: none;
+    }
+    .detail-panel summary::-webkit-details-marker { display: none; }
+    .detail-panel summary::after { content: "+"; color: var(--muted); font: 700 18px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .detail-panel[open] summary::after { content: "-"; }
+    .detail-panel-body { padding: 0 14px; }
+    .detail-panel-body section {
+      margin-top: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+    .detail-panel-body h2 { display: none; }
+    .footer { color: var(--muted); font-size: 12px; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 5px; text-decoration: none; background: var(--panel-2); }
+    .empty { color: var(--muted); font-style: italic; }
+    @media (max-width: 980px) {
+      .topbar, .grid-two, .scenario-grid, .pulse-grid, .posture-lines, .top-scenario-list, .day-type-grid { grid-template-columns: 1fr; }
+      .recent-signal-row { grid-template-columns: 76px 30px minmax(0, 1fr); }
+      .signal-scenarios { grid-column: 3; justify-content: flex-start; }
+      .status-block { min-width: 0; }
+      .audit-item { grid-template-columns: 1fr; }
+      .caveat-chip { white-space: normal; }
+    }
+    @media (max-width: 620px) {
+      .shell { width: min(100vw - 16px, 520px); }
+      .price { font-size: 30px; }
+      .levels-table thead { display: none; }
+      .levels-table, .levels-table tbody, .levels-table tr, .levels-table td {
+        display: block;
+        width: 100%;
+      }
+      .levels-table tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+      .levels-table td {
+        border: 0;
+        display: grid;
+        grid-template-columns: minmax(86px, 0.42fr) minmax(0, 1fr);
+        gap: 8px;
+        padding: 4px 0;
+      }
+      .levels-table td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <div class="market-block market-{{ market_summary.tone if market_summary else 'neutral' }}">
+        <div class="price-label">Regime / trend</div>
+        <div class="market-title">{{ market_summary.label if market_summary else "Unavailable" }}</div>
+        <div class="market-detail">{{ market_summary.detail if market_summary else "Missing market summary." }}</div>
+        {% if session_state %}
+          <div>
+            <span class="badge session-{{ session_state.state }}">{{ session_state.state.replace("_", " ").upper() }}</span>
+            <span class="label" style="margin-left: 6px">{{ session_state.trading_date }} / {{ session_state.session.upper() }}</span>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="price-block">
+        <div class="price-label">MNQ current price</div>
+        <div class="price">{{ current_price|price if current_price is not none else "n/a" }}</div>
+        <div class="price-meta">
+          <div><span class="label">Last updated</span> {{ generated_at.strftime("%H:%M:%S PT") }}</div>
+          {% if price_snapshot %}
+            <div><span class="label">Price source</span> {{ price_snapshot.source }}</div>
+            <div><span class="label">Print time</span> {{ price_snapshot.event_time_pt|age }}</div>
+          {% else %}
+            <div><span class="label">Price source</span> unavailable</div>
+          {% endif %}
+          {% if session_state and session_state.session_end_pt %}
+            <div><span class="label">Session ends</span> {{ session_state.session_end_pt.strftime("%H:%M PT") }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="top-scenarios-block">
+        <div class="price-label">Top 2 scenarios by current price</div>
+        {% if top_scenarios %}
+          <div class="top-scenario-list">
+            {% for item in top_scenarios %}
+              {% set scenario = item.scenario %}
+              <div class="top-scenario">
+                <div class="top-scenario-title">
+                  <div><span class="top-scenario-id">{{ scenario.scenario_id }}</span> <span class="top-scenario-main">{{ scenario.direction.upper() }}</span></div>
+                  <span class="badge state-{{ scenario.state }}">{{ scenario.state }}</span>
+                </div>
+                <div class="mono">{{ scenario.entry_zone_low|price }}-{{ scenario.entry_zone_high|price }}</div>
+                <div class="top-scenario-detail">{{ item.distance_text }} / {{ item.probability }} / T1 {{ scenario.target_1|price }} ({{ scenario.r_multiple_t1|r }})</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="empty">Scenario ranking unavailable until price and zones are available.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if paused or blocking_warnings %}
+      <div class="alerts">
+        {% if paused %}
+          <div class="alert">PAUSED: _pause.flag exists; scheduled runs should skip generation.</div>
+        {% endif %}
+        {% for warning in blocking_warnings %}
+          <div class="alert" title="{{ warning.message }}">{{ warning.detail }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if data_caveats %}
+      <div class="caveat-row" aria-label="Data caveats">
+        <span class="caveat-kicker">Data caveats</span>
+        {% for warning in data_caveats[:6] %}
+          <span class="caveat-chip {{ warning.severity }}" title="{{ warning.detail }}">{{ warning.label }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if error_message %}
+      <section><h2>{{ error_title }}</h2><p>{{ error_message }}</p><p class="empty">Last good: {{ last_good or "unknown" }}</p></section>
+    {% endif %}
+
+    {% if stack_alerts %}
+      <div class="stack-alerts" aria-label="Multi-signal stack alerts">
+        {% for alert in stack_alerts[:2] %}
+          <div class="stack-alert" title="{{ alert.tooltip }}" data-stack-alert>
+            <div>
+              <div class="stack-kicker">Multi-signal stack</div>
+              <div class="stack-description">{{ alert.description }}</div>
+              <div class="stack-detail">{{ alert.latest_timestamp_pt }} / {{ alert.signal_count }} recent signals</div>
+            </div>
+            <button class="stack-dismiss" type="button" aria-label="Dismiss signal stack" data-dismiss-stack>×</button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if active_posture %}
+      <section class="posture">
+        <h2>Active Posture</h2>
+        <div class="posture-lines">
+          {% for sentence in active_posture.sentences %}
+            <div class="posture-card">
+              <div class="posture-card-title">
+                {% if sentence.startswith("Volatility regime:") %}Vol regime{% elif sentence.startswith("Day type:") %}Day type{% elif loop.index == 1 %}Regime / trend{% elif loop.index == 2 %}Scenario focus{% else %}Orderflow check{% endif %}
+              </div>
+              <div class="posture-card-body">{{ sentence }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="day-type-card">
+      <div class="section-head">
+        <h2>Today's Day Type</h2>
+        <span class="label">Initial Balance / RTH structure</span>
+      </div>
+      {% if day_type %}
+        <div class="day-type-grid">
+          <div class="day-type-cell">
+            <div class="label">Classification</div>
+            <div class="day-type-main">{{ day_type.day_type.replace("_", " ").upper() }}</div>
+            <div class="pulse-note">{{ day_type.status.upper() }} / {{ day_type.confidence.upper() }}</div>
+          </div>
+          <div class="day-type-cell">
+            <div class="label">IB range</div>
+            <div class="day-type-main">
+              {% if day_type.ib_low is not none and day_type.ib_high is not none %}
+                {{ day_type.ib_low|price }}-{{ day_type.ib_high|price }}
+              {% else %}
+                n/a
+              {% endif %}
+            </div>
+            <div class="pulse-note">{% if day_type.ib_range is not none %}{{ day_type.ib_range|price }} pts{% else %}waiting for RTH IB{% endif %}</div>
+          </div>
+          <div class="day-type-cell">
+            <div class="label">Current extension</div>
+            <div class="day-type-main">
+              {% if day_type.current_extension_pts is not none %}
+                {{ day_type.current_extension_pts|signed }} pts
+              {% else %}
+                n/a
+              {% endif %}
+            </div>
+            <div class="pulse-note">{% if day_type.current_extension_x_ib is not none %}{{ day_type.current_extension_x_ib|signed }}x IB{% else %}not classified{% endif %}</div>
+          </div>
+          <div class="day-type-cell">
+            <div class="label">Classified at</div>
+            <div class="day-type-main">{{ day_type.classification_timestamp_pt[11:16] ~ " PT" if day_type.classification_timestamp_pt else "pending" }}</div>
+            <div class="pulse-note">rechecks every 15 minutes</div>
+          </div>
+          <div class="day-type-cell">
+            <div class="label">Read</div>
+            <div class="pulse-note">{{ day_type.reason }}</div>
+          </div>
+        </div>
+      {% else %}
+        <p class="empty">Day-type classification unavailable.</p>
+      {% endif %}
+    </section>
+
+    <section class="recent-signals">
+      <div class="section-head">
+        <h2>Recent Signals</h2>
+        <span class="label">Last 30 minutes</span>
+      </div>
+      {% if recent_signals %}
+        <div class="recent-signal-list">
+          {% for signal in recent_signals[:10] %}
+            <div class="recent-signal-row {{ signal.decay_class }} signal-urgency-{{ signal.urgency }}" title="{{ signal.tooltip }}">
+              <div class="signal-time mono">{{ signal.timestamp_pt[11:16] }} PT</div>
+              <div><span class="signal-icon signal-family-{{ signal.family }}">{{ signal.icon }}</span></div>
+              <div class="signal-copy">
+                <div class="signal-title">{{ signal.label }} / {{ signal.zone_text }}</div>
+                <div class="signal-description">{{ signal.description }}</div>
+              </div>
+              <div class="signal-scenarios">
+                {% for scenario_id in signal.scenario_refs %}
+                  <span class="scenario-chip">{{ scenario_id }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty">No live sweep, absorption, or dislocation events inside the 30-minute window.</p>
+      {% endif %}
+    </section>
+
+    <section class="scenario-focus">
+      <h2>Scenario Status</h2>
+      {% if scenarios %}
+        <div class="scenario-grid">
+        {% for scenario in scenarios %}
+          <article class="scenario-card">
+            <div class="scenario-head">
+              <div>
+                <div class="scenario-title">{{ scenario.scenario_id }} - {{ scenario.name }}</div>
+                <div class="scenario-sub">{{ scenario.direction.upper() }} / {{ scenario.reason }}</div>
+              </div>
+              <span class="badge state-{{ scenario.state }}">{{ scenario.state }}</span>
+            </div>
+            <div class="scenario-fields mono">
+              <div class="field"><span class="label">Entry</span>{{ scenario.entry_zone_low|price }}-{{ scenario.entry_zone_high|price }}</div>
+              <div class="field"><span class="label">Stop</span>{{ scenario.stop|price }}</div>
+              <div class="field"><span class="label">T1</span>{{ scenario.target_1|price }} / {{ scenario.r_multiple_t1|r }}</div>
+              <div class="field"><span class="label">T2/T3</span>{{ scenario.target_2|price }} / {{ scenario.target_3|price }}</div>
+              <div class="field">
+                <span class="label">Probability</span>
+                <span title="{{ scenario.tooltip }}">
+                  {{ scenario.adjusted_prob_low|pct }}-{{ scenario.adjusted_prob_high|pct }}
+                  {% if scenario.adjustment_factors|selectattr("is_structural")|list %}<span title="Sweep, absorption, or confluence multiplier applied">◆</span>{% endif %}
+                </span>
+              </div>
+              <div class="field"><span class="label">Current R</span>{{ scenario.current_r|r }}</div>
+            </div>
+          </article>
+        {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty">Scenarios unavailable until a zone envelope and price are available.</p>
+      {% endif %}
+    </section>
+
+    <div class="details-stack">
+    <details class="detail-panel">
+      <summary>Market Levels And Price Clusters</summary>
+      <div class="detail-panel-body">
+    <div class="grid-two">
+      <section>
+        <h2>Distance To Key Levels</h2>
+        {% if distances %}
+          <table class="levels-table">
+            <thead><tr><th>Level</th><th>Price</th><th>Pts</th><th>ATR</th><th>Direction</th><th>State</th><th>Signals</th></tr></thead>
+            <tbody>
+            {% for level in distances %}
+              <tr>
+                <td data-label="Level"><span class="conv-{{ level.conviction or 'LOW' }}">{{ level.text }}</span><div class="label">{{ level.source }}</div></td>
+                <td data-label="Price">{{ level.price|price }}</td>
+                <td data-label="Pts">{{ level.distance_pts|signed }}</td>
+                <td data-label="ATR">{{ level.distance_atr|signed }}</td>
+                <td data-label="Direction" class="dir-{{ level.direction }}">{{ level.direction }}</td>
+                <td data-label="State">{{ level.state.replace("_", " ") }}</td>
+                <td data-label="Signals">
+                  {% set badges = zone_signal_badges.get(level.level_id, []) %}
+                  {% if badges %}
+                    <span class="zone-badge-list">
+                      {% for badge in badges %}
+                        <span class="zone-signal-badge {{ badge.css_class }}" title="{{ badge.tooltip }}" aria-label="{{ badge.label }}">{{ badge.icon }}</span>
+                      {% endfor %}
+                    </span>
+                  {% else %}
+                    <span class="empty">none</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="empty">No levels available.</p>
+        {% endif %}
+      </section>
+
+      <section>
+        <h2>Price Clusters To Watch</h2>
+        <p class="label" style="margin-top: -4px; margin-bottom: 10px; text-transform: none; font-size: 12px">
+          A cluster means two or more independent levels sit within 10 points. Treat nearby clusters as decision areas, not exact tick calls.
+        </p>
+        {% if confluence_cards %}
+          <div class="cluster-list">
+          {% for card in confluence_cards[:6] %}
+            {% set group = card.group %}
+            <div class="cluster-card">
+              <div class="cluster-head">
+                <div>
+                  <div class="cluster-price">{{ group.center_price|price }}</div>
+                  <div class="cluster-relation">{{ card.relation }} / {{ group.span_pts|price }} pt span</div>
+                </div>
+                <span class="badge conv-{{ group.conviction_score }}">{{ group.conviction_score }} {{ group.tightness }}</span>
+              </div>
+              <div><strong>Why it matters:</strong> {{ card.level_text }} agree in the same area.</div>
+              <div class="cluster-read"><strong>Read:</strong> {{ card.read }}</div>
+              <div class="method-tags">
+                {% for method in card.methods %}
+                  <span class="method-tag">{{ method }}</span>
+                {% endfor %}
+              </div>
+              <div class="label" style="margin-top: 8px; text-transform: none">{{ group.levels|map(attribute="text")|join(" / ") }}</div>
+            </div>
+          {% endfor %}
+          </div>
+        {% else %}
+          <p class="empty">No nearby price clusters detected.</p>
+        {% endif %}
+      </section>
+    </div>
+
+      </div>
+    </details>
+
+    <details class="detail-panel" open>
+      <summary>Orderflow Pulse</summary>
+      <div class="detail-panel-body">
+    <section>
+      <h2>Orderflow Pulse</h2>
+      {% if orderflow_pulse or live_signals %}
+        <div class="pulse-grid">
+          {% if live_signals %}
+          <div class="pulse-cell">
+            <div class="label">Live velocity</div>
+            <div class="pulse-value">{{ live_signals.velocity.state.upper() }}</div>
+            <div class="pulse-note">
+              {{ live_signals.velocity.trades_last_15m }} trades / 15m
+              {% if live_signals.velocity.ratio is not none %}({{ live_signals.velocity.ratio|price }}x baseline){% endif %}
+            </div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Live CVD</div>
+            <div class="pulse-value {% if live_signals.cvd.session_cvd and live_signals.cvd.session_cvd > 0 %}conv-HIGH{% elif live_signals.cvd.session_cvd and live_signals.cvd.session_cvd < 0 %}dir-above{% endif %}">
+              {{ live_signals.cvd.session_cvd|signed if live_signals.cvd.session_cvd is not none else "n/a" }}
+            </div>
+            <div class="pulse-note">
+              60m {{ live_signals.cvd.last_60m_cvd|signed if live_signals.cvd.last_60m_cvd is not none else "n/a" }} /
+              15m {{ live_signals.cvd.last_15m_cvd|signed if live_signals.cvd.last_15m_cvd is not none else "n/a" }}
+              {% if live_signals.cvd.momentum_flip %} / flip{% endif %}
+            </div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Recent sweeps</div>
+            <div class="pulse-value">
+              {% if live_signals.sweeps %}
+                {% for sweep in live_signals.sweeps[:3] %}
+                  {{ sweep.level_price|price }} {{ sweep.direction }}{% if not loop.last %} / {% endif %}
+                {% endfor %}
+              {% else %}
+                none
+              {% endif %}
+            </div>
+            <div class="pulse-note">live bounded-tail detector</div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Absorption proxy</div>
+            <div class="pulse-value">
+              {% if live_signals.absorption_proxies %}
+                {% for event in live_signals.absorption_proxies[:3] %}
+                  {{ event.price|price }} {{ event.confidence }}{% if not loop.last %} / {% endif %}
+                {% endfor %}
+              {% else %}
+                none
+              {% endif %}
+            </div>
+            <div class="pulse-note">heavy volume + balanced delta proxy</div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Delta dislocations</div>
+            <div class="pulse-value">
+              {% if live_signals.delta_dislocations %}
+                {% for event in live_signals.delta_dislocations[:3] %}
+                  {{ event.side }} {{ event.level_price|price }}{% if event.is_strong %} strong{% endif %}{% if not loop.last %} / {% endif %}
+                {% endfor %}
+              {% else %}
+                none
+              {% endif %}
+            </div>
+            <div class="pulse-note">
+              {% if live_signals.delta_dislocations %}
+                {% set first_dislocation = live_signals.delta_dislocations[0] %}
+                CVD {{ first_dislocation.hourly_cvd|signed }} / {{ first_dislocation.confidence.replace("_", " ") }}
+              {% else %}
+                candle direction vs 60m CVD at key levels
+              {% endif %}
+            </div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Volatility regime</div>
+            {% set vol = volatility_regime %}
+            <div class="pulse-value {% if vol and vol.regime == 'HIGH' %}conv-HIGH{% elif vol and vol.regime == 'LOW' %}dir-below{% endif %}">
+              {% if vol and vol.status == "active" %}
+                {{ vol.regime }}
+              {% elif vol %}
+                {{ vol.status.replace("_", " ").upper() }}
+              {% else %}
+                n/a
+              {% endif %}
+            </div>
+            <div class="pulse-note">
+              {% if vol and vol.status == "active" %}
+                EWMA {{ vol.ewma_sigma_pts|price }}pt /
+                {{ vol.ratio|price }}x median /
+                effective {{ vol.sigma_effective_pts|price }}pt
+              {% elif vol %}
+                {{ vol.reason }}
+              {% else %}
+                waiting for EWMA calibration
+              {% endif %}
+            </div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Institutional flow</div>
+            {% set institutional = live_signals.institutional_flow_summary %}
+            <div class="pulse-value">
+              {% if institutional and institutional.total_institutional_volume %}
+                {{ institutional.net_institutional_delta|signed }} net / {{ institutional.block_trade_count }} blocks
+              {% else %}
+                none
+              {% endif %}
+            </div>
+            <div class="pulse-note">
+              {% if institutional and institutional.latest_event %}
+                {{ institutional.latest_event }}
+              {% elif institutional and institutional.top_zone_text %}
+                Top zone {{ institutional.top_zone_text }}
+                {% if institutional.top_zone_volume_pct is not none %}({{ institutional.top_zone_volume_pct|pct }}){% endif %}
+              {% else %}
+                50-99 institutional / 100+ block classifier
+              {% endif %}
+            </div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Aggressor Flow</div>
+            <div class="pulse-value">
+              {% if live_signals.aggressor_windows %}
+                {% for metric in live_signals.aggressor_windows[:2] %}
+                  {{ metric.label }} {{ metric.net|signed }}{% if not loop.last %} / {% endif %}
+                {% endfor %}
+              {% else %}
+                n/a
+              {% endif %}
+            </div>
+            <div class="pulse-note">
+              {% if live_signals.aggressor_windows %}
+                {% set fast = live_signals.aggressor_windows[0] %}
+                liftAsk {{ fast.lift_ask }} / hitBid {{ fast.hit_bid }}
+                {% if fast.ratio is not none %}/ {{ fast.ratio|price }}x{% endif %}
+              {% else %}
+                bounded obs01 trade tail
+              {% endif %}
+            </div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">vDelta 30s</div>
+            {% set vd = live_signals.v_delta %}
+            <div class="pulse-value {% if vd and vd.value and vd.value > 0 %}conv-HIGH{% elif vd and vd.value and vd.value < 0 %}dir-above{% endif %}">
+              {{ vd.value|signed if vd and vd.value is not none else "n/a" }}
+            </div>
+            <div class="pulse-note">
+              {% if vd %}
+                {{ vd.direction }}{% if vd.sign_flip %} / sign flip{% endif %}
+              {% else %}
+                short-window momentum delta
+              {% endif %}
+            </div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Footprint (current bar)</div>
+            {% set fp = live_signals.footprint_bar %}
+            <div class="pulse-value">
+              {% if fp and fp.stacked_side != "none" %}
+                {{ fp.stacked_side }} stack x{{ fp.stacked_count }}
+              {% elif fp %}
+                {{ fp.levels|length }} prices
+              {% else %}
+                n/a
+              {% endif %}
+            </div>
+            <div class="pulse-note">
+              {% if fp %}
+                {{ fp.bar_start_pt[11:16] }}-{{ fp.bar_end_pt[11:16] }}
+                {% if fp.stacked_side != "none" %}
+                  / {{ fp.stacked_low_price|price }}-{{ fp.stacked_high_price|price }}
+                {% endif %}
+              {% else %}
+                per-price 5m bid/ask volume
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+          {% if orderflow_pulse %}
+          <div class="pulse-cell">
+            <div class="label">CVD session</div>
+            <div class="pulse-value {% if orderflow_pulse.session_cvd and orderflow_pulse.session_cvd > 0 %}conv-HIGH{% elif orderflow_pulse.session_cvd and orderflow_pulse.session_cvd < 0 %}dir-above{% endif %}">
+              {{ orderflow_pulse.session_cvd|signed if orderflow_pulse.session_cvd is not none else "n/a" }}
+            </div>
+            <div class="pulse-note">{{ orderflow_pulse.artifact_date }} {{ orderflow_pulse.artifact_session.upper() }}</div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">CVD last 60m</div>
+            <div class="pulse-value {% if orderflow_pulse.last_60m_cvd and orderflow_pulse.last_60m_cvd > 0 %}conv-HIGH{% elif orderflow_pulse.last_60m_cvd and orderflow_pulse.last_60m_cvd < 0 %}dir-above{% endif %}">
+              {{ orderflow_pulse.last_60m_cvd|signed if orderflow_pulse.last_60m_cvd is not none else "n/a" }}
+            </div>
+            <div class="pulse-note">fast momentum window</div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Net volume bias</div>
+            <div class="pulse-value">{{ orderflow_pulse.buy_volume_pct|pct if orderflow_pulse.buy_volume_pct is not none else "n/a" }} buy</div>
+            <div class="pulse-note">normalized trade tape</div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Spread MBP1</div>
+            <div class="pulse-value">
+              {{ orderflow_pulse.spread_mean_ticks|price if orderflow_pulse.spread_mean_ticks is not none else "n/a" }}t mean /
+              {{ orderflow_pulse.spread_p99_ticks|price if orderflow_pulse.spread_p99_ticks is not none else "n/a" }}t p99
+            </div>
+            <div class="pulse-note">{{ orderflow_pulse.crossed_quotes if orderflow_pulse.crossed_quotes is not none else "n/a" }} crossed quotes</div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Recent absorption</div>
+            <div class="pulse-value">{{ orderflow_pulse.recent_absorption or "n/a" }}</div>
+            <div class="pulse-note">RA-030.1 artifact</div>
+          </div>
+          <div class="pulse-cell">
+            <div class="label">Top spoof bins</div>
+            <div class="pulse-value">
+              {% if orderflow_pulse.top_spoof_bins %}
+                {% for bin in orderflow_pulse.top_spoof_bins %}
+                  {{ bin.price|price }} (n={{ bin.n_events }}, {{ bin.spoof_score|price }}){% if not loop.last %} / {% endif %}
+                {% endfor %}
+              {% else %}
+                n/a
+              {% endif %}
+            </div>
+            <div class="pulse-note">Pressure compute {{ orderflow_pulse.pressure_status }}</div>
+          </div>
+          {% endif %}
+        </div>
+        {% if live_signals and live_signals.footprint_bar %}
+          {% set fp = live_signals.footprint_bar %}
+          <div class="footprint-wrap" aria-label="Footprint current bar">
+            <table class="footprint-table">
+              <thead>
+                <tr><th>Price</th><th>Bid Vol</th><th>Ask Vol</th><th>Total</th><th>Imbalance</th></tr>
+              </thead>
+              <tbody>
+                {% for level in fp.levels[:12] %}
+                  <tr>
+                    <td>{{ level.price|price }}</td>
+                    <td>{{ level.bid_volume }}</td>
+                    <td>{{ level.ask_volume }}</td>
+                    <td>{{ level.total_volume }}</td>
+                    <td class="{% if level.imbalance > 0.3 %}imbalance-buy{% elif level.imbalance < -0.3 %}imbalance-sell{% endif %}">
+                      {{ (level.imbalance * 100)|price }}%
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="empty">Orderflow pulse unavailable.</p>
+      {% endif %}
+    </section>
+      </div>
+    </details>
+
+    {% if signals %}
+      <details class="detail-panel">
+        <summary>Opening Session Signals</summary>
+        <div class="detail-panel-body">
+      <section>
+        <h2>Session Signals</h2>
+        <table>
+          <tbody>
+            <tr><th>Open print vs ref</th><td>{{ signals.open_print|price }} / {{ signals.open_vs_close_ref }}</td></tr>
+            <tr><th>First-30m VWAP</th><td>{{ signals.first_30min_vwap|price }} / {{ signals.first_30min_vwap_vs_threshold }}</td></tr>
+            <tr><th>Net CVD 30m</th><td>{{ signals.net_cvd_30min }} / {{ signals.cvd_direction }}</td></tr>
+            <tr><th>Lower confluence test</th><td>{{ "yes" if signals.first_test_of_lower_confluence else "no" }}</td></tr>
+            <tr><th>Upper confluence test</th><td>{{ "yes" if signals.first_test_of_upper_confluence else "no" }}</td></tr>
+          </tbody>
+        </table>
+      </section>
+        </div>
+      </details>
+    {% endif %}
+
+    <details class="detail-panel">
+      <summary>Audit Trail</summary>
+      <div class="detail-panel-body">
+    <section>
+      <h2>Audit Trail</h2>
+      {% if audit %}
+        <div class="audit-list">
+        {% for entry in audit %}
+          <div class="audit-item"><div class="mono">{{ entry.timestamp_pt }}</div><div>{{ entry.description }}</div></div>
+        {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty">No actionable events yet.</p>
+      {% endif %}
+    </section>
+      </div>
+    </details>
+    </div>
+
+    <div class="footer">
+      <p>Probabilities are heuristic priors with multi-method confluence and structural-pattern adjustments. They are NOT empirically calibrated until RA-027 HistoryReport accumulates at least 30 paired sessions.</p>
+      <p>Source attribution: zones={{ zones_path if zones_path else "missing" }}; output={{ output_path }}.</p>
+      <p><a class="button" href="#" onclick="location.reload(); return false;">Refresh</a></p>
+    </div>
+  </main>
+  <script>
+    document.querySelectorAll("[data-dismiss-stack]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var alert = button.closest("[data-stack-alert]");
+        if (alert) {
+          alert.style.display = "none";
+        }
+      });
+    });
+  </script>
+</body>
+</html>

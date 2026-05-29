@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.pytest_basetemp/
+.ruff_cache/
+
+# Runtime dashboard artifacts. The generator recreates these.
+data/dashboard/
+data/live_analysis/

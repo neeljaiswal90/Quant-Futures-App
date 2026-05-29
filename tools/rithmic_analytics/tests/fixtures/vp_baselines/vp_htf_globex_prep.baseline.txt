@@ -1,0 +1,213 @@
+==============================================================================
+HTF VOLUME PROFILE CONFLUENCE ZONES  |  MNQ GLOBEX PREP  |  May 14, 2026
+==============================================================================
+Current price: 29,729.00
+Daily bars: 90   1h bars: 300
+Globex bars: 208   RTH bars: 79
+
+------ REFERENCE LEVELS ------
+Today (5/14, in prog): H=29,783.75  L=29,448.25
+Prior Day (5/13):  H=29,565.25  L=29,056.25  C=29,479.25
+Prior Week (5/5-5/9):  H=29,383.25  L=28,245.25
+Daily VPOC (recent 30d): 24,262   VAH: 27,788   VAL: 24,262
+Daily VPOC (full 90d):       24,962   VAH: 27,438   VAL: 24,688
+1h    VPOC:                  27,115   VAH: 29,135   VAL: 27,055
+Daily ATR(14): 490.46
+Weekly AVWAP (~5d): 29,228.17
+
+Last 3 Globex sessions:
+  start Mon 05/11 18:00 ET  H=29,456.50  L=29,113.25
+  start Tue 05/12 18:00 ET  H=29,448.25  L=29,056.25
+  start Wed 05/13 18:00 ET  H=29,693.50  L=29,448.25
+
+------ TOP DAILY HVNs (25pt bins) ------
+    24,262    7.58%
+    27,288    6.53%
+    26,712    6.48%
+    29,112    4.22%
+    28,738    4.18%
+    27,462    4.15%
+    26,912    4.14%
+    24,888    4.10%
+    29,638    3.78%
+    29,362    3.70%
+
+------ TOP 1h HVNs (10pt bins, all bars) ------
+    27,115    2.38%
+    29,175    2.25%
+    27,295    1.99%
+    29,415    1.78%
+    27,785    1.76%
+    27,385    1.72%
+    29,345    1.72%
+    29,085    1.68%
+    27,335    1.65%
+    27,175    1.64%
+
+------ TOP GLOBEX-only 1h HVNs ------
+    29,185    4.23%
+    27,335    4.06%
+    29,555    4.02%
+    29,345    3.73%
+    28,765    3.15%
+    27,175    3.02%
+    27,775    2.94%
+    27,865    2.84%
+    28,435    2.77%
+    29,025    2.51%
+
+------ TOP RTH-only 1h HVNs ------
+    27,115    3.41%
+    29,085    2.99%
+    29,415    2.88%
+    29,695    2.81%
+    27,295    2.57%
+    29,735    2.53%
+    27,385    2.42%
+    29,645    2.40%
+    27,855    2.33%
+    27,785    2.33%
+
+------ HTF CONFLUENCE ZONES (ranked) ------
+ID       Range              T       Dist Conv  Sources
+HTF-S5   29,334-29,374      S       -375 HIGH  Daily HVN 29,362 (3.70%); 1h Globex HVN 29,345 (3.73%); 1h HVN 29,345 (1.72%)
+HTF-S2   29,620-29,660      S        -89 HIGH  Daily HVN 29,638 (3.78%); 1h RTH HVN 29,645 (2.40%)
+HTF-S6   29,169-29,193      S       -548 MED   1h Globex HVN 29,185 (4.23%); 1h HVN 29,175 (2.25%)
+HTF-S4   29,403-29,427      S       -314 MED   1h RTH HVN 29,415 (2.88%); 1h HVN 29,415 (1.78%)
+HTF-S3   29,543-29,567      S       -174 LOW   1h Globex HVN 29,555 (4.02%)
+HTF-S1   29,683-29,707      S        -34 LOW   1h RTH HVN 29,695 (2.81%)
+HTF-R1   29,723-29,747      R         +6 LOW   1h RTH HVN 29,735 (2.53%)
+
+------ JSON (pipe to TV) ------
+```json
+{
+  "zones": [
+    {
+      "id": "HTF-S5",
+      "top": 29374,
+      "bot": 29334,
+      "type": "support",
+      "conviction": "HIGH",
+      "text": "HTF-S5 29,334-29,374 | Daily HVN 29,362 + 1h Globex HVN 29,345 + 1h HVN 29,345 | HIGH"
+    },
+    {
+      "id": "HTF-S2",
+      "top": 29660,
+      "bot": 29620,
+      "type": "support",
+      "conviction": "HIGH",
+      "text": "HTF-S2 29,620-29,660 | Daily HVN 29,638 + 1h RTH HVN 29,645 | HIGH"
+    },
+    {
+      "id": "HTF-S6",
+      "top": 29193,
+      "bot": 29169,
+      "type": "support",
+      "conviction": "MED",
+      "text": "HTF-S6 29,169-29,193 | 1h Globex HVN 29,185 + 1h HVN 29,175 | MED"
+    },
+    {
+      "id": "HTF-S4",
+      "top": 29427,
+      "bot": 29403,
+      "type": "support",
+      "conviction": "MED",
+      "text": "HTF-S4 29,403-29,427 | 1h RTH HVN 29,415 + 1h HVN 29,415 | MED"
+    },
+    {
+      "id": "HTF-S3",
+      "top": 29567,
+      "bot": 29543,
+      "type": "support",
+      "conviction": "LOW",
+      "text": "HTF-S3 29,543-29,567 | 1h Globex HVN 29,555 | LOW"
+    },
+    {
+      "id": "HTF-S1",
+      "top": 29707,
+      "bot": 29683,
+      "type": "support",
+      "conviction": "LOW",
+      "text": "HTF-S1 29,683-29,707 | 1h RTH HVN 29,695 | LOW"
+    },
+    {
+      "id": "HTF-R1",
+      "top": 29747,
+      "bot": 29723,
+      "type": "resistance",
+      "conviction": "LOW",
+      "text": "HTF-R1 29,723-29,747 | 1h RTH HVN 29,735 | LOW"
+    }
+  ],
+  "reference_lines": [
+    {
+      "price": 29565.25,
+      "text": "Prior Day High 29,565.25"
+    },
+    {
+      "price": 29056.25,
+      "text": "Prior Day Low 29,056.25"
+    },
+    {
+      "price": 29479.25,
+      "text": "Prior Day Close 29,479.25"
+    },
+    {
+      "price": 29783.75,
+      "text": "Today Session High 29,783.75"
+    },
+    {
+      "price": 29448.25,
+      "text": "Today Session Low 29,448.25"
+    },
+    {
+      "price": 29383.25,
+      "text": "Prior Week High 29,383.25"
+    },
+    {
+      "price": 28245.25,
+      "text": "Prior Week Low 28,245.25"
+    },
+    {
+      "price": 24262.0,
+      "text": "Daily VPOC 24,262"
+    },
+    {
+      "price": 27788.0,
+      "text": "Daily VAH 27,788"
+    },
+    {
+      "price": 24262.0,
+      "text": "Daily VAL 24,262"
+    },
+    {
+      "price": 29228.17,
+      "text": "Weekly AVWAP 29,228.17"
+    },
+    {
+      "price": 29456.5,
+      "text": "Globex 05/11 High 29,456.50"
+    },
+    {
+      "price": 29113.25,
+      "text": "Globex 05/11 Low 29,113.25"
+    },
+    {
+      "price": 29448.25,
+      "text": "Globex 05/12 High 29,448.25"
+    },
+    {
+      "price": 29056.25,
+      "text": "Globex 05/12 Low 29,056.25"
+    },
+    {
+      "price": 29693.5,
+      "text": "Globex 05/13 High 29,693.50"
+    },
+    {
+      "price": 29448.25,
+      "text": "Globex 05/13 Low 29,448.25"
+    }
+  ]
+}
+```
