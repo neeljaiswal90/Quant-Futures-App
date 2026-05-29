@@ -188,6 +188,69 @@ def main(argv: list[str] | None = None) -> int:
     return EXIT_OK
 
 
+def normalize_incremental(
+    *,
+    input_path: Path,
+    obs01_path: Path,
+    audit_path: Path | None = None,
+    session_id: str | None = None,
+    run_id: str | None = None,
+    force_full: bool = False,
+) -> NormalizeState:
+    """In-process incremental normalize (raw capture -> obs01 + mbo + mbp1).
+
+    Library entry mirroring ``python -m ...normalize_probe_incremental --input
+    <raw> --output <obs01>`` without argparse / process exit / stderr summary,
+    for in-process callers like the RA-060 realtime backend (RA-070
+    self-normalize). The mbo/mbp1 siblings and the state file are derived from
+    ``obs01_path`` / ``input_path`` exactly as the CLI derives them; prior state
+    is validated for an incremental span (falling back to a full re-normalize on
+    any mismatch). Returns the new :class:`NormalizeState`; a no-new-bytes call
+    is a cheap no-op that returns the unchanged offset.
+
+    Raises ``FileNotFoundError`` if ``input_path`` is missing and ``ValueError``
+    if a session_id cannot be derived (pass ``session_id`` for non-standard
+    capture paths).
+    """
+    if not input_path.exists():
+        raise FileNotFoundError(input_path)
+    mbp1_out = _derive_sibling(obs01_path, "mbp1")
+    mbo_out = _derive_sibling(obs01_path, "mbo")
+    state_path = input_path.with_name(
+        input_path.name[: -len(".jsonl")] + ".obs01.normalize_state.json"
+        if input_path.name.endswith(".jsonl")
+        else input_path.name + ".obs01.normalize_state.json"
+    )
+    state, fallback_reason = _load_valid_state(
+        state_path=state_path,
+        source_path=input_path,
+        raw_size=input_path.stat().st_size,
+        obs01_path=obs01_path,
+        mbp1_path=mbp1_out,
+        mbo_path=mbo_out,
+        force_full=force_full,
+    )
+    resolved_session = session_id or session_id_from_path(input_path)
+    if resolved_session is None:
+        raise ValueError(
+            f"cannot derive session_id from {input_path}; pass session_id explicitly"
+        )
+    resolved_run = run_id or f"normalize-{resolved_session}"
+    _result, new_state = _run_normalize(
+        input_path=input_path,
+        obs01_path=obs01_path,
+        mbp1_path=mbp1_out,
+        mbo_path=mbo_out,
+        state=state,
+        state_path=state_path,
+        session_id=resolved_session,
+        run_id=resolved_run,
+        fallback_reason=fallback_reason,
+        audit_path=audit_path,
+    )
+    return new_state
+
+
 def _derive_sibling(out_path: Path, suffix: str) -> Path:
     out_str = str(out_path)
     if out_str.endswith(".obs01.jsonl"):

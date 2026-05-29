@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rithmic_analytics.cli.normalize_probe_incremental import EXIT_OK, main
+from rithmic_analytics.cli.normalize_probe_incremental import EXIT_OK, main, normalize_incremental
 from rithmic_analytics.ops.normalize_probe import normalize_probe_to_obs01
 
 
@@ -137,6 +137,38 @@ def test_incremental_resume_matches_full_normalize_and_writes_audit(
     assert fallback["event_type"] == "normalize_state_missing_fallback_full"
     assert fallback["metadata"]["input_size_bytes"] > 0
     assert fallback["metadata"]["session_fallback_count"] == 1
+
+
+def test_normalize_incremental_wrapper_creates_siblings_and_resumes(tmp_path: Path) -> None:
+    """RA-070 library wrapper: creates obs01+mbo siblings, resumes incrementally,
+    and is a no-op when the raw file has no new bytes."""
+    raw = tmp_path / "data" / "captures" / "2026-05-27" / "MNQ_rth.jsonl"
+    obs = raw.with_name("MNQ_rth.obs01.jsonl")
+    mbo = raw.with_name("MNQ_rth.mbo.jsonl")
+    _write_jsonl(
+        raw,
+        [
+            _last_trade(1_779_000_000_000_000_000, price=27380.25),
+            _l1_quote(1_779_000_001_000_000_000),
+            _mbo_add(1_779_000_002_000_000_000),
+        ],
+    )
+
+    state1 = normalize_incremental(input_path=raw, obs01_path=obs)
+    assert obs.exists() and mbo.exists()
+    assert state1.trades_emitted_total == 1
+    assert state1.mbo_records_emitted_total == 1
+
+    # Append + re-run: incremental resume advances the offset without reprocessing.
+    _append_jsonl(raw, [_last_trade(1_779_000_003_000_000_000, price=27380.50, size=2)])
+    state2 = normalize_incremental(input_path=raw, obs01_path=obs)
+    assert state2.last_byte_offset > state1.last_byte_offset
+    assert state2.trades_emitted_total == 2
+
+    # No new bytes -> no-op, offset + totals unchanged.
+    state3 = normalize_incremental(input_path=raw, obs01_path=obs)
+    assert state3.last_byte_offset == state2.last_byte_offset
+    assert state3.trades_emitted_total == 2
 
 
 def test_corrupt_state_falls_back_full_and_records_second_session_event(

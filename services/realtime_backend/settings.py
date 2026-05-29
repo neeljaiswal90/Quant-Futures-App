@@ -92,6 +92,14 @@ class Settings:
     tail_bytes: int = DEFAULT_TAIL_BYTES
     vwap_window_minutes: int = 60
 
+    # RA-070: self-normalize. When True, run_compute runs the incremental
+    # normalize (raw capture -> obs01/mbo siblings) in-process before computing,
+    # so the backend owns its own freshness instead of depending on an external
+    # normalize loop. OFF by default and MUST NOT run concurrently with an
+    # external normalizer (both write the same siblings + state = double-write);
+    # flip on only as part of the V1 cutover.
+    self_normalize: bool = False
+
     # Heartbeat + staleness.
     heartbeat_interval_seconds: float = 5.0
     staleness_threshold_seconds: float = 30.0
@@ -111,7 +119,7 @@ def settings_from_env(**overrides: object) -> Settings:
     Recognized env vars (all optional):
         ``RA60_HOST``, ``RA60_PORT``, ``RA60_ANALYTICS_ROOT``,
         ``RA60_SCRATCH_DIR``, ``RA60_SESSION``, ``RA60_TRADING_DATE``,
-        ``RA60_EWMA_CALIBRATION_PATH``.
+        ``RA60_EWMA_CALIBRATION_PATH``, ``RA60_SELF_NORMALIZE`` (RA-070).
 
     ``overrides`` (typically parsed CLI args) win over env vars, which win over
     the dataclass defaults. ``None`` overrides are ignored so the default holds.
@@ -133,6 +141,8 @@ def settings_from_env(**overrides: object) -> Settings:
         values["trading_date_override"] = raw
     if (raw := os.environ.get("RA60_EWMA_CALIBRATION_PATH")) is not None:
         values["ewma_calibration_path"] = Path(raw)
+    if (raw := os.environ.get("RA60_SELF_NORMALIZE")) is not None:
+        values["self_normalize"] = raw.strip().lower() in {"1", "true", "yes", "on"}
 
     for key, value in overrides.items():
         if value is not None:

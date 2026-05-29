@@ -18,6 +18,7 @@ BACKEND-OWNED scratch dir from :class:`Settings` — never a capture dir.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -26,6 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from rithmic_analytics.cli.normalize_probe_incremental import normalize_incremental
 from rithmic_dashboard.data_sources import load_envelope
 from rithmic_dashboard.features.live_signals import compute_live_signals
 from rithmic_dashboard.features.recent_signals_panel import RecentSignal, build_recent_signals
@@ -37,6 +39,8 @@ from watchdog.observers.api import BaseObserver
 from watchdog.observers.polling import PollingObserver
 
 from realtime_backend.settings import Settings
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,8 @@ def run_compute(
     Synchronous + disk-bound — call from a worker thread, never the loop.
     """
     session = resolve_session(settings, now_pt=now_pt)
+    if settings.self_normalize:
+        _self_normalize(session.capture_path)
     envelope, _zones_path, _warnings = load_envelope(
         session.zones_path,
         analytics_root=settings.analytics_root,
@@ -104,6 +110,25 @@ def run_compute(
         current_price=current_price,
         last_append_ts_ns=_last_append_ts_ns(session.capture_path, signals),
     )
+
+
+def _self_normalize(capture_path: Path) -> None:
+    """RA-070: bring the obs01/mbo siblings current from the raw capture in-process.
+
+    Gated by ``Settings.self_normalize`` and meaningful only when no external
+    normalizer is running (the V1 cutover). Defensive: a normalize hiccup must
+    never blank the feed, so on failure we log and fall through to compute over
+    whatever siblings are already on disk.
+    """
+    if not capture_path.name.endswith(".jsonl"):
+        return
+    obs01_path = capture_path.with_name(
+        f"{capture_path.name.removesuffix('.jsonl')}.obs01.jsonl"
+    )
+    try:
+        normalize_incremental(input_path=capture_path, obs01_path=obs01_path)
+    except Exception as exc:  # noqa: BLE001 — never let normalize gate the feed
+        _LOG.warning("self-normalize failed (%s); computing over existing siblings", exc)
 
 
 def _current_price(signals: LiveSignals, envelope: dict[str, Any] | None) -> float | None:

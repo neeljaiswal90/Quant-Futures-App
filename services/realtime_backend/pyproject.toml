@@ -63,7 +63,7 @@ exclude = ["_scratch/"]
 # the repo root (for ``contracts.*``) and the editable rithmic_dashboard
 # package dir. These are untyped (no py.typed) so they are followed as source
 # but their public symbols still resolve for the Literal/enum checks below.
-mypy_path = "..:../tools/rithmic_dashboard"
+mypy_path = "..:../tools/rithmic_dashboard:../tools/rithmic_analytics"
 
 [[tool.mypy.overrides]]
 module = ["watchdog.*", "uvicorn.*"]
