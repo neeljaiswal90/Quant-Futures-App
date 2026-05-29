@@ -10,7 +10,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
-from rithmic_dashboard.features.mbo_order_tracker import ConsumedOrder, MboOrderTracker
+from rithmic_dashboard.features.mbo_order_tracker import (
+    _SOURCE_OBS,
+    _SOURCE_OBS_PRIORITY,
+    _SOURCE_PRIORITY,
+    ConsumedOrder,
+    MboOrderTracker,
+)
 from rithmic_dashboard.models import IcebergEvent, IcebergSummary, MboOrderEvent, TradeTick
 from rithmic_dashboard.session_state import PT
 
@@ -35,6 +41,13 @@ class IcebergDetectorConfig:
     stack_window_minutes: int = DEFAULT_STACK_WINDOW_MINUTES
     level_proximity_pts: float = LEVEL_PROXIMITY_PTS
     match_tolerance_ms: int = 50
+    # RA-069: priority-queue-ONLY consumption confirmations (RA-065's channel,
+    # confirmation_source="priority_queue") are an UNCALIBRATED signal until
+    # RA-066 validates the FIFO sort direction. Default OFF: the detector admits
+    # only OBS-confirmed consumptions, so production iceberg output is
+    # byte-identical to the pre-RA-065 OBS-only detector even when priority data
+    # is fully populated. RA-066 flips this True after walk-forward calibration.
+    admit_priority_confirmation: bool = False
 
 
 def detect_icebergs(
@@ -51,6 +64,15 @@ def detect_icebergs(
         mbo_events,
         trades,
     )
+    if not config.admit_priority_confirmation:
+        # RA-069 (blocker fix): drop priority-queue-ONLY confirmations — these are
+        # consumptions RA-065 inferred purely from front-of-queue position when
+        # OBS was silent, an uncalibrated signal until RA-066. obs+priority rows
+        # are retained (OBS confirmed them), so the surviving set is byte-identical
+        # to the pre-RA-065 OBS-only detector even with priority fully populated.
+        consumed = tuple(
+            order for order in consumed if order.confirmation_source != _SOURCE_PRIORITY
+        )
     events = _events_from_consumed(consumed, levels, config=config)
     return tuple(sorted(events, key=lambda item: item.timestamp_ns or 0, reverse=True))
 
@@ -180,6 +202,10 @@ def load_iceberg_thresholds(path: Path) -> IcebergDetectorConfig:
             1,
             _int(raw_thresholds.get("match_tolerance_ms")) or default.match_tolerance_ms,
         ),
+        admit_priority_confirmation=_bool(
+            raw_thresholds.get("admit_priority_confirmation"),
+            default=default.admit_priority_confirmation,
+        ),
     )
 
 
@@ -267,9 +293,10 @@ def _event_from_run(
         total_consumed / max(config.min_total_consumed, 1),
     )
     side_text = "bid-side" if side == "bid" else "ask-side"
+    confirmation_source, confirmation_text = _run_confirmation(run)
     description = (
         f"Iceberg-like {side_text} refill at {level_text}: {len(run)} refills, "
-        f"{total_consumed:,} consumed via OBS confirmation"
+        f"{total_consumed:,} consumed via {confirmation_text}"
     )
     return IcebergEvent(
         timestamp_pt=_fmt_ns(latest.consume_ts_ns),
@@ -297,10 +324,33 @@ def _event_from_run(
             "window_seconds": config.refill_window_seconds,
             "size_consistency_pct": config.size_consistency_pct,
             "aggressor_side": first.aggressor_side,
-            "confirmation_source": "obs_trade_tail",
+            "confirmation_source": confirmation_source,
             "match_tolerance_ms": config.match_tolerance_ms,
         },
     )
+
+
+def _run_confirmation(run: list[ConsumedOrder]) -> tuple[str, str]:
+    """Derive an iceberg run's consumption provenance as (metadata_tag, human_text).
+
+    Byte-exact with the pre-RA-065 OBS-only detector whenever no priority-ONLY
+    confirmations are present — which is always true on the default gated-off path,
+    since ``detect_icebergs`` filters ``confirmation_source == "priority_queue"``
+    out unless ``config.admit_priority_confirmation``. Returns
+    ``("obs_trade_tail", "OBS confirmation")`` there, including for retained
+    ``obs+priority`` rows (OBS still confirmed those). When RA-066 admits the
+    priority channel, the tag reflects whether OBS also contributed.
+
+    NOTE: downstream narrative (probability_adjuster, posture_synthesis) still
+    hard-codes "OBS confirmation" — accurate while ``admit_priority_confirmation``
+    is False (the shipped default). RA-066 must update those when it flips it on.
+    """
+    sources = {row.confirmation_source for row in run}
+    if _SOURCE_PRIORITY not in sources:
+        return _SOURCE_OBS, "OBS confirmation"
+    if sources & {_SOURCE_OBS, _SOURCE_OBS_PRIORITY}:
+        return _SOURCE_OBS_PRIORITY, "OBS+priority confirmation"
+    return _SOURCE_PRIORITY, "priority-queue confirmation"
 
 
 def _confidence(

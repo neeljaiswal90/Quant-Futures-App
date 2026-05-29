@@ -4,7 +4,11 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from rithmic_dashboard.features.iceberg_detector import detect_icebergs, load_iceberg_thresholds
+from rithmic_dashboard.features.iceberg_detector import (
+    IcebergDetectorConfig,
+    detect_icebergs,
+    load_iceberg_thresholds,
+)
 from rithmic_dashboard.models import MboOrderEvent, TradeTick
 
 BASE_NS = 1_780_000_000_000_000_000
@@ -179,6 +183,60 @@ def test_ra065_priority_present_does_not_change_obs_confirmed_iceberg() -> None:
     with_prio = detect_icebergs(mbo_events=events_with_prio, trades=trades, levels=_levels())
     assert len(without) == len(with_prio) == 1
     assert asdict(without[0]) == asdict(with_prio[0])
+
+
+# ---------------------------------------------------------------------------
+# RA-069: priority-queue-ONLY confirmations are gated OFF by default (blocker fix)
+# ---------------------------------------------------------------------------
+
+
+def _priority_only_refill_sequence(
+    *, quantities: list[int], gap_seconds: int = 5
+) -> tuple[tuple[MboOrderEvent, ...], list[TradeTick]]:
+    """Refills confirmed ONLY by queue position (OBS silent) — RA-065's priority
+    channel. Each refill adds a low-priority 'front' order plus a high-priority
+    'back' order at the same price, then deletes the front with NO matching trade,
+    so consumption is inferable solely from front-of-queue position."""
+    events: list[MboOrderEvent] = []
+    for idx, quantity in enumerate(quantities):
+        add_ts = BASE_NS + idx * gap_seconds * 1_000_000_000
+        cancel_ts = add_ts + 10_000_000
+        events.append(
+            _mbo(action="A", ts=add_ts, order_id=f"front-{idx}", size=quantity,
+                 priority=str(100 - idx))
+        )
+        events.append(
+            _mbo(action="A", ts=add_ts + 1_000_000, order_id=f"back-{idx}", size=quantity,
+                 priority=str(1000 + idx))
+        )
+        events.append(
+            _mbo(action="C", ts=cancel_ts, order_id=f"front-{idx}", size=quantity,
+                 priority=str(100 - idx))
+        )
+    return tuple(events), []
+
+
+def test_ra069_priority_only_refills_excluded_by_default() -> None:
+    """BLOCKER GATE: priority-queue-only confirmations (OBS silent, front-of-queue)
+    must NOT reach the detector under the default config, so iceberg COUNT is
+    unchanged from the pre-RA-065 OBS-only behavior even with priority populated."""
+    events, trades = _priority_only_refill_sequence(quantities=[20, 20, 20])
+    detected = detect_icebergs(mbo_events=events, trades=trades, levels=_levels())
+    assert detected == ()
+
+
+def test_ra069_priority_only_refills_admitted_when_enabled() -> None:
+    """With admit_priority_confirmation=True (RA-066 post-calibration), the same
+    priority-only refills are admitted and form an iceberg — proving the channel
+    is functional and merely gated, not removed."""
+    events, trades = _priority_only_refill_sequence(quantities=[20, 20, 20])
+    config = IcebergDetectorConfig(admit_priority_confirmation=True)
+    detected = detect_icebergs(
+        mbo_events=events, trades=trades, levels=_levels(), config=config
+    )
+    assert len(detected) == 1
+    assert detected[0].metadata["confirmation_source"] in {"priority_queue", "obs+priority"}
+    assert "priority" in detected[0].description.lower()
 
 
 def test_loads_calibrated_thresholds(tmp_path: Path) -> None:
