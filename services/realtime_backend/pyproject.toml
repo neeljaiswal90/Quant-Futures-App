@@ -1,0 +1,45 @@
+# RA-060 realtime backend — lint/type/test config.
+#
+# This package is run in-place (no install): tests and the server import it as
+# the top-level ``realtime_backend`` package with ``services/`` on sys.path
+# (the package __init__ also bootstraps the repo root for ``contracts`` and
+# ``rithmic_dashboard`` is installed editable). Mirrors the rithmic_dashboard
+# ruff/mypy posture so the lead reviews one consistent style.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["realtime_backend"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011", "E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true
+strict_optional = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_optional = true
+check_untyped_defs = true
+namespace_packages = true
+explicit_package_bases = true
+# Let mypy resolve the cross-package imports the runtime bootstrap provides:
+# the repo root (for ``contracts.*``) and the editable rithmic_dashboard
+# package dir. These are untyped (no py.typed) so they are followed as source
+# but their public symbols still resolve for the Literal/enum checks below.
+mypy_path = "..:../tools/rithmic_dashboard"
+
+[[tool.mypy.overrides]]
+module = ["watchdog.*", "uvicorn.*"]
+ignore_missing_imports = true
