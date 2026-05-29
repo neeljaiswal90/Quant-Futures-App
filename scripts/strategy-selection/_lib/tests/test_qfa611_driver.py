@@ -119,8 +119,23 @@ class Qfa611DriverTests(unittest.TestCase):
             trade["session_id"] = "selection-driver-ignored-session"
             trade["entry_price"] = 100.25
             trade["exit_price"] = 100.5
+            trade["vix_value"] = 18.25
+            trade["vix_fresh"] = True
             trade["vix_prior_close_percentile"] = 0.72
+            trade["signed_shock_vwap"] = {
+                "anchor_type": "vwap",
+                "anchor_value": 100.1,
+                "sigma_basis": "atr_14",
+                "sigma_basis_value": 1.4,
+                "value": 0.25,
+            }
+            trade["signed_shock_vwap_recent_values"] = [None, 0.1, 0.25]
+            trade["first_minute_max_favorable_excursion_cents"] = "150"
+            trade["first_minute_max_adverse_excursion_cents"] = "0"
+            trade["first_minute_close_pnl_cents"] = "150"
+            trade["first_minute_observed"] = True
             trade["exits"][0]["fail_safe_context"] = {
+                "adverse_r_at_exit": 1.25,
                 "active_stop_price": 99.75,
                 "ask_px": 100.75,
                 "bid_px": 100.25,
