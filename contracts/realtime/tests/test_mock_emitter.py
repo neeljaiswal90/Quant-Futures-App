@@ -146,6 +146,18 @@ async def _recv_n(port: int, n: int) -> list[dict[str, object]]:
     return frames
 
 
+def test_snapshot_rest_handler_returns_snapshot_envelope() -> None:
+    # The GET /snapshot REST route (resync target) returns a valid snapshot
+    # envelope. Tested via the handler directly (no httpx dependency).
+    payload = me.snapshot()
+    assert payload["type"] == "snapshot"
+    assert payload["seq"] == 1
+    # Round-trips back through the contract validator.
+    msg = RealtimeMessage.model_validate(payload)
+    assert isinstance(msg.payload, SnapshotPayload)
+    assert msg.payload.price is not None
+
+
 def test_live_ws_roundtrip_snapshot_heartbeat_critical() -> None:
     pytest.importorskip("websockets")
     # Speed up the live emitter so the test isn't slow.

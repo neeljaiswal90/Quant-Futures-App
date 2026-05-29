@@ -246,6 +246,18 @@ def health() -> dict[str, object]:
     return {"status": "ok", "role": "mock_emitter"}
 
 
+@app.get("/snapshot")
+def snapshot() -> dict[str, object]:
+    """REST snapshot for initial load + post-reconnect seq-gap resync.
+
+    Mirrors the WS frame-0 snapshot so a client that detects a ``seq`` gap
+    can realign over HTTP without waiting for a reconnect. RA-060's real
+    implementation returns the snapshot at the current live ``seq``; the
+    mock always returns ``seq=1`` (it has no cross-connection emit state).
+    """
+    return _emitter.build_snapshot(seq=1).model_dump()
+
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket) -> None:
     """Stream synthetic contract frames until the client disconnects."""
