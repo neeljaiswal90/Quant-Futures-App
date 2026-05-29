@@ -160,11 +160,19 @@ interface EntryMetadata {
   readonly entry_quantity: number;
   readonly management_profile_id: string;
   readonly time_stop_at_deadline_extension: RealArchiveTimeStopAtDeadlineExtension;
+  readonly vix_value: number | null;
+  readonly vix_fresh: boolean;
+  readonly signed_shock_vwap: StrategyFeatureSnapshot['context']['signed_shock_vwap'];
+  readonly signed_shock_vwap_recent_values: readonly (number | null)[] | null;
   readonly exits: RealArchivePerTradeExitRecord[];
   exit_reason?: RealArchiveExitReason;
   exit_bar_index?: number;
   max_favorable_excursion_cents?: bigint;
   max_adverse_excursion_cents?: bigint;
+  first_minute_max_favorable_excursion_cents?: bigint | null;
+  first_minute_max_adverse_excursion_cents?: bigint | null;
+  first_minute_close_pnl_cents?: bigint | null;
+  first_minute_observed?: boolean;
 }
 
 interface EventSequence {
@@ -176,6 +184,9 @@ interface SnapshotContextInputs {
   readonly regimeBySession: ReadonlyMap<string, StrategyFeatureSnapshotRegime>;
   readonly vixPriorClosePercentileBySession: ReadonlyMap<string, number | null>;
 }
+
+const FIRST_MINUTE_PATH_NS = 60_000_000_000n;
+const MNQ_CENTS_PER_POINT = 200;
 
 interface RegimeLabelSnapshotInputs {
   readonly regimeBySession: ReadonlyMap<string, StrategyFeatureSnapshotRegime>;
@@ -373,6 +384,11 @@ async function runSession(input: {
     });
 
     if (openPosition !== null) {
+      recordFirstMinutePath({
+        openPosition,
+        metadata: input.entryMetadataByOrderIntentId.get(String(openPosition.order_intent_id)),
+        bar,
+      });
       updateExcursions(openPosition, bar);
       const managementMarket: ManagementMarketContext = {
         event_ts_ns: bar.last_record_ts_ns,
@@ -514,11 +530,26 @@ async function runSession(input: {
       entry_quantity: input.fillPolicy.order_quantity,
       management_profile_id: managementProfile.profile_id,
       time_stop_at_deadline_extension: managementProfile.time_stop.at_deadline_extension,
+      vix_value: snapshot.context.vix_value,
+      vix_fresh: snapshot.context.vix_fresh,
+      signed_shock_vwap: Object.freeze({
+        ...snapshot.context.signed_shock_vwap,
+        value: normalizeFeatureNumber(snapshot.context.signed_shock_vwap.value),
+        anchor_value: normalizeFeatureNumber(snapshot.context.signed_shock_vwap.anchor_value),
+        sigma_basis_value: normalizeFeatureNumber(snapshot.context.signed_shock_vwap.sigma_basis_value),
+      }),
+      signed_shock_vwap_recent_values: snapshot.context.signed_shock_vwap_recent_values === null
+        ? null
+        : Object.freeze(snapshot.context.signed_shock_vwap_recent_values.map(normalizeFeatureNumber)),
       exits: [],
       exit_reason: 'unknown' as const,
       exit_bar_index: 0,
       max_favorable_excursion_cents: 0n,
       max_adverse_excursion_cents: 0n,
+      first_minute_max_favorable_excursion_cents: null,
+      first_minute_max_adverse_excursion_cents: null,
+      first_minute_close_pnl_cents: null,
+      first_minute_observed: false,
     };
     input.entryMetadataByOrderIntentId.set(String(orderIntent.payload.order_intent_id), entryMetadata);
     const targetPosition = applyInitialFillToTargetPosition(
@@ -697,6 +728,9 @@ function closeOpenPosition(input: {
         market: input.market,
         position: input.openPosition.target_position,
         profile: input.openPosition.management_profile,
+        direction: input.openPosition.candidate.direction,
+        entryPrice: input.openPosition.entry_fill.payload.price,
+        riskPoints: input.openPosition.candidate.risk_points,
       }),
     }));
     input.events.push(positionEvent({
@@ -732,6 +766,9 @@ function failSafeContextFromExit(input: {
   readonly market?: ManagementMarketContext;
   readonly position: TargetPosition;
   readonly profile: ManagementProfile;
+  readonly direction: 'long' | 'short';
+  readonly entryPrice: number;
+  readonly riskPoints: number;
 }): RealArchiveFailSafeContextRecord | null {
   const reason = input.action?.reason ?? null;
   if (input.action?.action_type !== 'FAIL_SAFE_EXIT' && reason?.startsWith('fail_safe:') !== true) {
@@ -752,7 +789,71 @@ function failSafeContextFromExit(input: {
     management_profile_id: input.profile.profile_id,
     management_profile_version: input.profile.profile_version,
     validation_path: failSafeValidationPath(reason),
+    adverse_r_at_exit: adverseRAtExit({
+      direction: input.direction,
+      entryPrice: input.entryPrice,
+      riskPoints: input.riskPoints,
+      market: input.market,
+    }),
   });
+}
+
+function adverseRAtExit(input: {
+  readonly direction: 'long' | 'short';
+  readonly entryPrice: number;
+  readonly riskPoints: number;
+  readonly market?: ManagementMarketContext;
+}): number | null {
+  if (input.market === undefined || !Number.isFinite(input.riskPoints) || input.riskPoints <= 0) {
+    return null;
+  }
+  const adverseReference = input.direction === 'long'
+    ? finiteNumberOrNull(input.market.low_price) ?? finiteNumberOrNull(input.market.mark_price)
+    : finiteNumberOrNull(input.market.high_price) ?? finiteNumberOrNull(input.market.mark_price);
+  if (adverseReference === null) {
+    return null;
+  }
+  const adversePoints = input.direction === 'long'
+    ? input.entryPrice - adverseReference
+    : adverseReference - input.entryPrice;
+  return round4(Math.max(0, adversePoints / input.riskPoints));
+}
+
+function recordFirstMinutePath(input: {
+  readonly openPosition: OpenExecutionPosition;
+  readonly metadata: EntryMetadata | undefined;
+  readonly bar: BuiltBar;
+}): void {
+  if (input.metadata === undefined || input.metadata.first_minute_observed === true) {
+    return;
+  }
+  const elapsedNs = input.bar.last_record_ts_ns - input.openPosition.target_position.opened_ts_ns;
+  if (elapsedNs <= 0n || elapsedNs > FIRST_MINUTE_PATH_NS) {
+    return;
+  }
+  const entryPrice = input.openPosition.entry_fill.payload.price;
+  const high = priceNumber(input.bar.high);
+  const low = priceNumber(input.bar.low);
+  const close = priceNumber(input.bar.close);
+  const quantity = input.metadata.entry_quantity;
+  const direction = input.openPosition.candidate.direction;
+  const favorablePoints = direction === 'long'
+    ? Math.max(0, high - entryPrice)
+    : Math.max(0, entryPrice - low);
+  const adversePoints = direction === 'long'
+    ? Math.min(0, low - entryPrice)
+    : Math.min(0, entryPrice - high);
+  const closePoints = direction === 'long'
+    ? close - entryPrice
+    : entryPrice - close;
+  input.metadata.first_minute_max_favorable_excursion_cents = movementCents(favorablePoints, quantity);
+  input.metadata.first_minute_max_adverse_excursion_cents = movementCents(adversePoints, quantity);
+  input.metadata.first_minute_close_pnl_cents = movementCents(closePoints, quantity);
+  input.metadata.first_minute_observed = true;
+}
+
+function movementCents(points: number, quantity: number): bigint {
+  return BigInt(Math.round(points * MNQ_CENTS_PER_POINT * quantity));
 }
 
 function failSafeValidationPath(reason: string | null): string | null {
@@ -1453,7 +1554,11 @@ function enrichTrades(input: {
       strategy_id: trade.strategy_id,
       session_id: sessionId,
       regime_label: session?.regime_label ?? 'unknown',
+      vix_value: entryMetadata?.vix_value ?? null,
+      vix_fresh: entryMetadata?.vix_fresh ?? false,
       vix_prior_close_percentile: session?.vix_prior_close_percentile ?? null,
+      signed_shock_vwap: entryMetadata?.signed_shock_vwap ?? null,
+      signed_shock_vwap_recent_values: entryMetadata?.signed_shock_vwap_recent_values ?? null,
       side: trade.side,
       entry_ts_ns: trade.opened_at_ns,
       exit_ts_ns: trade.closed_at_ns,
@@ -1474,6 +1579,12 @@ function enrichTrades(input: {
       exit_bar_index: entryMetadata?.exit_bar_index ?? 0,
       max_favorable_excursion_cents: entryMetadata?.max_favorable_excursion_cents ?? 0n,
       max_adverse_excursion_cents: entryMetadata?.max_adverse_excursion_cents ?? 0n,
+      first_minute_max_favorable_excursion_cents:
+        entryMetadata?.first_minute_max_favorable_excursion_cents ?? null,
+      first_minute_max_adverse_excursion_cents:
+        entryMetadata?.first_minute_max_adverse_excursion_cents ?? null,
+      first_minute_close_pnl_cents: entryMetadata?.first_minute_close_pnl_cents ?? null,
+      first_minute_observed: entryMetadata?.first_minute_observed ?? false,
       fill_quality_metric: {
         entry_fill_probability_ppm: entryMetadata?.estimate.estimated_fill_probability_ppm
           ?? Math.round((entryFill?.payload.fill_probability ?? 0) * 1_000_000),
@@ -1590,7 +1701,15 @@ function roundToTick(value: number): number {
 }
 
 function round4(value: number): number {
-  return Math.round(value * 10000) / 10000;
+  const rounded = Math.round(value * 10000) / 10000;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function normalizeFeatureNumber(value: number | null): number | null {
+  if (value === null) {
+    return null;
+  }
+  return Object.is(value, -0) ? 0 : value;
 }
 
 function padSequence(sequence: number): string {

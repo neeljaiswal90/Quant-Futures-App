@@ -46,6 +46,21 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
       exit_bar_index: 2,
       max_favorable_excursion_cents: 150n,
       max_adverse_excursion_cents: -250n,
+      vix_value: expect.any(Number),
+      vix_fresh: expect.any(Boolean),
+      signed_shock_vwap: expect.objectContaining({
+        value: null,
+        anchor_type: 'vwap',
+        sigma_basis: 'atr_14',
+      }),
+      signed_shock_vwap_recent_values: null,
+      first_minute_max_favorable_excursion_cents: 150n,
+      first_minute_max_adverse_excursion_cents: 0n,
+      first_minute_close_pnl_cents: 150n,
+      first_minute_observed: true,
+    });
+    expect(first.per_trade_records[0]?.exits[0]?.fail_safe_context).toMatchObject({
+      adverse_r_at_exit: 1.25,
     });
     expect(first.trade_analysis.summary.total_trades).toBe(1);
     expect(first.runtime_metrics.candidate_count).toBe(1);
@@ -246,6 +261,41 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
     expect(values).toHaveLength(Math.min(warmedSnapshot?.bars.length ?? 0, 60));
     expect(values?.[values.length - 1]).toBe(warmedSnapshot?.context.signed_shock_vwap.value);
   });
+
+  it('captures entry snapshot context and first-post-entry path on per-trade records', async () => {
+    const prices = Array.from({ length: 22 }, (_, index) => 100 + (index * 0.5));
+    const result = await runFixture(waitForSignedShockGenerator(), {
+      sessions: [
+        {
+          session_id: '2026-02-02-rth',
+          trading_date: '2026-02-02',
+          raw_symbol: 'MNQH6',
+          regime_label: 'high',
+          prior_day_close: 99.5,
+          prior_day_high: 101,
+          prior_day_low: 98,
+          rth_start_ts_ns: ns(0n),
+          trades_records: prices.map((price, index) =>
+            trade((BigInt(index) * 60_000_000_000n) + 1_000_000_000n, price)),
+          mbp1_records: prices.map((price, index) =>
+            mbp1((BigInt(index) * 60_000_000_000n) + 1_000_000_000n, price - 0.25, price + 0.25)),
+        },
+      ],
+    });
+
+    const tradeRecord = result.per_trade_records[0];
+    expect(tradeRecord?.signed_shock_vwap).toMatchObject({
+      anchor_type: 'vwap',
+      sigma_basis: 'atr_14',
+      value: expect.any(Number),
+    });
+    expect(tradeRecord?.signed_shock_vwap_recent_values).not.toBeNull();
+    expect(tradeRecord?.signed_shock_vwap_recent_values?.at(-1)).toBe(tradeRecord?.signed_shock_vwap?.value);
+    expect(tradeRecord?.first_minute_observed).toBe(true);
+    expect(tradeRecord?.first_minute_max_favorable_excursion_cents).toBeGreaterThan(0n);
+    expect(tradeRecord?.first_minute_max_adverse_excursion_cents).toBe(0n);
+    expect(tradeRecord?.first_minute_close_pnl_cents).toBeGreaterThan(0n);
+  });
 });
 
 async function runFixture(
@@ -359,6 +409,53 @@ function capturingGenerator(snapshots: StrategyFeatureSnapshot[]): RealArchiveSt
   return (input) => {
     snapshots.push(input.snapshot);
     return generator(input);
+  };
+}
+
+function waitForSignedShockGenerator(): RealArchiveStrategyGenerator {
+  let emitted = false;
+  return ({ strategy_id, snapshot }) => {
+    const armed = emitted === false && snapshot.context.signed_shock_vwap_recent_values !== null;
+    const evaluation: StrategyEvaluation = {
+      strategy_evaluation_id: makeStrategyEvaluationId(`eval-${snapshot.feature_snapshot_id}`),
+      strategy_id,
+      instrument: snapshot.instrument,
+      feature_snapshot_id: snapshot.feature_snapshot_id,
+      evaluated_ts_ns: snapshot.created_ts_ns,
+      gate_state: armed ? 'armed' : 'waiting',
+      reasons: ['qfa-201b-signed-shock-fixture'],
+      config: CONFIG,
+    };
+    if (!armed) {
+      return { evaluation };
+    }
+    emitted = true;
+    const candidate: Candidate = {
+      candidate_id: makeCandidateId(`candidate-${snapshot.feature_snapshot_id}`),
+      strategy_id,
+      setup_type: strategy_id,
+      setup_family: 'trend_pullback',
+      instrument: snapshot.instrument,
+      feature_snapshot_id: makeFeatureSnapshotId(snapshot.feature_snapshot_id),
+      direction: 'long',
+      status: 'proposed',
+      proposed_ts_ns: snapshot.created_ts_ns,
+      entry_price: snapshot.quote.bid_px,
+      stop_price: snapshot.quote.bid_px - 1,
+      risk_points: 1,
+      targets: [
+        { label: 'pt1', price: snapshot.quote.bid_px + 1, quantity_fraction: 0.5 },
+        { label: 'pt2', price: snapshot.quote.bid_px + 2, quantity_fraction: 0.5 },
+      ],
+      reward_risk: [
+        { label: 'pt1', reward_risk: 1 },
+        { label: 'pt2', reward_risk: 2 },
+      ],
+      confidence: 1,
+      config: CONFIG,
+      reasons: ['qfa-201b-signed-shock-fixture'],
+    };
+    return { evaluation, candidate };
   };
 }
 

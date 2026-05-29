@@ -118,7 +118,11 @@ export interface RealArchiveFailSafeContextRecord {
   readonly management_profile_id: string | null;
   readonly management_profile_version: number | null;
   readonly validation_path: string | null;
+  readonly adverse_r_at_exit: number | null;
 }
+
+export type RealArchiveSignedShockMeasurementRecord =
+  StrategyFeatureSnapshot['context']['signed_shock_vwap'];
 
 export interface RealArchivePerTradeExitRecord {
   readonly exit_ts_ns: UnixNs;
@@ -134,7 +138,11 @@ export interface RealArchivePerTradeRecord {
   readonly strategy_id: StrategyId | null;
   readonly session_id: string;
   readonly regime_label: RealArchiveRegimeLabel;
+  readonly vix_value: number | null;
+  readonly vix_fresh: boolean;
   readonly vix_prior_close_percentile: number | null;
+  readonly signed_shock_vwap: RealArchiveSignedShockMeasurementRecord | null;
+  readonly signed_shock_vwap_recent_values: readonly (number | null)[] | null;
   readonly side: 'long' | 'short';
   readonly entry_ts_ns: UnixNs;
   readonly exit_ts_ns: UnixNs;
@@ -153,6 +161,10 @@ export interface RealArchivePerTradeRecord {
   readonly exit_bar_index: number;
   readonly max_favorable_excursion_cents: bigint;
   readonly max_adverse_excursion_cents: bigint;
+  readonly first_minute_max_favorable_excursion_cents: bigint | null;
+  readonly first_minute_max_adverse_excursion_cents: bigint | null;
+  readonly first_minute_close_pnl_cents: bigint | null;
+  readonly first_minute_observed: boolean;
   readonly fill_quality_metric: {
     readonly entry_fill_probability_ppm: number;
     readonly entry_estimated_fill_quantity: bigint;

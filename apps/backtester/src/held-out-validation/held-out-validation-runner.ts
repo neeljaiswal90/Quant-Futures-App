@@ -476,7 +476,11 @@ function artifactTrade(
     exit_ts_ns: trade.exit_ts_ns.toString(),
     side: trade.side,
     regime: knownRegime(trade.regime_label),
+    vix_value: trade.vix_value,
+    vix_fresh: trade.vix_fresh,
     vix_prior_close_percentile: trade.vix_prior_close_percentile,
+    signed_shock_vwap: trade.signed_shock_vwap,
+    signed_shock_vwap_recent_values: trade.signed_shock_vwap_recent_values,
     spread_bucket: knownSpreadBucket(trade.spread_bucket),
     queue_ahead_bucket: knownQueueAheadBucket(trade.queue_ahead_bucket),
     entry_price: trade.entry_px,
@@ -499,6 +503,12 @@ function artifactTrade(
     exit_bar_index: trade.exit_bar_index,
     max_favorable_excursion_cents: trade.max_favorable_excursion_cents.toString(),
     max_adverse_excursion_cents: trade.max_adverse_excursion_cents.toString(),
+    first_minute_max_favorable_excursion_cents:
+      trade.first_minute_max_favorable_excursion_cents?.toString() ?? null,
+    first_minute_max_adverse_excursion_cents:
+      trade.first_minute_max_adverse_excursion_cents?.toString() ?? null,
+    first_minute_close_pnl_cents: trade.first_minute_close_pnl_cents?.toString() ?? null,
+    first_minute_observed: trade.first_minute_observed,
   });
 }
 

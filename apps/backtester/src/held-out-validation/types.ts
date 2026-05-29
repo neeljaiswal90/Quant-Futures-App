@@ -198,6 +198,15 @@ export interface HeldOutValidationArtifactFailSafeContextV1 {
   readonly management_profile_id: string | null;
   readonly management_profile_version: number | null;
   readonly validation_path: string | null;
+  readonly adverse_r_at_exit: number | null;
+}
+
+export interface HeldOutValidationArtifactSignedShockMeasurementV1 {
+  readonly value: number | null;
+  readonly anchor_type: 'vwap' | 'prior_close';
+  readonly anchor_value: number | null;
+  readonly sigma_basis: 'atr_14' | 'sigma_pts';
+  readonly sigma_basis_value: number | null;
 }
 
 export interface HeldOutValidationArtifactTradeV1 {
@@ -207,7 +216,11 @@ export interface HeldOutValidationArtifactTradeV1 {
   readonly exit_ts_ns: string;
   readonly side: 'long' | 'short';
   readonly regime: HeldOutValidationArtifactRegime;
+  readonly vix_value: number | null;
+  readonly vix_fresh: boolean;
   readonly vix_prior_close_percentile: number | null;
+  readonly signed_shock_vwap: HeldOutValidationArtifactSignedShockMeasurementV1 | null;
+  readonly signed_shock_vwap_recent_values: readonly (number | null)[] | null;
   readonly spread_bucket: HeldOutValidationArtifactSpreadBucket;
   readonly queue_ahead_bucket: HeldOutValidationArtifactQueueAheadBucket;
   readonly entry_price: number;
@@ -223,6 +236,10 @@ export interface HeldOutValidationArtifactTradeV1 {
   readonly exit_bar_index: number;
   readonly max_favorable_excursion_cents: string;
   readonly max_adverse_excursion_cents: string;
+  readonly first_minute_max_favorable_excursion_cents: string | null;
+  readonly first_minute_max_adverse_excursion_cents: string | null;
+  readonly first_minute_close_pnl_cents: string | null;
+  readonly first_minute_observed: boolean;
 }
 
 export interface HeldOutValidationArtifactWindowV1 {
