@@ -89,6 +89,27 @@ def test_cooldown_suppresses_repeated_logical_toast() -> None:
     assert second is False
 
 
+def test_cooldown_uses_configured_seconds() -> None:
+    state = NotificationGateState()
+    cfg = default_alert_config().model_copy(update={"cooldown_seconds": 10})
+    first = should_notify(_critical_msg(), cfg, _MIDDAY, state=state)
+    within = should_notify(
+        _critical_msg(),
+        cfg,
+        datetime(2026, 5, 28, 12, 0, 9, tzinfo=PT),
+        state=state,
+    )
+    after = should_notify(
+        _critical_msg(),
+        cfg,
+        datetime(2026, 5, 28, 12, 0, 11, tzinfo=PT),
+        state=state,
+    )
+    assert first is True
+    assert within is False
+    assert after is True
+
+
 def test_critical_disabled_does_not_fire() -> None:
     cfg = default_alert_config()
     cfg.critical = TierAlertConfig(enabled=False, windows_toast=True)

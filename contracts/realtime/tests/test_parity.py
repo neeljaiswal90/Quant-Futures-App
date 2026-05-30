@@ -97,6 +97,7 @@ def test_orderflow_literals_match() -> None:
     assert _const_string_array(_EVENTS_TS, "ORDERFLOW_QUALITIES") == list(
         ev.ORDERFLOW_QUALITIES
     )
+    assert _const_string_array(_EVENTS_TS, "DEPTH_QUALITIES") == list(ev.DEPTH_QUALITIES)
 
 
 def test_signal_payload_fields_match() -> None:
@@ -134,6 +135,7 @@ def test_nested_state_fields_match() -> None:
         ev.VDeltaStats,
         ev.FootprintStats,
         ev.OrderflowStats,
+        ev.DepthLevel,
     ):
         ts_fields = _interface_fields(_EVENTS_TS, model.__name__)
         py_fields = list(model.model_fields.keys())

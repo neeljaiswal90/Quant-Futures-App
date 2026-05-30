@@ -57,6 +57,26 @@ describe("decideAlert", () => {
     expect(second.reason).toBe("cooldown");
   });
 
+  it("uses the configured cooldown duration", () => {
+    const memory = createAlertMemory();
+    const config = { ...DEFAULT_ALERT_CONFIG, cooldown_seconds: 10 };
+    const first = decideAlert(
+      { ...baseItem, price: 30300, levelId: "vpoc" },
+      { currentPrice: 30300, config, nowMs: 1_000, memory },
+    );
+    const within = decideAlert(
+      { ...baseItem, seq: 2, price: 30300, levelId: "vpoc" },
+      { currentPrice: 30300, config, nowMs: 10_000, memory },
+    );
+    const after = decideAlert(
+      { ...baseItem, seq: 3, price: 30300, levelId: "vpoc" },
+      { currentPrice: 30300, config, nowMs: 12_000, memory },
+    );
+    expect(first.reason).toBeNull();
+    expect(within.reason).toBe("cooldown");
+    expect(after.reason).toBeNull();
+  });
+
   it("quiet hours audio_only suppresses audio but keeps visual channels", () => {
     const memory = createAlertMemory();
     const config = {

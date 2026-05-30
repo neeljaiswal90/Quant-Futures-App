@@ -2,8 +2,6 @@ import type { AlertConfig } from "@contracts/realtime/config";
 import type { Tier } from "@contracts/realtime/events";
 import type { FeedItem } from "../contract/render";
 
-const COOLDOWN_MS = 5 * 60 * 1000;
-
 export interface AlertDecision {
   audio: boolean;
   notification: boolean;
@@ -48,7 +46,8 @@ export function decideAlert(
 
   const key = alertKey(item);
   const last = memory.lastFiredByKey.get(key);
-  if (last != null && nowMs - last < COOLDOWN_MS) return empty("cooldown");
+  const cooldownMs = Math.max(0, config.cooldown_seconds) * 1000;
+  if (last != null && nowMs - last < cooldownMs) return empty("cooldown");
 
   let audio = tierCfg.audio_file != null;
   let notification = tierCfg.browser_notif;

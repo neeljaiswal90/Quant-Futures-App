@@ -40,6 +40,7 @@ export interface QuietHoursConfig {
 
 export interface AlertConfig {
   schema_version: number;
+  cooldown_seconds: number;
   critical: TierAlertConfig;
   high: TierAlertConfig;
   medium: TierAlertConfig;

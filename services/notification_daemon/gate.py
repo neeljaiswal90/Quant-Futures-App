@@ -35,9 +35,6 @@ _TIER_ATTR: dict[Tier, str] = {
     "MEDIUM": "medium",
 }
 
-COOLDOWN_SECONDS = 5 * 60
-
-
 @dataclass
 class NotificationGateState:
     """Small in-memory cooldown cache shared by the daemon process."""
@@ -111,7 +108,7 @@ def should_notify(
         key = _alert_key(msg)
         now_ts = now_pt.timestamp()
         last = state.last_fired_by_key.get(key)
-        if last is not None and now_ts - last < COOLDOWN_SECONDS:
+        if last is not None and now_ts - last < config.cooldown_seconds:
             return False
         state.last_fired_by_key[key] = now_ts
     return True

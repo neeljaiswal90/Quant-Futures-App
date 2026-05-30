@@ -26,6 +26,7 @@ export const TRADE_AGGRESSORS = ["buy", "sell", "unknown"] as const;
 export const INFERRED_DIRECTIONS = ["bullish", "bearish", "neutral", "unknown"] as const;
 export const FOOTPRINT_SIDES = ["buy", "sell", "none", "unknown"] as const;
 export const ORDERFLOW_QUALITIES = ["high", "inferred", "stale_l1", "unavailable"] as const;
+export const DEPTH_QUALITIES = ["live", "inferred", "stale_l1", "unavailable"] as const;
 
 export const KNOWN_FAMILIES = [
   "signal",
@@ -34,6 +35,7 @@ export const KNOWN_FAMILIES = [
   "sweep",
   "vol_regime",
   "price_tick",
+  "depth",
   "zone_update",
   "snapshot",
   "heartbeat",
@@ -61,6 +63,7 @@ export type TradeAggressor = (typeof TRADE_AGGRESSORS)[number];
 export type InferredDirection = (typeof INFERRED_DIRECTIONS)[number];
 export type FootprintSide = (typeof FOOTPRINT_SIDES)[number];
 export type OrderflowQuality = (typeof ORDERFLOW_QUALITIES)[number];
+export type DepthQuality = (typeof DEPTH_QUALITIES)[number];
 export type Family = (typeof KNOWN_FAMILIES)[number];
 
 // --- Payload families ------------------------------------------------------
@@ -181,6 +184,25 @@ export interface PriceTickPayload {
   orderflow: OrderflowStats | null;
 }
 
+export interface DepthLevel {
+  price: number;
+  size: number;
+}
+
+/**
+ * Bounded full depth snapshot for heatmap/DOM rendering. This is a full
+ * snapshot, not a diff; each side is capped by n_ticks.
+ */
+export interface DepthPayload {
+  family: "depth";
+  ts_ns: number;
+  mid: number | null;
+  bid_levels: DepthLevel[];
+  ask_levels: DepthLevel[];
+  n_ticks: number;
+  quality: DepthQuality;
+}
+
 export interface ZoneState {
   id: string;
   kind: string;
@@ -236,6 +258,7 @@ export type RealtimePayload =
   | SweepPayload
   | VolRegimePayload
   | PriceTickPayload
+  | DepthPayload
   | ZoneUpdatePayload
   | SnapshotPayload
   | HeartbeatPayload

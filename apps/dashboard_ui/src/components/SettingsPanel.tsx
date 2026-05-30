@@ -36,6 +36,12 @@ export function SettingsPanel() {
     });
   };
 
+  const updateCooldown = (value: string) => {
+    const parsed = Math.round(Number(value));
+    if (!Number.isFinite(parsed) || parsed < 10 || parsed > 1800) return;
+    setConfig({ ...config, cooldown_seconds: parsed });
+  };
+
   const onSave = async () => {
     const ok = await persist();
     setSaveMsg(ok ? "Saved." : "Applied locally (config endpoint unavailable).");
@@ -112,6 +118,21 @@ export function SettingsPanel() {
               </div>
             );
           })}
+
+          <div style={{ marginBottom: 8 }}>
+            <strong style={{ fontSize: 12 }}>Cooldown</strong>
+            <dl>
+              <span>seconds</span>
+              <input
+                type="number"
+                min={10}
+                max={1800}
+                step={5}
+                value={config.cooldown_seconds}
+                onChange={(e) => updateCooldown(e.target.value)}
+              />
+            </dl>
+          </div>
 
           <div style={{ marginBottom: 8 }}>
             <strong style={{ fontSize: 12 }}>Proximity (pt)</strong>

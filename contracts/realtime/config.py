@@ -67,6 +67,7 @@ class AlertConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: int = CONFIG_SCHEMA_VERSION
+    cooldown_seconds: int = Field(default=90, ge=10, le=1800)
     critical: TierAlertConfig = Field(
         default_factory=lambda: TierAlertConfig(
             enabled=True,

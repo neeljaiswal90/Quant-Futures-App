@@ -17,6 +17,7 @@ const CONFIG_SCHEMA_VERSION: AlertConfig["schema_version"] = 1;
 
 export const DEFAULT_ALERT_CONFIG: AlertConfig = {
   schema_version: CONFIG_SCHEMA_VERSION,
+  cooldown_seconds: 90,
   critical: {
     enabled: true,
     audio_file: "critical.wav",

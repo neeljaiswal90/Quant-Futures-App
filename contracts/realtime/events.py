@@ -57,11 +57,13 @@ TradeAggressor = Literal["buy", "sell", "unknown"]
 InferredDirection = Literal["bullish", "bearish", "neutral", "unknown"]
 FootprintSide = Literal["buy", "sell", "none", "unknown"]
 OrderflowQuality = Literal["high", "inferred", "stale_l1", "unavailable"]
+DepthQuality = Literal["live", "inferred", "stale_l1", "unavailable"]
 FLOW_DIRECTIONS: tuple[str, ...] = ("bullish", "bearish", "neutral")
 TRADE_AGGRESSORS: tuple[str, ...] = ("buy", "sell", "unknown")
 INFERRED_DIRECTIONS: tuple[str, ...] = ("bullish", "bearish", "neutral", "unknown")
 FOOTPRINT_SIDES: tuple[str, ...] = ("buy", "sell", "none", "unknown")
 ORDERFLOW_QUALITIES: tuple[str, ...] = ("high", "inferred", "stale_l1", "unavailable")
+DEPTH_QUALITIES: tuple[str, ...] = ("live", "inferred", "stale_l1", "unavailable")
 
 # Known payload families. Adding a family here REQUIRES a matching entry in
 # events.ts KNOWN_FAMILIES or the parity test fails.
@@ -72,6 +74,7 @@ KNOWN_FAMILIES: tuple[str, ...] = (
     "sweep",
     "vol_regime",
     "price_tick",
+    "depth",
     "zone_update",
     "snapshot",
     "heartbeat",
@@ -258,6 +261,31 @@ class PriceTickPayload(RealtimePayload):
     orderflow: OrderflowStats | None = None
 
 
+class DepthLevel(BaseModel):
+    """One bounded DOM level in a full depth snapshot."""
+
+    price: float
+    size: int = Field(ge=0)
+
+
+class DepthPayload(RealtimePayload):
+    """Bounded full depth snapshot for heatmap/DOM rendering.
+
+    This is a full snapshot, not a diff. The backend caps each side to
+    ``n_ticks`` levels so the wire payload remains bounded under busy opens.
+    ``quality`` records whether the book is live MBO depth, inferred/stale, or
+    unavailable.
+    """
+
+    family: Literal["depth"] = "depth"
+    ts_ns: int
+    mid: float | None = None
+    bid_levels: list[DepthLevel] = Field(default_factory=list, max_length=50)
+    ask_levels: list[DepthLevel] = Field(default_factory=list, max_length=50)
+    n_ticks: int = Field(ge=1, le=50)
+    quality: DepthQuality
+
+
 class ZoneState(BaseModel):
     """One horizontal level rendered as a chart price line."""
 
@@ -334,6 +362,7 @@ _PAYLOAD_REGISTRY: dict[str, type[RealtimePayload]] = {
     "sweep": SweepPayload,
     "vol_regime": VolRegimePayload,
     "price_tick": PriceTickPayload,
+    "depth": DepthPayload,
     "zone_update": ZoneUpdatePayload,
     "snapshot": SnapshotPayload,
     "heartbeat": HeartbeatPayload,
@@ -422,11 +451,13 @@ __all__ = [
     "INFERRED_DIRECTIONS",
     "FOOTPRINT_SIDES",
     "ORDERFLOW_QUALITIES",
+    "DEPTH_QUALITIES",
     "FlowDirection",
     "TradeAggressor",
     "InferredDirection",
     "FootprintSide",
     "OrderflowQuality",
+    "DepthQuality",
     "PT",
     "now_pt_iso",
     "RealtimePayload",
@@ -441,6 +472,8 @@ __all__ = [
     "FootprintStats",
     "OrderflowStats",
     "PriceTickPayload",
+    "DepthLevel",
+    "DepthPayload",
     "ZoneState",
     "ZoneUpdatePayload",
     "ScenarioState",
