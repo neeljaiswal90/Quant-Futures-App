@@ -19,6 +19,7 @@ import { LiveFeed } from "./components/LiveFeed";
 import { PriceContext } from "./components/PriceContext";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { DomLadder } from "./components/DomLadder";
 import { Footer } from "./components/Footer";
 import { PriceChart } from "./chart/PriceChart";
 import { ChartErrorBoundary } from "./chart/ChartErrorBoundary";
@@ -49,7 +50,10 @@ function Shell() {
       <div className="main">
         <div className="chart-col">
           <PriceContext />
-          <ChartArea />
+          <div className="decision-surface">
+            <ChartArea />
+            <DomLadder />
+          </div>
         </div>
         <div className="side-col">
           <Scenarios />
