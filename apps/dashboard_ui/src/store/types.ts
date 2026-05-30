@@ -7,6 +7,7 @@
  * Tier-4 price-context panel and banner-decay math.
  */
 import type {
+  DepthPayload,
   Regime,
   OrderflowStats,
   ScenarioState,
@@ -57,6 +58,9 @@ export interface DashboardState {
 
   heartbeat: HeartbeatState;
 
+  /** Latest bounded depth snapshot; chart primitive owns retained history. */
+  depth: DepthPayload | null;
+
   zones: ZoneState[];
   scenarios: ScenarioState[];
 
@@ -96,6 +100,7 @@ export function initialState(): DashboardState {
       stale: false,
       lastFrameAtMs: null,
     },
+    depth: null,
     sigma: null,
     regime: null,
     zones: [],

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { initialState, parseMessage, reducer } from "./reducer";
 import {
+  depthFrame,
   heartbeatFrame,
   priceTickFrame,
   snapshotSignal,
@@ -168,6 +169,19 @@ describe("price ticks", () => {
     s = reducer(s, msg(priceTickFrame(3, 30091)));
     expect(s.price.price).toBe(30091);
     expect(s.price.orderflow?.last_trade_aggressor).toBe("buy");
+  });
+});
+
+describe("depth snapshots", () => {
+  it("stores latest depth without adding feed or history rows", () => {
+    let s = reducer(initialState(), msg(snapshotFrame(1)));
+    s = reducer(s, msg(depthFrame(2)));
+
+    expect(s.depth?.family).toBe("depth");
+    expect(s.depth?.bid_levels).toHaveLength(3);
+    expect(s.feed).toHaveLength(0);
+    expect(s.history).toHaveLength(0);
+    expect(s.lastSeq).toBe(2);
   });
 });
 

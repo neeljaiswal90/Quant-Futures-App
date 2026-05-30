@@ -6,6 +6,7 @@
  * so tests exercise the same untyped `unknown` path the socket feeds.
  */
 import type {
+  DepthPayload,
   RealtimeMessage,
   RealtimePayload,
   SignalPayload,
@@ -126,6 +127,34 @@ export const priceTickFrame = (seq: number, price: number): RealtimeMessage =>
     volume: 3,
     orderflow: null,
   });
+
+export const depthPayload = (
+  tsNs = 1_780_000_010_000_000_000,
+  quality: DepthPayload["quality"] = "live",
+): DepthPayload => ({
+  family: "depth",
+  ts_ns: tsNs,
+  mid: 30090.25,
+  bid_levels: [
+    { price: 30090, size: 18 },
+    { price: 30089.75, size: 42 },
+    { price: 30089.5, size: 11 },
+  ],
+  ask_levels: [
+    { price: 30090.5, size: 21 },
+    { price: 30090.75, size: 55 },
+    { price: 30091, size: 13 },
+  ],
+  n_ticks: 3,
+  quality,
+});
+
+export const depthFrame = (
+  seq: number,
+  tsNs = 1_780_000_010_000_000_000,
+  quality: DepthPayload["quality"] = "live",
+): RealtimeMessage =>
+  envelope("event", seq, depthPayload(tsNs, quality));
 
 export const zoneUpdateFrame = (seq: number): RealtimeMessage =>
   envelope("event", seq, {

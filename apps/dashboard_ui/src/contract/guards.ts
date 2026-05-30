@@ -10,6 +10,7 @@
  */
 import type {
   AbsorptionPayload,
+  DepthPayload,
   ErrorPayload,
   HeartbeatPayload,
   IcebergPayload,
@@ -40,6 +41,9 @@ export function isVolRegime(p: RealtimePayload): p is VolRegimePayload {
 export function isPriceTick(p: RealtimePayload): p is PriceTickPayload {
   return p.family === "price_tick";
 }
+export function isDepth(p: RealtimePayload): p is DepthPayload {
+  return p.family === "depth";
+}
 export function isZoneUpdate(p: RealtimePayload): p is ZoneUpdatePayload {
   return p.family === "zone_update";
 }
@@ -60,6 +64,7 @@ const KNOWN = new Set<string>([
   "sweep",
   "vol_regime",
   "price_tick",
+  "depth",
   "zone_update",
   "snapshot",
   "heartbeat",

@@ -13,6 +13,7 @@
 import type { RealtimeMessage, RealtimePayload } from "@contracts/realtime/events";
 import {
   isAbsorption,
+  isDepth,
   isError,
   isHeartbeat,
   isIceberg,
@@ -103,6 +104,12 @@ function applyPayload(
       },
     };
     return next;
+  }
+
+  if (isDepth(p)) {
+    // Depth is chart state, not a feed-worthy event. The heatmap primitive
+    // retains the time-series history so React only stores the latest snapshot.
+    return { ...next, depth: p };
   }
 
   if (isVolRegime(p)) {

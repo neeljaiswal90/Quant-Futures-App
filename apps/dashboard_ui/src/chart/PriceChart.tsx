@@ -30,6 +30,7 @@ import { MNQ_TICK, formatMnqPrice } from "../contract/render";
 import { useZonePriceLines } from "./useZonePriceLines";
 import { eventBubbleTooltip, useEventMarkers } from "./useEventMarkers";
 import { isPriceTick } from "../contract/guards";
+import { useDepthHeatmap } from "./useDepthHeatmap";
 
 export function PriceChart() {
   const { liveTickRef, snapshotRef, tickEpoch } = useDashboard();
@@ -180,6 +181,7 @@ export function PriceChart() {
   }, [liveTickRef, tickEpoch]);
 
   useZonePriceLines(priceLineRef);
+  useDepthHeatmap(priceLineRef);
   const hoveredEvent = useEventMarkers(chartRef, priceLineRef, eventAnchorRef);
 
   return (
