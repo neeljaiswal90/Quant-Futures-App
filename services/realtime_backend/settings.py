@@ -88,6 +88,16 @@ class Settings:
     fast_price_poll_interval_seconds: float = 0.100
     fast_price_tail_bytes: int = 32_768
 
+    # RA-081 Phase 2: backend depth stream plumbing. Disabled by default until
+    # the operator gives the second live-stack enablement green-light.
+    depth_enabled: bool = False
+    depth_emit_interval_seconds: float = 0.250
+    depth_n_ticks: int = 20
+    depth_seed_tail_bytes: int = 20_000_000
+    depth_max_active_orders: int = 50_000
+    depth_order_ttl_seconds: int = 120
+    depth_max_ticks_from_mid: int = 400
+
     # WS backpressure (GREEN-LIT).
     client_queue_maxsize: int = 256
 
@@ -125,7 +135,8 @@ def settings_from_env(**overrides: object) -> Settings:
     Recognized env vars (all optional):
         ``RA60_HOST``, ``RA60_PORT``, ``RA60_ANALYTICS_ROOT``,
         ``RA60_SCRATCH_DIR``, ``RA60_SESSION``, ``RA60_TRADING_DATE``,
-        ``RA60_EWMA_CALIBRATION_PATH``, ``RA60_SELF_NORMALIZE`` (RA-070).
+        ``RA60_EWMA_CALIBRATION_PATH``, ``RA60_SELF_NORMALIZE`` (RA-070),
+        and ``RA60_DEPTH_*`` (RA-081, disabled by default).
 
     ``overrides`` (typically parsed CLI args) win over env vars, which win over
     the dataclass defaults. ``None`` overrides are ignored so the default holds.
@@ -149,6 +160,20 @@ def settings_from_env(**overrides: object) -> Settings:
         values["ewma_calibration_path"] = Path(raw)
     if (raw := os.environ.get("RA60_SELF_NORMALIZE")) is not None:
         values["self_normalize"] = raw.strip().lower() in {"1", "true", "yes", "on"}
+    if (raw := os.environ.get("RA60_DEPTH_ENABLED")) is not None:
+        values["depth_enabled"] = raw.strip().lower() in {"1", "true", "yes", "on"}
+    if (raw := os.environ.get("RA60_DEPTH_EMIT_INTERVAL_SECONDS")) is not None:
+        values["depth_emit_interval_seconds"] = float(raw)
+    if (raw := os.environ.get("RA60_DEPTH_N_TICKS")) is not None:
+        values["depth_n_ticks"] = int(raw)
+    if (raw := os.environ.get("RA60_DEPTH_SEED_TAIL_BYTES")) is not None:
+        values["depth_seed_tail_bytes"] = int(raw)
+    if (raw := os.environ.get("RA60_DEPTH_MAX_ACTIVE_ORDERS")) is not None:
+        values["depth_max_active_orders"] = int(raw)
+    if (raw := os.environ.get("RA60_DEPTH_ORDER_TTL_SECONDS")) is not None:
+        values["depth_order_ttl_seconds"] = int(raw)
+    if (raw := os.environ.get("RA60_DEPTH_MAX_TICKS_FROM_MID")) is not None:
+        values["depth_max_ticks_from_mid"] = int(raw)
 
     for key, value in overrides.items():
         if value is not None:

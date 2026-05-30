@@ -20,6 +20,10 @@ def test_defaults_match_green_lit_decisions() -> None:
     assert s.min_compute_interval_seconds == 0.500
     assert s.max_price_distance == 30.0
     assert s.tail_bytes == 20_000_000
+    assert s.depth_enabled is False
+    assert s.depth_emit_interval_seconds == 0.250
+    assert s.depth_n_ticks == 20
+    assert s.depth_seed_tail_bytes == 20_000_000
     assert s.cors_origins == DEFAULT_CORS_ORIGINS
     assert "*" not in s.cors_origins
 
@@ -28,10 +32,14 @@ def test_env_overrides_defaults(monkeypatch) -> None:  # type: ignore[no-untyped
     monkeypatch.setenv("RA60_HOST", "0.0.0.0")
     monkeypatch.setenv("RA60_PORT", "9001")
     monkeypatch.setenv("RA60_SESSION", "rth")
+    monkeypatch.setenv("RA60_DEPTH_ENABLED", "1")
+    monkeypatch.setenv("RA60_DEPTH_N_TICKS", "30")
     s = settings_from_env()
     assert s.host == "0.0.0.0"
     assert s.port == 9001
     assert s.session_override == "rth"
+    assert s.depth_enabled is True
+    assert s.depth_n_ticks == 30
 
 
 def test_explicit_overrides_win_over_env(monkeypatch) -> None:  # type: ignore[no-untyped-def]

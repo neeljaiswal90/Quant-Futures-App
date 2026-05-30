@@ -27,8 +27,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from contracts.realtime.events import DepthPayload
 from rithmic_analytics.cli.normalize_probe_incremental import normalize_incremental
 from rithmic_dashboard.data_sources import load_envelope
+from rithmic_dashboard.features.depth_book import DepthBook, DepthBookTailer
 from rithmic_dashboard.features.live_signals import compute_live_signals
 from rithmic_dashboard.features.recent_signals_panel import RecentSignal, build_recent_signals
 from rithmic_dashboard.models import DashboardSession, LiveSignals
@@ -38,6 +40,11 @@ from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 from watchdog.observers.polling import PollingObserver
 
+from realtime_backend.depth import (
+    build_depth_payload,
+    classify_depth_quality,
+    resolve_depth_mid,
+)
 from realtime_backend.price_ticks import LatestPriceTick, latest_price_tick
 from realtime_backend.settings import Settings
 
@@ -58,6 +65,7 @@ class ComputeResult:
 
 ResultCallback = Callable[[ComputeResult], None]
 PriceTickCallback = Callable[[LatestPriceTick], None]
+DepthCallback = Callable[[DepthPayload], None]
 
 
 def resolve_session(settings: Settings, *, now_pt: datetime | None = None) -> DashboardSession:
@@ -263,6 +271,7 @@ class CaptureWatcher:
         on_result: ResultCallback,
         *,
         on_price_tick: PriceTickCallback | None = None,
+        on_depth: DepthCallback | None = None,
         on_error: Callable[[Exception], None] | None = None,
         use_polling: bool | None = None,
         now_pt_factory: Callable[[], datetime | None] | None = None,
@@ -275,6 +284,7 @@ class CaptureWatcher:
             now_pt_factory=now_pt_factory,
         )
         self._on_price_tick = on_price_tick
+        self._on_depth = on_depth
         polling = settings.use_polling_observer if use_polling is None else use_polling
         self._observer: BaseObserver = PollingObserver() if polling else Observer()
         self._started = False
@@ -282,6 +292,8 @@ class CaptureWatcher:
         self._backstop_thread: threading.Thread | None = None
         self._fast_price_stop = threading.Event()
         self._fast_price_thread: threading.Thread | None = None
+        self._depth_stop = threading.Event()
+        self._depth_thread: threading.Thread | None = None
 
     @property
     def watch_dir(self) -> Path:
@@ -305,6 +317,7 @@ class CaptureWatcher:
         self._observer.start()
         self._start_backstop()
         self._start_fast_price_poller()
+        self._start_depth_poller()
         self._started = True
 
     def _start_backstop(self) -> None:
@@ -364,6 +377,77 @@ class CaptureWatcher:
         )
         self._fast_price_thread.start()
 
+    def _start_depth_poller(self) -> None:
+        """Poll the MBO sibling by offset and emit bounded depth snapshots."""
+        if self._on_depth is None or not self._settings.depth_enabled:
+            return
+        on_depth = self._on_depth
+        interval = self._settings.depth_emit_interval_seconds
+        if interval <= 0:
+            return
+        n_ticks = min(max(1, self._settings.depth_n_ticks), 50)
+        tailer_state: tuple[Path, DepthBookTailer] | None = None
+
+        def _tailer_for(mbo_path: Path) -> DepthBookTailer | None:
+            nonlocal tailer_state
+            if tailer_state is not None and tailer_state[0] == mbo_path:
+                return tailer_state[1]
+            if not mbo_path.exists():
+                tailer_state = None
+                return None
+            book = DepthBook(
+                max_active_orders=self._settings.depth_max_active_orders,
+                order_ttl_seconds=self._settings.depth_order_ttl_seconds,
+                max_ticks_from_mid=self._settings.depth_max_ticks_from_mid,
+            )
+            tailer = DepthBookTailer(
+                mbo_path,
+                book=book,
+                seed_tail_bytes=self._settings.depth_seed_tail_bytes,
+            )
+            tailer.seed_from_tail()
+            tailer_state = (mbo_path, tailer)
+            return tailer
+
+        def _loop() -> None:
+            while not self._depth_stop.wait(timeout=interval):
+                try:
+                    session = resolve_session(self._settings)
+                    mbo_path = _mbo_sibling_path(session.capture_path)
+                    tailer = _tailer_for(mbo_path)
+                    if tailer is None:
+                        continue
+                    tailer.poll()
+                    tick = latest_price_tick(
+                        trade_source_path=session.capture_path,
+                        capture_path=session.capture_path,
+                        tail_bytes=self._settings.fast_price_tail_bytes,
+                    )
+                    mid = resolve_depth_mid(tick)
+                    snapshot = tailer.book.snapshot(mid=mid.mid, n_ticks=n_ticks)
+                    now_ns = time.time_ns()
+                    quality = classify_depth_quality(
+                        has_book=tailer.book.active_order_count > 0,
+                        book_ts_ns=tailer.book.last_ts_ns,
+                        mid=mid,
+                        now_ns=now_ns,
+                        staleness_threshold_seconds=(
+                            self._settings.staleness_threshold_seconds
+                        ),
+                    )
+                    payload = build_depth_payload(
+                        snapshot,
+                        quality=quality,
+                        ts_ns=tailer.book.last_ts_ns,
+                    )
+                    if payload is not None:
+                        on_depth(payload)
+                except Exception as exc:  # noqa: BLE001
+                    _LOG.debug("depth poll failed: %s", exc)
+
+        self._depth_thread = threading.Thread(target=_loop, name="ra60-depth", daemon=True)
+        self._depth_thread.start()
+
     def trigger(self) -> None:
         """Manually request a recompute (used by tests)."""
         self._runner.trigger()
@@ -373,6 +457,10 @@ class CaptureWatcher:
             return
         self._backstop_stop.set()
         self._fast_price_stop.set()
+        self._depth_stop.set()
+        if self._depth_thread is not None:
+            self._depth_thread.join(timeout=5.0)
+            self._depth_thread = None
         if self._fast_price_thread is not None:
             self._fast_price_thread.join(timeout=5.0)
             self._fast_price_thread = None
@@ -383,6 +471,12 @@ class CaptureWatcher:
         self._observer.join(timeout=5.0)
         self._runner.stop()
         self._started = False
+
+
+def _mbo_sibling_path(capture_path: Path) -> Path:
+    if not capture_path.name.endswith(".jsonl"):
+        return capture_path.with_suffix(".mbo.jsonl")
+    return capture_path.with_name(f"{capture_path.name.removesuffix('.jsonl')}.mbo.jsonl")
 
 
 __all__ = ["CaptureWatcher", "ComputeResult", "resolve_session", "run_compute"]

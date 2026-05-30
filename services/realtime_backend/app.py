@@ -25,7 +25,7 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 
-from contracts.realtime.events import ErrorPayload, make_message
+from contracts.realtime.events import DepthPayload, ErrorPayload, make_message
 from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
@@ -88,6 +88,13 @@ class RealtimeBackend:
             lambda: asyncio.ensure_future(self._handle_fast_price_tick(tick))
         )
 
+    def _on_depth_threadsafe(self, payload: DepthPayload) -> None:
+        """Depth callback from watcher thread; emits a bounded depth snapshot."""
+        loop = self._loop
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._handle_depth(payload)))
+
     async def _handle_result(self, result: ComputeResult) -> None:
         """Diff + emit tiered events, then refresh the snapshot cache."""
         try:
@@ -113,6 +120,9 @@ class RealtimeBackend:
 
     async def _handle_fast_price_tick(self, tick: LatestPriceTick) -> None:
         await self.feed.emit_price_tick(tick, orderflow=None)
+
+    async def _handle_depth(self, payload: DepthPayload) -> None:
+        await self.feed.emit_depth(payload)
 
     async def _handle_error(self, exc: Exception) -> None:
         logger.warning("detector pass failed: %s", exc)
@@ -143,6 +153,7 @@ class RealtimeBackend:
             self.settings,
             self._on_result_threadsafe,
             on_price_tick=self._on_price_tick_threadsafe,
+            on_depth=self._on_depth_threadsafe,
             on_error=self._on_error_threadsafe,
         )
         # Seed one compute up-front (blocking, off the loop) so /snapshot has
@@ -260,6 +271,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Immediate snapshot so the client starts aligned to the live seq.
         snapshot_msg = backend.feed.build_snapshot_message()
         await send(snapshot_msg.model_dump_json())
+        if backend.feed.latest_depth_message is not None:
+            await send(backend.feed.latest_depth_message.model_dump_json())
 
         client = await backend.manager.connect(send)
         try:

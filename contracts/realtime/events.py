@@ -272,9 +272,14 @@ class DepthPayload(RealtimePayload):
     """Bounded full depth snapshot for heatmap/DOM rendering.
 
     This is a full snapshot, not a diff. The backend caps each side to
-    ``n_ticks`` levels so the wire payload remains bounded under busy opens.
-    ``quality`` records whether the book is live MBO depth, inferred/stale, or
-    unavailable.
+    ``n_ticks`` levels so the wire payload remains bounded under busy opens;
+    ``n_ticks`` means max levels per side. ``bid_levels`` are ordered
+    descending by price (best/nearest bid first); ``ask_levels`` are ordered
+    ascending by price (best/nearest ask first). ``quality`` meanings:
+    ``live`` = seeded MBO book with fresh bid/ask mid; ``inferred`` = seeded
+    book centered from latest trade because bid/ask is unavailable;
+    ``stale_l1`` = stale price or depth context; ``unavailable`` = no usable
+    book or mid.
     """
 
     family: Literal["depth"] = "depth"

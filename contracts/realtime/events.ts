@@ -191,7 +191,11 @@ export interface DepthLevel {
 
 /**
  * Bounded full depth snapshot for heatmap/DOM rendering. This is a full
- * snapshot, not a diff; each side is capped by n_ticks.
+ * snapshot, not a diff; n_ticks caps each side independently. bid_levels are
+ * descending by price (best/nearest bid first); ask_levels are ascending by
+ * price (best/nearest ask first). quality meanings: live = seeded MBO book
+ * with fresh bid/ask mid; inferred = seeded book centered from latest trade;
+ * stale_l1 = stale price or depth context; unavailable = no usable book or mid.
  */
 export interface DepthPayload {
   family: "depth";

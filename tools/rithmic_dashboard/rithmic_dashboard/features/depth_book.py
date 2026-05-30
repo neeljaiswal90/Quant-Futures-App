@@ -77,6 +77,7 @@ class DepthBook:
         self.level_size: dict[LevelKey, int] = {}
         self._order_queue: deque[tuple[int, str]] = deque()
         self._last_mid_bucket: int | None = None
+        self._last_ts_ns: int | None = None
 
     @property
     def active_order_count(self) -> int:
@@ -90,9 +91,16 @@ class DepthBook:
     def total_depth(self) -> int:
         return sum(self.level_size.values())
 
+    @property
+    def last_ts_ns(self) -> int | None:
+        """Most recent parsed MBO event timestamp applied to this book."""
+        return self._last_ts_ns
+
     def apply(self, event: MboOrderEvent) -> None:
         """Apply one normalized MBO event to the live book."""
 
+        if self._last_ts_ns is None or event.timestamp_ns > self._last_ts_ns:
+            self._last_ts_ns = event.timestamp_ns
         self._evict_stale(event.timestamp_ns)
         if event.action in {"A", "M"}:
             self._upsert(event)

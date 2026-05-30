@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contracts.realtime.events import (
+    DepthPayload,
     HeartbeatPayload,
     OrderflowStats,
     PriceTickPayload,
@@ -65,6 +66,8 @@ class FeedState:
     _last_current_price: float | None = field(default=None, init=False)
     _last_price_tick_key: tuple[int, float, int] | None = field(default=None, init=False)
     _last_price_tick_had_orderflow: bool = field(default=False, init=False)
+    _last_depth_key: tuple[object, ...] | None = field(default=None, init=False)
+    _last_depth_message: RealtimeMessage | None = field(default=None, init=False)
 
     # ----- seq -----------------------------------------------------------
 
@@ -115,6 +118,10 @@ class FeedState:
     @property
     def last_signals(self) -> LiveSignals | None:
         return self._last_signals
+
+    @property
+    def latest_depth_message(self) -> RealtimeMessage | None:
+        return self._last_depth_message
 
     # ----- emission ------------------------------------------------------
 
@@ -215,6 +222,24 @@ class FeedState:
         self._last_price_tick_had_orderflow = orderflow is not None
         return message
 
+    async def emit_depth(self, payload: DepthPayload) -> RealtimeMessage | None:
+        """Broadcast a bounded depth snapshot, deduped by visible tick window."""
+        key = _depth_dedupe_key(payload)
+        if key == self._last_depth_key:
+            return None
+        async with self._lock:
+            seq = await self._next_seq()
+        message = make_message(
+            type="event",
+            payload=payload,
+            seq=seq,
+            ts_ns=payload.ts_ns,
+        )
+        await self._broadcast_and_account(message)
+        self._last_depth_key = key
+        self._last_depth_message = message
+        return message
+
     async def emit_heartbeat(self) -> RealtimeMessage:
         """Broadcast a liveness/staleness heartbeat at the next seq."""
         server_ts_ns = time.time_ns()
@@ -237,6 +262,14 @@ class FeedState:
             return True
         age_s = (server_ts_ns - last_append_ns) / 1_000_000_000
         return age_s > self.settings.staleness_threshold_seconds
+
+
+def _depth_dedupe_key(payload: DepthPayload) -> tuple[object, ...]:
+    """Hash the visible depth window on tick-grid mid, not raw sub-tick mid."""
+    mid_bucket = None if payload.mid is None else round(payload.mid / 0.25)
+    bids = tuple((level.price, level.size) for level in payload.bid_levels)
+    asks = tuple((level.price, level.size) for level in payload.ask_levels)
+    return (mid_bucket, payload.quality, payload.n_ticks, bids, asks)
 
 
 __all__ = ["FeedState"]
