@@ -66,3 +66,61 @@ def test_latest_price_tick_returns_none_without_trade(tmp_path: Path) -> None:
     _write_jsonl(obs01, [{"type": "QUOTE", "ts_ns": "100"}])
 
     assert latest_price_tick(trade_source_path=obs01, capture_path=capture) is None
+
+
+def test_latest_price_tick_ignores_raw_mbo_depth_prices(tmp_path: Path) -> None:
+    capture = tmp_path / "MNQ_globex.jsonl"
+    mbp1 = tmp_path / "MNQ_globex.mbp1.jsonl"
+    _write_jsonl(
+        capture,
+        [
+            {
+                "stream": "LAST_TRADE",
+                "exchange_event_ts_ns": "100",
+                "price": 30416.75,
+                "size": 2,
+            },
+            {
+                "stream": "MBO",
+                "payload_kind": "DepthByOrder",
+                "exchange_event_ts_ns": "200",
+                "action": "new",
+                "side": "sell",
+                "price": 32400.0,
+                "size": 1,
+            },
+        ],
+    )
+    _write_jsonl(
+        mbp1,
+        [{"ts_event_ns": "190", "bid_px_00": 30416.5, "ask_px_00": 30417.0}],
+    )
+
+    tick = latest_price_tick(trade_source_path=capture, capture_path=capture)
+
+    assert tick is not None
+    assert tick.trade_ts_ns == 100
+    assert tick.price == 30416.75
+    assert tick.volume == 2
+
+
+def test_latest_price_tick_rejects_trade_far_outside_quote_context(tmp_path: Path) -> None:
+    capture = tmp_path / "MNQ_globex.jsonl"
+    mbp1 = tmp_path / "MNQ_globex.mbp1.jsonl"
+    _write_jsonl(
+        capture,
+        [
+            {
+                "stream": "LAST_TRADE",
+                "exchange_event_ts_ns": "300",
+                "price": 32400.0,
+                "size": 1,
+            }
+        ],
+    )
+    _write_jsonl(
+        mbp1,
+        [{"ts_event_ns": "301", "bid_px_00": 30416.5, "ask_px_00": 30417.0}],
+    )
+
+    assert latest_price_tick(trade_source_path=capture, capture_path=capture) is None

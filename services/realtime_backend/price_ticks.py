@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+MAX_TRADE_BBO_DEVIATION_POINTS = 5.0
+
 
 @dataclass(frozen=True)
 class LatestPriceTick:
@@ -43,11 +45,18 @@ def latest_price_tick(
     capture_path: Path,
     tail_bytes: int = 512_000,
 ) -> LatestPriceTick | None:
-    """Return the newest normalized trade as a chart-ready price tick."""
+    """Return the newest trade as a chart-ready price tick.
+
+    Raw capture tails contain many non-trade records with a top-level ``price``
+    field, especially MBO order lifecycle updates. Only explicit trade records
+    may drive the dashboard price line.
+    """
     trade = _latest_trade(trade_source_path, tail_bytes=tail_bytes)
     if trade is None:
         return None
     bid, ask = _latest_quote(capture_path, tail_bytes=tail_bytes)
+    if _outside_quote_context(trade.price, bid, ask):
+        return None
     return LatestPriceTick(
         trade_ts_ns=trade.trade_ts_ns,
         price=trade.price,
@@ -72,8 +81,7 @@ def _latest_trade(path: Path, *, tail_bytes: int) -> _TradeOnly | None:
         payload = _payload_dict(rec)
         stream = rec.get("stream")
         event_type = rec.get("type")
-        has_price = rec.get("price") is not None or payload.get("price") is not None
-        if stream not in {"LAST_TRADE", "TRADE"} and event_type != "TRADE" and not has_price:
+        if stream not in {"LAST_TRADE", "TRADE"} and event_type != "TRADE":
             continue
         price = _float(_first_present(rec, payload, "price"))
         volume = _int(_first_present(rec, payload, "size", "quantity", "qty"))
@@ -96,6 +104,17 @@ def _latest_trade(path: Path, *, tail_bytes: int) -> _TradeOnly | None:
             aggressor_side=_aggressor_side(rec, payload),
         )
     return None
+
+
+def _outside_quote_context(
+    price: float,
+    bid: float | None,
+    ask: float | None,
+) -> bool:
+    """Reject display ticks that are wildly outside the current quote context."""
+    if bid is not None and price < bid - MAX_TRADE_BBO_DEVIATION_POINTS:
+        return True
+    return ask is not None and price > ask + MAX_TRADE_BBO_DEVIATION_POINTS
 
 
 def _latest_quote(capture_path: Path, *, tail_bytes: int) -> tuple[float | None, float | None]:
