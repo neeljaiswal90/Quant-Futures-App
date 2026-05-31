@@ -16,3 +16,5 @@ export * from './fidelity/queue/index.js';
 export * from './oos-replay/index.js';
 export * from './held-out-validation/index.js';
 export * from './real-archive-execution/index.js';
+export * from './replay-dataset-input/index.js';
+export * from './forward-return-labels/index.js';
