@@ -142,7 +142,7 @@ export function closePosition(
   };
 }
 
-function isStopHit(position: TargetPosition, market: PositionManagerMarketInput): boolean {
+export function isStopHit(position: TargetPosition, market: PositionManagerMarketInput): boolean {
   if (position.side === 'long') {
     return (market.low_price ?? market.mark_price) <= position.active_stop_price;
   }

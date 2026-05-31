@@ -565,7 +565,7 @@ describe('MGMT-03 position-manager FSM', () => {
     ]);
   });
 
-  it('MGMT-BUG-FIX-02 T1 exits long positions when max adverse R is exceeded', () => {
+  it('MGMT-BUG-FIX-02 T1 routes long max adverse and stop overlap to the declared stop', () => {
     const { profile, position } = openPosition('trend_pullback_long');
     const exitPrice = markAtUnrealizedR(position, -1.01);
     const result = evaluatePositionManager({
@@ -578,14 +578,17 @@ describe('MGMT-03 position-manager FSM', () => {
       }),
     });
 
-    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: this same-bar overlap now
+    // declines max-adverse fail-safe and lets the declared stop own the exit.
+    expect(result.fsm_state).toBe('EXITED');
     expect(result.actions).toMatchObject([{
-      action_type: 'FAIL_SAFE_EXIT',
-      reason: 'fail_safe:max_adverse_r_exceeded',
+      action_type: 'EXIT_FULL',
+      reason: 'stop:hit',
     }]);
+    expect(result.reasons).toContain('fail_safe:declined_stop_overlap');
   });
 
-  it('MGMT-BUG-FIX-02 T2 exits short positions when max adverse R is exceeded', () => {
+  it('MGMT-BUG-FIX-02 T2 routes short max adverse and stop overlap to the declared stop', () => {
     const { profile, position } = openPosition('trend_pullback_short');
     const exitPrice = markAtUnrealizedR(position, -1.01);
     const result = evaluatePositionManager({
@@ -598,11 +601,14 @@ describe('MGMT-03 position-manager FSM', () => {
       }),
     });
 
-    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: this same-bar overlap now
+    // declines max-adverse fail-safe and lets the declared stop own the exit.
+    expect(result.fsm_state).toBe('EXITED');
     expect(result.actions).toMatchObject([{
-      action_type: 'FAIL_SAFE_EXIT',
-      reason: 'fail_safe:max_adverse_r_exceeded',
+      action_type: 'EXIT_FULL',
+      reason: 'stop:hit',
     }]);
+    expect(result.reasons).toContain('fail_safe:declined_stop_overlap');
   });
 
   it('MGMT-BUG-FIX-02 T3 holds long positions below the adverse-R boundary', () => {
@@ -823,7 +829,7 @@ describe('MGMT-03 position-manager FSM', () => {
     }]);
   });
 
-  it('MGMT-BUG-FIX-02 T11 exits long positions at the exact adverse-R boundary', () => {
+  it('MGMT-BUG-FIX-02 T11 routes exact adverse-R boundary stop overlap to the declared stop', () => {
     const { profile, position } = openPosition('trend_pullback_long');
     const exitPrice = markAtUnrealizedR(position, -1);
     const result = evaluatePositionManager({
@@ -836,11 +842,14 @@ describe('MGMT-03 position-manager FSM', () => {
       }),
     });
 
-    expect(result.fsm_state).toBe('FAILED_SAFE_EXIT');
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: the exact 1R boundary is
+    // also the declared stop boundary for this fixture, so stop-hit now owns it.
+    expect(result.fsm_state).toBe('EXITED');
     expect(result.actions).toMatchObject([{
-      action_type: 'FAIL_SAFE_EXIT',
-      reason: 'fail_safe:max_adverse_r_exceeded',
+      action_type: 'EXIT_FULL',
+      reason: 'stop:hit',
     }]);
+    expect(result.reasons).toContain('fail_safe:declined_stop_overlap');
   });
 
   it('MGMT-BUG-FIX-02 T12 holds post-PT1 positions at breakeven on the deadline', () => {

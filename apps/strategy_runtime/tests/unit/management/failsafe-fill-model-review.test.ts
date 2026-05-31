@@ -79,8 +79,14 @@ describe('fail-safe fill model review', () => {
     expect(result.actions[0]?.realized_pnl_usd).toBe(-20);
   });
 
-  it('triggers max adverse fail-safe at exactly 1R and exits at mark price', () => {
-    const result = evaluateFailSafe(shortPosition(), profile, market({ mark_price: 20010 }));
+  it('triggers residual max adverse fail-safe at exactly 1R when the declared stop is not touched', () => {
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: max-adverse remains a residual guard
+    // when the active stop is wider than the configured 1R fail-safe threshold.
+    const result = evaluateFailSafe(
+      shortPosition({ active_stop_price: 20012 }),
+      profile,
+      market({ mark_price: 20010, high_price: 20010 }),
+    );
 
     expect(result.terminal_reason).toBe('fail_safe');
     expect(result.actions).toHaveLength(1);
@@ -91,7 +97,13 @@ describe('fail-safe fill model review', () => {
   });
 
   it('exits a 1.25R max adverse fail-safe at the adverse mark price', () => {
-    const result = evaluateFailSafe(shortPosition(), profile, market({ mark_price: 20012.5 }));
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: keep the stop wider so this
+    // case continues to document residual fail-safe fill behavior, not stop overlap.
+    const result = evaluateFailSafe(
+      shortPosition({ active_stop_price: 20020 }),
+      profile,
+      market({ mark_price: 20012.5, high_price: 20012.5 }),
+    );
 
     expect(result.terminal_reason).toBe('fail_safe');
     expect(result.actions[0]?.reason).toBe('fail_safe:max_adverse_r_exceeded');
@@ -102,7 +114,13 @@ describe('fail-safe fill model review', () => {
   });
 
   it('exits a 2R max adverse fail-safe at the adverse mark price', () => {
-    const result = evaluateFailSafe(shortPosition(), profile, market({ mark_price: 20020 }));
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: keep the stop wider so this
+    // case continues to document residual fail-safe fill behavior, not stop overlap.
+    const result = evaluateFailSafe(
+      shortPosition({ active_stop_price: 20025 }),
+      profile,
+      market({ mark_price: 20020, high_price: 20020 }),
+    );
 
     expect(result.terminal_reason).toBe('fail_safe');
     expect(result.actions[0]?.reason).toBe('fail_safe:max_adverse_r_exceeded');
@@ -112,7 +130,7 @@ describe('fail-safe fill model review', () => {
     expect((result.actions[0]?.realized_pnl_usd ?? 0) - (-20)).toBe(-20);
   });
 
-  it('preempts a same-bar short stop with fail-safe because fail-safe runs first', () => {
+  it('routes same-bar short stop and max-adverse overlap to the declared stop', () => {
     const sameBarMarket = market({
       high_price: 20025,
       low_price: 20008,
@@ -124,19 +142,26 @@ describe('fail-safe fill model review', () => {
 
     expect(stop.terminal_reason).toBe('stop_hit');
     expect(stop.actions[0]?.exit_price).toBe(20010);
-    expect(failSafe.terminal_reason).toBe('fail_safe');
-    expect(failSafe.actions[0]?.exit_price).toBe(20020);
-    expect(integrated.fsm_state).toBe('FAILED_SAFE_EXIT');
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01 intentionally updates the
+    // previously documented broken behavior: max-adverse declines when the same
+    // bar also touches the declared stop, letting stop-hit own the exit price.
+    expect(failSafe.terminal_reason).toBeUndefined();
+    expect(failSafe.actions).toEqual([]);
+    expect(failSafe.reasons).toEqual(['fail_safe:declined_stop_overlap']);
+    expect(integrated.fsm_state).toBe('EXITED');
     expect(integrated.actions).toHaveLength(1);
-    expect(integrated.actions[0]?.reason).toBe('fail_safe:max_adverse_r_exceeded');
-    expect(integrated.actions[0]?.exit_price).toBe(20020);
+    expect(integrated.actions[0]?.reason).toBe('stop:hit');
+    expect(integrated.actions[0]?.exit_price).toBe(20010);
   });
 
   it('uses mark price rather than ask price for an authoritative short-cover fail-safe', () => {
-    const result = evaluateFailSafe(shortPosition(), profile, market({
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: keep the stop wider so this
+    // case continues to isolate mark-vs-ask behavior for residual fail-safe exits.
+    const result = evaluateFailSafe(shortPosition({ active_stop_price: 20025 }), profile, market({
       mark_price: 20020,
       bid_px: 20019.5,
       ask_px: 20020.5,
+      high_price: 20020,
       authority: 'authoritative',
     }));
 

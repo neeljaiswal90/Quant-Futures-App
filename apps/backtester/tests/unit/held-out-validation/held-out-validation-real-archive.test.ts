@@ -47,7 +47,9 @@ describe('QFA-410b real-archive held-out execution', () => {
       regime_label: 'high',
       spread_bucket: '2-tick',
       queue_ahead_bucket: '6-20',
-      exit_reason: 'fail_safe',
+      // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: corrected dispatch routes
+      // same-bar max_adverse_r + stop overlap to stop_loss / EXIT_FULL / stop:hit.
+      exit_reason: 'stop_loss',
       exit_bar_index: 2,
       entry_quantity: 2,
       exit_quantity: 2,
@@ -68,24 +70,12 @@ describe('QFA-410b real-archive held-out execution', () => {
       exits: [{
         exit_ts_ns: ns(121_000_000_000n),
         exit_quantity: 2,
-        management_action_reason: expect.stringMatching(/^fail_safe:/),
-        management_action_type: 'FAIL_SAFE_EXIT',
+        // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: corrected dispatch routes
+        // same-bar max_adverse_r + stop overlap to stop_loss / EXIT_FULL / stop:hit.
+        management_action_reason: 'stop:hit',
+        management_action_type: 'EXIT_FULL',
         target_label: null,
-        fail_safe_context: expect.objectContaining({
-          market_authority: 'authoritative',
-          market_is_stale: null,
-          mark_price: expect.any(Number),
-          bid_px: expect.any(Number),
-          ask_px: expect.any(Number),
-          active_stop_price: expect.any(Number),
-          remaining_quantity: 2,
-          position_profile_id: expect.any(String),
-          position_profile_version: 1,
-          management_profile_id: expect.any(String),
-          management_profile_version: 1,
-          validation_path: null,
-          adverse_r_at_exit: 1.25,
-        }),
+        fail_safe_context: null,
       }],
       max_favorable_excursion_cents: 300n,
       max_adverse_excursion_cents: -500n,
