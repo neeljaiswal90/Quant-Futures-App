@@ -22,26 +22,29 @@
 **Estimate**: 10-14 hours
 **Dependencies**: RA-073/RA-073b price ticks, RA-080 decision map, RA-081 depth backend + heatmap + DOM ladder, RA-082 alert cooldown, `tools/rithmic_dashboard/docs/bookmap_heatmap_audit_2026-06-01_globex.md`
 
-**Context**: The v2 dashboard is live, but it still does not behave like Bookmap after reconnect/reload. Price/depth history starts at the browser's connect time, the heatmap lacks strong orange resting-liquidity bands, repeated signal bubbles visually masquerade as executions/liquidity, and the DOM ladder/heatmap need stricter price-axis alignment. This is a presentation/history/parity gap, not a dead-feed problem.
+**Context**: The v2 dashboard is live, but it still does not behave like Bookmap after reconnect/reload while the backend remains running. Price/depth history starts at the browser's connect time, the heatmap lacks strong orange resting-liquidity bands, repeated signal bubbles visually masquerade as executions/liquidity, and the DOM ladder/heatmap need stricter price-axis alignment. This is a presentation/history/parity gap, not a dead-feed problem.
 
 **Goal**: Make the v2 decision map read like Bookmap for the trading use case: persistent time-by-price liquidity bands, execution bubbles separated from signal markers, hydrated session history on reconnect, Pacific-time axis, and a DOM ladder whose rows line up with the heatmap price grid.
 
 **Build scope**:
 1. **Backend session backfill**:
-   - Add bounded in-memory session history for price/trade ticks and emitted depth snapshots.
-   - Preserve RA-052 memory discipline with explicit caps by age and count.
-   - Serve history through a deterministic backfill endpoint or explicitly proposed additive realtime contract family; if the latter is chosen, `events.py` and `events.ts` must move together with parity tests.
+   - Add bounded compact in-memory rings for price/trade ticks and emitted depth snapshots. Do not store full `RealtimeMessage`/Pydantic envelope objects in history.
+   - Preserve RA-052 memory discipline with explicit caps: depth history `min(12_000 columns, 8h)` and price/trade history `min(100_000 ticks, 8h)` unless the pre-build sweep proves tighter caps are needed.
+   - Serve history through `GET /api/bookmap-backfill` for v1. Do not replay thousands of historical frames over the existing WS stream.
+   - Include `generated_at_ns` and `through_seq` (or a documented equivalent) in the response for observability.
    - Keep capture and normalization read-only. Do not start/stop Rithmic capture from this work.
 2. **Frontend reconnect hydration**:
-   - Hydrate price line, trade bubbles, volume/CVD panels where available, and the depth heatmap from the backend backfill before live streaming continues.
+   - Use race-safe reconnect ordering: connect WS first and buffer/accept live frames, fetch `/api/bookmap-backfill`, hydrate idempotently, then merge buffered/live frames by dedupe key.
+   - Add explicit imperative hydration APIs (`seedFromHistory` / `setHistory` or equivalent) for the price line, volume/CVD display proxy, depth heatmap, and trade bubbles.
    - Dedupe live frames against hydrated history so reconnects do not double-render ticks or depth columns.
+   - Treat CVD backfill as a display/proxy when orderflow delta is absent. Do not promise true CVD reconstruction from fast `price_tick` history alone.
    - Preserve the existing Pacific-time axis behavior.
 3. **Bookmap-style visual separation**:
-   - Render resting liquidity as amber/orange horizontal time-by-price bands with stable intensity scaling.
-   - Render trade bubbles from executions/price ticks as a separate layer, sized by per-trade volume and colored by aggressor side when available.
-   - Demote signal markers so sweeps/alerts no longer appear as green/red execution clusters. Signals may remain as smaller markers/chips or a separately toggleable overlay.
+   - Render resting liquidity as amber/orange horizontal time-by-price bands with stable intensity scaling. Reserve green/red for executions, not resting liquidity.
+   - Add a new `TradeBubblePrimitive` for executions/price ticks, sized by per-trade volume and colored by aggressor side when available.
+   - Keep `EventBubblePrimitive` signal/event rendering separate and demote it so sweeps/alerts no longer appear as green/red execution clusters. Signals may remain as smaller markers/chips or a separately toggleable overlay.
 4. **DOM and heatmap alignment**:
-   - Use the same tick-grid and price bucket rules for DOM rows and heatmap cells.
+   - Add or reuse a shared price-grid utility for DOM rows, heatmap cells, trade bubbles, and current-price projection.
    - Ensure last-price/current-price markers align across the decision map and ladder.
    - Add tests for bucket rounding and row/cell projection so price labels agree.
 5. **Operational docs**:
@@ -49,24 +52,27 @@
 
 **Acceptance criteria**:
 - Reloading the dashboard after at least 10 minutes of live capture preserves earlier price and depth history instead of starting from the reload time.
+- Scope is explicitly browser reload/reconnect while the backend remains running. Backend-restart full-session reconstruction from capture/MBO is a separate replay ticket unless separately approved.
 - The heatmap shows persistent orange liquidity bands comparable to Bookmap's resting-depth display.
 - Trade bubbles are visually distinct from signal markers and are sourced from executions, not detector events.
 - DOM ladder prices align with heatmap cells and the current-price marker.
 - Time labels render in Pacific time.
-- Backfill payloads are bounded and deterministic; memory growth remains capped over a full RTH session.
+- Backfill payloads are bounded and deterministic; memory growth remains capped over a full RTH session; history stores compact DTOs, not full realtime message objects.
+- Fast-null and compute-enriched duplicate trades update the same trade record by `(trade_ts_ns, price, volume)` rather than creating two execution bubbles.
 - Backend tests cover history buffer caps, dedupe, replay/backfill ordering, and endpoint/contract shape.
-- Frontend tests cover hydration, dedupe, heatmap intensity, trade-bubble layering, signal-marker demotion, and DOM/heatmap price alignment.
+- Frontend tests cover imperative hydration, dedupe, heatmap intensity, trade-bubble layering, signal-marker demotion, and DOM/heatmap price alignment.
 - `pytest`/`ruff`/`mypy` for touched Python packages and `vitest`/`tsc`/`eslint`/`build` for the dashboard UI are clean.
 
 **Pre-build sweep required**:
-1. Confirm whether backfill ships as a REST endpoint or a new realtime contract family, and explain the compatibility/parity tradeoff.
-2. Propose exact history caps for price ticks and depth columns, including memory budget math.
-3. Define reconnect ordering: snapshot, backfill, then live frames; or an alternative with the same no-gap/no-duplicate guarantee.
-4. Pin dedupe keys for price ticks, trade bubbles, and depth snapshots.
+1. Confirm `GET /api/bookmap-backfill` as the v1 backfill path, response DTO shape, and why WS replay frames are avoided.
+2. Confirm or tighten the default caps: depth `min(12_000 columns, 8h)` and price/trades `min(100_000 ticks, 8h)`, with memory budget math.
+3. Define race-safe reconnect ordering: WS connect and buffer/accept live frames, fetch backfill, hydrate idempotently, then merge live frames by dedupe key.
+4. Pin dedupe keys for price ticks/trade bubbles, depth snapshots, and fast-null -> enriched duplicate updates.
 5. Pin aggressor-side provenance for trade bubbles and the fallback when side is unknown.
-6. Specify visual layer ordering and opacity so liquidity, executions, signals, zones, and DOM do not obscure each other.
-7. Specify the DOM/heatmap price-axis alignment strategy and tests.
-8. Confirm no changes to Rithmic capture, credentials, scheduler entries, or normalization ownership.
+6. Specify visual layer ordering and opacity so amber liquidity, green/red executions, demoted signals, zones, and DOM do not obscure each other.
+7. Specify the shared price-grid utility and DOM/heatmap/trade-bubble alignment tests.
+8. Confirm CVD history is display/proxy unless orderflow delta is present.
+9. Confirm no changes to Rithmic capture, credentials, scheduler entries, or normalization ownership.
 
 ---
 
