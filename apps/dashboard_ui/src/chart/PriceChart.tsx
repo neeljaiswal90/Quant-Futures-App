@@ -18,6 +18,7 @@ import {
   CrosshairMode,
   HistogramSeries,
   LineSeries,
+  type Time,
   type IChartApi,
   type ISeriesApi,
   type LineData,
@@ -31,6 +32,7 @@ import { useZonePriceLines } from "./useZonePriceLines";
 import { eventBubbleTooltip, useEventMarkers } from "./useEventMarkers";
 import { isPriceTick } from "../contract/guards";
 import { useDepthHeatmap } from "./useDepthHeatmap";
+import { formatChartAxisTimePT, formatChartCrosshairTimePT } from "./timeFormat";
 
 export function PriceChart() {
   const { liveTickRef, snapshotRef, tickEpoch } = useDashboard();
@@ -61,8 +63,16 @@ export function PriceChart() {
       },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: "#30363d" },
-      timeScale: { borderColor: "#30363d", timeVisible: true, secondsVisible: true },
-      localization: { priceFormatter: (p: number) => formatMnqPrice(p) },
+      timeScale: {
+        borderColor: "#30363d",
+        timeVisible: true,
+        secondsVisible: true,
+        tickMarkFormatter: (time: Time) => formatChartAxisTimePT(time),
+      },
+      localization: {
+        priceFormatter: (p: number) => formatMnqPrice(p),
+        timeFormatter: (time: Time) => formatChartCrosshairTimePT(time),
+      },
     });
     chartRef.current = chart;
 
