@@ -41,6 +41,7 @@ from watchdog.observers.api import BaseObserver
 from watchdog.observers.polling import PollingObserver
 
 from realtime_backend.depth import (
+    DepthMid,
     build_depth_payload,
     classify_depth_quality,
     resolve_depth_mid,
@@ -387,6 +388,7 @@ class CaptureWatcher:
             return
         n_ticks = min(max(1, self._settings.depth_n_ticks), 50)
         tailer_state: tuple[Path, DepthBookTailer] | None = None
+        last_mid: DepthMid | None = None
 
         def _tailer_for(mbo_path: Path) -> DepthBookTailer | None:
             nonlocal tailer_state
@@ -410,6 +412,7 @@ class CaptureWatcher:
             return tailer
 
         def _loop() -> None:
+            nonlocal last_mid
             while not self._depth_stop.wait(timeout=interval):
                 try:
                     session = resolve_session(self._settings)
@@ -424,6 +427,10 @@ class CaptureWatcher:
                         tail_bytes=self._settings.fast_price_tail_bytes,
                     )
                     mid = resolve_depth_mid(tick)
+                    if mid.mid is None and last_mid is not None:
+                        mid = last_mid
+                    elif mid.mid is not None:
+                        last_mid = mid
                     snapshot = tailer.book.snapshot(mid=mid.mid, n_ticks=n_ticks)
                     now_ns = time.time_ns()
                     quality = classify_depth_quality(

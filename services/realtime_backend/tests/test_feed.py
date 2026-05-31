@@ -1,4 +1,4 @@
-"""Tests for FeedState: seq monotonicity, gap-on-drop, heartbeat staleness."""
+"""Tests for FeedState: seq monotonicity, client drops, heartbeat staleness."""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ def test_diff_emits_only_new_events_on_second_pass() -> None:
     asyncio.run(scenario())
 
 
-def test_seq_gets_extra_bump_on_client_drop() -> None:
+def test_slow_client_drop_does_not_bump_global_seq() -> None:
     async def scenario() -> None:
         feed = _feed(maxsize=2)
 
@@ -121,9 +121,10 @@ def test_seq_gets_extra_bump_on_client_drop() -> None:
         await feed.emit_signal_diff(
             _signals(sweeps), envelope=None, recent_signals=[], current_price=29420.0
         )
-        # 11 events emitted; with drops the seq must exceed the raw event count
-        # (extra increment per drop makes gaps observable on the wire).
-        assert feed.current_seq > 11
+        # 11 events emitted; slow-client drops are local to that client. Healthy
+        # sockets should not see a global seq gap just because another socket
+        # fell behind.
+        assert feed.current_seq == 11
 
     asyncio.run(scenario())
 

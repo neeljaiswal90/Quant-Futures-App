@@ -228,7 +228,7 @@ def test_feed_emit_depth_dedupes_on_bucketed_mid_and_caches_latest() -> None:
     asyncio.run(scenario())
 
 
-def test_app_replays_latest_depth_after_snapshot_on_ws_connect(tmp_path: Path) -> None:
+def test_app_replays_latest_depth_before_snapshot_on_ws_connect(tmp_path: Path) -> None:
     async def scenario() -> None:
         app = create_app(Settings(scratch_dir=tmp_path / "scratch"))
         backend = app.state.backend
@@ -239,8 +239,24 @@ def test_app_replays_latest_depth_after_snapshot_on_ws_connect(tmp_path: Path) -
         await route.endpoint(websocket)  # type: ignore[attr-defined]
 
         frames = [json.loads(text) for text in websocket.sent]
-        assert frames[0]["type"] == "snapshot"
-        assert frames[1]["payload"]["family"] == "depth"
+        assert frames[0]["payload"]["family"] == "depth"
+        assert frames[1]["type"] == "snapshot"
+        assert frames[0]["seq"] <= frames[1]["seq"]
+
+    asyncio.run(scenario())
+
+
+def test_app_exits_quietly_if_ws_disconnects_during_initial_snapshot(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        app = create_app(Settings(scratch_dir=tmp_path / "scratch"))
+        backend = app.state.backend
+        route = next(r for r in app.routes if getattr(r, "path", None) == "/ws")
+        websocket = _DisconnectOnFirstSendWebSocket()
+
+        await route.endpoint(websocket)  # type: ignore[attr-defined]
+
+        assert websocket.accepted is True
+        assert backend.manager.client_count == 0
 
     asyncio.run(scenario())
 
@@ -323,3 +339,17 @@ class _FakeWebSocket:
 
     async def receive_text(self) -> str:
         raise WebSocketDisconnect()
+
+
+class _DisconnectOnFirstSendWebSocket:
+    def __init__(self) -> None:
+        self.accepted = False
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def send_text(self, _text: str) -> None:
+        raise WebSocketDisconnect()
+
+    async def receive_text(self) -> str:
+        raise AssertionError("receive_text should not be reached")

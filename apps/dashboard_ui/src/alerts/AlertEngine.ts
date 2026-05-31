@@ -60,7 +60,7 @@ export class AlertEngine {
     if (this.ctx && this.ctx.state === "suspended") {
       await this.ctx.resume().catch(() => undefined);
     }
-    if ("Notification" in window) {
+    if (this.browserNotificationsSupported()) {
       try {
         const perm = await Notification.requestPermission();
         this.notifGranted = perm === "granted";
@@ -95,7 +95,11 @@ export class AlertEngine {
       result.audio = true;
     }
 
-    if (channels.notification && this.notifGranted && "Notification" in window) {
+    if (
+      channels.notification &&
+      this.notifGranted &&
+      this.browserNotificationsSupported()
+    ) {
       try {
         new Notification(ctx.title, { body: ctx.body, tag: `mnq-${ctx.tier}` });
         result.notification = true;
@@ -105,6 +109,15 @@ export class AlertEngine {
     }
 
     return result;
+  }
+
+  private browserNotificationsSupported(): boolean {
+    if (!("Notification" in window)) return false;
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    // Codex runs inside an Electron/WindowsApps shell where browser
+    // Notification activation can route back to the app package instead of the
+    // dashboard. Native toast/audio daemon paths remain available.
+    return !userAgent.includes("electron") && !userAgent.includes("codex");
   }
 
   /** A short synthesized tone whose pitch encodes the tier (no asset files). */

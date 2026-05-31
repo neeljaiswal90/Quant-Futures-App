@@ -8,9 +8,10 @@ the REST ``/snapshot``, and the heartbeat.
 Seq + gap protocol:
 
 - Every emitted frame gets the next ``seq`` (``_next_seq``).
-- When :meth:`broadcast` reports that a slow client dropped a frame, we add an
-  extra increment to ``seq`` so the gap is observable on the wire — the
-  client's next received ``seq`` jumps by more than 1 and it resyncs via REST.
+- When a slow client drops queued frames, its own next received ``seq`` jumps by
+  more than 1 because the omitted frames already had real sequence numbers.
+  Healthy clients keep the normal global stream and are not forced to resync
+  because another socket fell behind.
 - ``/snapshot`` returns the snapshot at the *current* seq so a resyncing client
   realigns to the live counter.
 
@@ -126,15 +127,8 @@ class FeedState:
     # ----- emission ------------------------------------------------------
 
     async def _broadcast_and_account(self, message: RealtimeMessage) -> None:
-        """Broadcast then bump seq once per emit; extra bump on any drop.
-
-        The extra increment on drop makes the gap observable: the next frame a
-        recovering client sees carries a seq that skipped, triggering resync.
-        """
-        dropped = await self.manager.broadcast(message)
-        if dropped > 0:
-            async with self._lock:
-                self._seq += 1
+        """Broadcast a message without making slow-client drops global."""
+        await self.manager.broadcast(message)
 
     async def emit_snapshot_to(self, client_send_seq: int | None = None) -> RealtimeMessage:
         """Broadcast a fresh snapshot at the next seq and return it."""

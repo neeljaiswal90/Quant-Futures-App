@@ -362,8 +362,9 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   appendSnapshot(payload: DepthPayload): void {
     const column = depthPayloadToColumn(payload);
     if (column == null) {
-      this.columns = [];
-      this.sessionMaxSize = 0;
+      // A single transient unavailable depth frame can occur while the backend
+      // is between trade/mid observations. Keep the retained time x price
+      // history warm; explicit session resets are handled by remount/resync.
       this.updateAllViews();
       this.requestUpdate?.();
       return;

@@ -80,6 +80,21 @@ describe("AlertEngine gating", () => {
     expect(notifSpy).toHaveBeenCalledOnce();
   });
 
+  it("suppresses browser notifications inside Codex/Electron shells", async () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "OpenAI.Codex Electron",
+    );
+    const e = new AlertEngine();
+    await e.enable();
+    const r = e.fire(
+      { tier: "CRITICAL", title: "CRIT", body: "stacked" },
+      { audio: true, notification: true },
+    );
+    expect(r.audio).toBe(true);
+    expect(r.notification).toBe(false);
+    expect(notifSpy).not.toHaveBeenCalled();
+  });
+
   it("respects the pure decision module returning no channels", async () => {
     const e = new AlertEngine();
     await e.enable();

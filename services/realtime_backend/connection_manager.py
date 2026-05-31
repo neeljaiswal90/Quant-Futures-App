@@ -7,9 +7,10 @@ without httpx / a real socket.
 
 Backpressure policy (GREEN-LIT): each client has an
 ``asyncio.Queue(maxsize=256)``. When the queue is full we **drop the oldest**
-frame and enqueue the new one, then bump the global ``seq`` accounting so the
-client detects the gap (its next received ``seq`` jumps) and resyncs via REST
-``/snapshot``. A slow client never blocks the broadcaster or other clients.
+frame and enqueue the new one. That client detects the gap because the dropped
+frames already had real sequence numbers; healthy clients are not forced to
+resync because another socket fell behind. A slow client never blocks the
+broadcaster or other clients.
 """
 
 from __future__ import annotations
@@ -66,8 +67,7 @@ class ClientConnection:
     def offer(self, text: str) -> bool:
         """Enqueue a frame, dropping the oldest if the queue is full.
 
-        Returns True if a drop occurred (caller bumps seq accounting so the
-        client gap-detects), False otherwise.
+        Returns True if a drop occurred, False otherwise.
         """
         dropped = False
         if self.queue.full():
@@ -98,9 +98,8 @@ class ConnectionManager:
 
     ``broadcast`` serializes a :class:`RealtimeMessage` once and offers the
     text to every client's bounded queue. The total number of drops across the
-    fan-out is returned so the server can bump its global ``seq`` and the next
-    real frame lands at a higher number — the client's gap detector fires and
-    it pulls a fresh ``/snapshot``.
+    fan-out is returned for observability; the dropped client will observe a
+    sequence gap naturally when it receives a later frame.
     """
 
     def __init__(self, *, client_queue_maxsize: int = 256) -> None:
@@ -125,8 +124,7 @@ class ConnectionManager:
     async def broadcast(self, message: RealtimeMessage) -> int:
         """Offer ``message`` to every client. Returns clients that dropped.
 
-        A nonzero return means at least one slow client lost a frame; the
-        caller should advance the global seq so the gap is observable.
+        A nonzero return means at least one slow client lost a frame.
         """
         text = message.model_dump_json()
         dropped_clients = 0

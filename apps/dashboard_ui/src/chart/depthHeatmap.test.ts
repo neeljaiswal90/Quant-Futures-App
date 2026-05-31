@@ -104,7 +104,7 @@ describe("depth heatmap projection", () => {
     expect(view?.zOrder?.()).toBe("bottom");
   });
 
-  it("clears retained history on unavailable depth", () => {
+  it("keeps retained history on transient unavailable depth", () => {
     const primitive = new DepthHeatmapPrimitive();
     primitive.appendSnapshot(depthPayload(BASE_NS));
 
@@ -116,7 +116,7 @@ describe("depth heatmap projection", () => {
       ask_levels: [],
     });
 
-    expect(primitive.columnCount()).toBe(0);
-    expect(primitive.autoscaleInfo()).toBeNull();
+    expect(primitive.columnCount()).toBe(1);
+    expect(primitive.autoscaleInfo()).not.toBeNull();
   });
 });

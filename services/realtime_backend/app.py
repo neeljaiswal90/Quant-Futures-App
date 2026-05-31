@@ -268,11 +268,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async def send(text: str) -> None:
             await websocket.send_text(text)
 
-        # Immediate snapshot so the client starts aligned to the live seq.
-        snapshot_msg = backend.feed.build_snapshot_message()
-        await send(snapshot_msg.model_dump_json())
-        if backend.feed.latest_depth_message is not None:
-            await send(backend.feed.latest_depth_message.model_dump_json())
+        # Replay the latest cached depth before the snapshot so a new client
+        # sees frames in non-decreasing seq order. The cached depth can be older
+        # than the current snapshot; sending it after the snapshot would trigger
+        # the UI's out-of-order/gap resync path on every connect.
+        #
+        # Some browsers disconnect during reload before the first send
+        # completes; in that case exit quietly instead of logging an ASGI
+        # exception.
+        try:
+            if backend.feed.latest_depth_message is not None:
+                await send(backend.feed.latest_depth_message.model_dump_json())
+            snapshot_msg = backend.feed.build_snapshot_message()
+            await send(snapshot_msg.model_dump_json())
+        except WebSocketDisconnect:
+            return
 
         client = await backend.manager.connect(send)
         try:

@@ -35,6 +35,7 @@ body {
   height: 100%;
   gap: 8px;
   padding: 8px;
+  min-height: 0;
 }
 
 .topbar {
@@ -107,7 +108,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-  min-height: 0;
+  min-height: 520px;
 }
 
 .decision-surface {
@@ -115,6 +116,7 @@ body {
   grid-template-columns: minmax(0, 1fr) 184px;
   gap: 8px;
   min-height: 0;
+  height: 100%;
 }
 
 .dom-ladder {
@@ -123,6 +125,7 @@ body {
   gap: 8px;
   padding: 8px;
   overflow: hidden;
+  min-height: 520px;
 }
 
 .dom-ladder-head {
@@ -426,15 +429,34 @@ button.btn:disabled {
 }
 
 @media (max-width: 1180px) {
+  .app {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .main {
+    min-height: auto;
+  }
+
+  .chart-col {
+    min-height: auto;
+  }
+
   .main {
     grid-template-columns: 1fr;
   }
 
   .decision-surface {
     grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .chart-panel {
+    min-height: 420px;
   }
 
   .dom-ladder {
-    max-height: 320px;
+    min-height: 420px;
+    max-height: 520px;
   }
 }
