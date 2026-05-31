@@ -21,6 +21,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session", required=True, choices=("globex", "rth"))
     parser.add_argument("--out", required=True, type=Path, help="Output dataset JSONL path.")
     parser.add_argument(
+        "--setups-out",
+        type=Path,
+        default=None,
+        help="Optional RA-092 setup-firing dataset JSONL path derived from the signal dataset.",
+    )
+    parser.add_argument(
         "--analytics-root",
         type=Path,
         default=DEFAULT_ANALYTICS_ROOT,
@@ -54,6 +60,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             capture_date=args.capture_date,
             session=args.session,
             out_path=args.out,
+            setup_out_path=args.setups_out,
             scratch_dir=args.scratch_dir,
             step_ms=args.step_ms,
             depth_n_ticks=args.depth_n_ticks,
@@ -65,6 +72,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"rows={result.row_count} sha256={result.dataset_sha256} "
         f"dataset={result.out_path} manifest={result.manifest_path}"
     )
+    if result.setup_result is not None:
+        print(
+            "setup_dataset_written: "
+            f"rows={result.setup_result.row_count} "
+            f"sha256={result.setup_result.dataset_sha256} "
+            f"dataset={result.setup_result.out_path} "
+            f"manifest={result.setup_result.manifest_path}"
+        )
     return 0
 
 

@@ -121,6 +121,29 @@ def test_replay_emits_valid_rows_with_live_tail_parity_settings(tmp_path: Path) 
     }
 
 
+def test_replay_can_write_optional_setup_dataset(tmp_path: Path) -> None:
+    analytics_root = _build_fixture(tmp_path / "analytics")
+    out = tmp_path / "signals.jsonl"
+    setups_out = tmp_path / "setups.jsonl"
+    result = run_replay(
+        ReplayConfig(
+            analytics_root=analytics_root,
+            capture_date=FIXTURE_TRADING_DATE,
+            session=FIXTURE_SESSION,
+            out_path=out,
+            setup_out_path=setups_out,
+            scratch_dir=tmp_path / "setups_scratch",
+            dashboard_root=tmp_path / "dashboard",
+        )
+    )
+
+    assert result.out_path == out
+    assert result.setup_result is not None
+    assert result.setup_result.out_path == setups_out
+    assert setups_out.exists()
+    assert result.setup_result.manifest_path.exists()
+
+
 def test_row_timestamp_comes_from_detector_event_not_step_boundary(tmp_path: Path) -> None:
     out = _run_fixture_replay(tmp_path, "timestamps")
     rows = _load_rows(out)

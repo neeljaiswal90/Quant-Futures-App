@@ -49,6 +49,7 @@ from realtime_backend.signals import (
 )
 from replay.canonical import canonical_json, sha256_file, sha256_text
 from replay.dataset import DatasetManifest, ReplayContext, SignalDatasetRow, ZoneContext
+from replay.setups import SetupDatasetResult, write_setup_dataset
 from replay.sources import CaptureSources, SourceRow, iter_source_rows, resolve_capture_sources
 from rithmic_dashboard.features.depth_book import DepthBook
 from rithmic_dashboard.features.live_signals import DEFAULT_TAIL_BYTES, compute_live_signals
@@ -89,6 +90,7 @@ class ReplayConfig:
     max_price_distance: float = 30.0
     staleness_threshold_seconds: float = 30.0
     limit_steps: int | None = None
+    setup_out_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,7 @@ class ReplayResult:
     manifest_path: Path
     row_count: int
     dataset_sha256: str
+    setup_result: SetupDatasetResult | None = None
 
 
 @dataclass
@@ -554,6 +557,20 @@ def _write_outputs(state: _ReplayState) -> ReplayResult:
         manifest_path=manifest_path,
         row_count=len(rows),
         dataset_sha256=dataset_hash,
+        setup_result=_write_setup_outputs(state, rows),
+    )
+
+
+def _write_setup_outputs(
+    state: _ReplayState,
+    rows: list[SignalDatasetRow],
+) -> SetupDatasetResult | None:
+    if state.config.setup_out_path is None:
+        return None
+    return write_setup_dataset(
+        signal_rows=rows,
+        out_path=state.config.setup_out_path,
+        source_dataset_path=state.config.out_path,
     )
 
 
