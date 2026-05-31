@@ -42,7 +42,9 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
       quantity: 1,
       spread_bucket: '2-tick',
       queue_ahead_bucket: '6-20',
-      exit_reason: 'fail_safe',
+      // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: corrected dispatch routes
+      // same-bar max_adverse_r + stop overlap to stop_loss / EXIT_FULL / stop:hit.
+      exit_reason: 'stop_loss',
       exit_bar_index: 2,
       max_favorable_excursion_cents: 150n,
       max_adverse_excursion_cents: -250n,
@@ -59,9 +61,9 @@ describe('QFA-201c real-archive lifecycle execution runner', () => {
       first_minute_close_pnl_cents: 150n,
       first_minute_observed: true,
     });
-    expect(first.per_trade_records[0]?.exits[0]?.fail_safe_context).toMatchObject({
-      adverse_r_at_exit: 1.25,
-    });
+    // MGMT-BUGFIX-FAILSAFE-FILL-MODEL-CORRECTION-01: corrected dispatch routes
+    // same-bar max_adverse_r + stop overlap to stop_loss / EXIT_FULL / stop:hit.
+    expect(first.per_trade_records[0]?.exits[0]?.fail_safe_context).toBeNull();
     expect(first.trade_analysis.summary.total_trades).toBe(1);
     expect(first.runtime_metrics.candidate_count).toBe(1);
     expect(positionEvents(first).at(-1)).toMatchObject({

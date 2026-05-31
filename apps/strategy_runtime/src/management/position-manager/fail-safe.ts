@@ -6,7 +6,7 @@ import type {
   PositionManagerMarketInput,
   PositionManagerStepResult,
 } from './index.js';
-import { closePosition } from './stops.js';
+import { closePosition, isStopHit } from './stops.js';
 import { computeRealizedPnlUsd } from './targets.js';
 import type { ManagementProfile } from '../types.js';
 
@@ -18,6 +18,19 @@ export function evaluateFailSafe(
   const reason = firstFailSafeReason(position, profile, market);
   if (reason === undefined) {
     return { position, actions: [], reasons: [] };
+  }
+
+  if (
+    reason === 'fail_safe:max_adverse_r_exceeded' &&
+    Number.isFinite(position.active_stop_price) &&
+    position.active_stop_price > 0 &&
+    isStopHit(position, market)
+  ) {
+    return {
+      position,
+      actions: [],
+      reasons: ['fail_safe:declined_stop_overlap'],
+    };
   }
 
   const exitQuantity = Math.max(0, Math.floor(position.remaining_quantity));
