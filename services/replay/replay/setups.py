@@ -68,6 +68,8 @@ class SetupDatasetRow(BaseModel):
     level_id: str | None = None
     zone_context: ZoneContext | None = None
     regime: str | None = None
+    orderflow_snapshot: dict[str, Any] | None = None
+    depth_snapshot: dict[str, Any] | None = None
     confluence_stack_size: int = Field(ge=1)
     source_signals: list[SetupSignalRef]
     features: dict[str, Any]
@@ -388,6 +390,8 @@ def _setup_row(
             level_id=level_id,
             zone_context=zone,
             regime=anchor.regime,
+            orderflow_snapshot=anchor.orderflow_snapshot,
+            depth_snapshot=anchor.depth_snapshot,
             confluence_stack_size=confluence,
             source_signals=[
                 SetupSignalRef(
