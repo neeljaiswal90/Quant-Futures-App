@@ -13,6 +13,7 @@ import {
   depthPayloadToColumn,
   depthHeatmapTooltip,
   projectDepthHeatmapCells,
+  quantizeIntensityForColor,
   sideFromMid,
   type DepthHistoryColumn,
 } from "./depthHeatmap";
@@ -215,6 +216,46 @@ describe("depth heatmap projection", () => {
 
   it("defaults to ask hue when side is omitted (back-compat tie-break)", () => {
     expect(depthCellColor(1, "live")).toBe(depthCellColor(1, "live", "ask"));
+  });
+
+  it("quantizes intensity to a fixed bucket grid for color batching (RA-112)", () => {
+    // Snaps to 1/24 steps; clamps to [0,1]. Two nearby intensities that fall
+    // in the same bucket must produce an identical color string so the
+    // batched renderer can group them into one fill() call.
+    expect(quantizeIntensityForColor(0)).toBe(0);
+    expect(quantizeIntensityForColor(1)).toBe(1);
+    expect(quantizeIntensityForColor(1.5)).toBe(1); // clamp high
+    expect(quantizeIntensityForColor(-0.5)).toBe(0); // clamp low
+    // 0.50 and 0.51 both snap to the 12/24 bucket -> same color string.
+    expect(quantizeIntensityForColor(0.5)).toBe(quantizeIntensityForColor(0.51));
+    expect(
+      depthCellColor(quantizeIntensityForColor(0.5), "live", "ask"),
+    ).toBe(depthCellColor(quantizeIntensityForColor(0.51), "live", "ask"));
+  });
+
+  it("emits batchable (repeated) fill colors across projected cells (RA-112)", () => {
+    // With quantized color, a dense column of distinct raw intensities should
+    // collapse into a SMALL set of distinct fillColor strings so the batched
+    // draw loop issues few fillStyle assignments. Assert the distinct-color
+    // count is far below the cell count.
+    const bidLevels = Array.from({ length: 60 }, (_, i) => ({
+      price: 30090 - i * 0.25,
+      size: 10 + i, // monotonically varying raw sizes -> varied intensities
+    }));
+    const payload = { ...depthPayload(BASE_NS), bid_levels: bidLevels, ask_levels: [] };
+    const col = depthPayloadToColumn(payload);
+    if (col == null) throw new Error("fixture should convert");
+    const cells = projectDepthHeatmapCells(
+      [col],
+      timeToCoordinate,
+      priceToCoordinate,
+      { nowSeconds: BASE_SECONDS + 1, sessionMaxSize: 200 },
+    );
+    expect(cells.length).toBeGreaterThan(20);
+    const distinctColors = new Set(cells.map((c) => c.fillColor));
+    // 24 buckets x 1 side is the ceiling; in practice far fewer here.
+    expect(distinctColors.size).toBeLessThanOrEqual(25);
+    expect(distinctColors.size).toBeLessThan(cells.length);
   });
 
   it("defensively caps over-wide payloads to 200 levels per side (RA-104b)", () => {

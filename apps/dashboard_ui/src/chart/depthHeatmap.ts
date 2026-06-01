@@ -46,6 +46,18 @@ export const DEPTH_INTENSITY_POWER = 0.5;
 export const DEPTH_MIN_SHOWN_OPACITY = 0.15;
 export const DEPTH_MAX_OPACITY = 0.95;
 export const DEPTH_HEATMAP_ID_PREFIX = "depth-heatmap:";
+/**
+ * RA-112 (Tier 1 perf): number of intensity buckets used to QUANTIZE the
+ * per-cell fill color. The continuous intensity → rgba() mapping otherwise
+ * produces a near-unique color string per cell, which defeats the batched
+ * draw path (one fillStyle + one fill() per distinct color). Snapping color
+ * intensity to 24 buckets collapses thousands of cells into <=48 color groups
+ * (24 buckets x 2 sides) so the draw loop issues <=48 fill() calls instead of
+ * one fillRect()+save()+restore() per cell. The cell still carries its TRUE
+ * intensity for hit-testing; only the COLOR is quantized — visually
+ * indistinguishable at 24 alpha/hue steps.
+ */
+export const DEPTH_COLOR_INTENSITY_BUCKETS = 24;
 
 export type DepthSide = "bid" | "ask";
 
@@ -281,6 +293,17 @@ export function sideFromMid(price: number, mid: number | null): DepthSide {
  * price chart. Pink-400 + sky-400 are visually distinct enough that an
  * operator does not confuse them with execution markers.
  */
+/**
+ * RA-112 (Tier 1 perf): snap a continuous intensity to one of
+ * DEPTH_COLOR_INTENSITY_BUCKETS steps so many cells resolve to the SAME
+ * rgba() string and the batched renderer can group them. Pure function;
+ * the cell retains its unrounded intensity elsewhere for hit-testing.
+ */
+export function quantizeIntensityForColor(intensity: number): number {
+  const t = Math.max(0, Math.min(1, intensity));
+  return Math.round(t * DEPTH_COLOR_INTENSITY_BUCKETS) / DEPTH_COLOR_INTENSITY_BUCKETS;
+}
+
 export function depthCellColor(
   intensity: number,
   quality: DepthQuality,
@@ -439,7 +462,13 @@ export function projectDepthHeatmapCells(
         width,
         height: band.height,
         intensity,
-        fillColor: depthCellColor(intensity, interval.column.quality, level.side),
+        // RA-112: quantize ONLY the color so the batched renderer groups cells;
+        // `intensity` above stays continuous for hit-test priority.
+        fillColor: depthCellColor(
+          quantizeIntensityForColor(intensity),
+          interval.column.quality,
+          level.side,
+        ),
         quality: interval.column.quality,
       });
       if (cells.length >= maxCells) return cells;
@@ -458,12 +487,32 @@ class DepthHeatmapRenderer implements IPrimitivePaneRenderer {
 
   draw(target: CanvasRenderingTarget2D): void {
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+      // RA-112 (Tier 1 perf): batch by fill color. The previous loop did
+      // save()/fillStyle=/fillRect()/restore() PER CELL — at up to
+      // MAX_DEPTH_CELLS that is ~4x32k native canvas crosses per frame and is
+      // the dominant cost behind the laggy heatmap. Cells now carry a
+      // quantized color (<=48 distinct), so we group on-screen cells by color
+      // and emit one fillStyle + one beginPath/fill() per color group. The
+      // per-rect geometry (ctx.rect) is unavoidable, but a single batched
+      // fill() of a multi-rect path lets the canvas backend coalesce the
+      // raster pass instead of paying call overhead 32k times.
+      const groups = new Map<string, DepthHeatmapCell[]>();
       for (const cell of this.cells) {
         if (cell.y > mediaSize.height + 4 || cell.y + cell.height < -4) continue;
-        ctx.save();
-        ctx.fillStyle = cell.fillColor;
-        ctx.fillRect(cell.x, cell.y, cell.width, cell.height);
-        ctx.restore();
+        const bucket = groups.get(cell.fillColor);
+        if (bucket === undefined) {
+          groups.set(cell.fillColor, [cell]);
+        } else {
+          bucket.push(cell);
+        }
+      }
+      for (const [color, cells] of groups) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        for (const cell of cells) {
+          ctx.rect(cell.x, cell.y, cell.width, cell.height);
+        }
+        ctx.fill();
       }
     });
   }
@@ -526,6 +575,14 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private series: ISeriesApi<SeriesType, Time> | null = null;
   private requestUpdate: (() => void) | null = null;
   private columns: DepthHistoryColumn[] = [];
+  // RA-112 (Tier 1 perf): reprojection dirty-check. updateAllViews() fires on
+  // every chart repaint (including crosshair-only moves). We bump
+  // `columnsVersion` whenever the depth history mutates and compare a cheap
+  // signature (version + visible time range + price-axis sample) against the
+  // last projection so a mousemove that changed no geometry skips the
+  // ~1-2k-cell reprojection entirely.
+  private columnsVersion = 0;
+  private lastProjectionSignature: string | null = null;
 
   attached(param: SeriesAttachedParameter<Time>): void {
     this.chart = param.chart;
@@ -540,6 +597,8 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
     this.requestUpdate = null;
     this.persistence.clear();
     this.columns = [];
+    this.columnsVersion += 1;
+    this.lastProjectionSignature = null;
     this.view.update([]);
   }
 
@@ -558,9 +617,25 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   updateAllViews(): void {
     if (this.chart == null || this.series == null) {
       this.view.update([]);
+      this.lastProjectionSignature = null;
       return;
     }
-    const range = visibleTimeRangeSeconds(this.chart.timeScale().getVisibleRange());
+    const series = this.series;
+    const timeScale = this.chart.timeScale();
+    const range = visibleTimeRangeSeconds(timeScale.getVisibleRange());
+    // RA-112: bail out of reprojection when nothing affecting cell geometry
+    // changed. The signature folds in the columns version (data churn), the
+    // visible time range (time-axis pan/zoom), and two price-axis coordinate
+    // samples (price-axis pan/zoom). A crosshair move that touches neither
+    // axis reuses the cells already in the view.
+    const signature = [
+      this.columnsVersion,
+      range?.from ?? "n",
+      range?.to ?? "n",
+      this.priceScaleSignature(series),
+    ].join("|");
+    if (signature === this.lastProjectionSignature) return;
+    this.lastProjectionSignature = signature;
     const nowSeconds = Date.now() / 1000;
     this.view.update(
       projectDepthHeatmapCells(
@@ -573,6 +648,20 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
         },
       ),
     );
+  }
+
+  /**
+   * RA-112: sample the price-axis mapping at two reference prices so the
+   * dirty-check can detect a price-axis pan or zoom. Two samples capture both
+   * translation and scale: any axis change moves at least one of them. Anchors
+   * on the latest column's mid when available, else a fixed reference.
+   */
+  private priceScaleSignature(series: ISeriesApi<SeriesType, Time>): string {
+    const mid = this.columns.at(-1)?.mid;
+    const anchor = mid != null && Number.isFinite(mid) ? mid : 30000;
+    const a = series.priceToCoordinate(anchor);
+    const b = series.priceToCoordinate(anchor + MNQ_TICK * 40);
+    return `${a ?? "n"}:${b ?? "n"}`;
   }
 
   appendSnapshot(payload: DepthPayload): void {
@@ -591,6 +680,7 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
     this.columns.push(column);
 
     this.trimHistory(column.seconds);
+    this.columnsVersion += 1;
     this.updateAllViews();
     this.requestUpdate?.();
   }
@@ -620,6 +710,8 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   beginHydration(): void {
     this.columns = [];
     this.persistence.clear();
+    this.columnsVersion += 1;
+    this.lastProjectionSignature = null;
     this.view.update([]);
     this.requestUpdate?.();
   }
@@ -638,6 +730,7 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
     }
     const latest = this.columns.at(-1);
     if (latest) this.trimHistory(latest.seconds);
+    this.columnsVersion += 1;
     this.updateAllViews();
     this.requestUpdate?.();
   }
