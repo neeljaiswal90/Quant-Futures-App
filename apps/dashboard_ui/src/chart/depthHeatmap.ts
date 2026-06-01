@@ -22,6 +22,10 @@ export const MAX_DEPTH_COLUMNS = 12_000;
 export const MAX_VISIBLE_DEPTH_COLUMNS = 420;
 export const MAX_DEPTH_CELLS = 32_000;
 export const MIN_DEPTH_CELL_WIDTH = 1.5;
+export const DEPTH_CONTRAST_WINDOW_SECONDS = 10 * 60;
+export const DEPTH_CONTRAST_PERCENTILE = 0.6;
+export const DEPTH_CONTRAST_MIN_FRACTION = 0.05;
+export const DEPTH_MAX_OPACITY = 0.95;
 
 export interface DepthHistoryLevel {
   price: number;
@@ -49,6 +53,11 @@ export interface DepthHeatmapCell extends DepthHistoryLevel {
 export interface VisibleTimeRangeSeconds {
   from: number;
   to: number;
+}
+
+export interface DepthContrastStats {
+  rollingMaxSize: number;
+  floorSize: number;
 }
 
 type CoordinateFn<T> = (value: T) => Coordinate | number | null;
@@ -129,15 +138,59 @@ export function visibleTimeRangeSeconds(
   return { from: Math.min(from, to), to: Math.max(from, to) };
 }
 
-export function depthIntensity(size: number, sessionMaxSize: number): number {
+function percentile(values: readonly number[], pct: number): number {
+  if (values.length === 0) return 0;
+  const index = Math.min(
+    values.length - 1,
+    Math.max(0, Math.floor((values.length - 1) * pct)),
+  );
+  return values[index] ?? 0;
+}
+
+export function depthContrastStats(
+  columns: readonly DepthHistoryColumn[],
+  nowSeconds: number,
+  windowSeconds = DEPTH_CONTRAST_WINDOW_SECONDS,
+): DepthContrastStats {
+  const cutoffSeconds = nowSeconds - windowSeconds;
+  const sizes: number[] = [];
+  let rollingMaxSize = 0;
+
+  for (const column of columns) {
+    if (column.seconds < cutoffSeconds || column.seconds > nowSeconds) continue;
+    for (const level of column.levels) {
+      if (!Number.isFinite(level.size) || level.size <= 0) continue;
+      sizes.push(level.size);
+      if (level.size > rollingMaxSize) rollingMaxSize = level.size;
+    }
+  }
+
+  if (sizes.length === 0 || rollingMaxSize <= 0) {
+    return { rollingMaxSize: 0, floorSize: 0 };
+  }
+
+  sizes.sort((a, b) => a - b);
+  const p60 = percentile(sizes, DEPTH_CONTRAST_PERCENTILE);
+  return {
+    rollingMaxSize,
+    floorSize: Math.max(p60, DEPTH_CONTRAST_MIN_FRACTION * rollingMaxSize),
+  };
+}
+
+export function depthIntensity(
+  size: number,
+  rollingMaxSize: number,
+  floorSize = 0,
+): number {
   if (!Number.isFinite(size) || size <= 0) return 0;
-  if (!Number.isFinite(sessionMaxSize) || sessionMaxSize <= 0) return 0;
-  const scaled = Math.sqrt(size / sessionMaxSize);
+  if (!Number.isFinite(rollingMaxSize) || rollingMaxSize <= 0) return 0;
+  if (size <= floorSize) return 0;
+  const scaled = (size / rollingMaxSize) ** 2;
   return Math.max(0, Math.min(1, scaled));
 }
 
 export function depthCellOpacity(intensity: number, quality: DepthQuality): number {
-  const base = 0.04 + Math.max(0, Math.min(1, intensity)) * 0.81;
+  const base = Math.max(0, Math.min(1, intensity)) * DEPTH_MAX_OPACITY;
   if (quality === "stale_l1") return base * 0.35;
   if (quality === "inferred") return base * 0.72;
   return quality === "live" ? base : 0;
@@ -145,9 +198,9 @@ export function depthCellOpacity(intensity: number, quality: DepthQuality): numb
 
 export function depthCellColor(intensity: number, quality: DepthQuality): string {
   const t = Math.max(0, Math.min(1, intensity));
-  const red = Math.round(112 + t * 143);
-  const green = Math.round(58 + t * 96);
-  const blue = Math.round(18 + t * 16);
+  const red = Math.round(94 + t * 161);
+  const green = Math.round(46 + t * 134);
+  const blue = Math.round(12 + t * 36);
   return `rgba(${red}, ${green}, ${blue}, ${depthCellOpacity(t, quality).toFixed(3)})`;
 }
 
@@ -207,6 +260,9 @@ export interface ProjectDepthOptions {
   nowSeconds: number;
   visibleRange?: VisibleTimeRangeSeconds | null;
   sessionMaxSize?: number;
+  floorSize?: number;
+  contrastStats?: DepthContrastStats;
+  contrastWindowSeconds?: number;
   maxVisibleColumns?: number;
   maxCells?: number;
   tickSize?: number;
@@ -222,8 +278,19 @@ export function projectDepthHeatmapCells(
   const maxVisibleColumns = options.maxVisibleColumns ?? MAX_VISIBLE_DEPTH_COLUMNS;
   const maxCells = options.maxCells ?? MAX_DEPTH_CELLS;
   const tickSize = options.tickSize ?? MNQ_TICK;
-  const sessionMaxSize = options.sessionMaxSize ?? maxDepthSize(columns);
-  if (columns.length === 0 || sessionMaxSize <= 0) return [];
+  const contrast =
+    options.contrastStats ??
+    (options.sessionMaxSize != null
+      ? {
+          rollingMaxSize: options.sessionMaxSize,
+          floorSize: options.floorSize ?? 0,
+        }
+      : depthContrastStats(
+          columns,
+          options.nowSeconds,
+          options.contrastWindowSeconds,
+        ));
+  if (columns.length === 0 || contrast.rollingMaxSize <= 0) return [];
 
   const intervals = sampledVisibleIntervals(
     columns,
@@ -251,7 +318,12 @@ export function projectDepthHeatmapCells(
     for (const level of interval.column.levels) {
       const band = cellBandHeight(level.price, priceToCoordinate, tickSize);
       if (band == null) continue;
-      const intensity = depthIntensity(level.size, sessionMaxSize);
+      const intensity = depthIntensity(
+        level.size,
+        contrast.rollingMaxSize,
+        contrast.floorSize,
+      );
+      if (intensity <= 0) continue;
       cells.push({
         ...level,
         x: xStart,
@@ -307,7 +379,6 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private series: ISeriesApi<SeriesType, Time> | null = null;
   private requestUpdate: (() => void) | null = null;
   private columns: DepthHistoryColumn[] = [];
-  private sessionMaxSize = 0;
 
   attached(param: SeriesAttachedParameter<Time>): void {
     this.chart = param.chart;
@@ -350,7 +421,6 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
         {
           nowSeconds,
           visibleRange: range,
-          sessionMaxSize: this.sessionMaxSize,
         },
       ),
     );
@@ -375,7 +445,6 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
       this.columns.push(column);
     }
 
-    this.sessionMaxSize = Math.max(this.sessionMaxSize, maxDepthSize([column]));
     this.trimHistory(column.seconds);
     this.updateAllViews();
     this.requestUpdate?.();
@@ -387,7 +456,6 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
 
   setHistory(payloads: readonly DepthPayload[]): void {
     this.columns = [];
-    this.sessionMaxSize = 0;
     for (const payload of payloads) {
       const column = depthPayloadToColumn(payload);
       if (column == null) continue;
@@ -398,7 +466,6 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
       } else {
         this.columns.push(column);
       }
-      this.sessionMaxSize = Math.max(this.sessionMaxSize, maxDepthSize([column]));
     }
     const latest = this.columns.at(-1);
     if (latest) this.trimHistory(latest.seconds);

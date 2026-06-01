@@ -96,7 +96,7 @@ body {
 .main {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(520px, 1fr) minmax(140px, 0.22fr);
+  grid-template-rows: auto minmax(420px, 1fr) minmax(190px, 0.3fr);
   gap: 8px;
   min-height: 0;
   height: 100%;
@@ -120,7 +120,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-  min-height: 520px;
+  min-height: 420px;
 }
 
 .decision-surface {
@@ -145,11 +145,11 @@ body {
 
 .dom-ladder {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   gap: 4px;
   padding: 6px;
   overflow: hidden;
-  min-height: 520px;
+  min-height: 420px;
 }
 
 .dom-ladder-head {
@@ -163,7 +163,55 @@ body {
   margin: 0;
 }
 
+.dom-ladder-status,
+.dom-ladder-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dom-ladder-controls {
+  justify-content: space-between;
+}
+
+.dom-mode-chip,
+.dom-control {
+  height: 18px;
+  border: 1px solid rgba(139, 148, 158, 0.54);
+  border-radius: 4px;
+  background: rgba(13, 17, 23, 0.64);
+  color: var(--muted);
+  padding: 0 5px;
+  font-size: 9px;
+  line-height: 16px;
+}
+
+.dom-mode-follow,
+.dom-control-on {
+  color: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.68);
+}
+
+.dom-mode-manual {
+  color: #f5d990;
+  border-color: rgba(227, 179, 65, 0.72);
+}
+
+.dom-control {
+  cursor: pointer;
+}
+
+.dom-control:hover,
+.dom-control:focus-visible,
+.dom-ladder-rows:focus-visible {
+  outline: 1px solid rgba(125, 211, 252, 0.82);
+  outline-offset: 1px;
+}
+
 .dom-ladder-rows {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
   border-top: 1px solid var(--border);
@@ -173,8 +221,8 @@ body {
 .dom-row {
   display: grid;
   grid-template-columns: minmax(34px, 1fr) 62px minmax(34px, 1fr) 42px;
-  height: 13px;
-  min-height: 13px;
+  flex: 1 1 0;
+  min-height: 10px;
   align-items: stretch;
   border-bottom: 1px solid rgba(48, 54, 61, 0.52);
   font-size: 10px;
@@ -296,6 +344,39 @@ body {
   align-items: flex-start;
   gap: 6px;
   pointer-events: auto;
+}
+
+.chart-pane-label {
+  position: absolute;
+  left: 12px;
+  z-index: 3;
+  pointer-events: none;
+  border-left: 2px solid rgba(139, 148, 158, 0.8);
+  border-radius: 3px;
+  background: rgba(13, 17, 23, 0.72);
+  color: var(--muted);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+.chart-pane-label-volume {
+  top: 62%;
+}
+
+.chart-pane-label-cvd {
+  top: 84%;
+}
+
+.chart-pane-label[data-direction="bullish"] {
+  border-left-color: var(--green);
+  color: #8ddb9a;
+}
+
+.chart-pane-label[data-direction="bearish"] {
+  border-left-color: var(--red);
+  color: #ffaaa5;
 }
 
 .chart-toggle {
@@ -486,7 +567,51 @@ body {
   align-items: baseline;
   padding: 4px 0;
   border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
   font-size: 13px;
+}
+
+.feed-row-bullish {
+  border-left-color: rgba(63, 185, 80, 0.92);
+  background: linear-gradient(90deg, rgba(63, 185, 80, 0.11), transparent 58%);
+}
+
+.feed-row-bearish {
+  border-left-color: rgba(248, 81, 73, 0.92);
+  background: linear-gradient(90deg, rgba(248, 81, 73, 0.12), transparent 58%);
+}
+
+.feed-row-neutral {
+  border-left-color: rgba(139, 148, 158, 0.72);
+}
+
+.feed-bias {
+  flex: 0 0 34px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-bias-bullish {
+  color: #adf0bb;
+  background: rgba(63, 185, 80, 0.18);
+  border: 1px solid rgba(63, 185, 80, 0.42);
+}
+
+.feed-bias-bearish {
+  color: #ffb3ae;
+  background: rgba(248, 81, 73, 0.18);
+  border: 1px solid rgba(248, 81, 73, 0.42);
+}
+
+.feed-bias-neutral {
+  color: #c9d1d9;
+  background: rgba(139, 148, 158, 0.13);
+  border: 1px solid rgba(139, 148, 158, 0.34);
 }
 .tier-tag {
   font-size: 10px;
@@ -689,11 +814,6 @@ button.btn:disabled {
   color: var(--muted);
   font-size: 13px;
   font-style: italic;
-}
-
-.history-toggle {
-  cursor: pointer;
-  user-select: none;
 }
 
 @media (max-width: 1180px) {

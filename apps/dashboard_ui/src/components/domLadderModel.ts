@@ -5,6 +5,7 @@ import { priceToTickKey, tickKeyToPrice } from "../chart/priceGrid";
 
 export const DOM_LADDER_VISIBLE_RADIUS_TICKS = 18;
 export const DOM_LADDER_MARGIN_TICKS = 1;
+export const DOM_LADDER_WHEEL_TICKS = 4;
 export const ICEBERG_FADE_MS = 10 * 60 * 1000;
 
 export interface DomLadderRow {
@@ -36,6 +37,11 @@ function keyToPrice(key: number): number {
 export function domLadderRadiusTicks(depth: DepthPayload): number {
   return Math.min(clampDepthNTicks(depth.n_ticks), DOM_LADDER_VISIBLE_RADIUS_TICKS) +
     DOM_LADDER_MARGIN_TICKS;
+}
+
+export function domLadderWheelShift(deltaY: number): number {
+  if (!Number.isFinite(deltaY) || deltaY === 0) return 0;
+  return deltaY < 0 ? DOM_LADDER_WHEEL_TICKS : -DOM_LADDER_WHEEL_TICKS;
 }
 
 export function shouldRecenterDomLadder(

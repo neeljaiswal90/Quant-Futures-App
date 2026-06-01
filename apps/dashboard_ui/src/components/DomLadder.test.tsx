@@ -5,6 +5,7 @@ import type { FeedItem } from "../contract/render";
 import {
   buildDomLadderRows,
   domLadderRadiusTicks,
+  domLadderWheelShift,
   shouldRecenterDomLadder,
 } from "./domLadderModel";
 
@@ -34,6 +35,14 @@ function icebergItem(overrides: Partial<FeedItem> = {}): FeedItem {
 }
 
 describe("DOM ladder row model", () => {
+  it("maps wheel movement to direction-only tick steps", () => {
+    expect(domLadderWheelShift(-1)).toBe(4);
+    expect(domLadderWheelShift(-120)).toBe(4);
+    expect(domLadderWheelShift(1)).toBe(-4);
+    expect(domLadderWheelShift(120)).toBe(-4);
+    expect(domLadderWheelShift(0)).toBe(0);
+  });
+
   it("holds the center inside the hysteresis window and recenters near the edge", () => {
     expect(shouldRecenterDomLadder(30090, 30091, 20)).toBe(false);
     expect(shouldRecenterDomLadder(30090, 30094.25, 20)).toBe(true);

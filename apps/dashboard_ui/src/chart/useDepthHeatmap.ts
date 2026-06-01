@@ -9,6 +9,8 @@ import type { ISeriesApi } from "lightweight-charts";
 import { useDashboard } from "../store/context";
 import { DepthHeatmapPrimitive } from "./depthHeatmap";
 
+const DEPTH_BACKFILL_POLL_INTERVAL_MS = 100;
+
 export function useDepthHeatmap(
   seriesRef: RefObject<ISeriesApi<"Line"> | null>,
 ): void {
@@ -33,18 +35,18 @@ export function useDepthHeatmap(
   }, [state.depth]);
 
   useEffect(() => {
-    let raf = 0;
+    let intervalId = 0;
     let lastEpoch = -1;
-    const loop = () => {
+    const flushBackfill = () => {
       const epoch = bookmapBackfillEpoch.current;
       if (epoch !== lastEpoch) {
         lastEpoch = epoch;
         const backfill = bookmapBackfillRef.current;
         if (backfill) primitiveRef.current?.setHistory(backfill.depth);
       }
-      raf = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    flushBackfill();
+    intervalId = window.setInterval(flushBackfill, DEPTH_BACKFILL_POLL_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
   }, [bookmapBackfillEpoch, bookmapBackfillRef]);
 }

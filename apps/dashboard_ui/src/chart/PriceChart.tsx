@@ -18,6 +18,7 @@ import {
   CrosshairMode,
   HistogramSeries,
   LineSeries,
+  LineStyle,
   type MouseEventParams,
   type Time,
   type IChartApi,
@@ -36,12 +37,52 @@ import { isPriceTick } from "../contract/guards";
 import { useDepthHeatmap } from "./useDepthHeatmap";
 import { formatChartAxisTimePT, formatChartCrosshairTimePT } from "./timeFormat";
 import {
+  colorCvdPoint,
+  cvdDirection,
+  cvdFlipMarkerFromTransition,
+  cvdFlipMarkersFromPoints,
+  CvdFlipMarkerPrimitive,
+  type CvdFlipMarker,
+} from "./cvdDirection";
+import {
   TradeBubblePrimitive,
   tradeBubbleFromBackfillTick,
   tradeBubbleTooltip,
   TRADE_BUBBLE_ID_PREFIX,
   type HoveredTradeBubble,
 } from "./tradeBubbles";
+
+const CHART_REF_POLL_INTERVAL_MS = 50;
+const VOLUME_LABEL_CLASS = "chart-pane-label-volume";
+const CVD_LABEL_CLASS = "chart-pane-label-cvd";
+
+function formatSigned(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return "0";
+  return `${value > 0 ? "+" : ""}${Math.round(value).toLocaleString()}`;
+}
+
+function updatePaneLabel(
+  el: HTMLDivElement | null,
+  text: string,
+  direction: "bullish" | "bearish" | "neutral",
+): void {
+  if (!el) return;
+  el.textContent = text;
+  el.dataset.direction = direction;
+}
+
+function volumeDirection(color: string | undefined): "bullish" | "bearish" | "neutral" {
+  if (color === "#26a69a") return "bullish";
+  if (color === "#ef5350") return "bearish";
+  return "neutral";
+}
+
+function markerAlreadyExists(
+  markers: readonly CvdFlipMarker[],
+  marker: CvdFlipMarker,
+): boolean {
+  return markers.some((candidate) => candidate.id === marker.id);
+}
 
 export function PriceChart() {
   const {
@@ -58,6 +99,11 @@ export function PriceChart() {
   const eventAnchorRef = useRef<ISeriesApi<"Line"> | null>(null);
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const cvdRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const cvdFlipRef = useRef<CvdFlipMarkerPrimitive | null>(null);
+  const cvdMarkersRef = useRef<CvdFlipMarker[]>([]);
+  const lastCvdValueRef = useRef<number | null>(null);
+  const volumeLabelRef = useRef<HTMLDivElement | null>(null);
+  const cvdLabelRef = useRef<HTMLDivElement | null>(null);
   const tradeBubbleRef = useRef<TradeBubblePrimitive | null>(null);
   const aggRef = useRef(new CandleAggregator(1));
   const [hoveredTrade, setHoveredTrade] = useState<HoveredTradeBubble | null>(null);
@@ -133,13 +179,24 @@ export function PriceChart() {
     const cvd = chart.addSeries(
       LineSeries,
       {
-        color: "#a371f7",
+        color: "#8b949e",
         lineWidth: 2,
         priceScaleId: "cvd",
         priceFormat: { type: "price", precision: 0, minMove: 1 },
       },
       1,
     );
+    const cvdZeroLine = cvd.createPriceLine({
+      price: 0,
+      color: "#30363d",
+      lineWidth: 1,
+      lineStyle: LineStyle.Solid,
+      axisLabelVisible: false,
+      title: "0",
+    });
+    const cvdFlips = new CvdFlipMarkerPrimitive();
+    cvd.attachPrimitive(cvdFlips);
+    cvdFlipRef.current = cvdFlips;
     cvd.priceScale().applyOptions({
       scaleMargins: { top: 0.6, bottom: 0.05 },
     });
@@ -160,6 +217,8 @@ export function PriceChart() {
     }
 
     return () => {
+      cvd.detachPrimitive(cvdFlips);
+      cvd.removePriceLine(cvdZeroLine);
       priceLine.detachPrimitive(tradeBubbles);
       if (tradeBubbleRef.current === tradeBubbles) tradeBubbleRef.current = null;
       chart.remove();
@@ -168,16 +227,19 @@ export function PriceChart() {
       eventAnchorRef.current = null;
       volumeRef.current = null;
       cvdRef.current = null;
+      cvdFlipRef.current = null;
+      cvdMarkersRef.current = [];
+      lastCvdValueRef.current = null;
       agg.reset();
     };
   }, [snapshotRef]);
 
   useEffect(() => {
-    let raf = 0;
+    let intervalId = 0;
     let lastEpoch = -1;
     let lastBackfillEpoch = -1;
 
-    const loop = () => {
+    const flushRefUpdates = () => {
       const backfillEpoch = bookmapBackfillEpoch.current;
       if (backfillEpoch !== lastBackfillEpoch) {
         lastBackfillEpoch = backfillEpoch;
@@ -196,7 +258,31 @@ export function PriceChart() {
           );
           priceLine.setData(seeded.prices);
           volumeRef.current?.setData(seeded.volumes);
-          cvdRef.current?.setData(seeded.cvd);
+          const coloredCvd = seeded.cvd.map(colorCvdPoint);
+          cvdRef.current?.setData(coloredCvd);
+          const cvdMarkers = cvdFlipMarkersFromPoints(coloredCvd);
+          cvdMarkersRef.current = cvdMarkers;
+          cvdFlipRef.current?.setMarkers(cvdMarkers);
+          const latestCvd = coloredCvd.at(-1);
+          const previousCvd = coloredCvd.at(-2);
+          lastCvdValueRef.current = latestCvd?.value ?? null;
+          const latestVolume = seeded.volumes.at(-1);
+          if (latestVolume) {
+            updatePaneLabel(
+              volumeLabelRef.current,
+              `VOL ${Math.round(latestVolume.value).toLocaleString()}`,
+              volumeDirection(latestVolume.color),
+            );
+          }
+          if (latestCvd) {
+            const delta =
+              previousCvd == null ? 0 : latestCvd.value - previousCvd.value;
+            updatePaneLabel(
+              cvdLabelRef.current,
+              `CVD ${formatSigned(latestCvd.value)}  Δ ${formatSigned(delta)}`,
+              cvdDirection(latestCvd.value),
+            );
+          }
           tradeBubbleRef.current?.setHistory(
             backfill.price_ticks.map(tradeBubbleFromBackfillTick),
           );
@@ -207,16 +293,15 @@ export function PriceChart() {
         lastEpoch = epoch;
         const tick = liveTickRef.current;
         const priceLine = priceLineRef.current;
-        if (tick && tick.price != null && priceLine) {
-          if (tick.source === "snapshot") {
-            const seeded = aggRef.current.seedFromSnapshot(tick.price, tick.tsNs);
-            priceLine.update({
-              time: seeded.time as UTCTimestamp,
-              value: seeded.close,
-            });
-            raf = requestAnimationFrame(loop);
-            return;
-          }
+          if (tick && tick.price != null && priceLine) {
+            if (tick.source === "snapshot") {
+              const seeded = aggRef.current.seedFromSnapshot(tick.price, tick.tsNs);
+              priceLine.update({
+                time: seeded.time as UTCTimestamp,
+                value: seeded.close,
+              });
+              return;
+            }
           const { candle, volume, cvd } = aggRef.current.ingest(
             {
               family: "price_tick",
@@ -237,10 +322,39 @@ export function PriceChart() {
             value: volume.value,
             color: volume.color,
           });
-          cvdRef.current?.update({
+          const previousCvd = lastCvdValueRef.current;
+          const cvdPoint = colorCvdPoint({
             time: cvd.time as UTCTimestamp,
             value: cvd.value,
           });
+          cvdRef.current?.update(cvdPoint);
+          const strongFlip = Boolean(
+            tick.orderflow?.cvd?.momentum_flip || tick.orderflow?.v_delta?.sign_flip,
+          );
+          const marker = cvdFlipMarkerFromTransition(
+            previousCvd,
+            cvd.value,
+            cvd.time as UTCTimestamp,
+            strongFlip,
+          );
+          if (marker && !markerAlreadyExists(cvdMarkersRef.current, marker)) {
+            cvdMarkersRef.current = [...cvdMarkersRef.current, marker].slice(-500);
+            cvdFlipRef.current?.setMarkers(cvdMarkersRef.current);
+          }
+          const cvdDelta =
+            tick.orderflow?.last_trade_delta ??
+            (previousCvd == null ? 0 : cvd.value - previousCvd);
+          lastCvdValueRef.current = cvd.value;
+          updatePaneLabel(
+            volumeLabelRef.current,
+            `VOL ${Math.round(volume.value).toLocaleString()}`,
+            volumeDirection(volume.color),
+          );
+          updatePaneLabel(
+            cvdLabelRef.current,
+            `CVD ${formatSigned(cvd.value)}  Δ ${formatSigned(cvdDelta)}`,
+            cvdDirection(cvd.value),
+          );
           tradeBubbleRef.current?.appendTick({
             seq: tick.seq,
             tsNs: tick.tsNs,
@@ -255,10 +369,10 @@ export function PriceChart() {
           });
         }
       }
-      raf = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    flushRefUpdates();
+    intervalId = window.setInterval(flushRefUpdates, CHART_REF_POLL_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
   }, [bookmapBackfillEpoch, bookmapBackfillRef, liveTickRef, tickEpoch]);
 
   useEffect(() => {
@@ -302,6 +416,20 @@ export function PriceChart() {
         style={{ width: "100%", height: "100%" }}
         aria-label="MNQ decision map"
       />
+      <div
+        ref={volumeLabelRef}
+        className={`chart-pane-label ${VOLUME_LABEL_CLASS}`}
+        data-direction="neutral"
+      >
+        VOL —
+      </div>
+      <div
+        ref={cvdLabelRef}
+        className={`chart-pane-label ${CVD_LABEL_CLASS}`}
+        data-direction="neutral"
+      >
+        CVD —
+      </div>
       <div className="chart-layer-controls" aria-label="Chart layer controls">
         <button
           type="button"

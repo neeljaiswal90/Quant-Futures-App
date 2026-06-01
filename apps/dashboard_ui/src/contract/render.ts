@@ -217,6 +217,8 @@ export interface FeedItem {
   strength: number;
 }
 
+export type FeedBias = "bullish" | "bearish" | "neutral";
+
 const TIER_STRENGTH: Record<Tier, number> = {
   CRITICAL: 1,
   HIGH: 0.66,
@@ -389,6 +391,45 @@ export function sortFeed(items: FeedItem[]): FeedItem[] {
     if (b.strength !== a.strength) return b.strength - a.strength;
     return b.tsNs - a.tsNs;
   });
+}
+
+/**
+ * Directional presentation for feed rows.
+ *
+ * Uses structured payload fields only: side/direction metadata that already
+ * arrived on the wire. Descriptions remain human text, not a data source.
+ */
+export function feedBias(
+  item: Pick<FeedItem, "side" | "direction">,
+): FeedBias {
+  const side = `${item.side ?? ""}`.toLowerCase();
+  const direction = `${item.direction ?? ""}`.toLowerCase();
+
+  if (
+    side === "bid" ||
+    side === "buy" ||
+    side.includes("long") ||
+    direction === "up" ||
+    direction === "bullish" ||
+    direction === "buy" ||
+    direction.includes("long")
+  ) {
+    return "bullish";
+  }
+
+  if (
+    side === "ask" ||
+    side === "sell" ||
+    side.includes("short") ||
+    direction === "down" ||
+    direction === "bearish" ||
+    direction === "sell" ||
+    direction.includes("short")
+  ) {
+    return "bearish";
+  }
+
+  return "neutral";
 }
 
 /**

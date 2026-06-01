@@ -1,8 +1,8 @@
 /**
- * Tier-5 collapsed session history: every feed-worthy event this session,
- * newest first. Collapsed by default to keep the surface calm.
+ * Tier-5 session history: every feed-worthy event this session, newest first.
+ * Kept open by default so a reload never hides the tape.
  */
-import { useState } from "react";
+import { useMemo } from "react";
 import { useDashboard } from "../store/context";
 
 function fmtTime(tsNs: number): string {
@@ -12,33 +12,29 @@ function fmtTime(tsNs: number): string {
 
 export function HistoryPanel() {
   const { state } = useDashboard();
-  const [open, setOpen] = useState(false);
-  const rows = [...state.history].reverse();
+  const rows = useMemo(() => [...state.history].reverse(), [state.history]);
+  const rowNodes = useMemo(
+    () =>
+      rows.map((item) => (
+        <div className="feed-row" key={`${item.seq}-${item.tsNs}`}>
+          <span className="kv">{fmtTime(item.tsNs)}</span>
+          <span className={`tier-tag tier-${item.tier ?? "none"}`}>
+            {item.tier ?? item.family.slice(0, 3).toUpperCase()}
+          </span>
+          <span>{item.text}</span>
+        </div>
+      )),
+    [rows],
+  );
 
   return (
     <div className="panel">
-      <h2
-        className="history-toggle"
-        onClick={() => setOpen((o) => !o)}
-        role="button"
-        aria-expanded={open}
-      >
-        {open ? "▾" : "▸"} Session history ({state.history.length})
-      </h2>
-      {open &&
-        (rows.length === 0 ? (
-          <p className="empty">No events yet this session.</p>
-        ) : (
-          rows.map((item) => (
-            <div className="feed-row" key={`${item.seq}-${item.tsNs}`}>
-              <span className="kv">{fmtTime(item.tsNs)}</span>
-              <span className={`tier-tag tier-${item.tier ?? "none"}`}>
-                {item.tier ?? item.family.slice(0, 3).toUpperCase()}
-              </span>
-              <span>{item.text}</span>
-            </div>
-          ))
-        ))}
+      <h2>Session history ({state.history.length})</h2>
+      {rows.length === 0 ? (
+        <p className="empty">No events yet this session.</p>
+      ) : (
+        rowNodes
+      )}
     </div>
   );
 }

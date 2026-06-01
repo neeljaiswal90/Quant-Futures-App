@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  feedBias,
   feedOpacity,
   formatMnqPrice,
   isFeedFamily,
@@ -184,5 +185,28 @@ describe("feedOpacity time decay", () => {
     const mid = feedOpacity(32_500);
     expect(mid).toBeGreaterThan(0.35);
     expect(mid).toBeLessThan(1);
+  });
+});
+
+describe("feedBias", () => {
+  it("maps bid/buy/long and up/bullish directions to bullish", () => {
+    expect(feedBias({ side: "bid" })).toBe("bullish");
+    expect(feedBias({ side: "buy" })).toBe("bullish");
+    expect(feedBias({ side: "long_entry" })).toBe("bullish");
+    expect(feedBias({ direction: "up" })).toBe("bullish");
+    expect(feedBias({ direction: "bullish" })).toBe("bullish");
+  });
+
+  it("maps ask/sell/short and down/bearish directions to bearish", () => {
+    expect(feedBias({ side: "ask" })).toBe("bearish");
+    expect(feedBias({ side: "sell" })).toBe("bearish");
+    expect(feedBias({ side: "short_entry" })).toBe("bearish");
+    expect(feedBias({ direction: "down" })).toBe("bearish");
+    expect(feedBias({ direction: "bearish" })).toBe("bearish");
+  });
+
+  it("stays neutral when structured direction fields are absent", () => {
+    expect(feedBias({})).toBe("neutral");
+    expect(feedBias({ side: "unknown", direction: "neutral" })).toBe("neutral");
   });
 });

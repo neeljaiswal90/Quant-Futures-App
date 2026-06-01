@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DepthPayload } from "@contracts/realtime/events";
 import { formatMnqPrice } from "../contract/render";
-import { snapPrice } from "../chart/priceGrid";
+import { priceToTickKey, snapPrice, tickKeyToPrice } from "../chart/priceGrid";
 import { useNow } from "../hooks/useNow";
 import { useDashboard } from "../store/context";
 import {
   buildDomLadderRows,
+  domLadderWheelShift,
   shouldRecenterDomLadder,
 } from "./domLadderModel";
+
+type DomLadderMode = "follow" | "manual";
 
 function qualityClass(quality: DepthPayload["quality"]): string {
   return `dom-quality-${quality}`;
@@ -27,9 +30,14 @@ export function DomLadder() {
   const activePrice = depth?.mid ?? state.price.price;
   const [centerPrice, setCenterPrice] = useState<number | null>(null);
   const [centerNTicks, setCenterNTicks] = useState<number | null>(null);
+  const [mode, setMode] = useState<DomLadderMode>("follow");
 
   useEffect(() => {
     if (!depth || activePrice == null || depth.quality === "unavailable") return;
+    if (mode === "manual") {
+      if (centerNTicks !== depth.n_ticks) setCenterNTicks(depth.n_ticks);
+      return;
+    }
     if (
       centerNTicks !== depth.n_ticks ||
       shouldRecenterDomLadder(centerPrice, activePrice, depth.n_ticks)
@@ -37,7 +45,51 @@ export function DomLadder() {
       setCenterPrice(snapPrice(activePrice));
       setCenterNTicks(depth.n_ticks);
     }
-  }, [activePrice, centerNTicks, centerPrice, depth]);
+  }, [activePrice, centerNTicks, centerPrice, depth, mode]);
+
+  const shiftCenter = useCallback(
+    (ticks: number) => {
+      if (ticks === 0 || (!centerPrice && activePrice == null)) return;
+      const basePrice = centerPrice ?? activePrice;
+      if (basePrice == null) return;
+      setCenterPrice(tickKeyToPrice(priceToTickKey(basePrice) + ticks));
+      if (depth) setCenterNTicks(depth.n_ticks);
+      setMode("manual");
+    },
+    [activePrice, centerPrice, depth],
+  );
+
+  const recenter = useCallback(() => {
+    if (activePrice == null) return;
+    setCenterPrice(snapPrice(activePrice));
+    if (depth) setCenterNTicks(depth.n_ticks);
+  }, [activePrice, depth]);
+
+  const followPrice = useCallback(() => {
+    setMode("follow");
+    recenter();
+  }, [recenter]);
+
+  const onWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      shiftCenter(domLadderWheelShift(event.deltaY));
+    },
+    [shiftCenter],
+  );
+
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        shiftCenter(1);
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        shiftCenter(-1);
+      }
+    },
+    [shiftCenter],
+  );
 
   const rows = useMemo(() => {
     if (!depth || centerPrice == null) return [];
@@ -61,14 +113,41 @@ export function DomLadder() {
     <div className={`panel dom-ladder ${depth ? qualityClass(depth.quality) : ""}`}>
       <div className="dom-ladder-head">
         <h2>DOM ladder</h2>
-        <span className="kv">
-          {depth ? `${depth.quality} · ${ageLabel(depth.ts_ns)}` : "waiting"}
-        </span>
+        <div className="dom-ladder-status">
+          <span className={`dom-mode-chip dom-mode-${mode}`}>
+            {mode === "follow" ? "Follow" : "Manual"}
+          </span>
+          <span className="kv">
+            {depth ? `${depth.quality} · ${ageLabel(depth.ts_ns)}` : "waiting"}
+          </span>
+        </div>
       </div>
+      {!empty && (
+        <div className="dom-ladder-controls" aria-label="DOM ladder controls">
+          <button
+            type="button"
+            className={`dom-control ${mode === "follow" ? "dom-control-on" : ""}`}
+            onClick={followPrice}
+            aria-pressed={mode === "follow"}
+          >
+            Follow price
+          </button>
+          <button type="button" className="dom-control" onClick={recenter}>
+            Recenter
+          </button>
+        </div>
+      )}
       {empty ? (
         <p className="empty">Waiting for depth…</p>
       ) : (
-        <div className="dom-ladder-rows" role="table" aria-label="Depth ladder">
+        <div
+          className="dom-ladder-rows"
+          role="table"
+          aria-label="Depth ladder"
+          tabIndex={0}
+          onWheel={onWheel}
+          onKeyDown={onKeyDown}
+        >
           {rows.map((row) => (
             <div
               className={[

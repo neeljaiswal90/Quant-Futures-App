@@ -6,6 +6,7 @@ import {
   coordinateForEpochSeconds,
   depthCellColor,
   depthCellOpacity,
+  depthContrastStats,
   depthIntensity,
   depthPayloadToColumn,
   projectDepthHeatmapCells,
@@ -92,6 +93,49 @@ describe("depth heatmap projection", () => {
     expect(depthIntensity(10, 100)).toBeLessThan(depthIntensity(10, 10));
   });
 
+  it("uses a 10-minute rolling max and ignores old liquidity spikes", () => {
+    const stats = depthContrastStats(
+      [
+        column(BASE_NS - 11 * 60_000_000_000, 500),
+        column(BASE_NS, 100),
+      ],
+      BASE_SECONDS,
+    );
+
+    expect(stats.rollingMaxSize).toBe(100);
+    expect(stats.floorSize).toBeGreaterThanOrEqual(5);
+    expect(depthIntensity(500, stats.rollingMaxSize, stats.floorSize)).toBe(1);
+  });
+
+  it("hides noise at or below the explicit rolling floor", () => {
+    const cells = projectDepthHeatmapCells(
+      [
+        {
+          tsNs: BASE_NS,
+          seconds: BASE_SECONDS,
+          mid: 30090.25,
+          quality: "live",
+          levels: [
+            ...Array.from({ length: 100 }, (_, index) => ({
+              price: 30070 + index * 0.25,
+              size: 10,
+            })),
+            { price: 30095, size: 500 },
+          ],
+        },
+      ],
+      timeToCoordinate,
+      priceToCoordinate,
+      {
+        nowSeconds: BASE_SECONDS + 1,
+        visibleRange: { from: BASE_SECONDS - 1, to: BASE_SECONDS + 2 },
+      },
+    );
+
+    expect(cells).toHaveLength(1);
+    expect(cells[0].size).toBe(500);
+  });
+
   it("mutes stale depth without changing the size scale", () => {
     expect(depthCellOpacity(0.8, "stale_l1")).toBeLessThan(
       depthCellOpacity(0.8, "live"),
@@ -99,7 +143,7 @@ describe("depth heatmap projection", () => {
   });
 
   it("uses amber liquidity colors so executions can own green/red", () => {
-    expect(depthCellColor(1, "live")).toBe("rgba(255, 154, 34, 0.850)");
+    expect(depthCellColor(1, "live")).toBe("rgba(255, 180, 48, 0.950)");
   });
 
   it("defensively caps over-wide payloads to 100 levels per side", () => {
