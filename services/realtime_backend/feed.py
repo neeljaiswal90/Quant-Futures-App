@@ -27,12 +27,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from contracts.realtime.events import (
+    AbsorptionPayload,
     DepthPayload,
     HeartbeatPayload,
+    IcebergPayload,
     OrderflowStats,
     PriceTickPayload,
     RealtimeMessage,
     SnapshotPayload,
+    SweepPayload,
     make_message,
 )
 from rithmic_dashboard.features.recent_signals_panel import RecentSignal
@@ -40,6 +43,7 @@ from rithmic_dashboard.models import LiveSignals
 
 from realtime_backend.connection_manager import ConnectionManager
 from realtime_backend.history import BookmapHistory
+from realtime_backend.persistent_levels import PersistentLevelDetector
 from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings
 from realtime_backend.signals import (
@@ -71,6 +75,14 @@ class FeedState:
     _last_depth_key: tuple[object, ...] | None = field(default=None, init=False)
     _last_depth_message: RealtimeMessage | None = field(default=None, init=False)
     _bookmap_history: BookmapHistory = field(default_factory=BookmapHistory, init=False)
+    # RA-108: session-long persistent-levels detector. Observes the contract
+    # IcebergPayload / AbsorptionPayload / SweepPayload events as they emit
+    # and aggregates evidence to emit PersistentLevelPayload events when a
+    # level crosses a confidence threshold or transitions status.
+    _persistent_level_detector: PersistentLevelDetector = field(
+        default_factory=PersistentLevelDetector,
+        init=False,
+    )
 
     # ----- seq -----------------------------------------------------------
 
@@ -182,6 +194,11 @@ class FeedState:
             max_price_distance=self.settings.max_price_distance,
         )
         emitted = 0
+        # RA-108: collect persistent-level events produced by the detector
+        # observing each signal-family event. We emit them AFTER the
+        # original event so the operator sees the trigger event chip
+        # followed by any structural-level promotion / transition.
+        persistent_level_emissions: list[Any] = []
         for event, tier in tiered:
             async with self._lock:
                 seq = await self._next_seq()
@@ -193,6 +210,41 @@ class FeedState:
             )
             await self._broadcast_and_account(message)
             emitted += 1
+            # RA-108: feed the emitted contract payload into the detector.
+            # Returns a PersistentLevelPayload iff this observation crossed
+            # a promotion threshold or transitioned the level's status.
+            payload = event.payload
+            ts_ns = message.ts_ns
+            observed: Any = None
+            if isinstance(payload, IcebergPayload):
+                observed = self._persistent_level_detector.observe_iceberg(payload, ts_ns)
+            elif isinstance(payload, AbsorptionPayload):
+                observed = self._persistent_level_detector.observe_absorption(payload, ts_ns)
+            elif isinstance(payload, SweepPayload):
+                observed = self._persistent_level_detector.observe_sweep(payload, ts_ns)
+            if observed is not None:
+                persistent_level_emissions.append(observed)
+
+        # RA-108: periodic lifecycle check — promotes active levels with no
+        # recent evidence to deteriorating. Done once per diff emit so
+        # transitions ride the same broadcast cycle as regular signal events.
+        now_ns = time.time_ns()
+        persistent_level_emissions.extend(
+            self._persistent_level_detector.tick(now_ts_ns=now_ns)
+        )
+
+        for level_payload in persistent_level_emissions:
+            async with self._lock:
+                seq = await self._next_seq()
+            message = make_message(
+                type="event",
+                payload=level_payload,
+                seq=seq,
+                tier=None,
+            )
+            await self._broadcast_and_account(message)
+            emitted += 1
+
         return emitted
 
     async def emit_price_tick(
