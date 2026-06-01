@@ -9,6 +9,15 @@ const ARTIFACT_PATH = join(process.cwd(), 'artifacts', 'regime-fidelity', 'qfa-4
 const REGIMES = ['high', 'mid', 'low'] as const;
 const SPREAD_BUCKETS = ['1-tick', '2-tick', '3+ ticks'] as const;
 const QUEUE_AHEAD_BUCKETS = ['1-5', '6-20', '21+'] as const;
+const TARGET_LOW_COVERAGE_KEYS = [
+  'low|1-tick|1-5',
+  'low|1-tick|6-20',
+  'low|2-tick|1-5',
+  'low|2-tick|6-20',
+  'low|2-tick|21+',
+  'low|3+ ticks|1-5',
+  'low|3+ ticks|6-20',
+] as const;
 
 interface Qfa402cCell {
   readonly regime: string;
@@ -91,5 +100,19 @@ describe('QFA-402c stratified cells artifact v1', () => {
       actualKeys.add(`${cell.regime}|${cell.spread_bucket}|${cell.queue_ahead_bucket}`);
     }
     expect(actualKeys).toEqual(expectedKeys);
+  });
+
+  it('uses observed low-regime probes for the v2 UTC 16-18 variant target cells', () => {
+    const { artifact } = loadArtifact();
+    const cellsByKey = new Map(
+      artifact.cells.map((cell) => [`${cell.regime}|${cell.spread_bucket}|${cell.queue_ahead_bucket}`, cell]),
+    );
+
+    for (const key of TARGET_LOW_COVERAGE_KEYS) {
+      const cell = cellsByKey.get(key);
+      expect(cell).toBeDefined();
+      expect(cell!.probe_count).toBeGreaterThan(0);
+      expect(cell!.within_tolerance_count).toBeGreaterThan(0);
+    }
   });
 });
