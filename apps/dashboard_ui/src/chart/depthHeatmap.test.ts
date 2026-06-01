@@ -12,6 +12,7 @@ import {
   depthPayloadToColumn,
   depthHeatmapTooltip,
   projectDepthHeatmapCells,
+  sideFromMid,
   type DepthHistoryColumn,
 } from "./depthHeatmap";
 
@@ -45,6 +46,28 @@ describe("depth heatmap projection", () => {
     expect(converted?.seconds).toBe(BASE_SECONDS);
     expect(converted?.levels).toHaveLength(6);
     expect(converted?.quality).toBe("live");
+  });
+
+  it("assigns side per level from price vs mid (RA-107a)", () => {
+    expect(sideFromMid(30100, 30090)).toBe("ask"); // above mid
+    expect(sideFromMid(30080, 30090)).toBe("bid"); // below mid
+    expect(sideFromMid(30090, 30090)).toBe("ask"); // tie -> ask
+    expect(sideFromMid(30090, null)).toBe("ask"); // unknown mid -> ask
+  });
+
+  it("propagates side onto each DepthHistoryLevel via depthPayloadToColumn", () => {
+    const converted = depthPayloadToColumn(depthPayload(BASE_NS));
+    // depthPayload fixture: mid is set near the levels; verify both sides
+    // appear and the polarization is monotonic in price.
+    const sides = (converted?.levels ?? []).map((level) => ({
+      price: level.price,
+      side: level.side,
+    }));
+    expect(sides.length).toBeGreaterThan(0);
+    const mid = converted?.mid ?? 0;
+    for (const { price, side } of sides) {
+      expect(side).toBe(price < mid ? "bid" : "ask");
+    }
   });
 
   it("interpolates sub-second timestamps without requiring fractional chart times", () => {
@@ -123,8 +146,9 @@ describe("depth heatmap projection", () => {
               price: 30070 + index * 0.25,
               size: 10,
               rawSize: 10,
+              side: (30070 + index * 0.25 < 30090.25 ? "bid" : "ask") as "bid" | "ask",
             })),
-            { price: 30095, size: 500, rawSize: 500 },
+            { price: 30095, size: 500, rawSize: 500, side: "ask" as const },
           ],
         },
       ],
@@ -147,8 +171,23 @@ describe("depth heatmap projection", () => {
     );
   });
 
-  it("uses amber liquidity colors so executions can own green/red", () => {
-    expect(depthCellColor(1, "live")).toBe("rgba(255, 180, 48, 0.950)");
+  it("polarizes heatmap-cell hue by side at full intensity (RA-107a)", () => {
+    // Ask side defaults to pink-400 family rgba(248, 113, 113); bid side
+    // defaults to sky-400 family rgba(56, 189, 248). Saturation depends on
+    // intensity but at t=1 the cell sits at the full polarized hue.
+    expect(depthCellColor(1, "live", "ask")).toBe("rgba(248, 113, 113, 0.950)");
+    expect(depthCellColor(1, "live", "bid")).toBe("rgba(56, 189, 248, 0.950)");
+  });
+
+  it("keeps polarized hues distinct at low intensity (RA-107a)", () => {
+    // Even at the minimum-shown opacity, the two side hues must not converge.
+    const askLow = depthCellColor(0.05, "live", "ask");
+    const bidLow = depthCellColor(0.05, "live", "bid");
+    expect(askLow.slice(0, 12)).not.toBe(bidLow.slice(0, 12));
+  });
+
+  it("defaults to ask hue when side is omitted (back-compat tie-break)", () => {
+    expect(depthCellColor(1, "live")).toBe(depthCellColor(1, "live", "ask"));
   });
 
   it("defensively caps over-wide payloads to 100 levels per side", () => {
@@ -300,8 +339,9 @@ describe("depth heatmap projection", () => {
               price: 30070 + index * 0.25,
               size: 100,
               rawSize: 0,
+              side: (30070 + index * 0.25 < 30090.25 ? "bid" : "ask") as "bid" | "ask",
             })),
-            { price: 30095, size: 2_000, rawSize: 10 },
+            { price: 30095, size: 2_000, rawSize: 10, side: "ask" as const },
           ],
         },
       ],

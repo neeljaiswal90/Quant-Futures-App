@@ -289,16 +289,32 @@ function timeValueSeconds(time: Time): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * RA-107a: iceberg coverage bands use the same bid/ask polarization as the
+ * heatmap (pink-400 for ask, sky-400 for bid). The pre-RA-107a code returned
+ * two near-identical ambers, which differentiated side in code but was
+ * invisible to the operator's eye. Pink-400 + sky-400 are visually distinct
+ * AND match the heatmap so an ask-side iceberg now sits inside the pink
+ * heatmap zone; bid-side sits inside the sky zone. Mental model consistent.
+ *
+ * Carve-out: per RA-100/RA-103 saturated execution-green/red stay reserved
+ * for trade-execution markers. The pink-400/sky-400 palette is the liquidity-
+ * context palette across heatmap + iceberg bands + wall markers (RA-107a).
+ */
 function icebergCoverageFill(band: IcebergCoverageBand): string {
   const size = Math.max(1, band.totalConsumed || band.refills || 1);
-  const alpha = Math.max(0.14, Math.min(0.58, 0.14 + Math.log1p(size) / Math.log1p(220) * 0.44));
+  const alpha = Math.max(0.18, Math.min(0.62, 0.18 + Math.log1p(size) / Math.log1p(220) * 0.44));
   const ask = `${band.side ?? ""}`.toLowerCase().includes("ask");
-  return ask ? `rgba(251, 191, 36, ${alpha.toFixed(3)})` : `rgba(250, 204, 21, ${alpha.toFixed(3)})`;
+  return ask
+    ? `rgba(248, 113, 113, ${alpha.toFixed(3)})`  // pink-400 (ask = sellers defending)
+    : `rgba(56, 189, 248, ${alpha.toFixed(3)})`;  // sky-400 (bid = buyers defending)
 }
 
 function icebergCoverageStroke(band: IcebergCoverageBand): string {
   const ask = `${band.side ?? ""}`.toLowerCase().includes("ask");
-  return ask ? "rgba(253, 230, 138, 0.72)" : "rgba(254, 240, 138, 0.72)";
+  return ask
+    ? "rgba(252, 165, 165, 0.78)"  // pink-300 (brighter rim)
+    : "rgba(125, 211, 252, 0.78)"; // sky-300 (brighter rim)
 }
 
 /**

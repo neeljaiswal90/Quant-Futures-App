@@ -36,12 +36,21 @@ export const DEPTH_MIN_SHOWN_OPACITY = 0.15;
 export const DEPTH_MAX_OPACITY = 0.95;
 export const DEPTH_HEATMAP_ID_PREFIX = "depth-heatmap:";
 
+export type DepthSide = "bid" | "ask";
+
 export interface DepthHistoryLevel {
   price: number;
   /** Decay-weighted persistence score in lot-frames, not raw lots. */
   size: number;
   /** Current raw resting size for this price in the source depth frame. */
   rawSize: number;
+  /**
+   * Side polarity derived from `price` vs the column's `mid`. RA-107a uses
+   * side to pick the heatmap-cell hue family (pink for ask, sky for bid).
+   * If the source payload's mid is null at the time the column was built,
+   * defaults to "ask" as the documented tie-break.
+   */
+  side: DepthSide;
 }
 
 export interface DepthHistoryColumn {
@@ -109,12 +118,14 @@ export function depthPayloadToColumn(
 
   const rawByPrice = rawLevelMap(rawLevels);
   const persistence = accumulator.update(rawLevels, payload.ts_ns);
+  const mid = payload.mid;
   const levels: DepthHistoryLevel[] = [];
   for (const [price, size] of persistence) {
     levels.push({
       price,
       size,
       rawSize: rawByPrice.get(price) ?? 0,
+      side: sideFromMid(price, mid),
     });
   }
   levels.sort((a, b) => a.price - b.price);
@@ -236,12 +247,48 @@ export function depthCellOpacity(intensity: number, quality: DepthQuality): numb
   return quality === "live" ? base : 0;
 }
 
-export function depthCellColor(intensity: number, quality: DepthQuality): string {
+/**
+ * RA-107a: derive bid/ask side from a level's price vs the column's mid.
+ * Tie-break (price === mid OR mid == null) defaults to "ask" so the heatmap
+ * is deterministic on cold start when the backend hasn't published a mid yet.
+ */
+export function sideFromMid(price: number, mid: number | null): DepthSide {
+  if (mid == null || !Number.isFinite(mid)) return "ask";
+  return price < mid ? "bid" : "ask";
+}
+
+/**
+ * RA-107a: liquidity-context palette polarized by side.
+ *
+ *   Ask side (sellers defending ceiling): pink-400 family rgba(248, 113, 113).
+ *   Bid side (buyers defending floor):    sky-400 family rgba(56, 189, 248).
+ *
+ * Intensity drives opacity (via depthCellOpacity); hue indicates SIDE.
+ *
+ * Carve-out from RA-100/RA-103: saturated execution-green (#3fb950) and
+ * execution-red (#f85149) stay reserved for trade-execution markers on the
+ * price chart. Pink-400 + sky-400 are visually distinct enough that an
+ * operator does not confuse them with execution markers.
+ */
+export function depthCellColor(
+  intensity: number,
+  quality: DepthQuality,
+  side: DepthSide = "ask",
+): string {
   const t = Math.max(0, Math.min(1, intensity));
-  const red = Math.round(94 + t * 161);
-  const green = Math.round(46 + t * 134);
-  const blue = Math.round(12 + t * 36);
-  return `rgba(${red}, ${green}, ${blue}, ${depthCellOpacity(t, quality).toFixed(3)})`;
+  const alpha = depthCellOpacity(t, quality);
+  if (side === "ask") {
+    // dark wine -> pink-400
+    const r = Math.round(100 + t * 148);
+    const g = Math.round(30 + t * 83);
+    const b = Math.round(30 + t * 83);
+    return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
+  }
+  // dark navy -> sky-400
+  const r = Math.round(20 + t * 36);
+  const g = Math.round(60 + t * 129);
+  const b = Math.round(100 + t * 148);
+  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
 }
 
 interface DepthColumnInterval {
@@ -372,7 +419,7 @@ export function projectDepthHeatmapCells(
         width,
         height: band.height,
         intensity,
-        fillColor: depthCellColor(intensity, interval.column.quality),
+        fillColor: depthCellColor(intensity, interval.column.quality, level.side),
         quality: interval.column.quality,
       });
       if (cells.length >= maxCells) return cells;
@@ -560,6 +607,19 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
 
   columnsForTest(): readonly DepthHistoryColumn[] {
     return this.columns;
+  }
+
+  /**
+   * RA-107a: expose the current persistence-score state + last-known mid so
+   * the WallMarkerManager (sibling layer) can pick top-N persistent levels
+   * without re-deriving the math.
+   */
+  accumulatorSnapshot(): {
+    scores: ReadonlyMap<number, number>;
+    mid: number | null;
+  } {
+    const lastMid = this.columns.at(-1)?.mid ?? null;
+    return { scores: this.persistence.state(), mid: lastMid };
   }
 
   private trimHistory(latestSeconds: number): void {

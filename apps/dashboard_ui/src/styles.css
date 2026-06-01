@@ -1,3 +1,21 @@
+/*
+ * Color carve-out summary (palette intent across the chart layers):
+ *
+ *   - Saturated execution-green (#3fb950) + execution-red (#f85149):
+ *     RESERVED for trade-execution markers on the price chart (RA-100/RA-103).
+ *     Never reused for liquidity context or aggressor flow.
+ *
+ *   - Pink-400 (#f87171, rgb 248 113 113) + sky-400 (#38bdf8, rgb 56 189 248):
+ *     Liquidity-context palette for the heatmap cells, iceberg coverage bands,
+ *     and top-N wall markers (RA-107a). Pink = ask side (sellers defending
+ *     ceiling). Sky = bid side (buyers defending floor). Visually distinct
+ *     from saturated execution colors by hue saturation; never used for
+ *     execution markers.
+ *
+ *   - Other surface chrome: amber/yellow for general structural-zone lines
+ *     (VWAP, VPOC, VAH/VAL), violet for CVD line. Independent of polarization.
+ */
+
 :root {
   color-scheme: dark;
   --bg: #0d1117;

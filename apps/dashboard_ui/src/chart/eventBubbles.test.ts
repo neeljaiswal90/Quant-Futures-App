@@ -214,8 +214,47 @@ describe("event bubbles", () => {
       x: 100,
       width: 5,
       y: 218,
-      fillColor: expect.stringContaining("rgba(250, 204, 21"),
+      // RA-107a: bid-side icebergs use sky-400 family rgba(56, 189, 248, ...).
+      fillColor: expect.stringContaining("rgba(56, 189, 248"),
     });
+  });
+
+  it("polarizes iceberg coverage band fill by ask vs bid side (RA-107a)", () => {
+    const askProjected = projectIcebergCoverageBands(
+      [
+        eventItem({
+          family: "iceberg",
+          time: 100 as UTCTimestamp,
+          price: 30350.25,
+          side: "ask",
+          totalConsumed: 80,
+        }),
+      ],
+      (time) => (Number(time) === 100 || Number(time) === 105 ? Number(time) : null),
+      (price) => (price === 30350.25 ? 220 : price === 30350.375 ? 218 : 222),
+      { from: 100 as UTCTimestamp, to: 105 as UTCTimestamp },
+    );
+    const bidProjected = projectIcebergCoverageBands(
+      [
+        eventItem({
+          family: "iceberg",
+          time: 100 as UTCTimestamp,
+          price: 30350.25,
+          side: "bid",
+          totalConsumed: 80,
+        }),
+      ],
+      (time) => (Number(time) === 100 || Number(time) === 105 ? Number(time) : null),
+      (price) => (price === 30350.25 ? 220 : price === 30350.375 ? 218 : 222),
+      { from: 100 as UTCTimestamp, to: 105 as UTCTimestamp },
+    );
+
+    expect(askProjected[0].fillColor).toContain("rgba(248, 113, 113");
+    expect(bidProjected[0].fillColor).toContain("rgba(56, 189, 248");
+    // Sanity: the two hue families must NOT start with the same RGB triple.
+    expect(askProjected[0].fillColor.slice(0, 18)).not.toBe(
+      bidProjected[0].fillColor.slice(0, 18),
+    );
   });
 
   it("does not own chart autoscale", () => {

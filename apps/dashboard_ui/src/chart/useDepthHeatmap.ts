@@ -12,6 +12,7 @@ import {
   DepthHeatmapPrimitive,
   type HoveredDepthCell,
 } from "./depthHeatmap";
+import { WallMarkerManager } from "./wallMarkers";
 
 const DEPTH_BACKFILL_POLL_INTERVAL_MS = 100;
 
@@ -21,6 +22,7 @@ export function useDepthHeatmap(
 ): HoveredDepthCell | null {
   const { state, bookmapBackfillRef, bookmapBackfillEpoch } = useDashboard();
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
+  const wallManagerRef = useRef<WallMarkerManager | null>(null);
   const [hovered, setHovered] = useState<HoveredDepthCell | null>(null);
 
   useEffect(() => {
@@ -29,7 +31,13 @@ export function useDepthHeatmap(
     const primitive = new DepthHeatmapPrimitive();
     series.attachPrimitive(primitive);
     primitiveRef.current = primitive;
+    // RA-107a: top-N persistent-liquidity wall markers share the same series.
+    // createPriceLine is layout-only (not a primitive) - no autoscale re-entry.
+    const wallManager = new WallMarkerManager(series);
+    wallManagerRef.current = wallManager;
     return () => {
+      wallManager.clear();
+      if (wallManagerRef.current === wallManager) wallManagerRef.current = null;
       series.detachPrimitive(primitive);
       if (primitiveRef.current === primitive) primitiveRef.current = null;
     };
@@ -38,6 +46,8 @@ export function useDepthHeatmap(
   useEffect(() => {
     if (!state.depth) return;
     primitiveRef.current?.appendSnapshot(state.depth);
+    const snapshot = primitiveRef.current?.accumulatorSnapshot();
+    if (snapshot) wallManagerRef.current?.update(snapshot.scores, snapshot.mid);
   }, [state.depth]);
 
   useEffect(() => {
@@ -48,7 +58,11 @@ export function useDepthHeatmap(
       if (epoch !== lastEpoch) {
         lastEpoch = epoch;
         const backfill = bookmapBackfillRef.current;
-        if (backfill) primitiveRef.current?.setHistory(backfill.depth);
+        if (backfill) {
+          primitiveRef.current?.setHistory(backfill.depth);
+          const snapshot = primitiveRef.current?.accumulatorSnapshot();
+          if (snapshot) wallManagerRef.current?.update(snapshot.scores, snapshot.mid);
+        }
       }
     };
     flushBackfill();
