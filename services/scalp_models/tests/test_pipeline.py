@@ -8,7 +8,12 @@ from scalp_models.pipeline import (
     PipelineConfig,
     PipelineError,
     PipelineSession,
+    SchemaSeamSummary,
+    SessionPipelineResult,
+    _artifact_chain,
     _assert_capture_not_active,
+    _capture_input_chain_steps,
+    _file_chain_step,
     run_pipeline,
     sessions_from_date_range,
     validate_schema_seam,
@@ -55,7 +60,20 @@ def test_pipeline_writes_manifest_and_insufficient_report(
         setups_path.write_text(_jsonl([_setup_row(session=session)]), encoding="utf-8")
         signals_manifest = signals_path.with_suffix(".manifest.json")
         setups_manifest = setups_path.with_suffix(".manifest.json")
-        signals_manifest.write_text('{"row_count":1}\n', encoding="utf-8")
+        signals_manifest.write_text(
+            _json(
+                {
+                    "row_count": 1,
+                    "input_hashes": {
+                        "raw": "a" * 64,
+                        "trade": "b" * 64,
+                        "mbo": "c" * 64,
+                        "zones": None,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         setups_manifest.write_text('{"row_count":1}\n', encoding="utf-8")
         return SimpleNamespace(
             manifest_path=signals_manifest,
@@ -92,10 +110,41 @@ def test_pipeline_writes_manifest_and_insufficient_report(
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert manifest["generated_by"] == "ra093b_scalp_pipeline_v1"
     assert manifest["merged_inputs"]["schema_seam"]["joined_example_count"] == 5
+    assert manifest["artifact_hash_chain"][0]["name"] == "capture_input:2026-05-29:rth:raw"
+    assert manifest["artifact_hash_chain"][0]["source"] == "recorded_hash"
+    assert manifest["artifact_hash_chain"][3]["name"] == "signals_manifest"
     assert manifest["git"]["dirty"] in {True, False}
     assert "dirty status is recorded for audit only" in manifest["git"]["note"]
     assert result.training.report_path.exists()
     assert "insufficient_samples" in result.training.report_path.read_text(encoding="utf-8")
+
+
+def test_artifact_chain_tip_changes_when_capture_input_hash_changes(tmp_path: Path) -> None:
+    item = _session_result_for_chain(tmp_path, raw_hash="a" * 64)
+    first_chain = _artifact_chain(
+        [*_capture_input_chain_steps(item), _file_chain_step("signals", item.signals_path)]
+    )
+
+    item.signals_manifest_path.write_text(
+        _json(
+            {
+                "row_count": 1,
+                "input_hashes": {
+                    "raw": "d" * 64,
+                    "trade": "b" * 64,
+                    "mbo": None,
+                    "zones": None,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    second_chain = _artifact_chain(
+        [*_capture_input_chain_steps(item), _file_chain_step("signals", item.signals_path)]
+    )
+
+    assert first_chain[0]["name"] == "capture_input:2026-05-29:rth:raw"
+    assert first_chain[-1]["chain_sha256"] != second_chain[-1]["chain_sha256"]
 
 
 def test_live_capture_guard_blocks_recent_target_writes(tmp_path: Path) -> None:
@@ -115,6 +164,28 @@ def test_live_capture_guard_blocks_recent_target_writes(tmp_path: Path) -> None:
         )
 
 
+def test_live_capture_guard_blocks_date_less_session_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = PipelineSession(capture_date="2026-05-29", session="rth")
+    monkeypatch.setattr(
+        "scalp_models.pipeline._matching_capture_processes",
+        lambda probe_session: [
+            "1234 python -m rithmic_analytics.cli.start_capture --root-symbol MNQ --session rth"
+        ],
+    )
+
+    with pytest.raises(PipelineError, match="target capture appears active"):
+        _assert_capture_not_active(
+            session,
+            PipelineConfig(
+                sessions=(session,),
+                analytics_root=tmp_path / "analytics",
+            ),
+        )
+
+
 def test_date_range_expansion_is_inclusive() -> None:
     assert sessions_from_date_range("2026-05-25..2026-05-26", ("rth",)) == (
         PipelineSession(capture_date="2026-05-25", session="rth"),
@@ -124,6 +195,48 @@ def test_date_range_expansion_is_inclusive() -> None:
 
 def _jsonl(rows: list[dict]) -> str:
     return "".join(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n" for row in rows)
+
+
+def _json(row: dict) -> str:
+    return json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n"
+
+
+def _session_result_for_chain(tmp_path: Path, *, raw_hash: str) -> SessionPipelineResult:
+    session = PipelineSession(capture_date="2026-05-29", session="rth")
+    signals = tmp_path / "signals.jsonl"
+    signals.write_text(_jsonl([_signal_row(session)]), encoding="utf-8")
+    signals_manifest = tmp_path / "signals.jsonl.manifest.json"
+    signals_manifest.write_text(
+        _json(
+            {
+                "row_count": 1,
+                "input_hashes": {
+                    "raw": raw_hash,
+                    "trade": "b" * 64,
+                    "mbo": None,
+                    "zones": None,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    placeholder = tmp_path / "placeholder.jsonl"
+    placeholder.write_text("{}\n", encoding="utf-8")
+    return SessionPipelineResult(
+        session=session,
+        signals_path=signals,
+        signals_manifest_path=signals_manifest,
+        setups_path=placeholder,
+        setups_manifest_path=placeholder,
+        labels_path=placeholder,
+        labels_manifest_path=placeholder,
+        seam=SchemaSeamSummary(
+            setup_row_count=1,
+            label_row_count=1,
+            joined_example_count=1,
+            exclusion_counts={},
+        ),
+    )
 
 
 def _signal_row(session: PipelineSession | None = None) -> dict:

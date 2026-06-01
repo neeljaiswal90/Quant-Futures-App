@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -76,6 +77,17 @@ class SessionPipelineResult:
     labels_path: Path
     labels_manifest_path: Path
     seam: SchemaSeamSummary
+
+
+ArtifactSource = Literal["file", "recorded_hash"]
+
+
+@dataclass(frozen=True)
+class ArtifactChainStep:
+    name: str
+    sha256: str
+    source: ArtifactSource
+    path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -308,8 +320,7 @@ def _assert_capture_not_active(session: PipelineSession, config: PipelineConfig)
         return
     recent_files = _recent_capture_writes(session, config)
     process_lines = _matching_capture_processes(session)
-    process_mentions_target = any(session.capture_date in line for line in process_lines)
-    if recent_files or process_mentions_target:
+    if recent_files or process_lines:
         details = {
             "recent_files": [str(path) for path in recent_files],
             "matching_processes": process_lines,
@@ -339,9 +350,11 @@ def _matching_capture_processes(session: PipelineSession) -> list[str]:
     if os.name != "nt":
         return []
     script = (
+        f"$session = '{session.session}'; "
         "Get-CimInstance Win32_Process | "
-        "Where-Object { $_.CommandLine -match 'rithmic|start_capture|capture-rithmic-probe' "
-        f"-and $_.CommandLine -match '{session.session}' }} | "
+        "Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine "
+        "-and $_.CommandLine -match '(start_capture|capture-rithmic-probe)' "
+        "-and $_.CommandLine -match $session } | "
         "ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }"
     )
     completed = subprocess.run(
@@ -382,21 +395,46 @@ def _write_manifest(
     artifacts = _artifact_chain(
         [
             *[
-                ("signals", item.signals_path)
+                step
+                for item in sessions
+                for step in _capture_input_chain_steps(item)
+            ],
+            *[
+                _file_chain_step("signals_manifest", item.signals_manifest_path)
                 for item in sessions
             ],
             *[
-                ("setups", item.setups_path)
+                _file_chain_step("signals", item.signals_path)
                 for item in sessions
             ],
             *[
-                ("labels", item.labels_path)
+                _file_chain_step("setups_manifest", item.setups_manifest_path)
                 for item in sessions
             ],
-            ("merged_setups", merged_setups),
-            ("merged_labels", merged_labels),
-            ("model_config", training.run_dir / "config.json"),
-            ("calibration_report", training.report_path),
+            *[
+                _file_chain_step("setups", item.setups_path)
+                for item in sessions
+            ],
+            *[
+                _file_chain_step("labels_manifest", item.labels_manifest_path)
+                for item in sessions
+            ],
+            *[
+                _file_chain_step("labels", item.labels_path)
+                for item in sessions
+            ],
+            _file_chain_step("merged_setups", merged_setups),
+            _file_chain_step("merged_labels", merged_labels),
+            _file_chain_step("model_config", training.run_dir / "config.json"),
+            *[
+                _file_chain_step("model_metadata", path)
+                for path in sorted(training.metadata_paths, key=str)
+            ],
+            *[
+                _file_chain_step("model", path)
+                for path in sorted(training.model_paths, key=str)
+            ],
+            _file_chain_step("calibration_report", training.report_path),
         ]
     )
     manifest = {
@@ -439,20 +477,74 @@ def _write_manifest(
     path.write_text(f"{canonical_json(manifest)}\n", encoding="utf-8")
 
 
-def _artifact_chain(items: list[tuple[str, Path]]) -> list[dict[str, str]]:
+def _capture_input_chain_steps(item: SessionPipelineResult) -> list[ArtifactChainStep]:
+    manifest = _read_json_object(item.signals_manifest_path)
+    input_hashes = manifest.get("input_hashes")
+    if not isinstance(input_hashes, dict):
+        raise PipelineError(f"replay manifest missing input_hashes: {item.signals_manifest_path}")
+
+    steps: list[ArtifactChainStep] = []
+    for name in _ordered_input_hash_names(input_hashes):
+        value = input_hashes.get(name)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not _is_sha256_hex(value):
+            raise PipelineError(
+                f"replay manifest input_hashes.{name} is not a sha256 hex string: "
+                f"{item.signals_manifest_path}"
+            )
+        steps.append(
+            ArtifactChainStep(
+                name=f"capture_input:{item.session.capture_date}:{item.session.session}:{name}",
+                sha256=value,
+                source="recorded_hash",
+                path=f"{item.signals_manifest_path}#input_hashes.{name}",
+            )
+        )
+    if not steps:
+        raise PipelineError(
+            f"replay manifest has no non-null input hashes: {item.signals_manifest_path}"
+        )
+    return steps
+
+
+def _ordered_input_hash_names(input_hashes: dict[Any, Any]) -> list[str]:
+    preferred = ["raw", "trade", "mbo", "zones"]
+    available = {str(key) for key in input_hashes}
+    return [name for name in preferred if name in available] + sorted(available - set(preferred))
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    parsed = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(parsed, dict):
+        raise PipelineError(f"expected JSON object in {path}")
+    return parsed
+
+
+def _is_sha256_hex(value: str) -> bool:
+    return len(value) == 64 and all(char in "0123456789abcdef" for char in value)
+
+
+def _file_chain_step(name: str, path: Path) -> ArtifactChainStep:
+    return ArtifactChainStep(name=name, path=str(path), sha256=sha256_file(path), source="file")
+
+
+def _artifact_chain(items: list[ArtifactChainStep]) -> list[dict[str, str]]:
     previous = "0" * 64
     output: list[dict[str, str]] = []
-    for name, path in items:
-        artifact_hash = sha256_file(path)
-        chain_hash = sha256_text(canonical_json([previous, name, str(path), artifact_hash]))
-        output.append(
-            {
-                "name": name,
-                "path": str(path),
-                "sha256": artifact_hash,
-                "chain_sha256": chain_hash,
-            }
+    for item in items:
+        chain_hash = sha256_text(
+            canonical_json([previous, item.source, item.name, item.path, item.sha256])
         )
+        row = {
+            "name": item.name,
+            "sha256": item.sha256,
+            "source": item.source,
+            "chain_sha256": chain_hash,
+        }
+        if item.path is not None:
+            row["path"] = item.path
+        output.append(row)
         previous = chain_hash
     return output
 
