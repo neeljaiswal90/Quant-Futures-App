@@ -7,6 +7,7 @@
  * config in local memory so the settings UI still works.
  */
 import type { AlertConfig } from "@contracts/realtime/config";
+import { defaultBackendUrl } from "../runtime/backendUrls";
 
 // The contract is consumed type-only (per RA-061 spec: import type, never a
 // runtime import — that keeps esbuild from transforming the contract .ts and
@@ -49,7 +50,7 @@ export const DEFAULT_ALERT_CONFIG: AlertConfig = {
 // (the contract-blessed path). Override with VITE_CONFIG_URL if needed. The
 // RA-067 mock has no config route, so loadConfig/saveConfig still tolerate 404.
 const CONFIG_URL =
-  import.meta.env.VITE_CONFIG_URL ?? "/api/config/alerts";
+  import.meta.env.VITE_CONFIG_URL ?? defaultBackendUrl("/api/config/alerts");
 
 /** Best-effort GET of the served config; falls back to the default. */
 export async function loadConfig(): Promise<AlertConfig> {

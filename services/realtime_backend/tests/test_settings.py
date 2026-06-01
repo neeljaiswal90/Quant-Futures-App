@@ -25,6 +25,7 @@ def test_defaults_match_green_lit_decisions() -> None:
     assert s.depth_n_ticks == 20
     assert s.depth_seed_tail_bytes == 20_000_000
     assert s.cors_origins == DEFAULT_CORS_ORIGINS
+    assert "http://tauri.localhost" in s.cors_origins
     assert "*" not in s.cors_origins
 
 

@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { defaultBackendUrl } from "../runtime/backendUrls";
 
 const SHUTDOWN_URL =
-  import.meta.env.VITE_SHUTDOWN_URL ?? "/api/shutdown/end-day";
+  import.meta.env.VITE_SHUTDOWN_URL ?? defaultBackendUrl("/api/shutdown/end-day");
 
 type ShutdownState = "idle" | "stopping" | "failed";
 

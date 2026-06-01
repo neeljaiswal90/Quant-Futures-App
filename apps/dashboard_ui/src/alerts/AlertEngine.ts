@@ -16,6 +16,10 @@
  */
 import type { AlertTier } from "@contracts/realtime/config";
 import type { Tier } from "@contracts/realtime/events";
+import {
+  createNotificationChannel,
+  type NotificationChannel,
+} from "./notificationChannel";
 
 export function tierToAlertTier(tier: Tier): AlertTier {
   return tier.toLowerCase() as AlertTier;
@@ -36,6 +40,11 @@ export class AlertEngine {
   private ctx: AudioContext | null = null;
   private enabled = false;
   private notifGranted = false;
+  private notificationChannel: NotificationChannel;
+
+  constructor(notificationChannel: NotificationChannel = createNotificationChannel()) {
+    this.notificationChannel = notificationChannel;
+  }
 
   isEnabled(): boolean {
     return this.enabled;
@@ -60,14 +69,7 @@ export class AlertEngine {
     if (this.ctx && this.ctx.state === "suspended") {
       await this.ctx.resume().catch(() => undefined);
     }
-    if (this.browserNotificationsSupported()) {
-      try {
-        const perm = await Notification.requestPermission();
-        this.notifGranted = perm === "granted";
-      } catch {
-        this.notifGranted = false;
-      }
-    }
+    this.notifGranted = await this.notificationChannel.requestPermission();
     this.enabled = true;
   }
 
@@ -98,26 +100,12 @@ export class AlertEngine {
     if (
       channels.notification &&
       this.notifGranted &&
-      this.browserNotificationsSupported()
+      this.notificationChannel.isSupported()
     ) {
-      try {
-        new Notification(ctx.title, { body: ctx.body, tag: `mnq-${ctx.tier}` });
-        result.notification = true;
-      } catch {
-        // some browsers throw if constructed without a service worker
-      }
+      result.notification = this.notificationChannel.send(ctx);
     }
 
     return result;
-  }
-
-  private browserNotificationsSupported(): boolean {
-    if (!("Notification" in window)) return false;
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    // Codex runs inside an Electron/WindowsApps shell where browser
-    // Notification activation can route back to the app package instead of the
-    // dashboard. Native toast/audio daemon paths remain available.
-    return !userAgent.includes("electron") && !userAgent.includes("codex");
   }
 
   /** A short synthesized tone whose pitch encodes the tier (no asset files). */

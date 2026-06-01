@@ -79,6 +79,7 @@ def test_cors_allow_list_is_vite_dev_origin_not_wildcard(tmp_path: Path) -> None
     assert isinstance(raw_origins, list)
     assert "http://localhost:5173" in raw_origins
     assert "http://127.0.0.1:5173" in raw_origins
+    assert "http://tauri.localhost" in raw_origins
     raw_methods = cors[0].kwargs["allow_methods"]
     assert isinstance(raw_methods, list)
     assert "POST" in raw_methods

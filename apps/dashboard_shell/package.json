@@ -1,0 +1,19 @@
+{
+  "name": "@quant-futures/dashboard-shell",
+  "private": true,
+  "version": "0.1.0",
+  "description": "RA-101 Tauri shell for the MNQ realtime dashboard.",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "info": "tauri info"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-notification": "^2.3.3"
+  }
+}

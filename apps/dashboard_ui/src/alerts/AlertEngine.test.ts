@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlertEngine, tierToAlertTier } from "./AlertEngine";
+import type { NotificationChannel } from "./notificationChannel";
 
 // Minimal AudioContext stub so beep() does not throw in jsdom.
 class FakeAudioContext {
@@ -93,6 +94,27 @@ describe("AlertEngine gating", () => {
     expect(r.audio).toBe(true);
     expect(r.notification).toBe(false);
     expect(notifSpy).not.toHaveBeenCalled();
+  });
+
+  it("can use an injected native shell notification channel", async () => {
+    const send = vi.fn().mockReturnValue(true);
+    const channel: NotificationChannel = {
+      isSupported: () => true,
+      requestPermission: vi.fn().mockResolvedValue(true),
+      send,
+    };
+    const e = new AlertEngine(channel);
+    await e.enable();
+    const r = e.fire(
+      { tier: "HIGH", title: "HIGH", body: "native shell path" },
+      { audio: false, notification: true },
+    );
+    expect(r.notification).toBe(true);
+    expect(send).toHaveBeenCalledWith({
+      tier: "HIGH",
+      title: "HIGH",
+      body: "native shell path",
+    });
   });
 
   it("respects the pure decision module returning no channels", async () => {

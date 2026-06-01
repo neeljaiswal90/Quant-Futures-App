@@ -29,6 +29,7 @@ import {
   normalizeBookmapBackfill,
   type BookmapBackfillResponse,
 } from "../bookmap/backfill";
+import { defaultBackendUrl } from "../runtime/backendUrls";
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:8765/ws";
 const DEFAULT_SNAPSHOT_URL = "/snapshot";
@@ -82,9 +83,11 @@ export function useRealtime(): RealtimeApi {
   const backfillLiveFrames = useRef<RealtimeMessage[]>([]);
 
   const wsUrl = import.meta.env.VITE_WS_URL ?? DEFAULT_WS_URL;
-  const snapshotUrl = import.meta.env.VITE_SNAPSHOT_URL ?? DEFAULT_SNAPSHOT_URL;
+  const snapshotUrl =
+    import.meta.env.VITE_SNAPSHOT_URL ?? defaultBackendUrl(DEFAULT_SNAPSHOT_URL);
   const bookmapBackfillUrl =
-    import.meta.env.VITE_BOOKMAP_BACKFILL_URL ?? DEFAULT_BOOKMAP_BACKFILL_URL;
+    import.meta.env.VITE_BOOKMAP_BACKFILL_URL ??
+    defaultBackendUrl(DEFAULT_BOOKMAP_BACKFILL_URL);
 
   // Apply a raw frame: into the reducer AND (for ticks/snapshots) into refs.
   const applyFrame = useCallback((raw: unknown) => {

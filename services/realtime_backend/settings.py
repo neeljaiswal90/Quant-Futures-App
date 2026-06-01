@@ -39,6 +39,10 @@ DEFAULT_ANALYTICS_ROOT = _REPO_ROOT / "tools" / "rithmic_analytics"
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = (
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    # RA-101: Tauri's production custom-protocol WebView origin. Keep this
+    # exact; do not replace it with a wildcard or add tauri://localhost unless
+    # a WebView2 smoke proves that is the emitted Origin header.
+    "http://tauri.localhost",
 )
 
 
