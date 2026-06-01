@@ -74,6 +74,50 @@ def main(argv: list[str] | None = None) -> int:
             "Each session is still single-threaded; this only overlaps sessions."
         ),
     )
+    research = subparsers.add_parser("research", help="Run empirical research helpers.")
+    research_subparsers = research.add_subparsers(dest="research_command")
+    sweep = research_subparsers.add_parser(
+        "sweep",
+        help="Run RA-096 empirical sweep-continuation research.",
+    )
+    sweep.add_argument(
+        "--pair",
+        action="append",
+        default=[],
+        help="Capture pair formatted YYYY-MM-DD:globex or YYYY-MM-DD:rth. Repeatable.",
+    )
+    sweep.add_argument(
+        "--date-range",
+        type=str,
+        default=None,
+        help="Inclusive date range formatted START..END, used with --session.",
+    )
+    sweep.add_argument(
+        "--session",
+        action="append",
+        choices=("globex", "rth"),
+        default=[],
+        help="Session to expand for --date-range. Repeatable.",
+    )
+    sweep.add_argument("--analytics-root", type=Path, default=None)
+    sweep.add_argument("--dashboard-root", type=Path, default=None)
+    sweep.add_argument("--out-root", type=Path, default=None)
+    sweep.add_argument("--run-id", type=str, default=None)
+    sweep.add_argument("--target-ticks", type=float, default=4.0)
+    sweep.add_argument("--horizons-seconds", type=str, default="1,5,15,60,300")
+    sweep.add_argument("--min-cell-samples", type=int, default=30)
+    sweep.add_argument("--detector-step-seconds", type=int, default=5)
+    sweep.add_argument("--tick-size", type=float, default=0.25)
+    sweep.add_argument(
+        "--include-partial-sessions",
+        action="store_true",
+        help="Include partial sessions only in the separately labeled preliminary section.",
+    )
+    sweep.add_argument(
+        "--allow-live-capture-contention",
+        action="store_true",
+        help="Override the active-capture guard. Use only in a quiet/test window.",
+    )
     args = parser.parse_args(argv)
     if args.command == "pipeline":
         from scalp_models.pipeline import (
@@ -121,6 +165,60 @@ def main(argv: list[str] | None = None) -> int:
             f"run_dir={pipeline_result.run_dir} "
             f"manifest={pipeline_result.manifest_path} "
             f"report={pipeline_result.training.report_path}"
+        )
+        return 0
+    if args.command == "research":
+        if args.research_command != "sweep":
+            research.print_help()
+            return 2
+        from scalp_models.pipeline import (
+            DEFAULT_ANALYTICS_ROOT,
+            DEFAULT_DASHBOARD_ROOT,
+            PipelineSession,
+            SessionName,
+            parse_pair,
+            sessions_from_date_range,
+        )
+        from scalp_models.research.sweep import (
+            DEFAULT_OUT_ROOT as DEFAULT_RESEARCH_OUT_ROOT,
+        )
+        from scalp_models.research.sweep import (
+            SweepResearchConfig,
+            parse_horizons,
+            run_sweep_research,
+        )
+
+        research_sessions: list[PipelineSession] = [parse_pair(item) for item in args.pair]
+        if args.date_range is not None:
+            range_sessions = (
+                tuple(cast(SessionName, item) for item in args.session)
+                if args.session
+                else ("globex", "rth")
+            )
+            research_sessions.extend(sessions_from_date_range(args.date_range, range_sessions))
+        if not research_sessions:
+            parser.error("research sweep requires at least one --pair or --date-range")
+        result = run_sweep_research(
+            SweepResearchConfig(
+                sessions=tuple(research_sessions),
+                analytics_root=args.analytics_root or DEFAULT_ANALYTICS_ROOT,
+                dashboard_root=args.dashboard_root or DEFAULT_DASHBOARD_ROOT,
+                out_root=args.out_root or DEFAULT_RESEARCH_OUT_ROOT,
+                run_id=args.run_id,
+                horizons_seconds=parse_horizons(args.horizons_seconds),
+                target_ticks=args.target_ticks,
+                min_cell_samples=args.min_cell_samples,
+                include_partial_sessions=args.include_partial_sessions,
+                allow_live_capture_contention=args.allow_live_capture_contention,
+                detector_step_seconds=args.detector_step_seconds,
+                tick_size=args.tick_size,
+            )
+        )
+        print(
+            "sweep_research_complete: "
+            f"run_dir={result.run_dir} "
+            f"report={result.report_path} "
+            f"manifest={result.manifest_path}"
         )
         return 0
     if args.command != "train":
