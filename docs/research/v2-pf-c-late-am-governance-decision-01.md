@@ -16,6 +16,16 @@ The system remains intentionally zero-active. Any paper observation for this str
 | #287 | `V2-PF-C-LATE-AM-FIDELITY-COVERAGE-RECHECK-01` | Classified the sensitivity blocker as qfa-402c coverage gap dominant. |
 | #288 | `QFA-402C-FIDELITY-COVERAGE-EXTEND-01` | Added real low-regime qfa-402c probes from `2026-04-16-rth`; qfa-611 now returns `ADVANCE_TO_PAPER`. |
 
+The qfa-611 chronology is load-bearing:
+
+| Evidence point | Selection SHA | Verdict / determination |
+|---|---|---|
+| PR #286 original qfa-611 selection | `97b2e5dd1bbbfd6faa48762a755b9fe023321096572ac6449034a8c4b3a32e15` | `RESEARCH_FURTHER`; sensitivity audit failed due missing-cell concentration. |
+| PR #287 fidelity recheck | `fd1616d...` | `FIDELITY_COVERAGE_GAP_REMAINS_DOMINANT`; blocker classified as zero-probe coverage, not observed low-fidelity fragility. |
+| PR #288 post-qfa402c-extension qfa-611 selection | `580b09f2db2bb10d3c1e4072ec7c6f85d6da9319f15d426c3f5fefc2c289724b` | `ADVANCE_TO_PAPER`; sensitivity audit passed after real low-regime qfa-402c coverage extension. |
+
+This memo relies on the PR #288 post-extension qfa-611 selection, not the pre-extension PR #286 selection.
+
 Evidence anchors from the current substrate:
 
 | Evidence | SHA-256 |
@@ -23,8 +33,8 @@ Evidence anchors from the current substrate:
 | qfa-402c fidelity artifact | `548f11c4f2213026484b238ad0246abbc2987d66387b3dcf589ec20a79663ab3` |
 | held-out artifact | `e77e7eef8b0dc588029fbb4318de399253dd64f1277ed4f0c05c5ba9b5192817` |
 | qfa-611 selection JSON | `580b09f2db2bb10d3c1e4072ec7c6f85d6da9319f15d426c3f5fefc2c289724b` |
-| qfa-611 selection Markdown | `e0721802c9a9c3e09e4c1d596d06d90c0c63fdc4b8b7866513b2b0665f9f801f` |
-| qfa-402c coverage diagnostic JSON | `abc10035895a2047221aaeab6c1d7f32199d4d754ef24f4b7417c5026f697c86` |
+| qfa-611 selection Markdown | `e55473a46b7c336ff8bb35622387d76438bec478b38f7dffadf520aca7cb628a` |
+| qfa-402c coverage diagnostic JSON | `816c188178f664700f252c17440daed21cda05400e200f80edff52fce88f74cb` |
 
 ## 3. Current strategy/governance state
 
