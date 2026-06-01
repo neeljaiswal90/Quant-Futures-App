@@ -140,7 +140,26 @@ def test_build_depth_payload_preserves_ordering_and_bounds() -> None:
     assert [level.price for level in payload.ask_levels] == [30220.25, 30220.5]
 
 
-def test_build_depth_payload_accepts_100_level_bookmap_window() -> None:
+def test_build_depth_payload_accepts_200_level_bookmap_window() -> None:
+    # RA-104b: cap raised to 200 for ±50pt Bookmap-parity window.
+    snapshot = DepthSnapshot(
+        mid=30220.0,
+        n_ticks=200,
+        bid_levels=tuple(_level(30220.0 - index * 0.25, 1) for index in range(200)),
+        ask_levels=tuple(_level(30220.25 + index * 0.25, 1) for index in range(200)),
+    )
+
+    payload = build_depth_payload(snapshot, quality="live", ts_ns=1_000)
+
+    assert payload is not None
+    assert payload.n_ticks == 200
+    assert len(payload.bid_levels) == 200
+    assert len(payload.ask_levels) == 200
+
+
+def test_build_depth_payload_still_accepts_100_level_window_post_ra104b() -> None:
+    # Regression: operators running with RA60_DEPTH_N_TICKS=100 (prior cap)
+    # must keep working post-RA-104b.
     snapshot = DepthSnapshot(
         mid=30220.0,
         n_ticks=100,

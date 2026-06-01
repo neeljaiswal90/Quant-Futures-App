@@ -64,7 +64,7 @@ INFERRED_DIRECTIONS: tuple[str, ...] = ("bullish", "bearish", "neutral", "unknow
 FOOTPRINT_SIDES: tuple[str, ...] = ("buy", "sell", "none", "unknown")
 ORDERFLOW_QUALITIES: tuple[str, ...] = ("high", "inferred", "stale_l1", "unavailable")
 DEPTH_QUALITIES: tuple[str, ...] = ("live", "inferred", "stale_l1", "unavailable")
-DEPTH_N_TICKS_MAX: int = 100
+DEPTH_N_TICKS_MAX: int = 200
 
 # Known payload families. Adding a family here REQUIRES a matching entry in
 # events.ts KNOWN_FAMILIES or the parity test fails.

@@ -191,23 +191,24 @@ describe("depth heatmap projection", () => {
     expect(depthCellColor(1, "live")).toBe(depthCellColor(1, "live", "ask"));
   });
 
-  it("defensively caps over-wide payloads to 100 levels per side", () => {
+  it("defensively caps over-wide payloads to 200 levels per side (RA-104b)", () => {
+    // RA-104b: cap raised to 200; defensive UI clamp matches.
     const payload = {
       ...depthPayload(BASE_NS),
-      bid_levels: Array.from({ length: 120 }, (_, index) => ({
+      bid_levels: Array.from({ length: 220 }, (_, index) => ({
         price: 30090 - index * 0.25,
         size: 1,
       })),
-      ask_levels: Array.from({ length: 120 }, (_, index) => ({
+      ask_levels: Array.from({ length: 220 }, (_, index) => ({
         price: 30090.25 + index * 0.25,
         size: 1,
       })),
-      n_ticks: 120,
+      n_ticks: 220,
     };
 
     const converted = depthPayloadToColumn(payload);
 
-    expect(converted?.levels).toHaveLength(200);
+    expect(converted?.levels).toHaveLength(400);
   });
 
   it("stores persistence score in size and current raw lots in rawSize", () => {

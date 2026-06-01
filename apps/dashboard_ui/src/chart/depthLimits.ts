@@ -1,4 +1,4 @@
-export const DEPTH_N_TICKS_HARD_CAP = 100;
+export const DEPTH_N_TICKS_HARD_CAP = 200;
 
 export function clampDepthNTicks(nTicks: number): number {
   if (!Number.isFinite(nTicks)) return 1;

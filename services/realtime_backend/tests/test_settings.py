@@ -40,7 +40,8 @@ def test_env_overrides_defaults(monkeypatch) -> None:  # type: ignore[no-untyped
     assert s.port == 9001
     assert s.session_override == "rth"
     assert s.depth_enabled is True
-    assert s.depth_n_ticks == 100
+    # RA-104b: cap raised from 100 to 200. Env values above the cap clamp here.
+    assert s.depth_n_ticks == 200
 
 
 def test_explicit_overrides_win_over_env(monkeypatch) -> None:  # type: ignore[no-untyped-def]

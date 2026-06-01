@@ -147,7 +147,36 @@ def test_nested_state_fields_match() -> None:
         )
 
 
-def test_depth_payload_cap_is_100_levels_per_side() -> None:
+def test_depth_payload_cap_is_200_levels_per_side() -> None:
+    # RA-104b: cap raised from 100 to 200 for Bookmap-parity ±50pt window.
+    # The 100-level boundary stays valid (regression: existing callers and
+    # operator configs using RA60_DEPTH_N_TICKS=100 must keep working).
+    levels = [ev.DepthLevel(price=30000 + index * 0.25, size=1) for index in range(200)]
+    payload = ev.DepthPayload(
+        ts_ns=1,
+        mid=30025.0,
+        bid_levels=levels,
+        ask_levels=levels,
+        n_ticks=200,
+        quality="live",
+    )
+
+    assert payload.n_ticks == 200
+
+    with pytest.raises(ValidationError):
+        ev.DepthPayload(
+            ts_ns=1,
+            mid=30025.0,
+            bid_levels=levels + [ev.DepthLevel(price=30050.25, size=1)],
+            ask_levels=levels,
+            n_ticks=201,
+            quality="live",
+        )
+
+
+def test_depth_payload_still_accepts_100_levels_post_ra104b() -> None:
+    # Regression: RA-104b raised the cap but operators running with
+    # RA60_DEPTH_N_TICKS=100 (the prior recommended value) must keep working.
     levels = [ev.DepthLevel(price=30000 + index * 0.25, size=1) for index in range(100)]
     payload = ev.DepthPayload(
         ts_ns=1,
@@ -159,16 +188,6 @@ def test_depth_payload_cap_is_100_levels_per_side() -> None:
     )
 
     assert payload.n_ticks == 100
-
-    with pytest.raises(ValidationError):
-        ev.DepthPayload(
-            ts_ns=1,
-            mid=30012.5,
-            bid_levels=levels + [ev.DepthLevel(price=30025.25, size=1)],
-            ask_levels=levels,
-            n_ticks=101,
-            quality="live",
-        )
 
 
 # --------------------------------------------------------------------------

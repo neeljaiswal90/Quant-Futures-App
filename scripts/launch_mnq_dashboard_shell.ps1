@@ -14,7 +14,9 @@
 
   Depth output is backend startup configuration. The launcher enables depth by
   default for the desktop shell and publishes 20 ticks per side unless
-  -DepthNTicks is supplied. The backend/contract cap is 100.
+  -DepthNTicks is supplied. The backend/contract cap is 200 (RA-104b raised
+  from 100). Operator sets -DepthNTicks 200 for the widest Bookmap-parity
+  ±50pt window; default 20 stays the quiet near-price scalping profile.
 #>
 [CmdletBinding()]
 param(
@@ -28,7 +30,7 @@ param(
     [string]$AnalyticsRoot = "D:\Quant-futures-app\tools\rithmic_analytics",
     [string]$DashboardRoot = "D:\Quant-futures-app\tools\rithmic_dashboard",
     [switch]$NoDepth,
-    [ValidateRange(1, 100)]
+    [ValidateRange(1, 200)]
     [int]$DepthNTicks = 20,
     [switch]$NoRefresh,
     [switch]$VisibleStackWindows,
