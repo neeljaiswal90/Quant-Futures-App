@@ -26,7 +26,20 @@ import { snapPrice } from "./priceGrid";
 export const DEPTH_HISTORY_WINDOW_SECONDS = 8 * 60 * 60;
 export const MAX_DEPTH_COLUMNS = 12_000;
 export const MAX_VISIBLE_DEPTH_COLUMNS = 420;
-export const MAX_DEPTH_CELLS = 32_000;
+/**
+ * Per-projection cell budget. RA-104b raised the depth window to n_ticks=200,
+ * which pushed columns to a ~277-level median — so the old 32k budget was
+ * exhausted only ~3 minutes into a 14-minute window, and because the loop ran
+ * oldest→newest it dropped the NEWEST columns (the live right edge went dark
+ * while old data rendered). RA-112b raises the budget AND makes two structural
+ * fixes that keep it affordable: (1) the projection iterates newest→oldest so
+ * the budget always protects the live edge, and (2) levels outside the visible
+ * price band are culled before they consume the budget. With vertical culling
+ * a typical window draws far fewer than this; the cap only bites when the user
+ * zooms out to the full ±50pt depth band, in which case the oldest (leftmost)
+ * columns are the ones trimmed.
+ */
+export const MAX_DEPTH_CELLS = 75_000;
 export const MIN_DEPTH_CELL_WIDTH = 1.5;
 /**
  * RA-108-bug-fix: cap a single depth cell's time width. Without this cap, a
@@ -386,6 +399,11 @@ function cellBandHeight(
   return { y: Number(center) - height / 2, height };
 }
 
+export interface VisiblePriceRange {
+  min: number;
+  max: number;
+}
+
 export interface ProjectDepthOptions {
   nowSeconds: number;
   visibleRange?: VisibleTimeRangeSeconds | null;
@@ -396,6 +414,13 @@ export interface ProjectDepthOptions {
   maxVisibleColumns?: number;
   maxCells?: number;
   tickSize?: number;
+  /**
+   * RA-112b: visible price band (price units, margin already applied by the
+   * caller). Levels outside it are skipped BEFORE consuming the cell budget,
+   * so off-screen depth doesn't starve the on-screen live edge. Null/omitted
+   * disables vertical culling (renders every level; back-compat for tests).
+   */
+  visiblePriceRange?: VisiblePriceRange | null;
 }
 
 export function projectDepthHeatmapCells(
@@ -405,6 +430,7 @@ export function projectDepthHeatmapCells(
   options: ProjectDepthOptions,
 ): DepthHeatmapCell[] {
   const visibleRange = options.visibleRange ?? null;
+  const priceRange = options.visiblePriceRange ?? null;
   const maxVisibleColumns = options.maxVisibleColumns ?? MAX_VISIBLE_DEPTH_COLUMNS;
   const maxCells = options.maxCells ?? MAX_DEPTH_CELLS;
   const tickSize = options.tickSize ?? MNQ_TICK;
@@ -430,7 +456,15 @@ export function projectDepthHeatmapCells(
   );
 
   const cells: DepthHeatmapCell[] = [];
-  for (const interval of intervals) {
+  // RA-112b: iterate NEWEST → oldest. The cell budget (maxCells) must never
+  // sacrifice the live right edge — the most recent columns are what a trader
+  // watches. When the budget is exhausted we stop, which drops the OLDEST
+  // (leftmost) columns. Output order is irrelevant to consumers: the renderer
+  // groups by color and hit-testing scans for max intensity, both
+  // order-independent.
+  for (let i = intervals.length - 1; i >= 0; i -= 1) {
+    if (cells.length >= maxCells) break;
+    const interval = intervals[i];
     const drawStartSeconds =
       visibleRange == null
         ? interval.startSeconds
@@ -446,6 +480,16 @@ export function projectDepthHeatmapCells(
     const width = Math.max(MIN_DEPTH_CELL_WIDTH, rawWidth);
 
     for (const level of interval.column.levels) {
+      // RA-112b: vertical cull — skip levels outside the visible price band
+      // BEFORE they consume the budget. At n_ticks=200 a column has ~277
+      // levels but only a fraction are on-screen; counting the off-screen ones
+      // against maxCells is what starved the live edge.
+      if (
+        priceRange != null &&
+        (level.price < priceRange.min || level.price > priceRange.max)
+      ) {
+        continue;
+      }
       const band = cellBandHeight(level.price, priceToCoordinate, tickSize);
       if (band == null) continue;
       const intensity = depthIntensity(
@@ -471,7 +515,7 @@ export function projectDepthHeatmapCells(
         ),
         quality: interval.column.quality,
       });
-      if (cells.length >= maxCells) return cells;
+      if (cells.length >= maxCells) break;
     }
   }
 
@@ -645,9 +689,38 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
         {
           nowSeconds,
           visibleRange: range,
+          visiblePriceRange: this.visiblePriceRange(),
         },
       ),
     );
+  }
+
+  /**
+   * RA-112b: the on-screen price band, with a margin so partially-visible cells
+   * still render. Computed from the main pane height + the series' price scale
+   * (coordinateToPrice). Returning null disables vertical culling (renders all
+   * levels) — the safe fallback if the chart isn't laid out yet.
+   */
+  private visiblePriceRange(): VisiblePriceRange | null {
+    const chart = this.chart;
+    const series = this.series;
+    if (chart == null || series == null) return null;
+    let height: number;
+    try {
+      height = chart.paneSize().height;
+    } catch {
+      return null;
+    }
+    if (!Number.isFinite(height) || height <= 0) return null;
+    // 15% margin top + bottom so cells straddling the edge are not culled.
+    const margin = height * 0.15;
+    const top = series.coordinateToPrice(-margin);
+    const bottom = series.coordinateToPrice(height + margin);
+    if (top == null || bottom == null) return null;
+    const a = Number(top);
+    const b = Number(bottom);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    return { min: Math.min(a, b), max: Math.max(a, b) };
   }
 
   /**

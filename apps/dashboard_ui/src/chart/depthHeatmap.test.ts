@@ -3,6 +3,7 @@ import type { UTCTimestamp } from "lightweight-charts";
 import { depthPayload } from "../store/fixtures";
 import { DepthPersistenceAccumulator } from "./depthPersistence";
 import {
+  DEPTH_HEATMAP_ID_PREFIX,
   DepthHeatmapPrimitive,
   HYDRATION_DEPTH_CHUNK_SIZE,
   coordinateForEpochSeconds,
@@ -117,7 +118,10 @@ describe("depth heatmap projection", () => {
     );
 
     expect(cells).toHaveLength(4);
-    expect(cells[0]).toMatchObject({
+    // RA-112b: projection iterates newest→oldest, so locate the first column's
+    // bid cell by position rather than assuming array index 0.
+    const firstBid = cells.find((c) => c.x === 0 && c.price === 30090);
+    expect(firstBid).toMatchObject({
       price: 30090,
       size: 100,
       rawSize: 100,
@@ -125,7 +129,7 @@ describe("depth heatmap projection", () => {
       width: 20,
       quality: "live",
     });
-    expect(cells[0].fillColor).toContain("rgba(");
+    expect(firstBid?.fillColor).toContain("rgba(");
   });
 
   it("culls columns outside the visible time range", () => {
@@ -256,6 +260,85 @@ describe("depth heatmap projection", () => {
     // 24 buckets x 1 side is the ceiling; in practice far fewer here.
     expect(distinctColors.size).toBeLessThanOrEqual(25);
     expect(distinctColors.size).toBeLessThan(cells.length);
+  });
+
+  it("spends the cell budget on the NEWEST columns, dropping oldest (RA-112b)", () => {
+    // Regression for the dark-right-side bug: with n_ticks=200 a 14-min window
+    // exceeded MAX_DEPTH_CELLS and the old oldest→newest loop dropped the live
+    // edge. The budget must now protect the most recent columns.
+    const prices = Array.from({ length: 10 }, (_, i) => 30000 + i * 0.25);
+    const cols: DepthHistoryColumn[] = Array.from({ length: 5 }, (_, i) => ({
+      tsNs: BASE_NS + i * 1_000_000_000,
+      seconds: (BASE_NS + i * 1_000_000_000) / 1e9,
+      mid: 30001,
+      quality: "live" as const,
+      levels: prices.map((price) => ({
+        price,
+        size: 100,
+        rawSize: 100,
+        side: (price < 30001 ? "bid" : "ask") as "bid" | "ask",
+      })),
+    }));
+    const cells = projectDepthHeatmapCells(cols, timeToCoordinate, priceToCoordinate, {
+      nowSeconds: BASE_SECONDS + 10,
+      sessionMaxSize: 200,
+      maxCells: 15, // only ~1.5 columns worth fits
+    });
+    expect(cells.length).toBeLessThanOrEqual(15);
+    const tsValues = new Set(
+      cells.map((c) => c.id.slice(DEPTH_HEATMAP_ID_PREFIX.length).split("|")[0]),
+    );
+    // The NEWEST column's cells must be present...
+    expect(tsValues.has(String(BASE_NS + 4 * 1_000_000_000))).toBe(true);
+    // ...and the OLDEST column's cells must be the ones dropped.
+    expect(tsValues.has(String(BASE_NS))).toBe(false);
+  });
+
+  it("culls levels outside the visible price band before budgeting (RA-112b)", () => {
+    const wideColumn: DepthHistoryColumn = {
+      tsNs: BASE_NS,
+      seconds: BASE_SECONDS,
+      mid: 30000,
+      quality: "live",
+      levels: [29900, 29950, 30000, 30050, 30100].map((price) => ({
+        price,
+        size: 100,
+        rawSize: 100,
+        side: (price < 30000 ? "bid" : "ask") as "bid" | "ask",
+      })),
+    };
+    const cells = projectDepthHeatmapCells([wideColumn], timeToCoordinate, priceToCoordinate, {
+      nowSeconds: BASE_SECONDS + 1,
+      sessionMaxSize: 200,
+      visiblePriceRange: { min: 29975, max: 30075 },
+    });
+    expect(cells.length).toBeGreaterThan(0);
+    for (const c of cells) {
+      expect(c.price).toBeGreaterThanOrEqual(29975);
+      expect(c.price).toBeLessThanOrEqual(30075);
+    }
+    // 30000 and 30050 are in-band; 29900/29950/30100 are culled.
+    expect(new Set(cells.map((c) => c.price))).toEqual(new Set([30000, 30050]));
+  });
+
+  it("renders every level when no visible price band is supplied (back-compat)", () => {
+    const wideColumn: DepthHistoryColumn = {
+      tsNs: BASE_NS,
+      seconds: BASE_SECONDS,
+      mid: 30000,
+      quality: "live",
+      levels: [29900, 30000, 30100].map((price) => ({
+        price,
+        size: 100,
+        rawSize: 100,
+        side: (price < 30000 ? "bid" : "ask") as "bid" | "ask",
+      })),
+    };
+    const cells = projectDepthHeatmapCells([wideColumn], timeToCoordinate, priceToCoordinate, {
+      nowSeconds: BASE_SECONDS + 1,
+      sessionMaxSize: 200,
+    });
+    expect(new Set(cells.map((c) => c.price))).toEqual(new Set([29900, 30000, 30100]));
   });
 
   it("defensively caps over-wide payloads to 200 levels per side (RA-104b)", () => {
