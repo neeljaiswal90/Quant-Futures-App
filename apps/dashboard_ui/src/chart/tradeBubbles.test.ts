@@ -71,6 +71,16 @@ describe("trade bubbles", () => {
     expect(primitive.count()).toBe(1);
   });
 
+  it("does not own chart autoscale", () => {
+    const primitive = new TradeBubblePrimitive();
+    primitive.setHistory([
+      tick({ price: 30340, volume: 1 }),
+      tick({ seq: 2, tsNs: BASE_NS + 1_000_000_000, price: 30350, volume: 10 }),
+    ]);
+
+    expect(primitive.autoscaleInfo()).toBeNull();
+  });
+
   it("maps REST price rows to trade bubbles", () => {
     expect(
       tradeBubbleFromBackfillTick({

@@ -235,11 +235,10 @@ export class TradeBubblePrimitive implements ISeriesPrimitive<Time> {
   }
 
   autoscaleInfo(): AutoscaleInfo | null {
-    if (this.items.length === 0) return null;
-    const prices = this.items.map((item) => snapPrice(item.price));
-    const minValue = Math.min(...prices);
-    const maxValue = Math.max(...prices);
-    return { priceRange: { minValue: minValue - 0.25, maxValue: maxValue + 0.25 } };
+    // Execution bubbles are projected against the price series. Keeping them
+    // draw-only avoids price-scale re-entry when dense backfill and live trades
+    // arrive together.
+    return null;
   }
 
   updateAllViews(): void {

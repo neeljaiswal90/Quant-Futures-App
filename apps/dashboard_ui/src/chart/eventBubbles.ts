@@ -535,17 +535,11 @@ export class EventBubblePrimitive implements ISeriesPrimitive<Time> {
   }
 
   autoscaleInfo(): AutoscaleInfo | null {
-    if (this.items.length === 0) return null;
-    const prices = this.items.map((item) => item.price);
-    const minValue = Math.min(...prices);
-    const maxValue = Math.max(...prices);
-    const padding = Math.max(0.25, (maxValue - minValue) * 0.04);
-    return {
-      priceRange: {
-        minValue: minValue - padding,
-        maxValue: maxValue + padding,
-      },
-    };
+    // This primitive projects through series.priceToCoordinate() during pane
+    // updates. If it also owns autoscale, lightweight-charts can re-enter the
+    // primitive while resolving the price scale under dense event backfill.
+    // Keep the price series/zones as the single autoscale owner.
+    return null;
   }
 
   updateAllViews(): void {

@@ -328,19 +328,11 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   }
 
   autoscaleInfo(): AutoscaleInfo | null {
-    if (this.columns.length === 0) return null;
-    const prices = this.columns.flatMap((column) =>
-      column.levels.map((level) => level.price),
-    );
-    if (prices.length === 0) return null;
-    const minValue = Math.min(...prices);
-    const maxValue = Math.max(...prices);
-    return {
-      priceRange: {
-        minValue: minValue - MNQ_TICK,
-        maxValue: maxValue + MNQ_TICK,
-      },
-    };
+    // The heatmap calls series.priceToCoordinate() while updating its pane.
+    // Returning autoscale here can make the chart re-enter this primitive while
+    // resolving the same scale, which overflows the stack with dense depth
+    // history. The price line and zones own the scale; depth is a draw layer.
+    return null;
   }
 
   updateAllViews(): void {

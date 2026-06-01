@@ -141,7 +141,7 @@ describe("depth heatmap projection", () => {
     });
 
     expect(primitive.columnCount()).toBe(1);
-    expect(primitive.autoscaleInfo()).not.toBeNull();
+    expect(primitive.autoscaleInfo()).toBeNull();
   });
 
   it("bulk-seeds retained history from REST depth backfill", () => {
@@ -150,6 +150,6 @@ describe("depth heatmap projection", () => {
     primitive.setHistory([depthPayload(BASE_NS), depthPayload(BASE_NS + 1_000_000_000)]);
 
     expect(primitive.columnCount()).toBe(2);
-    expect(primitive.autoscaleInfo()).not.toBeNull();
+    expect(primitive.autoscaleInfo()).toBeNull();
   });
 });

@@ -218,7 +218,7 @@ describe("event bubbles", () => {
     });
   });
 
-  it("expands autoscale around event prices", () => {
+  it("does not own chart autoscale", () => {
     const primitive = new EventBubblePrimitive();
     primitive.setItems([
       eventItem({
@@ -241,12 +241,7 @@ describe("event bubbles", () => {
       }),
     ]);
 
-    expect(primitive.autoscaleInfo()).toEqual({
-      priceRange: {
-        minValue: 30339.6,
-        maxValue: 30350.4,
-      },
-    });
+    expect(primitive.autoscaleInfo()).toBeNull();
   });
 });
 
