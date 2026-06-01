@@ -54,10 +54,30 @@ export const MAX_DEPTH_CELL_DURATION_SECONDS = 30;
 export const HYDRATION_DEPTH_CHUNK_SIZE = 200;
 export const DEPTH_CONTRAST_WINDOW_SECONDS = 10 * 60;
 export const DEPTH_CONTRAST_PERCENTILE = 0.25;
+/**
+ * RA-112c: the heatmap's "bright point". Liquidity at/above this percentile of
+ * the rolling window saturates to full intensity. Using a robust high
+ * percentile instead of the absolute max stops a single long-standing mega-wall
+ * (steady-state persistence can be 10-20x a normal level) from compressing the
+ * whole book into one dim/medium band — which is what made the heatmap read as
+ * "all the same shade". With p95 the top ~5% of levels render as bright walls.
+ */
+export const DEPTH_CONTRAST_BRIGHT_PERCENTILE = 0.95;
 export const DEPTH_CONTRAST_MIN_SCORE = 5.0;
-export const DEPTH_INTENSITY_POWER = 0.5;
-export const DEPTH_MIN_SHOWN_OPACITY = 0.15;
-export const DEPTH_MAX_OPACITY = 0.95;
+/**
+ * RA-112c: intensity transfer exponent. Was 0.5 (sqrt), which LIFTED mid-range
+ * liquidity toward the top so most cells looked equally bright. 1.0 (linear)
+ * over a robust p95 normalization gives an honest spread: thin liquidity stays
+ * faint, walls clearly separate. Raise above 1.0 to suppress mid-range further.
+ */
+export const DEPTH_INTENSITY_POWER = 1.0;
+/**
+ * RA-112c: widened the opacity range so contrast reads on a dark background.
+ * Thin liquidity is now near-invisible (0.06) and walls are fully opaque (1.0),
+ * vs the old 0.15..0.95 band where everything sat in a muddy middle.
+ */
+export const DEPTH_MIN_SHOWN_OPACITY = 0.06;
+export const DEPTH_MAX_OPACITY = 1.0;
 export const DEPTH_HEATMAP_ID_PREFIX = "depth-heatmap:";
 /**
  * RA-112 (Tier 1 perf): number of intensity buckets used to QUANTIZE the
@@ -223,9 +243,12 @@ export function visibleTimeRangeSeconds(
 
 function percentile(values: readonly number[], pct: number): number {
   if (values.length === 0) return 0;
+  // RA-112c: round (not floor) the rank so high percentiles on small samples
+  // resolve toward the top value instead of collapsing to a low one — e.g.
+  // p95 of a 2-element sample picks the larger, not the smaller.
   const index = Math.min(
     values.length - 1,
-    Math.max(0, Math.floor((values.length - 1) * pct)),
+    Math.max(0, Math.round((values.length - 1) * pct)),
   );
   return values[index] ?? 0;
 }
@@ -237,25 +260,27 @@ export function depthContrastStats(
 ): DepthContrastStats {
   const cutoffSeconds = nowSeconds - windowSeconds;
   const sizes: number[] = [];
-  let rollingMaxSize = 0;
 
   for (const column of columns) {
     if (column.seconds < cutoffSeconds || column.seconds > nowSeconds) continue;
     for (const level of column.levels) {
       if (!Number.isFinite(level.size) || level.size <= 0) continue;
       sizes.push(level.size);
-      if (level.size > rollingMaxSize) rollingMaxSize = level.size;
     }
   }
 
-  if (sizes.length === 0 || rollingMaxSize <= 0) {
+  if (sizes.length === 0) {
     return { rollingMaxSize: 0, floorSize: 0 };
   }
 
   sizes.sort((a, b) => a - b);
   const p25 = percentile(sizes, DEPTH_CONTRAST_PERCENTILE);
+  // RA-112c: normalize against a robust high percentile ("bright point") rather
+  // than the absolute max, so one persistent mega-wall doesn't flatten the rest
+  // of the book. Levels at/above this saturate (depthIntensity clamps to 1).
+  const bright = percentile(sizes, DEPTH_CONTRAST_BRIGHT_PERCENTILE);
   return {
-    rollingMaxSize,
+    rollingMaxSize: bright,
     floorSize: Math.max(p25, DEPTH_CONTRAST_MIN_SCORE),
   };
 }
@@ -294,19 +319,6 @@ export function sideFromMid(price: number, mid: number | null): DepthSide {
 }
 
 /**
- * RA-107a: liquidity-context palette polarized by side.
- *
- *   Ask side (sellers defending ceiling): pink-400 family rgba(248, 113, 113).
- *   Bid side (buyers defending floor):    sky-400 family rgba(56, 189, 248).
- *
- * Intensity drives opacity (via depthCellOpacity); hue indicates SIDE.
- *
- * Carve-out from RA-100/RA-103: saturated execution-green (#3fb950) and
- * execution-red (#f85149) stay reserved for trade-execution markers on the
- * price chart. Pink-400 + sky-400 are visually distinct enough that an
- * operator does not confuse them with execution markers.
- */
-/**
  * RA-112 (Tier 1 perf): snap a continuous intensity to one of
  * DEPTH_COLOR_INTENSITY_BUCKETS steps so many cells resolve to the SAME
  * rgba() string and the batched renderer can group them. Pure function;
@@ -317,24 +329,38 @@ export function quantizeIntensityForColor(intensity: number): number {
   return Math.round(t * DEPTH_COLOR_INTENSITY_BUCKETS) / DEPTH_COLOR_INTENSITY_BUCKETS;
 }
 
+/**
+ * RA-107a/RA-112c: side-polarized, intensity-graded liquidity palette.
+ *
+ *   Ask side (sellers): dark maroon → red → HOT ORANGE  (255, 200, 135) at peak.
+ *   Bid side (buyers):  dark navy  → sky → BRIGHT CYAN   (190, 240, 255) at peak.
+ *
+ * RA-112c makes walls POP: intensity now drives BOTH opacity (depthCellOpacity,
+ * 0.06→1.0) AND a hue/brightness ramp toward a hot top, so a large resting size
+ * glows against faint thin liquidity. The g/b channels rise on a t**1.6 curve so
+ * the brightening is concentrated in the upper range (only real walls glow).
+ * Hue still encodes SIDE; the green/red execution palette stays reserved for
+ * trade markers (RA-100/RA-103 carve-out).
+ */
 export function depthCellColor(
   intensity: number,
   quality: DepthQuality,
   side: DepthSide = "ask",
 ): string {
   const t = Math.max(0, Math.min(1, intensity));
+  const hot = t ** 1.6; // upper-range emphasis for the glow
   const alpha = depthCellOpacity(t, quality);
   if (side === "ask") {
-    // dark wine -> pink-400
-    const r = Math.round(100 + t * 148);
-    const g = Math.round(30 + t * 83);
-    const b = Math.round(30 + t * 83);
+    // dark maroon -> red -> hot orange
+    const r = Math.round(90 + 165 * t);
+    const g = Math.round(25 + 175 * hot);
+    const b = Math.round(25 + 110 * hot);
     return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
   }
-  // dark navy -> sky-400
-  const r = Math.round(20 + t * 36);
-  const g = Math.round(60 + t * 129);
-  const b = Math.round(100 + t * 148);
+  // dark navy -> sky -> bright cyan-white
+  const r = Math.round(15 + 175 * hot);
+  const g = Math.round(50 + 190 * t);
+  const b = Math.round(90 + 165 * t);
   return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
 }
 

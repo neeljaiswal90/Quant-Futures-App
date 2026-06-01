@@ -165,6 +165,33 @@ describe("depth heatmap projection", () => {
     expect(depthIntensity(500, stats.rollingMaxSize, stats.floorSize)).toBe(1);
   });
 
+  it("normalizes on a robust p95 so one mega-wall doesn't flatten the book (RA-112c)", () => {
+    // 40 normal levels (~size 100) + one 10x mega-wall. The bright point must
+    // track the bulk (p95 ~100), NOT the outlier (1000), so normal walls still
+    // reach high intensity instead of being compressed to near-zero.
+    const levels = [
+      ...Array.from({ length: 40 }, (_, i) => ({
+        price: 30050 + i * 0.25,
+        size: 80 + (i % 5) * 10, // 80..120
+        rawSize: 100,
+        side: "ask" as const,
+      })),
+      { price: 30200, size: 1000, rawSize: 1000, side: "ask" as const },
+    ];
+    const stats = depthContrastStats(
+      [{ tsNs: BASE_NS, seconds: BASE_SECONDS, mid: 30000, quality: "live", levels }],
+      BASE_SECONDS,
+    );
+    // Bright point sits near the bulk top (~120), far below the 1000 outlier.
+    expect(stats.rollingMaxSize).toBeLessThan(300);
+    expect(stats.rollingMaxSize).toBeGreaterThan(100);
+    // A normal 120-size level reaches full intensity (it's at/above p95)...
+    expect(depthIntensity(120, stats.rollingMaxSize, stats.floorSize)).toBe(1);
+    // ...and the mega-wall also saturates (clamped), rather than being the only
+    // thing that lights up.
+    expect(depthIntensity(1000, stats.rollingMaxSize, stats.floorSize)).toBe(1);
+  });
+
   it("hides noise at or below the explicit rolling floor", () => {
     const cells = projectDepthHeatmapCells(
       [
@@ -203,12 +230,22 @@ describe("depth heatmap projection", () => {
     );
   });
 
-  it("polarizes heatmap-cell hue by side at full intensity (RA-107a)", () => {
-    // Ask side defaults to pink-400 family rgba(248, 113, 113); bid side
-    // defaults to sky-400 family rgba(56, 189, 248). Saturation depends on
-    // intensity but at t=1 the cell sits at the full polarized hue.
-    expect(depthCellColor(1, "live", "ask")).toBe("rgba(248, 113, 113, 0.950)");
-    expect(depthCellColor(1, "live", "bid")).toBe("rgba(56, 189, 248, 0.950)");
+  it("polarizes heatmap-cell hue by side at full intensity (RA-107a/RA-112c)", () => {
+    // RA-112c: at peak intensity a wall glows — ask → hot orange, bid → bright
+    // cyan — at full (1.0) opacity, so large resting size stands out from the
+    // faint thin-liquidity wash. Hue still encodes side.
+    expect(depthCellColor(1, "live", "ask")).toBe("rgba(255, 200, 135, 1.000)");
+    expect(depthCellColor(1, "live", "bid")).toBe("rgba(190, 240, 255, 1.000)");
+  });
+
+  it("grades opacity across intensity so walls separate from thin liquidity (RA-112c)", () => {
+    // Thin liquidity must be near-invisible and walls near-opaque — a much
+    // wider range than the old 0.15..0.95 muddy band.
+    const thin = depthCellOpacity(0.05, "live");
+    const wall = depthCellOpacity(1, "live");
+    expect(thin).toBeLessThan(0.15);
+    expect(wall).toBe(1);
+    expect(wall - thin).toBeGreaterThan(0.8);
   });
 
   it("keeps polarized hues distinct at low intensity (RA-107a)", () => {
