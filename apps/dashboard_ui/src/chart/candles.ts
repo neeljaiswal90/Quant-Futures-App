@@ -6,8 +6,23 @@
  * display — this is NOT signal derivation (the backend owns signals; we are
  * only drawing the price the backend reported).
  *
- * CVD here is a *display* cumulative-volume-delta proxy built from the tick's
- * last-vs-mid sign; it is a chart garnish, never fed back into any decision.
+ * RA-107b: the volume pane is now a TWO-series aggressor-flow split.
+ * `ingest()` returns separate `buyBar` (positive) and `sellBar` (negative)
+ * per bucket, plus a `hasBlockTrade` flag when the bucket contains a print
+ * ≥ BLOCK_TRADE_LOTS. The single total-volume bar from the pre-RA-107b
+ * API is gone; total = buy + sell, derivable if needed.
+ *
+ * Color carve-out from RA-100/RA-103: saturated execution-green (#3fb950)
+ * and execution-red (#f85149) are reserved for trade-execution markers
+ * on the price chart. The volume pane uses the green-500/red-500 family
+ * (#22c55e / #ef4444) which is the AGGRESSOR-FLOW palette - distinct
+ * from execution colors by hue saturation, spatially confined to the
+ * secondary volume pane below the price chart.
+ *
+ * CVD here is a *display* cumulative-volume-delta proxy built from the
+ * tick's last-vs-mid sign; it is a chart garnish, never fed back into any
+ * decision. The CVD pipeline still uses `signedVolume()` and is NOT changed
+ * by RA-107b.
  */
 import type { HistogramData, LineData, UTCTimestamp } from "lightweight-charts";
 import type { PriceTickPayload } from "@contracts/realtime/events";
@@ -23,10 +38,14 @@ export interface Candle {
   close: number;
 }
 
-export interface VolumeBar {
+/**
+ * One bar of the aggressor-flow split. RA-107b: rendered as either
+ * "buy" (positive value, green) or "sell" (negative value, red) on the
+ * shared volume price scale. Per-bar `color` modulates by hasBlockTrade.
+ */
+export interface AggressorBar {
   time: UtcSeconds;
   value: number;
-  /** Up/down coloring relative to the candle direction. */
   color: string;
 }
 
@@ -46,11 +65,27 @@ export interface HistoricalChartTick {
 
 export interface HistoricalChartSeries {
   prices: LineData<UTCTimestamp>[];
-  volumes: HistogramData<UTCTimestamp>[];
+  /** RA-107b: positive-value bars for aggressive buys per bucket. */
+  buyBars: HistogramData<UTCTimestamp>[];
+  /** RA-107b: negative-value bars for aggressive sells per bucket. */
+  sellBars: HistogramData<UTCTimestamp>[];
   cvd: LineData<UTCTimestamp>[];
 }
 
 export const CANDLE_INTERVAL_S = 1;
+
+/**
+ * RA-107b: a bucket whose largest single print meets/exceeds this size is
+ * flagged as containing a block trade. Matches RA-105a's BLOCK_TRADE_LOTS
+ * for chart-bubble emphasis so the operator's mental model is consistent
+ * (the volume bar emphasis aligns with the chart bubble emphasis).
+ */
+export const BLOCK_TRADE_LOTS = 25;
+
+const BUY_COLOR_NORMAL = "rgba(34, 197, 94, 0.65)";  // green-500 (RA-107b aggressor palette)
+const BUY_COLOR_BLOCK = "rgba(34, 197, 94, 1.000)";
+const SELL_COLOR_NORMAL = "rgba(239, 68, 68, 0.65)"; // red-500 (RA-107b aggressor palette)
+const SELL_COLOR_BLOCK = "rgba(239, 68, 68, 1.000)";
 
 export function bucketTime(
   tsNs: number,
@@ -60,19 +95,31 @@ export function bucketTime(
   return Math.floor(sec / intervalS) * intervalS;
 }
 
-const UP = "#26a69a";
-const DOWN = "#ef5350";
+export interface IngestResult {
+  candle: Candle;
+  /** RA-107b: aggressor-flow buy bar (positive value). */
+  buyBar: AggressorBar;
+  /** RA-107b: aggressor-flow sell bar (negative value). */
+  sellBar: AggressorBar;
+  cvd: CvdPoint;
+  /** True iff the current bucket contains a single print of size ≥ BLOCK_TRADE_LOTS. */
+  hasBlockTrade: boolean;
+}
 
 /**
  * Rolling aggregator. Feed ticks in arrival order; it maintains the current
- * candle and a running CVD. `ingest` returns the bar(s) the chart should
- * `update()` — always the current (possibly new) candle, so the caller can
- * call series.update() once per tick (NOT setData).
+ * candle and a running CVD, plus per-bucket buy/sell volume + block-trade flag.
+ * `ingest` returns the bar(s) the chart should `update()` — always the current
+ * (possibly new) candle, so the caller can call series.update() once per tick
+ * (NOT setData).
  */
 export class CandleAggregator {
   private readonly intervalS: number;
   private current: Candle | null = null;
-  private currentVolume = 0;
+  // RA-107b: per-bucket aggressor-flow accumulators.
+  private currentBuyVolume = 0;
+  private currentSellVolume = 0;
+  private currentLargestPrint = 0;
   private cvd = 0;
   private lastPrice: number | null = null;
 
@@ -82,7 +129,9 @@ export class CandleAggregator {
 
   reset(): void {
     this.current = null;
-    this.currentVolume = 0;
+    this.currentBuyVolume = 0;
+    this.currentSellVolume = 0;
+    this.currentLargestPrint = 0;
     this.cvd = 0;
     this.lastPrice = null;
   }
@@ -101,19 +150,53 @@ export class CandleAggregator {
     return 0;
   }
 
-  ingest(
-    tick: PriceTickPayload,
-    tsNs: number,
-  ): { candle: Candle; volume: VolumeBar; cvd: CvdPoint } {
+  /**
+   * RA-107b: split this tick's lots into buy vs sell based on the wire's
+   * `last_trade_aggressor` field. Falls back through `last_trade_delta`
+   * sign, then the uptick heuristic, matching `signedVolume()` so the CVD
+   * pipeline and the aggressor-flow pipeline stay consistent.
+   */
+  private aggressorVolumes(tick: PriceTickPayload | HistoricalChartTick): {
+    buyVolume: number;
+    sellVolume: number;
+  } {
+    const vol = tick.volume ?? 0;
+    if (vol <= 0) return { buyVolume: 0, sellVolume: 0 };
+
+    const aggressor =
+      "orderflow" in tick ? tick.orderflow?.last_trade_aggressor : undefined;
+    if (aggressor === "buy") return { buyVolume: vol, sellVolume: 0 };
+    if (aggressor === "sell") return { buyVolume: 0, sellVolume: vol };
+
+    const explicitDelta =
+      "orderflow" in tick ? tick.orderflow?.last_trade_delta : tick.lastTradeDelta;
+    if (typeof explicitDelta === "number") {
+      if (explicitDelta > 0) return { buyVolume: vol, sellVolume: 0 };
+      if (explicitDelta < 0) return { buyVolume: 0, sellVolume: vol };
+      return { buyVolume: 0, sellVolume: 0 };
+    }
+
+    if (this.lastPrice == null) return { buyVolume: 0, sellVolume: 0 };
+    if (tick.price > this.lastPrice) return { buyVolume: vol, sellVolume: 0 };
+    if (tick.price < this.lastPrice) return { buyVolume: 0, sellVolume: vol };
+    return { buyVolume: 0, sellVolume: 0 };
+  }
+
+  ingest(tick: PriceTickPayload, tsNs: number): IngestResult {
     const time = bucketTime(tsNs, this.intervalS);
     const price = tick.price;
     const signed = this.signedVolume(tick);
     this.cvd += signed;
 
+    const { buyVolume, sellVolume } = this.aggressorVolumes(tick);
+    const printSize = tick.volume ?? 0;
+
     if (!this.current || time > this.current.time) {
-      // Open a fresh candle. Volume resets per bucket.
+      // Open a fresh candle. Aggressor-flow + block-trade flag reset per bucket.
       this.current = { time, open: price, high: price, low: price, close: price };
-      this.currentVolume = tick.volume ?? 0;
+      this.currentBuyVolume = buyVolume;
+      this.currentSellVolume = sellVolume;
+      this.currentLargestPrint = printSize;
     } else {
       this.current = {
         ...this.current,
@@ -121,21 +204,39 @@ export class CandleAggregator {
         low: Math.min(this.current.low, price),
         close: price,
       };
-      this.currentVolume += tick.volume ?? 0;
+      this.currentBuyVolume += buyVolume;
+      this.currentSellVolume += sellVolume;
+      if (printSize > this.currentLargestPrint) {
+        this.currentLargestPrint = printSize;
+      }
     }
     this.lastPrice = price;
 
-    // All three series belong to the bucket we are actually in. `this.current.time`
+    // All four series belong to the bucket we are actually in. `this.current.time`
     // is monotonic non-decreasing by construction; the raw `time` is not (an
     // out-of-order tick, or the snapshot seed being ahead of the first live tick,
     // buckets earlier). Returning the raw time made volume/cvd `update()` go
     // backwards → "Cannot update oldest data" → the per-tick loop halted.
     const barTime = this.current.time;
-    const up = this.current.close >= this.current.open;
+    const hasBlockTrade = this.currentLargestPrint >= BLOCK_TRADE_LOTS;
     return {
       candle: this.current,
-      volume: { time: barTime, value: this.currentVolume, color: up ? UP : DOWN },
+      buyBar: {
+        time: barTime,
+        value: this.currentBuyVolume,
+        color: hasBlockTrade ? BUY_COLOR_BLOCK : BUY_COLOR_NORMAL,
+      },
+      sellBar: {
+        time: barTime,
+        // Negative value renders below zero on the shared volume scale,
+        // creating the back-to-back stacked-with-zero-baseline look. Guard
+        // against -0 (IEEE 754 quirk from negating an exact zero) — clean
+        // +0 keeps lightweight-charts and tests happy.
+        value: this.currentSellVolume === 0 ? 0 : -this.currentSellVolume,
+        color: hasBlockTrade ? SELL_COLOR_BLOCK : SELL_COLOR_NORMAL,
+      },
       cvd: { time: barTime, value: this.cvd },
+      hasBlockTrade,
     };
   }
 
@@ -143,7 +244,9 @@ export class CandleAggregator {
   seedFromSnapshot(price: number, tsNs: number): Candle {
     const time = bucketTime(tsNs, this.intervalS);
     this.current = { time, open: price, high: price, low: price, close: price };
-    this.currentVolume = 0;
+    this.currentBuyVolume = 0;
+    this.currentSellVolume = 0;
+    this.currentLargestPrint = 0;
     this.lastPrice = price;
     return this.current;
   }
@@ -152,7 +255,8 @@ export class CandleAggregator {
   seedFromHistory(ticks: readonly HistoricalChartTick[]): HistoricalChartSeries {
     this.reset();
     const prices = new Map<UtcSeconds, LineData<UTCTimestamp>>();
-    const volumes = new Map<UtcSeconds, HistogramData<UTCTimestamp>>();
+    const buyBars = new Map<UtcSeconds, HistogramData<UTCTimestamp>>();
+    const sellBars = new Map<UtcSeconds, HistogramData<UTCTimestamp>>();
     const cvd = new Map<UtcSeconds, LineData<UTCTimestamp>>();
     const ordered = [...ticks]
       .filter((tick) => Number.isFinite(tick.tsNs) && Number.isFinite(tick.price))
@@ -190,10 +294,15 @@ export class CandleAggregator {
         time: next.candle.time as UTCTimestamp,
         value: next.candle.close,
       });
-      volumes.set(next.volume.time, {
-        time: next.volume.time as UTCTimestamp,
-        value: next.volume.value,
-        color: next.volume.color,
+      buyBars.set(next.buyBar.time, {
+        time: next.buyBar.time as UTCTimestamp,
+        value: next.buyBar.value,
+        color: next.buyBar.color,
+      });
+      sellBars.set(next.sellBar.time, {
+        time: next.sellBar.time as UTCTimestamp,
+        value: next.sellBar.value,
+        color: next.sellBar.color,
       });
       cvd.set(next.cvd.time, {
         time: next.cvd.time as UTCTimestamp,
@@ -203,7 +312,8 @@ export class CandleAggregator {
 
     return {
       prices: [...prices.values()],
-      volumes: [...volumes.values()],
+      buyBars: [...buyBars.values()],
+      sellBars: [...sellBars.values()],
       cvd: [...cvd.values()],
     };
   }

@@ -72,12 +72,6 @@ function updatePaneLabel(
   el.dataset.direction = direction;
 }
 
-function volumeDirection(color: string | undefined): "bullish" | "bearish" | "neutral" {
-  if (color === "#26a69a") return "bullish";
-  if (color === "#ef5350") return "bearish";
-  return "neutral";
-}
-
 function markerAlreadyExists(
   markers: readonly CvdFlipMarker[],
   marker: CvdFlipMarker,
@@ -98,7 +92,10 @@ export function PriceChart() {
   const chartRef = useRef<IChartApi | null>(null);
   const priceLineRef = useRef<ISeriesApi<"Line"> | null>(null);
   const eventAnchorRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  // RA-107b: two histogram series share the "vol" price scale to render
+  // aggressor-flow split (buys positive/green, sells negative/red, zero baseline).
+  const volumeBuyRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const volumeSellRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const cvdRef = useRef<ISeriesApi<"Line"> | null>(null);
   const cvdFlipRef = useRef<CvdFlipMarkerPrimitive | null>(null);
   const cvdMarkersRef = useRef<CvdFlipMarker[]>([]);
@@ -164,18 +161,34 @@ export function PriceChart() {
     });
     eventAnchorRef.current = eventAnchor;
 
-    const volume = chart.addSeries(
+    // RA-107b: aggressor-flow split. Two HistogramSeries on the same "vol"
+    // scale. volumeBuy emits positive values (buys aggressive, green);
+    // volumeSell emits negative values (sells aggressive, red). The shared
+    // scale crosses zero, creating the back-to-back stacked-with-zero-
+    // baseline read operators recognize from Bookmap.
+    const volumeBuy = chart.addSeries(
       HistogramSeries,
       {
         priceFormat: { type: "volume" },
         priceScaleId: "vol",
+        base: 0,
       },
       1,
     );
-    volume.priceScale().applyOptions({
+    const volumeSell = chart.addSeries(
+      HistogramSeries,
+      {
+        priceFormat: { type: "volume" },
+        priceScaleId: "vol",
+        base: 0,
+      },
+      1,
+    );
+    volumeBuy.priceScale().applyOptions({
       scaleMargins: { top: 0.1, bottom: 0.4 },
     });
-    volumeRef.current = volume;
+    volumeBuyRef.current = volumeBuy;
+    volumeSellRef.current = volumeSell;
 
     const cvd = chart.addSeries(
       LineSeries,
@@ -226,7 +239,8 @@ export function PriceChart() {
       chartRef.current = null;
       priceLineRef.current = null;
       eventAnchorRef.current = null;
-      volumeRef.current = null;
+      volumeBuyRef.current = null;
+      volumeSellRef.current = null;
       cvdRef.current = null;
       cvdFlipRef.current = null;
       cvdMarkersRef.current = [];
@@ -258,7 +272,8 @@ export function PriceChart() {
             })),
           );
           priceLine.setData(seeded.prices);
-          volumeRef.current?.setData(seeded.volumes);
+          volumeBuyRef.current?.setData(seeded.buyBars);
+          volumeSellRef.current?.setData(seeded.sellBars);
           const coloredCvd = seeded.cvd.map(colorCvdPoint);
           cvdRef.current?.setData(coloredCvd);
           const cvdMarkers = cvdFlipMarkersFromPoints(coloredCvd);
@@ -267,12 +282,20 @@ export function PriceChart() {
           const latestCvd = coloredCvd.at(-1);
           const previousCvd = coloredCvd.at(-2);
           lastCvdValueRef.current = latestCvd?.value ?? null;
-          const latestVolume = seeded.volumes.at(-1);
-          if (latestVolume) {
+          // RA-107b: derive label from buy vs sell magnitudes per bucket;
+          // net direction = bullish if buy > sell, bearish if sell > buy.
+          const latestBuy = seeded.buyBars.at(-1);
+          const latestSell = seeded.sellBars.at(-1);
+          if (latestBuy || latestSell) {
+            const buyVol = latestBuy?.value ?? 0;
+            const sellVol = Math.abs(latestSell?.value ?? 0);
+            const total = buyVol + sellVol;
             updatePaneLabel(
               volumeLabelRef.current,
-              `VOL ${Math.round(latestVolume.value).toLocaleString()}`,
-              volumeDirection(latestVolume.color),
+              `VOL ${Math.round(total).toLocaleString()}  buy ${Math.round(
+                buyVol,
+              ).toLocaleString()} / sell ${Math.round(sellVol).toLocaleString()}`,
+              buyVol >= sellVol ? "bullish" : "bearish",
             );
           }
           if (latestCvd) {
@@ -303,7 +326,7 @@ export function PriceChart() {
               });
               return;
             }
-          const { candle, volume, cvd } = aggRef.current.ingest(
+          const { candle, buyBar, sellBar, cvd } = aggRef.current.ingest(
             {
               family: "price_tick",
               price: tick.price,
@@ -318,10 +341,15 @@ export function PriceChart() {
             time: candle.time as UTCTimestamp,
             value: candle.close,
           });
-          volumeRef.current?.update({
-            time: volume.time as UTCTimestamp,
-            value: volume.value,
-            color: volume.color,
+          volumeBuyRef.current?.update({
+            time: buyBar.time as UTCTimestamp,
+            value: buyBar.value,
+            color: buyBar.color,
+          });
+          volumeSellRef.current?.update({
+            time: sellBar.time as UTCTimestamp,
+            value: sellBar.value,
+            color: sellBar.color,
           });
           const previousCvd = lastCvdValueRef.current;
           const cvdPoint = colorCvdPoint({
@@ -346,10 +374,16 @@ export function PriceChart() {
             tick.orderflow?.last_trade_delta ??
             (previousCvd == null ? 0 : cvd.value - previousCvd);
           lastCvdValueRef.current = cvd.value;
+          // RA-107b: label reads buy vs sell magnitudes; direction = imbalance side.
+          const buyVol = buyBar.value;
+          const sellVol = Math.abs(sellBar.value);
+          const totalVol = buyVol + sellVol;
           updatePaneLabel(
             volumeLabelRef.current,
-            `VOL ${Math.round(volume.value).toLocaleString()}`,
-            volumeDirection(volume.color),
+            `VOL ${Math.round(totalVol).toLocaleString()}  buy ${Math.round(
+              buyVol,
+            ).toLocaleString()} / sell ${Math.round(sellVol).toLocaleString()}`,
+            buyVol >= sellVol ? "bullish" : "bearish",
           );
           updatePaneLabel(
             cvdLabelRef.current,

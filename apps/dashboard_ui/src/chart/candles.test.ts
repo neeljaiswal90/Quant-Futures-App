@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CandleAggregator, bucketTime } from "./candles";
+import { BLOCK_TRADE_LOTS, CandleAggregator, bucketTime } from "./candles";
 import type { PriceTickPayload } from "@contracts/realtime/events";
 
 const tick = (price: number, volume = 1): PriceTickPayload => ({
@@ -19,8 +19,25 @@ const tickWithDelta = (
   ...tick(price, volume),
   orderflow: {
     quality: "high",
-    last_trade_aggressor: delta >= 0 ? "buy" : "sell",
+    last_trade_aggressor: delta > 0 ? "buy" : delta < 0 ? "sell" : "unknown",
     last_trade_delta: delta,
+    cvd: null,
+    aggressor_windows: [],
+    v_delta: null,
+    footprint: null,
+  },
+});
+
+const tickWithAggressor = (
+  price: number,
+  volume: number,
+  aggressor: "buy" | "sell" | "unknown",
+): PriceTickPayload => ({
+  ...tick(price, volume),
+  orderflow: {
+    quality: "high",
+    last_trade_aggressor: aggressor,
+    last_trade_delta: null,
     cvd: null,
     aggressor_windows: [],
     v_delta: null,
@@ -75,38 +92,81 @@ describe("CandleAggregator", () => {
     expect(r.cvd.value).toBe(9);
   });
 
-  it("resets volume per bucket", () => {
+  it("splits aggressor flow into buy and sell bars per bucket (RA-107b)", () => {
     const agg = new CandleAggregator(1);
-    agg.ingest(tick(100, 5), NS(10.0));
-    agg.ingest(tick(101, 5), NS(10.5)); // same bucket -> vol 10
-    const r = agg.ingest(tick(102, 2), NS(11.0)); // new bucket -> vol 2
-    expect(r.volume.value).toBe(2);
+    // Two buy ticks + one sell tick, same bucket
+    agg.ingest(tickWithAggressor(100, 10, "buy"), NS(10.0));
+    agg.ingest(tickWithAggressor(100, 5, "buy"), NS(10.3));
+    const r = agg.ingest(tickWithAggressor(99, 7, "sell"), NS(10.6));
+
+    expect(r.buyBar.value).toBe(15);
+    // Sell bar is negative for the back-to-back zero-baseline render.
+    expect(r.sellBar.value).toBe(-7);
+    expect(r.buyBar.color).toContain("34, 197, 94"); // green-500
+    expect(r.sellBar.color).toContain("239, 68, 68"); // red-500
   });
 
-  it("never regresses candle/volume/cvd time on an out-of-order tick", () => {
-    // A stale tick that buckets BEFORE the current candle must not push any of
-    // the three series backwards — lightweight-charts update() rejects an older
-    // time ("Cannot update oldest data") and halts the per-tick loop.
+  it("resets buy/sell volume per bucket (RA-107b)", () => {
+    const agg = new CandleAggregator(1);
+    agg.ingest(tickWithAggressor(100, 10, "buy"), NS(10.0));
+    agg.ingest(tickWithAggressor(100, 8, "sell"), NS(10.5));
+    // New bucket starts at NS(11.0)
+    const r = agg.ingest(tickWithAggressor(101, 3, "buy"), NS(11.0));
+    expect(r.buyBar.value).toBe(3);
+    expect(r.sellBar.value).toBe(0); // no sells in new bucket yet
+  });
+
+  it("flags hasBlockTrade when bucket has print >= BLOCK_TRADE_LOTS", () => {
+    const agg = new CandleAggregator(1);
+    expect(BLOCK_TRADE_LOTS).toBe(25);
+    const small = agg.ingest(tickWithAggressor(100, 24, "buy"), NS(10.0));
+    expect(small.hasBlockTrade).toBe(false);
+    const block = agg.ingest(tickWithAggressor(100, 25, "buy"), NS(10.5));
+    expect(block.hasBlockTrade).toBe(true);
+    // The block-trade flag persists for the whole bucket once a block-size print lands.
+    const followup = agg.ingest(tickWithAggressor(100, 2, "buy"), NS(10.8));
+    expect(followup.hasBlockTrade).toBe(true);
+    // Bar color reflects block emphasis: full alpha 1.000.
+    expect(followup.buyBar.color).toContain(", 1.000)");
+  });
+
+  it("uses alpha 0.65 for normal buckets and 1.000 for block-trade buckets", () => {
+    const agg = new CandleAggregator(1);
+    const normal = agg.ingest(tickWithAggressor(100, 5, "buy"), NS(10.0));
+    expect(normal.buyBar.color).toContain("0.65");
+
+    const block = agg.ingest(tickWithAggressor(100, 30, "sell"), NS(20.0));
+    expect(block.sellBar.color).toContain(", 1.000)");
+  });
+
+  it("falls back to last_trade_delta sign when aggressor is unknown", () => {
+    const agg = new CandleAggregator(1);
+    const r = agg.ingest(tickWithDelta(100, 8, 8), NS(10.0));
+    expect(r.buyBar.value).toBe(8);
+    expect(r.sellBar.value).toBe(0);
+  });
+
+  it("never regresses candle/buyBar/sellBar/cvd time on an out-of-order tick", () => {
     const agg = new CandleAggregator(1);
     agg.ingest(tick(100), NS(20));
     const r = agg.ingest(tick(101), NS(15)); // earlier bucket
     expect(r.candle.time).toBe(20);
-    expect(r.volume.time).toBe(20);
+    expect(r.buyBar.time).toBe(20);
+    expect(r.sellBar.time).toBe(20);
     expect(r.cvd.time).toBe(20);
   });
 
-  it("aligns volume/cvd time with the seed when the first live tick is earlier", () => {
-    // Snapshot seeds at a wall-clock bucket; the first live trade tick can carry
-    // an earlier timestamp. All series must stay on the seed bucket.
+  it("aligns all series time with the seed when the first live tick is earlier", () => {
     const agg = new CandleAggregator(1);
     agg.seedFromSnapshot(100, NS(50));
     const r = agg.ingest(tick(105), NS(48));
     expect(r.candle.time).toBe(50);
-    expect(r.volume.time).toBe(50);
+    expect(r.buyBar.time).toBe(50);
+    expect(r.sellBar.time).toBe(50);
     expect(r.cvd.time).toBe(50);
   });
 
-  it("bulk-seeds historical price, volume, and CVD series", () => {
+  it("bulk-seeds historical price, buy/sell bars, and CVD series", () => {
     const agg = new CandleAggregator(1);
     const seeded = agg.seedFromHistory([
       { tsNs: NS(10), price: 100, bid: 99.75, ask: 100.25, volume: 2, lastTradeDelta: 2 },
@@ -114,7 +174,9 @@ describe("CandleAggregator", () => {
     ]);
 
     expect(seeded.prices.map((point) => point.value)).toEqual([100, 101]);
-    expect(seeded.volumes.map((point) => point.value)).toEqual([2, 3]);
+    // Bucket 10: buy 2, sell 0. Bucket 11: buy 0, sell 3 (rendered as -3).
+    expect(seeded.buyBars.map((p) => p.value)).toEqual([2, 0]);
+    expect(seeded.sellBars.map((p) => p.value)).toEqual([0, -3]);
     expect(seeded.cvd.map((point) => point.value)).toEqual([2, -1]);
   });
 });
