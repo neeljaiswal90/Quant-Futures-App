@@ -118,9 +118,9 @@ export function anchorSeriesData(
 }
 
 function bubbleRadius(item: EventBubbleItem): number {
-  const strengthRadius = Math.max(0, Math.min(4, item.strength * 4));
-  const tierBoost = item.tier === "CRITICAL" ? 3 : item.tier === "HIGH" ? 1.5 : 0;
-  return 4 + strengthRadius + tierBoost;
+  const strengthRadius = Math.max(0, Math.min(2.2, item.strength * 2.2));
+  const tierBoost = item.tier === "CRITICAL" ? 1.7 : item.tier === "HIGH" ? 0.8 : 0;
+  return 2.8 + strengthRadius + tierBoost;
 }
 
 class EventBubbleRenderer implements IPrimitivePaneRenderer {
@@ -133,10 +133,10 @@ class EventBubbleRenderer implements IPrimitivePaneRenderer {
         ctx.beginPath();
         ctx.arc(point.x, point.y, point.radius, 0, Math.PI * 2);
         ctx.fillStyle = point.fillColor;
-        ctx.globalAlpha = 0.82;
+        ctx.globalAlpha = 0.46;
         ctx.fill();
         ctx.globalAlpha = 1;
-        ctx.lineWidth = point.tier === "CRITICAL" ? 2.5 : 1.5;
+        ctx.lineWidth = point.tier === "CRITICAL" ? 1.8 : 1;
         ctx.strokeStyle = point.strokeColor;
         ctx.stroke();
         ctx.restore();
@@ -152,8 +152,8 @@ class EventBubblePaneView implements IPrimitivePaneView {
     this.points = points;
   }
 
-  zOrder(): "top" {
-    return "top";
+  zOrder(): "normal" {
+    return "normal";
   }
 
   renderer(): IPrimitivePaneRenderer {
@@ -171,7 +171,7 @@ class EventBubblePaneView implements IPrimitivePaneView {
     if (best == null) return null;
     return {
       externalId: best.point.id,
-      zOrder: "top",
+      zOrder: "normal",
       distance: best.distance,
       hitTestPriority: 2,
       cursorStyle: "pointer",

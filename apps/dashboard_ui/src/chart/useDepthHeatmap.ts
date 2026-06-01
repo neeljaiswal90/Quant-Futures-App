@@ -12,7 +12,7 @@ import { DepthHeatmapPrimitive } from "./depthHeatmap";
 export function useDepthHeatmap(
   seriesRef: RefObject<ISeriesApi<"Line"> | null>,
 ): void {
-  const { state } = useDashboard();
+  const { state, bookmapBackfillRef, bookmapBackfillEpoch } = useDashboard();
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
 
   useEffect(() => {
@@ -31,4 +31,20 @@ export function useDepthHeatmap(
     if (!state.depth) return;
     primitiveRef.current?.appendSnapshot(state.depth);
   }, [state.depth]);
+
+  useEffect(() => {
+    let raf = 0;
+    let lastEpoch = -1;
+    const loop = () => {
+      const epoch = bookmapBackfillEpoch.current;
+      if (epoch !== lastEpoch) {
+        lastEpoch = epoch;
+        const backfill = bookmapBackfillRef.current;
+        if (backfill) primitiveRef.current?.setHistory(backfill.depth);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [bookmapBackfillEpoch, bookmapBackfillRef]);
 }

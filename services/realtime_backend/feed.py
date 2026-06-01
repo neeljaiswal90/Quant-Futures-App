@@ -39,6 +39,7 @@ from rithmic_dashboard.features.recent_signals_panel import RecentSignal
 from rithmic_dashboard.models import LiveSignals
 
 from realtime_backend.connection_manager import ConnectionManager
+from realtime_backend.history import BookmapHistory
 from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings
 from realtime_backend.signals import (
@@ -69,6 +70,7 @@ class FeedState:
     _last_price_tick_had_orderflow: bool = field(default=False, init=False)
     _last_depth_key: tuple[object, ...] | None = field(default=None, init=False)
     _last_depth_message: RealtimeMessage | None = field(default=None, init=False)
+    _bookmap_history: BookmapHistory = field(default_factory=BookmapHistory, init=False)
 
     # ----- seq -----------------------------------------------------------
 
@@ -123,6 +125,26 @@ class FeedState:
     @property
     def latest_depth_message(self) -> RealtimeMessage | None:
         return self._last_depth_message
+
+    async def bookmap_backfill_payload(self) -> dict[str, Any]:
+        """Return a compact REST hydration payload for browser reload/reconnect."""
+
+        async with self._lock:
+            generated_at_ns = time.time_ns()
+            session_date = None
+            session_name = None
+            envelope = self._last_envelope
+            if isinstance(envelope, dict):
+                raw_date = envelope.get("trading_date")
+                raw_session = envelope.get("session")
+                session_date = str(raw_date) if raw_date is not None else None
+                session_name = str(raw_session) if raw_session is not None else None
+            return self._bookmap_history.to_response(
+                generated_at_ns=generated_at_ns,
+                through_seq=self.current_seq,
+                trading_date=session_date,
+                session=session_name,
+            )
 
     # ----- emission ------------------------------------------------------
 
@@ -196,21 +218,26 @@ class FeedState:
             and (orderflow is None or self._last_price_tick_had_orderflow)
         ):
             return None
-        payload = PriceTickPayload(
-            price=tick.price,
-            bid=tick.bid,
-            ask=tick.ask,
-            volume=tick.volume,
-            orderflow=orderflow,
-        )
         async with self._lock:
             seq = await self._next_seq()
-        message = make_message(
-            type="event",
-            payload=payload,
-            seq=seq,
-            ts_ns=tick.trade_ts_ns,
-        )
+            payload = PriceTickPayload(
+                price=tick.price,
+                bid=tick.bid,
+                ask=tick.ask,
+                volume=tick.volume,
+                orderflow=orderflow,
+            )
+            message = make_message(
+                type="event",
+                payload=payload,
+                seq=seq,
+                ts_ns=tick.trade_ts_ns,
+            )
+            self._bookmap_history.upsert_price_tick(
+                seq=seq,
+                tick=tick,
+                orderflow=orderflow,
+            )
         await self._broadcast_and_account(message)
         self._last_price_tick_key = tick.dedupe_key
         self._last_price_tick_had_orderflow = orderflow is not None
@@ -223,12 +250,17 @@ class FeedState:
             return None
         async with self._lock:
             seq = await self._next_seq()
-        message = make_message(
-            type="event",
-            payload=payload,
-            seq=seq,
-            ts_ns=payload.ts_ns,
-        )
+            message = make_message(
+                type="event",
+                payload=payload,
+                seq=seq,
+                ts_ns=payload.ts_ns,
+            )
+            self._bookmap_history.append_depth(
+                seq=seq,
+                payload=payload,
+                dedupe_key=key,
+            )
         await self._broadcast_and_account(message)
         self._last_depth_key = key
         self._last_depth_message = message

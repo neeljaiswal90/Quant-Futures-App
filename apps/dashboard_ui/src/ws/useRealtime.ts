@@ -22,17 +22,26 @@ import { parseMessage } from "../store/reducer";
 import type { DashboardState, StoreAction } from "../store/types";
 import { isPriceTick, isSnapshot } from "../contract/guards";
 import type { OrderflowStats, RealtimeMessage } from "@contracts/realtime/events";
+import {
+  isBookmapFrame,
+  mergeBackfillWithLiveFrames,
+  normalizeBookmapBackfill,
+  type BookmapBackfillResponse,
+} from "../bookmap/backfill";
 
 const DEFAULT_WS_URL = "ws://127.0.0.1:8765/ws";
 const DEFAULT_SNAPSHOT_URL = "/snapshot";
+const DEFAULT_BOOKMAP_BACKFILL_URL = "/api/bookmap-backfill";
 
 export interface LiveTick {
+  source: "price_tick" | "snapshot";
   price: number | null;
   bid: number | null;
   ask: number | null;
   volume: number | null;
   orderflow: OrderflowStats | null;
   tsNs: number;
+  seq: number;
 }
 
 export interface RealtimeApi {
@@ -47,6 +56,10 @@ export interface RealtimeApi {
   snapshotRef: React.MutableRefObject<RealtimeMessage | null>;
   /** Monotonic counter bumped whenever a tick lands (chart effect dep). */
   tickEpoch: React.MutableRefObject<number>;
+  /** Latest REST backfill payload for imperative chart hydration. */
+  bookmapBackfillRef: React.MutableRefObject<BookmapBackfillResponse | null>;
+  /** Monotonic counter bumped whenever a new backfill lands. */
+  bookmapBackfillEpoch: React.MutableRefObject<number>;
 }
 
 export function useRealtime(): RealtimeApi {
@@ -55,40 +68,54 @@ export function useRealtime(): RealtimeApi {
   const liveTickRef = useRef<LiveTick | null>(null);
   const snapshotRef = useRef<RealtimeMessage | null>(null);
   const tickEpoch = useRef(0);
+  const bookmapBackfillRef = useRef<BookmapBackfillResponse | null>(null);
+  const bookmapBackfillEpoch = useRef(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const attemptRef = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedByUs = useRef(false);
   const resyncInFlight = useRef(false);
+  const backfillInFlight = useRef(false);
+  const backfillPending = useRef(false);
+  const backfillLiveFrames = useRef<RealtimeMessage[]>([]);
 
   const wsUrl = import.meta.env.VITE_WS_URL ?? DEFAULT_WS_URL;
   const snapshotUrl = import.meta.env.VITE_SNAPSHOT_URL ?? DEFAULT_SNAPSHOT_URL;
+  const bookmapBackfillUrl =
+    import.meta.env.VITE_BOOKMAP_BACKFILL_URL ?? DEFAULT_BOOKMAP_BACKFILL_URL;
 
   // Apply a raw frame: into the reducer AND (for ticks/snapshots) into refs.
   const applyFrame = useCallback((raw: unknown) => {
     const msg = parseMessage(raw);
     if (msg) {
+      if (backfillPending.current && isBookmapFrame(msg)) {
+        backfillLiveFrames.current.push(msg);
+      }
       if (isPriceTick(msg.payload)) {
         liveTickRef.current = {
+          source: "price_tick",
           price: msg.payload.price,
           bid: msg.payload.bid,
           ask: msg.payload.ask,
           volume: msg.payload.volume,
           orderflow: msg.payload.orderflow ?? liveTickRef.current?.orderflow ?? null,
           tsNs: msg.ts_ns,
+          seq: msg.seq,
         };
         tickEpoch.current += 1;
       } else if (isSnapshot(msg.payload)) {
         snapshotRef.current = msg;
         if (msg.payload.price != null) {
           liveTickRef.current = {
+            source: "snapshot",
             price: msg.payload.price,
             bid: liveTickRef.current?.bid ?? null,
             ask: liveTickRef.current?.ask ?? null,
             volume: liveTickRef.current?.volume ?? null,
             orderflow: liveTickRef.current?.orderflow ?? null,
             tsNs: msg.ts_ns,
+            seq: msg.seq,
           };
           tickEpoch.current += 1;
         }
@@ -96,6 +123,31 @@ export function useRealtime(): RealtimeApi {
     }
     dispatch({ kind: "message", raw, nowMs: Date.now() });
   }, []);
+
+  const hydrateBookmapBackfill = useCallback(async () => {
+    if (backfillInFlight.current) return;
+    backfillInFlight.current = true;
+    backfillPending.current = true;
+    backfillLiveFrames.current = [];
+    try {
+      const res = await fetch(bookmapBackfillUrl, { cache: "no-store" });
+      if (!res.ok) return;
+      const raw: unknown = await res.json();
+      const normalized = normalizeBookmapBackfill(raw);
+      if (!normalized) return;
+      bookmapBackfillRef.current = mergeBackfillWithLiveFrames(
+        normalized,
+        backfillLiveFrames.current,
+      );
+      bookmapBackfillEpoch.current += 1;
+    } catch {
+      // Backfill is a reconnect quality upgrade; the live WS path remains primary.
+    } finally {
+      backfillPending.current = false;
+      backfillLiveFrames.current = [];
+      backfillInFlight.current = false;
+    }
+  }, [bookmapBackfillUrl]);
 
   const resync = useCallback(async () => {
     if (resyncInFlight.current) return;
@@ -106,6 +158,7 @@ export function useRealtime(): RealtimeApi {
       if (!res.ok) return;
       const body: unknown = await res.json();
       applyFrame(body);
+      void hydrateBookmapBackfill();
       applied = true;
     } catch {
       // Resync best-effort; reconnect's re-snapshot is the fallback.
@@ -116,7 +169,7 @@ export function useRealtime(): RealtimeApi {
       // Clear it explicitly; the next gap bumps resyncEpoch and re-fires.
       if (!applied) dispatch({ kind: "resync-failed" });
     }
-  }, [snapshotUrl, applyFrame]);
+  }, [snapshotUrl, applyFrame, hydrateBookmapBackfill]);
 
   // `connect` and `scheduleReconnect` are mutually recursive. We break the
   // useCallback dependency cycle by routing the recursion through a ref.
@@ -153,6 +206,7 @@ export function useRealtime(): RealtimeApi {
     ws.onopen = () => {
       attemptRef.current = 0; // reset backoff on a clean open
       dispatch({ kind: "conn", status: "open" });
+      void hydrateBookmapBackfill();
     };
 
     ws.onmessage = (ev: MessageEvent) => {
@@ -174,7 +228,7 @@ export function useRealtime(): RealtimeApi {
       if (closedByUs.current) return;
       scheduleReconnect();
     };
-  }, [wsUrl, applyFrame, scheduleReconnect]);
+  }, [wsUrl, applyFrame, hydrateBookmapBackfill, scheduleReconnect]);
 
   connectRef.current = connect;
 
@@ -206,5 +260,13 @@ export function useRealtime(): RealtimeApi {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { state, dispatch, liveTickRef, snapshotRef, tickEpoch };
+  return {
+    state,
+    dispatch,
+    liveTickRef,
+    snapshotRef,
+    tickEpoch,
+    bookmapBackfillRef,
+    bookmapBackfillEpoch,
+  };
 }

@@ -1,5 +1,6 @@
 import type { DepthPayload, ZoneState } from "@contracts/realtime/events";
-import { MNQ_TICK, type FeedItem } from "../contract/render";
+import type { FeedItem } from "../contract/render";
+import { priceToTickKey, tickKeyToPrice } from "../chart/priceGrid";
 
 export const DOM_LADDER_MARGIN_TICKS = 2;
 export const ICEBERG_FADE_MS = 10 * 60 * 1000;
@@ -22,16 +23,12 @@ interface IcebergMarker {
   dedupeKey: string;
 }
 
-export function snapPrice(price: number): number {
-  return Math.round(price / MNQ_TICK) * MNQ_TICK;
-}
-
 function priceKey(price: number): number {
-  return Math.round(price / MNQ_TICK);
+  return priceToTickKey(price);
 }
 
 function keyToPrice(key: number): number {
-  return key * MNQ_TICK;
+  return tickKeyToPrice(key);
 }
 
 export function domLadderRadiusTicks(depth: DepthPayload): number {

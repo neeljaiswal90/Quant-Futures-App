@@ -81,7 +81,7 @@ describe("event bubbles", () => {
       fillColor: "#ef4444",
       strokeColor: "#f85149",
     });
-    expect(projected[0].radius).toBeGreaterThan(8);
+    expect(projected[0].radius).toBeLessThan(7);
   });
 
   it("formats hover tooltip with family and MNQ price", () => {

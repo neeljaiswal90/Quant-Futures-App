@@ -9,6 +9,7 @@
  * CVD here is a *display* cumulative-volume-delta proxy built from the tick's
  * last-vs-mid sign; it is a chart garnish, never fed back into any decision.
  */
+import type { HistogramData, LineData, UTCTimestamp } from "lightweight-charts";
 import type { PriceTickPayload } from "@contracts/realtime/events";
 
 /** lightweight-charts UTCTimestamp (epoch seconds). */
@@ -32,6 +33,21 @@ export interface VolumeBar {
 export interface CvdPoint {
   time: UtcSeconds;
   value: number;
+}
+
+export interface HistoricalChartTick {
+  tsNs: number;
+  price: number;
+  bid: number | null;
+  ask: number | null;
+  volume: number | null;
+  lastTradeDelta?: number | null;
+}
+
+export interface HistoricalChartSeries {
+  prices: LineData<UTCTimestamp>[];
+  volumes: HistogramData<UTCTimestamp>[];
+  cvd: LineData<UTCTimestamp>[];
 }
 
 export const CANDLE_INTERVAL_S = 1;
@@ -71,10 +87,12 @@ export class CandleAggregator {
     this.lastPrice = null;
   }
 
-  /** Signed volume: backend orderflow delta when present, else uptick proxy. */
-  private signedVolume(tick: PriceTickPayload): number {
-    if (typeof tick.orderflow?.last_trade_delta === "number") {
-      return tick.orderflow.last_trade_delta;
+  /** Signed volume: backend/orderflow delta when present, else uptick proxy. */
+  private signedVolume(tick: PriceTickPayload | HistoricalChartTick): number {
+    const explicitDelta =
+      "orderflow" in tick ? tick.orderflow?.last_trade_delta : tick.lastTradeDelta;
+    if (typeof explicitDelta === "number") {
+      return explicitDelta;
     }
     const vol = tick.volume ?? 0;
     if (this.lastPrice == null) return 0;
@@ -128,5 +146,65 @@ export class CandleAggregator {
     this.currentVolume = 0;
     this.lastPrice = price;
     return this.current;
+  }
+
+  /** Bulk-seed from REST backfill ticks and leave the aggregator at the last tick. */
+  seedFromHistory(ticks: readonly HistoricalChartTick[]): HistoricalChartSeries {
+    this.reset();
+    const prices = new Map<UtcSeconds, LineData<UTCTimestamp>>();
+    const volumes = new Map<UtcSeconds, HistogramData<UTCTimestamp>>();
+    const cvd = new Map<UtcSeconds, LineData<UTCTimestamp>>();
+    const ordered = [...ticks]
+      .filter((tick) => Number.isFinite(tick.tsNs) && Number.isFinite(tick.price))
+      .sort((a, b) => a.tsNs - b.tsNs);
+
+    for (const tick of ordered) {
+      const next = this.ingest(
+        {
+          family: "price_tick",
+          price: tick.price,
+          bid: tick.bid,
+          ask: tick.ask,
+          volume: tick.volume,
+          orderflow:
+            typeof tick.lastTradeDelta === "number"
+              ? {
+                  quality: "high",
+                  last_trade_aggressor:
+                    tick.lastTradeDelta > 0
+                      ? "buy"
+                      : tick.lastTradeDelta < 0
+                        ? "sell"
+                        : "unknown",
+                  last_trade_delta: tick.lastTradeDelta,
+                  cvd: null,
+                  aggressor_windows: [],
+                  v_delta: null,
+                  footprint: null,
+                }
+              : null,
+        },
+        tick.tsNs,
+      );
+      prices.set(next.candle.time, {
+        time: next.candle.time as UTCTimestamp,
+        value: next.candle.close,
+      });
+      volumes.set(next.volume.time, {
+        time: next.volume.time as UTCTimestamp,
+        value: next.volume.value,
+        color: next.volume.color,
+      });
+      cvd.set(next.cvd.time, {
+        time: next.cvd.time as UTCTimestamp,
+        value: next.cvd.value,
+      });
+    }
+
+    return {
+      prices: [...prices.values()],
+      volumes: [...volumes.values()],
+      cvd: [...cvd.values()],
+    };
   }
 }

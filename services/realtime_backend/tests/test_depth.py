@@ -228,6 +228,43 @@ def test_feed_emit_depth_dedupes_on_bucketed_mid_and_caches_latest() -> None:
     asyncio.run(scenario())
 
 
+def test_bookmap_backfill_retains_compact_depth_columns() -> None:
+    async def scenario() -> None:
+        feed = FeedState(manager=ConnectionManager(), settings=Settings())
+        first = await feed.emit_depth(_depth_payload(ts_ns=1_000, mid=30220.01))
+        duplicate_mid_jitter = await feed.emit_depth(
+            _depth_payload(ts_ns=2_000, mid=30220.04)
+        )
+        changed_level = await feed.emit_depth(
+            _depth_payload(ts_ns=3_000, mid=30220.04, bid_size=11)
+        )
+
+        assert first is not None
+        assert duplicate_mid_jitter is None
+        assert changed_level is not None
+
+        payload = await feed.bookmap_backfill_payload()
+
+        assert payload["through_seq"] == 2
+        assert payload["limits"]["depth_columns_max"] == 12_000
+        assert len(payload["depth"]) == 2
+        first_column = payload["depth"][0]
+        assert first_column["family"] == "depth"
+        assert first_column["seq"] == 1
+        assert first_column["ts_ns"] == 1_000
+        assert first_column["n_ticks"] == 2
+        assert [level["price"] for level in first_column["bid_levels"]] == [
+            30220.0,
+            30219.75,
+        ]
+        assert [level["price"] for level in first_column["ask_levels"]] == [
+            30220.25,
+            30220.5,
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_app_replays_latest_depth_before_snapshot_on_ws_connect(tmp_path: Path) -> None:
     async def scenario() -> None:
         app = create_app(Settings(scratch_dir=tmp_path / "scratch"))

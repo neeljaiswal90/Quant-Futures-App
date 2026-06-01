@@ -4,6 +4,7 @@ import { depthPayload } from "../store/fixtures";
 import {
   DepthHeatmapPrimitive,
   coordinateForEpochSeconds,
+  depthCellColor,
   depthCellOpacity,
   depthIntensity,
   depthPayloadToColumn,
@@ -97,6 +98,10 @@ describe("depth heatmap projection", () => {
     );
   });
 
+  it("uses amber liquidity colors so executions can own green/red", () => {
+    expect(depthCellColor(1, "live")).toBe("rgba(255, 154, 34, 0.660)");
+  });
+
   it("keeps the primitive below the price and event layers", () => {
     const primitive = new DepthHeatmapPrimitive();
     const [view] = primitive.paneViews();
@@ -117,6 +122,15 @@ describe("depth heatmap projection", () => {
     });
 
     expect(primitive.columnCount()).toBe(1);
+    expect(primitive.autoscaleInfo()).not.toBeNull();
+  });
+
+  it("bulk-seeds retained history from REST depth backfill", () => {
+    const primitive = new DepthHeatmapPrimitive();
+
+    primitive.setHistory([depthPayload(BASE_NS), depthPayload(BASE_NS + 1_000_000_000)]);
+
+    expect(primitive.columnCount()).toBe(2);
     expect(primitive.autoscaleInfo()).not.toBeNull();
   });
 });

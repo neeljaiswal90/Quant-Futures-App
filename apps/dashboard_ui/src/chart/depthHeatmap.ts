@@ -14,6 +14,7 @@ import type {
 } from "lightweight-charts";
 import type { DepthPayload, DepthQuality } from "@contracts/realtime/events";
 import { MNQ_TICK } from "../contract/render";
+import { snapPrice } from "./priceGrid";
 
 export const DEPTH_HISTORY_WINDOW_SECONDS = 8 * 60 * 60;
 export const MAX_DEPTH_COLUMNS = 12_000;
@@ -65,7 +66,7 @@ export function depthPayloadToColumn(payload: DepthPayload): DepthHistoryColumn 
       Number.isFinite(level.size) &&
       level.size > 0
     ))
-    .map((level) => ({ price: level.price, size: level.size }));
+    .map((level) => ({ price: snapPrice(level.price), size: level.size }));
 
   if (levels.length === 0) return null;
 
@@ -140,9 +141,9 @@ export function depthCellOpacity(intensity: number, quality: DepthQuality): numb
 
 export function depthCellColor(intensity: number, quality: DepthQuality): string {
   const t = Math.max(0, Math.min(1, intensity));
-  const red = Math.round(45 + t * 210);
-  const green = Math.round(112 + t * 96);
-  const blue = Math.round(225 - t * 165);
+  const red = Math.round(112 + t * 143);
+  const green = Math.round(58 + t * 96);
+  const blue = Math.round(18 + t * 16);
   return `rgba(${red}, ${green}, ${blue}, ${depthCellOpacity(t, quality).toFixed(3)})`;
 }
 
@@ -386,6 +387,27 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
 
   columnCount(): number {
     return this.columns.length;
+  }
+
+  setHistory(payloads: readonly DepthPayload[]): void {
+    this.columns = [];
+    this.sessionMaxSize = 0;
+    for (const payload of payloads) {
+      const column = depthPayloadToColumn(payload);
+      if (column == null) continue;
+      const last = this.columns.at(-1);
+      if (last && column.tsNs < last.tsNs) continue;
+      if (last && column.tsNs === last.tsNs) {
+        this.columns[this.columns.length - 1] = column;
+      } else {
+        this.columns.push(column);
+      }
+      this.sessionMaxSize = Math.max(this.sessionMaxSize, maxDepthSize([column]));
+    }
+    const latest = this.columns.at(-1);
+    if (latest) this.trimHistory(latest.seconds);
+    this.updateAllViews();
+    this.requestUpdate?.();
   }
 
   private trimHistory(latestSeconds: number): void {

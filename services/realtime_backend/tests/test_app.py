@@ -66,6 +66,7 @@ def test_app_registers_mock_compatible_routes(tmp_path: Path) -> None:
     paths = {getattr(r, "path", None) for r in app.routes}
     assert "/health" in paths
     assert "/snapshot" in paths
+    assert "/api/bookmap-backfill" in paths
     assert "/api/shutdown/end-day" in paths
     assert any(isinstance(r, WebSocketRoute) and r.path == "/ws" for r in app.routes)
 

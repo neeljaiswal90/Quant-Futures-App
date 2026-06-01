@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DepthPayload } from "@contracts/realtime/events";
 import { formatMnqPrice } from "../contract/render";
+import { snapPrice } from "../chart/priceGrid";
 import { useNow } from "../hooks/useNow";
 import { useDashboard } from "../store/context";
 import {
   buildDomLadderRows,
   shouldRecenterDomLadder,
-  snapPrice,
 } from "./domLadderModel";
 
 function qualityClass(quality: DepthPayload["quality"]): string {

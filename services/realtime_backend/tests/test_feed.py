@@ -247,6 +247,43 @@ def test_compute_orderflow_can_enrich_a_fast_path_duplicate() -> None:
     asyncio.run(scenario())
 
 
+def test_bookmap_backfill_merges_fast_and_enriched_duplicate_tick() -> None:
+    async def scenario() -> None:
+        feed = _feed()
+        tick = LatestPriceTick(
+            trade_ts_ns=123,
+            price=29400.25,
+            volume=3,
+            bid=29400.0,
+            ask=29400.5,
+            aggressor_side="buy",
+        )
+
+        fast = await feed.emit_price_tick(tick, orderflow=None)
+        enriched = await feed.emit_price_tick(
+            tick,
+            orderflow=build_orderflow_stats(_signals(), tick),
+        )
+        assert fast is not None
+        assert enriched is not None
+
+        payload = await feed.bookmap_backfill_payload()
+
+        assert payload["through_seq"] == 2
+        assert payload["limits"]["price_ticks_max"] == 100_000
+        assert len(payload["price_ticks"]) == 1
+        tick_row = payload["price_ticks"][0]
+        assert tick_row["seq"] == 2
+        assert tick_row["ts_ns"] == 123
+        assert tick_row["price"] == 29400.25
+        assert tick_row["volume"] == 3
+        assert tick_row["aggressor_side"] == "buy"
+        assert tick_row["orderflow_quality"] == "high"
+        assert tick_row["last_trade_delta"] == 3
+
+    asyncio.run(scenario())
+
+
 def test_snapshot_message_uses_current_seq() -> None:
     async def scenario() -> None:
         feed = _feed()

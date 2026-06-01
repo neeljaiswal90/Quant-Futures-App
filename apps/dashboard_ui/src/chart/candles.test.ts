@@ -105,4 +105,16 @@ describe("CandleAggregator", () => {
     expect(r.volume.time).toBe(50);
     expect(r.cvd.time).toBe(50);
   });
+
+  it("bulk-seeds historical price, volume, and CVD series", () => {
+    const agg = new CandleAggregator(1);
+    const seeded = agg.seedFromHistory([
+      { tsNs: NS(10), price: 100, bid: 99.75, ask: 100.25, volume: 2, lastTradeDelta: 2 },
+      { tsNs: NS(11), price: 101, bid: 100.75, ask: 101.25, volume: 3, lastTradeDelta: -3 },
+    ]);
+
+    expect(seeded.prices.map((point) => point.value)).toEqual([100, 101]);
+    expect(seeded.volumes.map((point) => point.value)).toEqual([2, 3]);
+    expect(seeded.cvd.map((point) => point.value)).toEqual([2, -1]);
+  });
 });

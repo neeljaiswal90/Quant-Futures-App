@@ -12,12 +12,13 @@
  * keeps the surface focused on decision context: current price, zones,
  * event bubbles, volume, and orderflow delta.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ColorType,
   CrosshairMode,
   HistogramSeries,
   LineSeries,
+  type MouseEventParams,
   type Time,
   type IChartApi,
   type ISeriesApi,
@@ -33,9 +34,22 @@ import { eventBubbleTooltip, useEventMarkers } from "./useEventMarkers";
 import { isPriceTick } from "../contract/guards";
 import { useDepthHeatmap } from "./useDepthHeatmap";
 import { formatChartAxisTimePT, formatChartCrosshairTimePT } from "./timeFormat";
+import {
+  TradeBubblePrimitive,
+  tradeBubbleFromBackfillTick,
+  tradeBubbleTooltip,
+  TRADE_BUBBLE_ID_PREFIX,
+  type HoveredTradeBubble,
+} from "./tradeBubbles";
 
 export function PriceChart() {
-  const { liveTickRef, snapshotRef, tickEpoch } = useDashboard();
+  const {
+    liveTickRef,
+    snapshotRef,
+    tickEpoch,
+    bookmapBackfillRef,
+    bookmapBackfillEpoch,
+  } = useDashboard();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -43,7 +57,9 @@ export function PriceChart() {
   const eventAnchorRef = useRef<ISeriesApi<"Line"> | null>(null);
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const cvdRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const tradeBubbleRef = useRef<TradeBubblePrimitive | null>(null);
   const aggRef = useRef(new CandleAggregator(1));
+  const [hoveredTrade, setHoveredTrade] = useState<HoveredTradeBubble | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -84,6 +100,9 @@ export function PriceChart() {
       priceFormat: { type: "price", precision: 2, minMove: MNQ_TICK },
     });
     priceLineRef.current = priceLine;
+    const tradeBubbles = new TradeBubblePrimitive();
+    priceLine.attachPrimitive(tradeBubbles);
+    tradeBubbleRef.current = tradeBubbles;
 
     const eventAnchor = chart.addSeries(LineSeries, {
       color: "rgba(0, 0, 0, 0)",
@@ -137,6 +156,8 @@ export function PriceChart() {
     }
 
     return () => {
+      priceLine.detachPrimitive(tradeBubbles);
+      if (tradeBubbleRef.current === tradeBubbles) tradeBubbleRef.current = null;
       chart.remove();
       chartRef.current = null;
       priceLineRef.current = null;
@@ -150,14 +171,48 @@ export function PriceChart() {
   useEffect(() => {
     let raf = 0;
     let lastEpoch = -1;
+    let lastBackfillEpoch = -1;
 
     const loop = () => {
+      const backfillEpoch = bookmapBackfillEpoch.current;
+      if (backfillEpoch !== lastBackfillEpoch) {
+        lastBackfillEpoch = backfillEpoch;
+        const backfill = bookmapBackfillRef.current;
+        const priceLine = priceLineRef.current;
+        if (backfill && priceLine) {
+          const seeded = aggRef.current.seedFromHistory(
+            backfill.price_ticks.map((tick) => ({
+              tsNs: tick.ts_ns,
+              price: tick.price,
+              bid: tick.bid,
+              ask: tick.ask,
+              volume: tick.volume,
+              lastTradeDelta: tick.last_trade_delta,
+            })),
+          );
+          priceLine.setData(seeded.prices);
+          volumeRef.current?.setData(seeded.volumes);
+          cvdRef.current?.setData(seeded.cvd);
+          tradeBubbleRef.current?.setHistory(
+            backfill.price_ticks.map(tradeBubbleFromBackfillTick),
+          );
+        }
+      }
       const epoch = tickEpoch.current;
       if (epoch !== lastEpoch) {
         lastEpoch = epoch;
         const tick = liveTickRef.current;
         const priceLine = priceLineRef.current;
         if (tick && tick.price != null && priceLine) {
+          if (tick.source === "snapshot") {
+            const seeded = aggRef.current.seedFromSnapshot(tick.price, tick.tsNs);
+            priceLine.update({
+              time: seeded.time as UTCTimestamp,
+              value: seeded.close,
+            });
+            raf = requestAnimationFrame(loop);
+            return;
+          }
           const { candle, volume, cvd } = aggRef.current.ingest(
             {
               family: "price_tick",
@@ -182,17 +237,51 @@ export function PriceChart() {
             time: cvd.time as UTCTimestamp,
             value: cvd.value,
           });
+          tradeBubbleRef.current?.appendTick({
+            seq: tick.seq,
+            tsNs: tick.tsNs,
+            price: tick.price,
+            volume: tick.volume,
+            aggressorSide:
+              tick.orderflow?.last_trade_aggressor === "buy" ||
+              tick.orderflow?.last_trade_aggressor === "sell"
+                ? tick.orderflow.last_trade_aggressor
+                : "unknown",
+            lastTradeDelta: tick.orderflow?.last_trade_delta ?? null,
+          });
         }
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [liveTickRef, tickEpoch]);
+  }, [bookmapBackfillEpoch, bookmapBackfillRef, liveTickRef, tickEpoch]);
 
   useZonePriceLines(priceLineRef);
   useDepthHeatmap(priceLineRef);
   const hoveredEvent = useEventMarkers(chartRef, priceLineRef, eventAnchorRef);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const handleMove = (param: MouseEventParams<Time>) => {
+      const objectId = param.hoveredInfo?.objectId ?? param.hoveredObjectId;
+      if (
+        typeof objectId === "string" &&
+        objectId.startsWith(TRADE_BUBBLE_ID_PREFIX) &&
+        param.point
+      ) {
+        const item = tradeBubbleRef.current?.itemById(objectId);
+        if (item) {
+          setHoveredTrade({ item, point: { x: param.point.x, y: param.point.y } });
+          return;
+        }
+      }
+      setHoveredTrade(null);
+    };
+    chart.subscribeCrosshairMove(handleMove);
+    return () => chart.unsubscribeCrosshairMove(handleMove);
+  }, []);
 
   return (
     <div
@@ -212,6 +301,17 @@ export function PriceChart() {
           }}
         >
           {eventBubbleTooltip(hoveredEvent.item)}
+        </div>
+      )}
+      {hoveredTrade && (
+        <div
+          className="event-bubble-tooltip"
+          style={{
+            left: hoveredTrade.point.x + 12,
+            top: hoveredTrade.point.y + 12,
+          }}
+        >
+          {tradeBubbleTooltip(hoveredTrade.item)}
         </div>
       )}
     </div>

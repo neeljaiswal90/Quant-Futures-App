@@ -247,6 +247,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         message = backend.feed.build_snapshot_message()
         return JSONResponse(content=message.model_dump())
 
+    @app.get("/api/bookmap-backfill")
+    async def bookmap_backfill() -> JSONResponse:
+        """Bounded session-history backfill for Bookmap-style reconnect hydration."""
+        backend: RealtimeBackend = app.state.backend
+        return JSONResponse(content=await backend.feed.bookmap_backfill_payload())
+
     @app.post("/api/shutdown/end-day")
     def end_day_shutdown(background_tasks: BackgroundTasks) -> JSONResponse:
         """Explicit operator-triggered shutdown for the full local live stack."""
