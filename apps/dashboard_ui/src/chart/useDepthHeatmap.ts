@@ -10,6 +10,7 @@ import { useDashboard } from "../store/context";
 import {
   DEPTH_HEATMAP_ID_PREFIX,
   DepthHeatmapPrimitive,
+  HYDRATION_DEPTH_CHUNK_SIZE,
   type HoveredDepthCell,
 } from "./depthHeatmap";
 import { WallMarkerManager } from "./wallMarkers";
@@ -52,22 +53,63 @@ export function useDepthHeatmap(
 
   useEffect(() => {
     let intervalId = 0;
+    let rafId = 0;
     let lastEpoch = -1;
+    let hydrationChunkIdx = 0;
+    let hydrationPayloads: readonly import("@contracts/realtime/events").DepthPayload[] = [];
+
+    const processChunk = () => {
+      const primitive = primitiveRef.current;
+      if (!primitive) return;
+      const start = hydrationChunkIdx * HYDRATION_DEPTH_CHUNK_SIZE;
+      const end = Math.min(start + HYDRATION_DEPTH_CHUNK_SIZE, hydrationPayloads.length);
+      if (start < end) {
+        primitive.appendHydrationChunk(hydrationPayloads.slice(start, end));
+        const snapshot = primitive.accumulatorSnapshot();
+        if (snapshot) wallManagerRef.current?.update(snapshot.scores, snapshot.mid);
+      }
+      hydrationChunkIdx += 1;
+      if (end < hydrationPayloads.length) {
+        // RA-111: rAF-yield between chunks so the renderer stays responsive
+        // and we never trip the >50ms long-task threshold.
+        rafId = window.requestAnimationFrame(processChunk);
+      } else {
+        primitive.finalizeHydration();
+        hydrationPayloads = [];
+        hydrationChunkIdx = 0;
+        rafId = 0;
+      }
+    };
+
     const flushBackfill = () => {
       const epoch = bookmapBackfillEpoch.current;
       if (epoch !== lastEpoch) {
         lastEpoch = epoch;
         const backfill = bookmapBackfillRef.current;
-        if (backfill) {
-          primitiveRef.current?.setHistory(backfill.depth);
-          const snapshot = primitiveRef.current?.accumulatorSnapshot();
-          if (snapshot) wallManagerRef.current?.update(snapshot.scores, snapshot.mid);
+        const primitive = primitiveRef.current;
+        if (backfill && primitive) {
+          // Cancel any in-flight hydration before starting a new one.
+          if (rafId !== 0) {
+            window.cancelAnimationFrame(rafId);
+            rafId = 0;
+          }
+          primitive.beginHydration();
+          hydrationPayloads = backfill.depth;
+          hydrationChunkIdx = 0;
+          if (hydrationPayloads.length === 0) {
+            primitive.finalizeHydration();
+          } else {
+            rafId = window.requestAnimationFrame(processChunk);
+          }
         }
       }
     };
     flushBackfill();
     intervalId = window.setInterval(flushBackfill, DEPTH_BACKFILL_POLL_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      window.clearInterval(intervalId);
+      if (rafId !== 0) window.cancelAnimationFrame(rafId);
+    };
   }, [bookmapBackfillEpoch, bookmapBackfillRef]);
 
   useEffect(() => {

@@ -28,6 +28,8 @@ export const MAX_DEPTH_COLUMNS = 12_000;
 export const MAX_VISIBLE_DEPTH_COLUMNS = 420;
 export const MAX_DEPTH_CELLS = 32_000;
 export const MIN_DEPTH_CELL_WIDTH = 1.5;
+/** RA-111: depth-payload count per chunk during cold backfill replay. */
+export const HYDRATION_DEPTH_CHUNK_SIZE = 200;
 export const DEPTH_CONTRAST_WINDOW_SECONDS = 10 * 60;
 export const DEPTH_CONTRAST_PERCENTILE = 0.25;
 export const DEPTH_CONTRAST_MIN_SCORE = 5.0;
@@ -580,8 +582,37 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   }
 
   setHistory(payloads: readonly DepthPayload[]): void {
+    // Synchronous one-shot replay path. RA-111 prefers the chunked path
+    // (beginHydration + appendHydrationChunk + finalizeHydration) for cold
+    // backfills, which avoids the long task RA-109 measured here. Kept for
+    // test fixtures and for callers that don't need progressive rendering.
+    this.beginHydration();
+    this.appendHydrationChunk(payloads);
+    this.finalizeHydration();
+    return;
+  }
+
+  /**
+   * RA-111: chunked backfill replay (1/3). Resets columns + persistence so the
+   * caller can drive appendHydrationChunk over its own rAF schedule without
+   * a single long task. The columns the primitive renders are kept empty until
+   * the first chunk arrives, so the chart re-paints "blank then progressive"
+   * rather than "blank then pop."
+   */
+  beginHydration(): void {
     this.columns = [];
     this.persistence.clear();
+    this.view.update([]);
+    this.requestUpdate?.();
+  }
+
+  /**
+   * RA-111: chunked backfill replay (2/3). Append one chunk's worth of
+   * pre-normalized depth payloads. Caller is responsible for chunk sizing
+   * (e.g. HYDRATION_DEPTH_CHUNK_SIZE) and for rAF yielding between calls.
+   * Re-renders incrementally so the operator sees the heatmap fill in.
+   */
+  appendHydrationChunk(payloads: readonly DepthPayload[]): void {
     for (const payload of normalizedDepthPayloads(payloads)) {
       const column = depthPayloadToColumn(payload, this.persistence);
       if (column == null) continue;
@@ -589,6 +620,16 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
     }
     const latest = this.columns.at(-1);
     if (latest) this.trimHistory(latest.seconds);
+    this.updateAllViews();
+    this.requestUpdate?.();
+  }
+
+  /**
+   * RA-111: chunked backfill replay (3/3). Idempotent finalizer. Currently a
+   * no-op (the per-chunk path already renders incrementally), but provided as
+   * a stable hook for future cleanup work (e.g. coordinate cache flush).
+   */
+  finalizeHydration(): void {
     this.updateAllViews();
     this.requestUpdate?.();
   }

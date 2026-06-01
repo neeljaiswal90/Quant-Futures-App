@@ -28,7 +28,12 @@ import {
   createChart,
 } from "lightweight-charts";
 import { useDashboard } from "../store/context";
-import { CandleAggregator } from "./candles";
+import {
+  CandleAggregator,
+  HYDRATION_CHUNK_SIZE,
+  type HistoricalChartSeries,
+  type HistoricalChartTick,
+} from "./candles";
 import { MNQ_TICK, formatMnqPrice } from "../contract/render";
 import { useZonePriceLines } from "./useZonePriceLines";
 import { eventBubbleTooltip, useEventMarkers } from "./useEventMarkers";
@@ -251,8 +256,98 @@ export function PriceChart() {
 
   useEffect(() => {
     let intervalId = 0;
+    let rafId = 0;
     let lastEpoch = -1;
     let lastBackfillEpoch = -1;
+
+    // RA-111: chunked hydration state. While `hydrationTicks` is non-empty
+    // we drive aggregator.prepareHistoryBuilder()-based chunks across rAF
+    // frames. Live-tick processing is gated on this state so the aggregator
+    // can't be mid-replay while live ticks try to ingest.
+    let hydrationBuilder:
+      | ReturnType<CandleAggregator["prepareHistoryBuilder"]>
+      | null = null;
+    let hydrationTicks: HistoricalChartTick[] = [];
+    let hydrationChunkIdx = 0;
+
+    const updatePaneLabelsFromSeeded = (seeded: HistoricalChartSeries) => {
+      const latestCvdRaw = seeded.cvd.at(-1);
+      const previousCvdRaw = seeded.cvd.at(-2);
+      lastCvdValueRef.current = latestCvdRaw?.value ?? null;
+      const latestBuy = seeded.buyBars.at(-1);
+      const latestSell = seeded.sellBars.at(-1);
+      if (latestBuy || latestSell) {
+        const buyVol = latestBuy?.value ?? 0;
+        const sellVol = Math.abs(latestSell?.value ?? 0);
+        const total = buyVol + sellVol;
+        updatePaneLabel(
+          volumeLabelRef.current,
+          `VOL ${Math.round(total).toLocaleString()}  buy ${Math.round(
+            buyVol,
+          ).toLocaleString()} / sell ${Math.round(sellVol).toLocaleString()}`,
+          buyVol >= sellVol ? "bullish" : "bearish",
+        );
+      }
+      if (latestCvdRaw) {
+        const delta =
+          previousCvdRaw == null ? 0 : latestCvdRaw.value - previousCvdRaw.value;
+        updatePaneLabel(
+          cvdLabelRef.current,
+          `CVD ${formatSigned(latestCvdRaw.value)}  Δ ${formatSigned(delta)}`,
+          cvdDirection(latestCvdRaw.value),
+        );
+      }
+    };
+
+    const applySeededChunk = (seeded: HistoricalChartSeries) => {
+      const priceLine = priceLineRef.current;
+      if (!priceLine) return;
+      // RA-111: setData per chunk with cumulative arrays. lightweight-charts
+      // O(n) per call; for the typical 14-chunk × 14k-entry backfill the
+      // total work is bounded (~105k element copies) — well under the
+      // long-task threshold per-chunk thanks to rAF yielding between calls.
+      priceLine.setData(seeded.prices);
+      volumeBuyRef.current?.setData(seeded.buyBars);
+      volumeSellRef.current?.setData(seeded.sellBars);
+      const coloredCvd = seeded.cvd.map(colorCvdPoint);
+      cvdRef.current?.setData(coloredCvd);
+      const cvdMarkers = cvdFlipMarkersFromPoints(coloredCvd);
+      cvdMarkersRef.current = cvdMarkers;
+      cvdFlipRef.current?.setMarkers(cvdMarkers);
+      updatePaneLabelsFromSeeded(seeded);
+    };
+
+    const processHydrationChunk = () => {
+      if (hydrationBuilder == null) {
+        rafId = 0;
+        return;
+      }
+      const start = hydrationChunkIdx * HYDRATION_CHUNK_SIZE;
+      const end = Math.min(start + HYDRATION_CHUNK_SIZE, hydrationTicks.length);
+      const chunk = hydrationTicks.slice(start, end);
+      const seeded = hydrationBuilder.ingestChunk(chunk);
+      hydrationChunkIdx += 1;
+      applySeededChunk(seeded);
+      if (end < hydrationTicks.length) {
+        rafId = window.requestAnimationFrame(processHydrationChunk);
+      } else {
+        applySeededChunk(hydrationBuilder.finalize());
+        // RA-111: trade bubbles still use the existing one-shot setHistory.
+        // Its internal cost is smaller (~13k Map inserts + rebuildItems);
+        // RA-109 didn't flag it as a long task. Chunking it can land in a
+        // follow-up if profiling shows it dominates after price-tick chunking.
+        const backfill = bookmapBackfillRef.current;
+        if (backfill) {
+          tradeBubbleRef.current?.setHistory(
+            backfill.price_ticks.map(tradeBubbleFromBackfillTick),
+          );
+        }
+        hydrationBuilder = null;
+        hydrationTicks = [];
+        hydrationChunkIdx = 0;
+        rafId = 0;
+      }
+    };
 
     const flushRefUpdates = () => {
       const backfillEpoch = bookmapBackfillEpoch.current;
@@ -261,57 +356,37 @@ export function PriceChart() {
         const backfill = bookmapBackfillRef.current;
         const priceLine = priceLineRef.current;
         if (backfill && priceLine) {
-          const seeded = aggRef.current.seedFromHistory(
-            backfill.price_ticks.map((tick) => ({
-              tsNs: tick.ts_ns,
-              price: tick.price,
-              bid: tick.bid,
-              ask: tick.ask,
-              volume: tick.volume,
-              lastTradeDelta: tick.last_trade_delta,
-            })),
-          );
-          priceLine.setData(seeded.prices);
-          volumeBuyRef.current?.setData(seeded.buyBars);
-          volumeSellRef.current?.setData(seeded.sellBars);
-          const coloredCvd = seeded.cvd.map(colorCvdPoint);
-          cvdRef.current?.setData(coloredCvd);
-          const cvdMarkers = cvdFlipMarkersFromPoints(coloredCvd);
-          cvdMarkersRef.current = cvdMarkers;
-          cvdFlipRef.current?.setMarkers(cvdMarkers);
-          const latestCvd = coloredCvd.at(-1);
-          const previousCvd = coloredCvd.at(-2);
-          lastCvdValueRef.current = latestCvd?.value ?? null;
-          // RA-107b: derive label from buy vs sell magnitudes per bucket;
-          // net direction = bullish if buy > sell, bearish if sell > buy.
-          const latestBuy = seeded.buyBars.at(-1);
-          const latestSell = seeded.sellBars.at(-1);
-          if (latestBuy || latestSell) {
-            const buyVol = latestBuy?.value ?? 0;
-            const sellVol = Math.abs(latestSell?.value ?? 0);
-            const total = buyVol + sellVol;
-            updatePaneLabel(
-              volumeLabelRef.current,
-              `VOL ${Math.round(total).toLocaleString()}  buy ${Math.round(
-                buyVol,
-              ).toLocaleString()} / sell ${Math.round(sellVol).toLocaleString()}`,
-              buyVol >= sellVol ? "bullish" : "bearish",
-            );
+          // RA-111: start a chunked hydration pass. Cancels any in-flight pass
+          // first (a second epoch transition could land mid-hydration if the
+          // operator hard-reloaded while a previous hydration was running).
+          if (rafId !== 0) {
+            window.cancelAnimationFrame(rafId);
+            rafId = 0;
           }
-          if (latestCvd) {
-            const delta =
-              previousCvd == null ? 0 : latestCvd.value - previousCvd.value;
-            updatePaneLabel(
-              cvdLabelRef.current,
-              `CVD ${formatSigned(latestCvd.value)}  Δ ${formatSigned(delta)}`,
-              cvdDirection(latestCvd.value),
-            );
+          hydrationBuilder = aggRef.current.prepareHistoryBuilder();
+          hydrationTicks = backfill.price_ticks.map((tick) => ({
+            tsNs: tick.ts_ns,
+            price: tick.price,
+            bid: tick.bid,
+            ask: tick.ask,
+            volume: tick.volume,
+            lastTradeDelta: tick.last_trade_delta,
+          }));
+          hydrationChunkIdx = 0;
+          if (hydrationTicks.length === 0) {
+            // Empty backfill - still reset chart + drop trade bubbles.
+            applySeededChunk(hydrationBuilder.finalize());
+            tradeBubbleRef.current?.setHistory([]);
+            hydrationBuilder = null;
+          } else {
+            rafId = window.requestAnimationFrame(processHydrationChunk);
           }
-          tradeBubbleRef.current?.setHistory(
-            backfill.price_ticks.map(tradeBubbleFromBackfillTick),
-          );
         }
       }
+      // RA-111: live-tick processing gates on hydration completion. Multiple
+      // ticks may arrive during hydration; only the latest is processed
+      // after hydration finishes (existing tickEpoch / liveTickRef pattern).
+      if (hydrationBuilder != null) return;
       const epoch = tickEpoch.current;
       if (epoch !== lastEpoch) {
         lastEpoch = epoch;
@@ -407,7 +482,10 @@ export function PriceChart() {
     };
     flushRefUpdates();
     intervalId = window.setInterval(flushRefUpdates, CHART_REF_POLL_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      window.clearInterval(intervalId);
+      if (rafId !== 0) window.cancelAnimationFrame(rafId);
+    };
   }, [bookmapBackfillEpoch, bookmapBackfillRef, liveTickRef, tickEpoch]);
 
   useEffect(() => {

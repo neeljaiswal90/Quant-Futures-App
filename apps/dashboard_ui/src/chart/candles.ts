@@ -82,6 +82,14 @@ export const CANDLE_INTERVAL_S = 1;
  */
 export const BLOCK_TRADE_LOTS = 25;
 
+/**
+ * RA-111: price-tick count per chunk during cold backfill replay. Tuned to
+ * keep each chunk's aggregator work under the ~16ms rAF budget at typical
+ * MNQ data volume; larger chunks risk the >50ms long-task threshold RA-109
+ * measured in the one-shot path.
+ */
+export const HYDRATION_CHUNK_SIZE = 1000;
+
 const BUY_COLOR_NORMAL = "rgba(34, 197, 94, 0.65)";  // green-500 (RA-107b aggressor palette)
 const BUY_COLOR_BLOCK = "rgba(34, 197, 94, 1.000)";
 const SELL_COLOR_NORMAL = "rgba(239, 68, 68, 0.65)"; // red-500 (RA-107b aggressor palette)
@@ -251,45 +259,40 @@ export class CandleAggregator {
     return this.current;
   }
 
-  /** Bulk-seed from REST backfill ticks and leave the aggregator at the last tick. */
+  /**
+   * Bulk-seed from REST backfill ticks (synchronous one-shot, kept for tests
+   * and small payloads). For cold backfills under the production path,
+   * prefer the chunked builder pattern: `prepareHistoryBuilder()` →
+   * `ingestHistoryChunk()` × N → `finalizeHistoryBuilder()`, driven by the
+   * caller's rAF schedule (see RA-111). This entrypoint internally routes
+   * through that same chunked builder so the dedup + ordering semantics
+   * are bit-identical between the two paths.
+   */
   seedFromHistory(ticks: readonly HistoricalChartTick[]): HistoricalChartSeries {
+    const builder = this.prepareHistoryBuilder();
+    builder.ingestChunk(ticks);
+    return builder.finalize();
+  }
+
+  /**
+   * RA-111: chunked replay builder. Reset state, return an object the caller
+   * drives across rAF frames. `ingestChunk()` ingests a slice through the
+   * aggregator and emits the cumulative bars so far; `finalize()` returns
+   * the full series and is idempotent. Sorting + dedup happen once across
+   * all chunks (the builder retains pre-sorted order via Map insertion).
+   */
+  prepareHistoryBuilder(): HistoryBuilder {
     this.reset();
     const prices = new Map<UtcSeconds, LineData<UTCTimestamp>>();
     const buyBars = new Map<UtcSeconds, HistogramData<UTCTimestamp>>();
     const sellBars = new Map<UtcSeconds, HistogramData<UTCTimestamp>>();
     const cvd = new Map<UtcSeconds, LineData<UTCTimestamp>>();
-    const ordered = [...ticks]
-      .filter((tick) => Number.isFinite(tick.tsNs) && Number.isFinite(tick.price))
-      .sort((a, b) => a.tsNs - b.tsNs);
 
-    for (const tick of ordered) {
-      const next = this.ingest(
-        {
-          family: "price_tick",
-          price: tick.price,
-          bid: tick.bid,
-          ask: tick.ask,
-          volume: tick.volume,
-          orderflow:
-            typeof tick.lastTradeDelta === "number"
-              ? {
-                  quality: "high",
-                  last_trade_aggressor:
-                    tick.lastTradeDelta > 0
-                      ? "buy"
-                      : tick.lastTradeDelta < 0
-                        ? "sell"
-                        : "unknown",
-                  last_trade_delta: tick.lastTradeDelta,
-                  cvd: null,
-                  aggressor_windows: [],
-                  v_delta: null,
-                  footprint: null,
-                }
-              : null,
-        },
-        tick.tsNs,
-      );
+    // Contract: caller must feed chunks in time-order. Production path
+    // (PriceChart.tsx) iterates an already-sorted price_ticks array, so
+    // this holds. Arrow functions close over the surrounding `this`.
+    const ingestOne = (tick: HistoricalChartTick): void => {
+      const next = this.ingest(toLivePriceTick(tick), tick.tsNs);
       prices.set(next.candle.time, {
         time: next.candle.time as UTCTimestamp,
         value: next.candle.close,
@@ -308,13 +311,79 @@ export class CandleAggregator {
         time: next.cvd.time as UTCTimestamp,
         value: next.cvd.value,
       });
-    }
+    };
 
-    return {
+    const snapshot = (): HistoricalChartSeries => ({
       prices: [...prices.values()],
       buyBars: [...buyBars.values()],
       sellBars: [...sellBars.values()],
       cvd: [...cvd.values()],
+    });
+
+    return {
+      ingestChunk: (chunk: readonly HistoricalChartTick[]): HistoricalChartSeries => {
+        // Sort the new chunk in time-order (caller may have pre-sorted, but
+        // we don't trust that — sorting a 1000-item chunk is cheap). The
+        // aggregator's bucket logic requires per-tick monotonic time within
+        // the chunk; cumulative monotonicity across chunks is the caller's
+        // responsibility (see contract note above).
+        const sorted = [...chunk]
+          .filter((tick) => Number.isFinite(tick.tsNs) && Number.isFinite(tick.price))
+          .sort((a, b) => a.tsNs - b.tsNs);
+        for (const tick of sorted) ingestOne(tick);
+        return snapshot();
+      },
+      finalize: snapshot,
     };
   }
+
+}
+
+export interface HistoryBuilder {
+  /**
+   * Add the next chunk of historical ticks. Re-sorts the cumulative queue
+   * (cheap at the scales involved), drains everything through the
+   * aggregator, and returns the cumulative series so the caller can
+   * setData progressively.
+   */
+  ingestChunk: (chunk: readonly HistoricalChartTick[]) => HistoricalChartSeries;
+  /**
+   * Final cumulative series. Safe to call after all chunks; idempotent if
+   * called twice. Same result as `seedFromHistory()` over the concatenated
+   * input.
+   */
+  finalize: () => HistoricalChartSeries;
+}
+
+/**
+ * Lift a backfill `HistoricalChartTick` into the live `PriceTickPayload`
+ * shape the aggregator's `ingest()` accepts. RA-111: extracted from the
+ * old seedFromHistory body so the chunked builder and the back-compat
+ * seedFromHistory share one tick-translation path.
+ */
+function toLivePriceTick(tick: HistoricalChartTick): PriceTickPayload {
+  return {
+    family: "price_tick",
+    price: tick.price,
+    bid: tick.bid,
+    ask: tick.ask,
+    volume: tick.volume,
+    orderflow:
+      typeof tick.lastTradeDelta === "number"
+        ? {
+            quality: "high",
+            last_trade_aggressor:
+              tick.lastTradeDelta > 0
+                ? "buy"
+                : tick.lastTradeDelta < 0
+                  ? "sell"
+                  : "unknown",
+            last_trade_delta: tick.lastTradeDelta,
+            cvd: null,
+            aggressor_windows: [],
+            v_delta: null,
+            footprint: null,
+          }
+        : null,
+  };
 }

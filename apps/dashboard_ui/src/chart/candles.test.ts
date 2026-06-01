@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { BLOCK_TRADE_LOTS, CandleAggregator, bucketTime } from "./candles";
+import {
+  BLOCK_TRADE_LOTS,
+  CandleAggregator,
+  HYDRATION_CHUNK_SIZE,
+  bucketTime,
+  type HistoricalChartTick,
+} from "./candles";
 import type { PriceTickPayload } from "@contracts/realtime/events";
 
 const tick = (price: number, volume = 1): PriceTickPayload => ({
@@ -178,5 +184,98 @@ describe("CandleAggregator", () => {
     expect(seeded.buyBars.map((p) => p.value)).toEqual([2, 0]);
     expect(seeded.sellBars.map((p) => p.value)).toEqual([0, -3]);
     expect(seeded.cvd.map((point) => point.value)).toEqual([2, -1]);
+  });
+});
+
+describe("prepareHistoryBuilder (RA-111 chunked hydration)", () => {
+  it("HYDRATION_CHUNK_SIZE = 1000", () => {
+    expect(HYDRATION_CHUNK_SIZE).toBe(1000);
+  });
+
+  function syntheticTick(i: number): HistoricalChartTick {
+    return {
+      tsNs: NS(10 + i * 0.5),
+      price: 100 + (i % 5),
+      bid: 100 + (i % 5) - 0.25,
+      ask: 100 + (i % 5) + 0.25,
+      volume: (i % 7) + 1,
+      lastTradeDelta: i % 2 === 0 ? 1 : -1,
+    };
+  }
+
+  it("chunked builder produces identical final series to one-shot seedFromHistory", () => {
+    // Generate 250 synthetic ticks across ~125 buckets.
+    const all = Array.from({ length: 250 }, (_, i) => syntheticTick(i));
+    const aggA = new CandleAggregator(1);
+    const oneShot = aggA.seedFromHistory(all);
+
+    const aggB = new CandleAggregator(1);
+    const builder = aggB.prepareHistoryBuilder();
+    // Feed in 5 chunks of 50.
+    for (let i = 0; i < 5; i += 1) {
+      builder.ingestChunk(all.slice(i * 50, (i + 1) * 50));
+    }
+    const chunked = builder.finalize();
+
+    expect(chunked.prices).toEqual(oneShot.prices);
+    expect(chunked.buyBars).toEqual(oneShot.buyBars);
+    expect(chunked.sellBars).toEqual(oneShot.sellBars);
+    expect(chunked.cvd).toEqual(oneShot.cvd);
+  });
+
+  it("ingestChunk returns cumulative series after each chunk (progressive render)", () => {
+    const all = Array.from({ length: 30 }, (_, i) => syntheticTick(i));
+    const agg = new CandleAggregator(1);
+    const builder = agg.prepareHistoryBuilder();
+
+    const first = builder.ingestChunk(all.slice(0, 10));
+    const second = builder.ingestChunk(all.slice(10, 20));
+    const third = builder.ingestChunk(all.slice(20, 30));
+
+    // Each chunk's cumulative price-series length is monotonically non-decreasing.
+    expect(first.prices.length).toBeGreaterThan(0);
+    expect(second.prices.length).toBeGreaterThanOrEqual(first.prices.length);
+    expect(third.prices.length).toBeGreaterThanOrEqual(second.prices.length);
+    // The third chunk's series matches the one-shot result.
+    const reference = new CandleAggregator(1).seedFromHistory(all);
+    expect(third.prices).toEqual(reference.prices);
+    expect(third.buyBars).toEqual(reference.buyBars);
+    expect(third.sellBars).toEqual(reference.sellBars);
+  });
+
+  it("finalize is idempotent (safe to call twice)", () => {
+    const all = Array.from({ length: 10 }, (_, i) => syntheticTick(i));
+    const agg = new CandleAggregator(1);
+    const builder = agg.prepareHistoryBuilder();
+    builder.ingestChunk(all);
+    const first = builder.finalize();
+    const second = builder.finalize();
+    expect(second).toEqual(first);
+  });
+
+  it("filters non-finite tsNs/price before ingesting", () => {
+    const agg = new CandleAggregator(1);
+    const builder = agg.prepareHistoryBuilder();
+    const seeded = builder.ingestChunk([
+      { tsNs: NS(10), price: 100, bid: 99.75, ask: 100.25, volume: 1, lastTradeDelta: 1 },
+      { tsNs: NaN, price: 101, bid: null, ask: null, volume: 1, lastTradeDelta: 0 },
+      { tsNs: NS(11), price: Infinity, bid: null, ask: null, volume: 1, lastTradeDelta: 0 },
+      { tsNs: NS(12), price: 102, bid: null, ask: null, volume: 1, lastTradeDelta: 1 },
+    ]);
+    expect(seeded.prices.map((p) => p.value)).toEqual([100, 102]);
+  });
+
+  it("sorts ticks within each chunk in time-order before ingesting", () => {
+    // Builder contract: caller must feed chunks in time-order across chunks,
+    // but ticks WITHIN a chunk may be unsorted (e.g. minor reordering from
+    // dedup). The builder sorts per-chunk before ingesting.
+    const agg = new CandleAggregator(1);
+    const builder = agg.prepareHistoryBuilder();
+    const seeded = builder.ingestChunk([
+      { tsNs: NS(12), price: 102, bid: 101.75, ask: 102.25, volume: 1, lastTradeDelta: 1 },
+      { tsNs: NS(10), price: 100, bid: 99.75, ask: 100.25, volume: 1, lastTradeDelta: 1 },
+      { tsNs: NS(11), price: 101, bid: 100.75, ask: 101.25, volume: 1, lastTradeDelta: 1 },
+    ]);
+    expect(seeded.prices.map((p) => p.time)).toEqual([10, 11, 12]);
   });
 });
