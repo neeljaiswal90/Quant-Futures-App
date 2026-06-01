@@ -4,10 +4,13 @@ import {
   EVENT_BUBBLE_ID_PREFIX,
   EventBubblePrimitive,
   EVENT_LEGEND_ITEMS,
+  ICEBERG_COVERAGE_DECAY_MS,
   eventBubbleVisual,
   eventBubbleTooltip,
   feedItemToBubbleItem,
+  icebergCoverageBands,
   projectBubbleItems,
+  projectIcebergCoverageBands,
   type EventBubbleItem,
 } from "./eventBubbles";
 import type { UTCTimestamp } from "lightweight-charts";
@@ -38,6 +41,8 @@ describe("event bubbles", () => {
       text: "iceberg at entry",
       strength: 0.8,
       side: "ask",
+      refills: 5,
+      totalConsumed: 145,
     };
 
     const bubble = feedItemToBubbleItem(item);
@@ -46,6 +51,8 @@ describe("event bubbles", () => {
     expect(bubble?.id).toBe(`${EVENT_BUBBLE_ID_PREFIX}iceberg|known`);
     expect(bubble?.time).toBe(1_780_000_000);
     expect(bubble?.price).toBe(30350.25);
+    expect(bubble?.refills).toBe(5);
+    expect(bubble?.totalConsumed).toBe(145);
   });
 
   it("projects time and price into chart coordinates", () => {
@@ -147,6 +154,68 @@ describe("event bubbles", () => {
     for (const item of EVENT_LEGEND_ITEMS) {
       expect(forbiddenExecutionColors.has(item.fillColor)).toBe(false);
     }
+  });
+
+  it("groups iceberg events into decaying horizontal coverage bands", () => {
+    const items = [
+      eventItem({
+        id: "a",
+        family: "iceberg",
+        time: 100 as UTCTimestamp,
+        price: 30350.13,
+        side: "ask",
+        levelId: "ask-wall",
+        refills: 3,
+        totalConsumed: 50,
+      }),
+      eventItem({
+        id: "b",
+        family: "iceberg",
+        time: 130 as UTCTimestamp,
+        price: 30350.25,
+        side: "ask",
+        levelId: "ask-wall",
+        refills: 2,
+        totalConsumed: 95,
+      }),
+    ];
+
+    const [band] = icebergCoverageBands(items);
+
+    expect(band).toMatchObject({
+      id: "ask-wall",
+      price: 30350.25,
+      side: "ask",
+      refills: 5,
+      totalConsumed: 145,
+      startTime: 100,
+    });
+    expect(Number(band?.endTime)).toBe(130 + ICEBERG_COVERAGE_DECAY_MS / 1000);
+  });
+
+  it("projects iceberg coverage with visible-time culling", () => {
+    const projected = projectIcebergCoverageBands(
+      [
+        eventItem({
+          family: "iceberg",
+          time: 100 as UTCTimestamp,
+          price: 30350.25,
+          side: "bid",
+          totalConsumed: 100,
+        }),
+      ],
+      (time) => (Number(time) === 100 || Number(time) === 105 ? Number(time) : null),
+      (price) => (price === 30350.25 ? 220 : price === 30350.375 ? 218 : 222),
+      { from: 100 as UTCTimestamp, to: 105 as UTCTimestamp },
+    );
+
+    expect(projected).toHaveLength(1);
+    expect(projected[0]).toMatchObject({
+      x: 100,
+      width: 5,
+      y: 218,
+      fillColor: expect.stringContaining("rgba(250, 204, 21"),
+    });
   });
 
   it("expands autoscale around event prices", () => {

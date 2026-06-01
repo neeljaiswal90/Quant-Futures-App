@@ -54,6 +54,21 @@ describe("DOM ladder row model", () => {
     expect(rows[0].price).toBeGreaterThan(rows.at(-1)!.price);
   });
 
+  it("caps the visible ladder window so wide depth payloads do not scroll", () => {
+    const depth = { ...depthPayload(), n_ticks: 100 };
+    const rows = buildDomLadderRows({
+      depth,
+      centerPrice: depth.mid ?? 30090.25,
+      lastPrice: 30090,
+      zones: [],
+      history: [],
+      nowMs: NOW_MS,
+    });
+
+    expect(domLadderRadiusTicks(depth)).toBe(19);
+    expect(rows).toHaveLength(39);
+  });
+
   it("highlights the last-price row more strongly when resting size is present", () => {
     const rows = buildDomLadderRows({
       depth: depthPayload(),

@@ -9,14 +9,12 @@ import { formatMnqPrice } from "../contract/render";
 export function Scenarios() {
   const { state } = useDashboard();
   const scenarios = activeScenarios(state);
+  if (scenarios.length === 0) return null;
 
   return (
     <div className="panel">
       <h2>Active scenarios</h2>
-      {scenarios.length === 0 ? (
-        <p className="empty">No scenarios near price.</p>
-      ) : (
-        scenarios.map((s) => (
+      {scenarios.map((s) => (
           <div className="scenario" key={s.id}>
             <div>{s.label}</div>
             <div className="prob">
@@ -33,8 +31,7 @@ export function Scenarios() {
               )}
             </div>
           </div>
-        ))
-      )}
+        ))}
     </div>
   );
 }

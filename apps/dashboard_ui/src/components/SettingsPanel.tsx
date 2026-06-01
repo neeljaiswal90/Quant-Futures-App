@@ -49,17 +49,31 @@ export function SettingsPanel() {
   };
 
   return (
-    <div className="panel settings">
-      <h2
-        className="history-toggle"
-        onClick={() => setOpen((o) => !o)}
-        role="button"
+    <div className="alert-settings-dock">
+      <button
+        className={`alert-settings-trigger ${open ? "alert-settings-trigger-open" : ""}`}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
+        aria-controls="alert-settings-panel"
+        aria-label="Alert settings"
       >
-        {open ? "▾" : "▸"} Alert settings
-      </h2>
+        <span className="alert-settings-icon" aria-hidden="true" />
+        <span className="alert-settings-trigger-text">Alerts</span>
+      </button>
       {open && (
-        <>
+        <div className="panel settings alert-settings-panel" id="alert-settings-panel">
+          <div className="alert-settings-head">
+            <h2>Alert settings</h2>
+            <button
+              className="alert-settings-close"
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close alert settings"
+            >
+              x
+            </button>
+          </div>
           {ALERT_TIERS.map((tier) => {
             const t = config[tier];
             return (
@@ -240,7 +254,7 @@ export function SettingsPanel() {
               {saveMsg}
             </span>
           )}
-        </>
+        </div>
       )}
     </div>
   );

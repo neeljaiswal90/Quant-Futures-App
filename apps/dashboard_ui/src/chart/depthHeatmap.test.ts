@@ -99,7 +99,26 @@ describe("depth heatmap projection", () => {
   });
 
   it("uses amber liquidity colors so executions can own green/red", () => {
-    expect(depthCellColor(1, "live")).toBe("rgba(255, 154, 34, 0.660)");
+    expect(depthCellColor(1, "live")).toBe("rgba(255, 154, 34, 0.850)");
+  });
+
+  it("defensively caps over-wide payloads to 100 levels per side", () => {
+    const payload = {
+      ...depthPayload(BASE_NS),
+      bid_levels: Array.from({ length: 120 }, (_, index) => ({
+        price: 30090 - index * 0.25,
+        size: 1,
+      })),
+      ask_levels: Array.from({ length: 120 }, (_, index) => ({
+        price: 30090.25 + index * 0.25,
+        size: 1,
+      })),
+      n_ticks: 120,
+    };
+
+    const converted = depthPayloadToColumn(payload);
+
+    expect(converted?.levels).toHaveLength(200);
   });
 
   it("keeps the primitive below the price and event layers", () => {

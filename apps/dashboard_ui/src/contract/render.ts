@@ -208,6 +208,9 @@ export interface FeedItem {
   direction?: string;
   /** Stable identity used to merge snapshot-hydrated rows idempotently. */
   eventKey?: string;
+  /** Existing structured iceberg payload fields retained for UI-only overlays. */
+  refills?: number;
+  totalConsumed?: number;
   /** Human-readable headline for the feed row. */
   text: string;
   /** Relative ordering strength 0..1 for recency+strength sort. */
@@ -286,6 +289,14 @@ function payloadDirection(p: RealtimePayload): string | undefined {
   return undefined;
 }
 
+function payloadRefills(p: RealtimePayload): number | undefined {
+  return isIceberg(p) ? p.refills : undefined;
+}
+
+function payloadTotalConsumed(p: RealtimePayload): number | undefined {
+  return isIceberg(p) ? p.total_consumed : undefined;
+}
+
 function payloadEventKey(p: RealtimePayload, tsNs: number): string {
   if (isSignal(p)) {
     const family = displayFamily(p);
@@ -339,6 +350,8 @@ export function messageToFeedItem(msg: RealtimeMessage): FeedItem {
     side: payloadSide(msg.payload),
     direction: payloadDirection(msg.payload),
     eventKey: payloadEventKey(msg.payload, msg.ts_ns),
+    refills: payloadRefills(msg.payload),
+    totalConsumed: payloadTotalConsumed(msg.payload),
     text: payloadText(msg.payload),
     strength: msg.tier ? TIER_STRENGTH[msg.tier] : 0.15,
   };

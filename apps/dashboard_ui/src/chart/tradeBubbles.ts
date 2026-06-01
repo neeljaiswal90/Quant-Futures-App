@@ -21,6 +21,7 @@ export const TRADE_BUBBLE_ID_PREFIX = "trade-bubble:";
 export const TRADE_HISTORY_WINDOW_SECONDS = 8 * 60 * 60;
 export const MAX_TRADE_BUBBLES = 100_000;
 export const MAX_VISIBLE_TRADE_BUBBLES = 2_500;
+export const BLOCK_TRADE_VOLUME_THRESHOLD = 25;
 
 type CoordinateFn<T> = (value: T) => Coordinate | number | null;
 
@@ -103,7 +104,7 @@ export function projectTradeBubbles(
       y: Number(y),
       radius: tradeBubbleRadius(tick.volume),
       fillColor: tradeBubbleFill(tick.aggressorSide),
-      strokeColor: tradeBubbleStroke(tick.aggressorSide),
+      strokeColor: tradeBubbleStroke(tick.aggressorSide, tick.volume),
     });
   }
   return points;
@@ -129,7 +130,8 @@ function timeValueSeconds(time: Time): number | null {
 
 function tradeBubbleRadius(volume: number | null): number {
   const size = Math.max(1, volume ?? 1);
-  return Math.max(2.5, Math.min(16, 2.2 + Math.log1p(size) * 2.2));
+  const base = Math.max(2.5, Math.min(16, 2.2 + Math.log1p(size) * 2.2));
+  return size >= BLOCK_TRADE_VOLUME_THRESHOLD ? Math.min(18, base + 1.4) : base;
 }
 
 function tradeBubbleFill(side: TradeAggressorSide): string {
@@ -138,10 +140,11 @@ function tradeBubbleFill(side: TradeAggressorSide): string {
   return "rgba(226, 232, 240, 0.52)";
 }
 
-function tradeBubbleStroke(side: TradeAggressorSide): string {
-  if (side === "buy") return "rgba(134, 239, 172, 0.92)";
-  if (side === "sell") return "rgba(252, 165, 165, 0.92)";
-  return "rgba(203, 213, 225, 0.72)";
+function tradeBubbleStroke(side: TradeAggressorSide, volume: number | null): string {
+  const block = Math.max(0, volume ?? 0) >= BLOCK_TRADE_VOLUME_THRESHOLD;
+  if (side === "buy") return block ? "rgba(187, 247, 208, 1)" : "rgba(134, 239, 172, 0.92)";
+  if (side === "sell") return block ? "rgba(254, 202, 202, 1)" : "rgba(252, 165, 165, 0.92)";
+  return block ? "rgba(248, 250, 252, 0.95)" : "rgba(203, 213, 225, 0.72)";
 }
 
 class TradeBubbleRenderer implements IPrimitivePaneRenderer {
@@ -155,7 +158,7 @@ class TradeBubbleRenderer implements IPrimitivePaneRenderer {
         ctx.arc(point.x, point.y, point.radius, 0, Math.PI * 2);
         ctx.fillStyle = point.fillColor;
         ctx.fill();
-        ctx.lineWidth = 1.25;
+        ctx.lineWidth = Math.max(0, point.volume ?? 0) >= BLOCK_TRADE_VOLUME_THRESHOLD ? 2 : 1.25;
         ctx.strokeStyle = point.strokeColor;
         ctx.stroke();
         ctx.restore();

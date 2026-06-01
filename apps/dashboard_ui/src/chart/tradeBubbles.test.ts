@@ -51,6 +51,18 @@ describe("trade bubbles", () => {
     });
   });
 
+  it("emphasizes block-size trades without changing execution colors", () => {
+    const [point] = projectTradeBubbles(
+      [tick({ volume: 25 })],
+      (time) => (time === (BASE_NS / 1e9) as UTCTimestamp ? 120 : null),
+      (price) => (price === 30349.25 ? 220 : null),
+      { from: (BASE_NS / 1e9 - 1) as UTCTimestamp, to: (BASE_NS / 1e9 + 1) as UTCTimestamp },
+    );
+
+    expect(point.radius).toBeGreaterThan(10);
+    expect(point.strokeColor).toBe("rgba(187, 247, 208, 1)");
+  });
+
   it("dedupes fast and enriched records into one drawable execution", () => {
     const primitive = new TradeBubblePrimitive();
     primitive.setHistory([tick({ seq: 1, aggressorSide: "unknown", lastTradeDelta: null })]);

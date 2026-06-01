@@ -62,6 +62,7 @@ export function PriceChart() {
   const aggRef = useRef(new CandleAggregator(1));
   const [hoveredTrade, setHoveredTrade] = useState<HoveredTradeBubble | null>(null);
   const [showExecutions, setShowExecutions] = useState(true);
+  const [showIcebergCoverage, setShowIcebergCoverage] = useState(true);
   const [legendOpen, setLegendOpen] = useState(false);
 
   useEffect(() => {
@@ -266,7 +267,9 @@ export function PriceChart() {
 
   useZonePriceLines(priceLineRef);
   useDepthHeatmap(priceLineRef);
-  const hoveredEvent = useEventMarkers(chartRef, priceLineRef, eventAnchorRef);
+  const hoveredEvent = useEventMarkers(chartRef, priceLineRef, eventAnchorRef, {
+    showIcebergCoverage,
+  });
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -307,6 +310,14 @@ export function PriceChart() {
           aria-pressed={showExecutions}
         >
           {showExecutions ? "Executions on" : "Executions off"}
+        </button>
+        <button
+          type="button"
+          className={`chart-toggle ${showIcebergCoverage ? "chart-toggle-on" : ""}`}
+          onClick={() => setShowIcebergCoverage((value) => !value)}
+          aria-pressed={showIcebergCoverage}
+        >
+          {showIcebergCoverage ? "Icebergs on" : "Icebergs off"}
         </button>
         <button
           type="button"

@@ -15,8 +15,11 @@ import type {
   UTCTimestamp,
 } from "lightweight-charts";
 import { formatMnqPrice, type FeedItem } from "../contract/render";
+import { snapPrice } from "./priceGrid";
 
 export const EVENT_BUBBLE_ID_PREFIX = "event-bubble:";
+export const ICEBERG_COVERAGE_DECAY_MS = 5 * 60 * 1000;
+const MAX_ICEBERG_COVERAGE_BANDS = 300;
 
 export interface EventBubbleItem {
   id: string;
@@ -28,6 +31,9 @@ export interface EventBubbleItem {
   direction: string | null;
   text: string;
   strength: number;
+  levelId?: string | null;
+  refills?: number;
+  totalConsumed?: number;
 }
 
 export interface EventBubblePoint extends EventBubbleItem {
@@ -43,6 +49,25 @@ export interface EventBubblePoint extends EventBubbleItem {
 export interface HoveredEventBubble {
   item: EventBubbleItem;
   point: { x: number; y: number };
+}
+
+export interface IcebergCoverageBand {
+  id: string;
+  startTime: UTCTimestamp;
+  endTime: UTCTimestamp;
+  price: number;
+  side: string | null;
+  refills: number;
+  totalConsumed: number;
+}
+
+export interface ProjectedIcebergCoverageBand extends IcebergCoverageBand {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fillColor: string;
+  strokeColor: string;
 }
 
 type CoordinateFn<T> = (value: T) => Coordinate | number | null;
@@ -113,6 +138,9 @@ export function feedItemToBubbleItem(item: FeedItem): EventBubbleItem | null {
     direction: item.direction ?? null,
     text: item.text,
     strength: item.strength,
+    levelId: item.levelId ?? null,
+    refills: item.refills,
+    totalConsumed: item.totalConsumed,
   };
 }
 
@@ -147,8 +175,130 @@ export function projectBubbleItems(
   });
 }
 
+export function icebergCoverageBands(
+  items: readonly EventBubbleItem[],
+): IcebergCoverageBand[] {
+  const grouped = new Map<
+    string,
+    {
+      startNs: number;
+      endNs: number;
+      price: number;
+      side: string | null;
+      refills: number;
+      totalConsumed: number;
+    }
+  >();
+
+  for (const item of items) {
+    if (item.family !== "iceberg" || !Number.isFinite(item.price)) continue;
+    const price = snapPrice(item.price);
+    const key = item.levelId ?? `${price}|${item.side ?? ""}`;
+    const existing = grouped.get(key);
+    const totalConsumed = Math.max(0, item.totalConsumed ?? 0);
+    const refills = Math.max(0, item.refills ?? 0);
+    if (existing == null) {
+      grouped.set(key, {
+        startNs: item.time * 1_000_000_000,
+        endNs: item.time * 1_000_000_000,
+        price,
+        side: item.side,
+        refills,
+        totalConsumed,
+      });
+    } else {
+      existing.startNs = Math.min(existing.startNs, item.time * 1_000_000_000);
+      existing.endNs = Math.max(existing.endNs, item.time * 1_000_000_000);
+      existing.refills += refills;
+      existing.totalConsumed += totalConsumed;
+    }
+  }
+
+  return [...grouped.entries()]
+    .map(([id, band]) => ({
+      id,
+      startTime: Math.floor(band.startNs / 1e9) as UTCTimestamp,
+      endTime: Math.floor(
+        band.endNs / 1e9 + ICEBERG_COVERAGE_DECAY_MS / 1000,
+      ) as UTCTimestamp,
+      price: band.price,
+      side: band.side,
+      refills: band.refills,
+      totalConsumed: band.totalConsumed,
+    }))
+    .sort((a, b) => Number(a.endTime) - Number(b.endTime))
+    .slice(-MAX_ICEBERG_COVERAGE_BANDS);
+}
+
+export function projectIcebergCoverageBands(
+  items: readonly EventBubbleItem[],
+  timeToCoordinate: CoordinateFn<UTCTimestamp>,
+  priceToCoordinate: CoordinateFn<number>,
+  visibleRange?: { from: Time; to: Time } | null,
+): ProjectedIcebergCoverageBand[] {
+  const range = visibleRangeSeconds(visibleRange ?? null);
+  return icebergCoverageBands(items).flatMap((band) => {
+    const startSeconds = Number(band.startTime);
+    const endSeconds = Number(band.endTime);
+    if (range && (endSeconds < range.from || startSeconds > range.to)) return [];
+    const drawStart = range ? Math.max(startSeconds, range.from) : startSeconds;
+    const drawEnd = range ? Math.min(endSeconds, range.to) : endSeconds;
+    const xStart = timeToCoordinate(Math.floor(drawStart) as UTCTimestamp);
+    const xEnd = timeToCoordinate(Math.ceil(drawEnd) as UTCTimestamp);
+    const center = priceToCoordinate(band.price);
+    const upper = priceToCoordinate(band.price + 0.125);
+    const lower = priceToCoordinate(band.price - 0.125);
+    if (xStart == null || xEnd == null || center == null) return [];
+    const height =
+      upper != null && lower != null
+        ? Math.max(2.5, Math.min(9, Math.abs(Number(lower) - Number(upper))))
+        : 4;
+    return [
+      {
+        ...band,
+        x: Number(xStart),
+        y: Number(center) - height / 2,
+        width: Math.max(3, Number(xEnd) - Number(xStart)),
+        height,
+        fillColor: icebergCoverageFill(band),
+        strokeColor: icebergCoverageStroke(band),
+      },
+    ];
+  });
+}
+
 export function eventBubbleTooltip(item: EventBubbleItem): string {
   return `${item.family} @ ${formatMnqPrice(item.price)} - ${item.text}`;
+}
+
+function visibleRangeSeconds(range: { from: Time; to: Time } | null): { from: number; to: number } | null {
+  if (!range) return null;
+  const from = timeValueSeconds(range.from);
+  const to = timeValueSeconds(range.to);
+  if (from == null || to == null) return null;
+  return { from: Math.min(from, to), to: Math.max(from, to) };
+}
+
+function timeValueSeconds(time: Time): number | null {
+  if (typeof time === "number") return time;
+  if (typeof time === "string") {
+    const parsed = Date.parse(`${time}T00:00:00Z`);
+    return Number.isFinite(parsed) ? parsed / 1000 : null;
+  }
+  const parsed = Date.UTC(time.year, time.month - 1, time.day) / 1000;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function icebergCoverageFill(band: IcebergCoverageBand): string {
+  const size = Math.max(1, band.totalConsumed || band.refills || 1);
+  const alpha = Math.max(0.14, Math.min(0.58, 0.14 + Math.log1p(size) / Math.log1p(220) * 0.44));
+  const ask = `${band.side ?? ""}`.toLowerCase().includes("ask");
+  return ask ? `rgba(251, 191, 36, ${alpha.toFixed(3)})` : `rgba(250, 204, 21, ${alpha.toFixed(3)})`;
+}
+
+function icebergCoverageStroke(band: IcebergCoverageBand): string {
+  const ask = `${band.side ?? ""}`.toLowerCase().includes("ask");
+  return ask ? "rgba(253, 230, 138, 0.72)" : "rgba(254, 240, 138, 0.72)";
 }
 
 /**
@@ -255,10 +405,39 @@ function drawEventShape(
 }
 
 class EventBubbleRenderer implements IPrimitivePaneRenderer {
-  constructor(private readonly points: readonly EventBubblePoint[]) {}
+  constructor(
+    private readonly points: readonly EventBubblePoint[],
+    private readonly coverageBands: readonly ProjectedIcebergCoverageBand[],
+  ) {}
 
   draw(target: CanvasRenderingTarget2D): void {
-    target.useMediaCoordinateSpace(({ context: ctx }) => {
+    target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+      for (const band of this.coverageBands) {
+        if (band.y > mediaSize.height + 4 || band.y + band.height < -4) continue;
+        ctx.save();
+        ctx.fillStyle = band.fillColor;
+        ctx.strokeStyle = band.strokeColor;
+        ctx.lineWidth = 1;
+        ctx.fillRect(band.x, band.y, band.width, band.height);
+        ctx.strokeRect(band.x, band.y, band.width, band.height);
+        ctx.restore();
+      }
+      const criticalXs = new Set(
+        this.points
+          .filter((point) => point.tier === "CRITICAL")
+          .map((point) => Math.round(point.x)),
+      );
+      for (const x of criticalXs) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(248, 81, 73, 0.26)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, mediaSize.height);
+        ctx.stroke();
+        ctx.restore();
+      }
       for (const point of this.points) {
         ctx.save();
         ctx.beginPath();
@@ -286,9 +465,14 @@ class EventBubbleRenderer implements IPrimitivePaneRenderer {
 
 class EventBubblePaneView implements IPrimitivePaneView {
   private points: readonly EventBubblePoint[] = [];
+  private coverageBands: readonly ProjectedIcebergCoverageBand[] = [];
 
-  update(points: readonly EventBubblePoint[]): void {
+  update(
+    points: readonly EventBubblePoint[],
+    coverageBands: readonly ProjectedIcebergCoverageBand[],
+  ): void {
     this.points = points;
+    this.coverageBands = coverageBands;
   }
 
   zOrder(): "normal" {
@@ -296,7 +480,7 @@ class EventBubblePaneView implements IPrimitivePaneView {
   }
 
   renderer(): IPrimitivePaneRenderer {
-    return new EventBubbleRenderer(this.points);
+    return new EventBubbleRenderer(this.points, this.coverageBands);
   }
 
   hitTest(x: number, y: number): PrimitiveHoveredItem | null {
@@ -330,6 +514,7 @@ export class EventBubblePrimitive implements ISeriesPrimitive<Time> {
   private series: ISeriesApi<SeriesType, Time> | null = null;
   private requestUpdate: (() => void) | null = null;
   private items: readonly EventBubbleItem[] = [];
+  private icebergCoverageVisible = true;
 
   attached(param: SeriesAttachedParameter<Time>): void {
     this.chart = param.chart;
@@ -342,7 +527,7 @@ export class EventBubblePrimitive implements ISeriesPrimitive<Time> {
     this.chart = null;
     this.series = null;
     this.requestUpdate = null;
-    this.view.update([]);
+    this.view.update([], []);
   }
 
   paneViews(): readonly IPrimitivePaneView[] {
@@ -365,20 +550,36 @@ export class EventBubblePrimitive implements ISeriesPrimitive<Time> {
 
   updateAllViews(): void {
     if (this.chart == null || this.series == null) {
-      this.view.update([]);
+      this.view.update([], []);
       return;
     }
-    this.view.update(
-      projectBubbleItems(
+    const points = projectBubbleItems(
         this.items,
         (time) => this.chart?.timeScale().timeToCoordinate(time) ?? null,
         (price) => this.series?.priceToCoordinate(price) ?? null,
-      ),
+      );
+    const coverageBands = this.icebergCoverageVisible
+      ? projectIcebergCoverageBands(
+          this.items,
+          (time) => this.chart?.timeScale().timeToCoordinate(time) ?? null,
+          (price) => this.series?.priceToCoordinate(price) ?? null,
+          this.chart.timeScale().getVisibleRange(),
+        )
+      : [];
+    this.view.update(
+      points,
+      coverageBands,
     );
   }
 
   setItems(items: readonly EventBubbleItem[]): void {
     this.items = items;
+    this.updateAllViews();
+    this.requestUpdate?.();
+  }
+
+  setIcebergCoverageVisible(visible: boolean): void {
+    this.icebergCoverageVisible = visible;
     this.updateAllViews();
     this.requestUpdate?.();
   }

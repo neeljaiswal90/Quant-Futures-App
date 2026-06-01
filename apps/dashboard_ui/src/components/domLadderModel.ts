@@ -1,8 +1,10 @@
 import type { DepthPayload, ZoneState } from "@contracts/realtime/events";
 import type { FeedItem } from "../contract/render";
+import { clampDepthNTicks } from "../chart/depthLimits";
 import { priceToTickKey, tickKeyToPrice } from "../chart/priceGrid";
 
-export const DOM_LADDER_MARGIN_TICKS = 2;
+export const DOM_LADDER_VISIBLE_RADIUS_TICKS = 18;
+export const DOM_LADDER_MARGIN_TICKS = 1;
 export const ICEBERG_FADE_MS = 10 * 60 * 1000;
 
 export interface DomLadderRow {
@@ -32,7 +34,8 @@ function keyToPrice(key: number): number {
 }
 
 export function domLadderRadiusTicks(depth: DepthPayload): number {
-  return Math.max(1, depth.n_ticks) + DOM_LADDER_MARGIN_TICKS;
+  return Math.min(clampDepthNTicks(depth.n_ticks), DOM_LADDER_VISIBLE_RADIUS_TICKS) +
+    DOM_LADDER_MARGIN_TICKS;
 }
 
 export function shouldRecenterDomLadder(
@@ -42,8 +45,9 @@ export function shouldRecenterDomLadder(
 ): boolean {
   if (activePrice == null || !Number.isFinite(activePrice)) return false;
   if (centerPrice == null || !Number.isFinite(centerPrice)) return true;
-  const radius = Math.max(1, nTicks) + DOM_LADDER_MARGIN_TICKS;
-  const hysteresisTicks = Math.max(1, Math.round(Math.max(1, nTicks) * 0.35));
+  const visibleTicks = Math.min(clampDepthNTicks(nTicks), DOM_LADDER_VISIBLE_RADIUS_TICKS);
+  const radius = visibleTicks + DOM_LADDER_MARGIN_TICKS;
+  const hysteresisTicks = Math.max(1, Math.round(visibleTicks * 0.35));
   const thresholdTicks = Math.max(1, radius - hysteresisTicks);
   return Math.abs(priceKey(activePrice) - priceKey(centerPrice)) > thresholdTicks;
 }

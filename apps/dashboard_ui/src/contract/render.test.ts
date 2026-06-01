@@ -116,6 +116,34 @@ describe("feed", () => {
     expect(messageToFeedItem(sweepFrame(3)).price).toBe(30085);
   });
 
+  it("retains structured iceberg fields for client-only coverage overlays", () => {
+    const item = messageToFeedItem({
+      type: "event",
+      seq: 8,
+      ts_ns: 1_780_000_000_000_000_000,
+      ts_pt: "2026-06-01T06:00:00-07:00",
+      tier: "HIGH",
+      schema_version: 1,
+      payload: {
+        family: "iceberg",
+        price: 30350.25,
+        side: "ask",
+        refills: 5,
+        total_consumed: 145,
+        level_id: "ask-wall",
+        description: "iceberg",
+      },
+    });
+
+    expect(item).toMatchObject({
+      family: "iceberg",
+      price: 30350.25,
+      side: "ask",
+      refills: 5,
+      totalConsumed: 145,
+    });
+  });
+
   it("maps snapshot signals using metadata family and timestamp", () => {
     const item = snapshotSignalToFeedItem(
       snapshotSignal(

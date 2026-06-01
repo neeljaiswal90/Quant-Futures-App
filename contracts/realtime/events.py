@@ -64,6 +64,7 @@ INFERRED_DIRECTIONS: tuple[str, ...] = ("bullish", "bearish", "neutral", "unknow
 FOOTPRINT_SIDES: tuple[str, ...] = ("buy", "sell", "none", "unknown")
 ORDERFLOW_QUALITIES: tuple[str, ...] = ("high", "inferred", "stale_l1", "unavailable")
 DEPTH_QUALITIES: tuple[str, ...] = ("live", "inferred", "stale_l1", "unavailable")
+DEPTH_N_TICKS_MAX: int = 100
 
 # Known payload families. Adding a family here REQUIRES a matching entry in
 # events.ts KNOWN_FAMILIES or the parity test fails.
@@ -285,9 +286,15 @@ class DepthPayload(RealtimePayload):
     family: Literal["depth"] = "depth"
     ts_ns: int
     mid: float | None = None
-    bid_levels: list[DepthLevel] = Field(default_factory=list, max_length=50)
-    ask_levels: list[DepthLevel] = Field(default_factory=list, max_length=50)
-    n_ticks: int = Field(ge=1, le=50)
+    bid_levels: list[DepthLevel] = Field(
+        default_factory=list,
+        max_length=DEPTH_N_TICKS_MAX,
+    )
+    ask_levels: list[DepthLevel] = Field(
+        default_factory=list,
+        max_length=DEPTH_N_TICKS_MAX,
+    )
+    n_ticks: int = Field(ge=1, le=DEPTH_N_TICKS_MAX)
     quality: DepthQuality
 
 
@@ -457,6 +464,7 @@ __all__ = [
     "FOOTPRINT_SIDES",
     "ORDERFLOW_QUALITIES",
     "DEPTH_QUALITIES",
+    "DEPTH_N_TICKS_MAX",
     "FlowDirection",
     "TradeAggressor",
     "InferredDirection",

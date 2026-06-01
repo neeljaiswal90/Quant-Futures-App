@@ -31,6 +31,7 @@ export function useEventMarkers<T extends SeriesType>(
   chartRef: RefObject<IChartApi | null>,
   seriesRef: RefObject<ISeriesApi<T> | null>,
   anchorSeriesRef?: RefObject<ISeriesApi<"Line"> | null>,
+  options: { showIcebergCoverage?: boolean } = {},
 ): HoveredEventBubble | null {
   const { state } = useDashboard();
   const primitiveRef = useRef<EventBubblePrimitive | null>(null);
@@ -66,6 +67,10 @@ export function useEventMarkers<T extends SeriesType>(
     // share timestamps, so dedupe before feeding the transparent anchor series.
     anchorSeriesRef?.current?.setData(anchorSeriesData(drawnItems));
   }, [anchorSeriesRef, drawnItems]);
+
+  useEffect(() => {
+    primitiveRef.current?.setIcebergCoverageVisible(options.showIcebergCoverage ?? true);
+  }, [options.showIcebergCoverage]);
 
   useEffect(() => {
     const chart = chartRef.current;

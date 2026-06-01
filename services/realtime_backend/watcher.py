@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from contracts.realtime.events import DepthPayload
+from contracts.realtime.events import DEPTH_N_TICKS_MAX, DepthPayload
 from rithmic_analytics.cli.normalize_probe_incremental import normalize_incremental
 from rithmic_dashboard.data_sources import load_envelope
 from rithmic_dashboard.features.depth_book import DepthBook, DepthBookTailer
@@ -386,7 +386,7 @@ class CaptureWatcher:
         interval = self._settings.depth_emit_interval_seconds
         if interval <= 0:
             return
-        n_ticks = min(max(1, self._settings.depth_n_ticks), 50)
+        n_ticks = min(max(1, self._settings.depth_n_ticks), DEPTH_N_TICKS_MAX)
         tailer_state: tuple[Path, DepthBookTailer] | None = None
         last_mid: DepthMid | None = None
 

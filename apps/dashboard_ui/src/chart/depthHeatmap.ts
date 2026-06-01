@@ -14,6 +14,7 @@ import type {
 } from "lightweight-charts";
 import type { DepthPayload, DepthQuality } from "@contracts/realtime/events";
 import { MNQ_TICK } from "../contract/render";
+import { DEPTH_N_TICKS_HARD_CAP } from "./depthLimits";
 import { snapPrice } from "./priceGrid";
 
 export const DEPTH_HISTORY_WINDOW_SECONDS = 8 * 60 * 60;
@@ -60,7 +61,10 @@ export function depthPayloadToColumn(payload: DepthPayload): DepthHistoryColumn 
     return null;
   }
 
-  const levels = [...payload.bid_levels, ...payload.ask_levels]
+  const levels = [
+    ...payload.bid_levels.slice(0, DEPTH_N_TICKS_HARD_CAP),
+    ...payload.ask_levels.slice(0, DEPTH_N_TICKS_HARD_CAP),
+  ]
     .filter((level) => (
       Number.isFinite(level.price) &&
       Number.isFinite(level.size) &&
@@ -128,12 +132,12 @@ export function visibleTimeRangeSeconds(
 export function depthIntensity(size: number, sessionMaxSize: number): number {
   if (!Number.isFinite(size) || size <= 0) return 0;
   if (!Number.isFinite(sessionMaxSize) || sessionMaxSize <= 0) return 0;
-  const scaled = Math.log1p(size) / Math.log1p(sessionMaxSize);
+  const scaled = Math.sqrt(size / sessionMaxSize);
   return Math.max(0, Math.min(1, scaled));
 }
 
 export function depthCellOpacity(intensity: number, quality: DepthQuality): number {
-  const base = 0.08 + Math.max(0, Math.min(1, intensity)) * 0.58;
+  const base = 0.04 + Math.max(0, Math.min(1, intensity)) * 0.81;
   if (quality === "stale_l1") return base * 0.35;
   if (quality === "inferred") return base * 0.72;
   return quality === "live" ? base : 0;

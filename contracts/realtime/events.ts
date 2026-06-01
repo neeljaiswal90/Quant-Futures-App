@@ -27,6 +27,7 @@ export const INFERRED_DIRECTIONS = ["bullish", "bearish", "neutral", "unknown"] 
 export const FOOTPRINT_SIDES = ["buy", "sell", "none", "unknown"] as const;
 export const ORDERFLOW_QUALITIES = ["high", "inferred", "stale_l1", "unavailable"] as const;
 export const DEPTH_QUALITIES = ["live", "inferred", "stale_l1", "unavailable"] as const;
+export const DEPTH_N_TICKS_MAX = 100;
 
 export const KNOWN_FAMILIES = [
   "signal",

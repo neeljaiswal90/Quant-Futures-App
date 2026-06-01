@@ -1,14 +1,5 @@
 /**
- * App composition — the 5-tier layout.
- *
- *   Tier 1  alert banner (CRITICAL) + degraded link banner
- *   Tier 2  active scenarios
- *   Tier 3  live feed
- *   Tier 4  price context + chart
- *   Tier 5  collapsed history + settings
- *
- * Providers: DashboardProvider (single store + WS) wraps AlertProvider (which
- * reads the store to fire tier alerts).
+ * App composition — dashboard-first layout.
  */
 import { DashboardProvider, useDashboard } from "./store/context";
 import { AlertProvider } from "./alerts/AlertProvider";
@@ -48,22 +39,20 @@ function Shell() {
       <TopBar />
       <Banners />
       <div className="main">
-        <div className="chart-col">
+        <div className="top-context">
           <PriceContext />
-          <div className="decision-surface">
-            <ChartArea />
-            <DomLadder />
-          </div>
-        </div>
-        <div className="side-col">
           <Scenarios />
+        </div>
+        <div className="decision-surface">
+          <ChartArea />
+          <DomLadder />
+        </div>
+        <div className="bottom-row">
           <LiveFeed />
-          <div style={{ overflow: "auto", display: "grid", gap: 8 }}>
-            <HistoryPanel />
-            <SettingsPanel />
-          </div>
+          <HistoryPanel />
         </div>
       </div>
+      <SettingsPanel />
       <Footer />
     </div>
   );
