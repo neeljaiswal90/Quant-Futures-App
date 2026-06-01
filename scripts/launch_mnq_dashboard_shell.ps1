@@ -11,6 +11,10 @@
 
   It intentionally does NOT start, stop, or supervise Rithmic capture. Capture
   remains owned by the external Globex/RTH automations.
+
+  Depth output is backend startup configuration. The launcher enables depth by
+  default for the desktop shell and publishes 20 ticks per side unless
+  -DepthNTicks is supplied. The backend/contract cap is 100.
 #>
 [CmdletBinding()]
 param(
@@ -24,6 +28,8 @@ param(
     [string]$AnalyticsRoot = "D:\Quant-futures-app\tools\rithmic_analytics",
     [string]$DashboardRoot = "D:\Quant-futures-app\tools\rithmic_dashboard",
     [switch]$NoDepth,
+    [ValidateRange(1, 100)]
+    [int]$DepthNTicks = 20,
     [switch]$NoRefresh,
     [switch]$VisibleStackWindows,
     [switch]$DryRun
@@ -153,6 +159,59 @@ function Build-CommonPythonPath {
     return ($parts | Where-Object { Test-Path $_ }) -join ";"
 }
 
+function Resolve-CaptureContext {
+    param(
+        [string]$RequestedTradingDate,
+        [string]$RequestedSession
+    )
+
+    $captureRoot = Join-Path $AnalyticsRoot "data\captures"
+    if (-not (Test-Path $captureRoot)) {
+        return [pscustomobject]@{
+            TradingDate = $RequestedTradingDate
+            Session = $RequestedSession
+            LastWrite = $null
+            Source = ""
+        }
+    }
+
+    $sessions = if ($RequestedSession -eq "auto") { @("globex", "rth") } else { @($RequestedSession) }
+    $directories = if ([string]::IsNullOrWhiteSpace($RequestedTradingDate)) {
+        @(Get-ChildItem -Path $captureRoot -Directory -ErrorAction SilentlyContinue)
+    } else {
+        @(Get-Item -Path (Join-Path $captureRoot $RequestedTradingDate) -ErrorAction SilentlyContinue)
+    }
+
+    $candidates = @()
+    foreach ($dir in $directories) {
+        foreach ($candidateSession in $sessions) {
+            foreach ($suffix in @(".jsonl", ".obs01.jsonl", ".mbo.jsonl", ".mbp1.jsonl")) {
+                $candidatePath = Join-Path $dir.FullName ("{0}_{1}{2}" -f $RootSymbol, $candidateSession, $suffix)
+                if (Test-Path $candidatePath) {
+                    $item = Get-Item $candidatePath
+                    $candidates += [pscustomobject]@{
+                        TradingDate = $dir.Name
+                        Session = $candidateSession
+                        LastWrite = $item.LastWriteTime
+                        Source = $item.FullName
+                    }
+                }
+            }
+        }
+    }
+
+    if ($candidates.Count -eq 0) {
+        return [pscustomobject]@{
+            TradingDate = $RequestedTradingDate
+            Session = $RequestedSession
+            LastWrite = $null
+            Source = ""
+        }
+    }
+
+    return ($candidates | Sort-Object LastWrite -Descending | Select-Object -First 1)
+}
+
 function Ensure-ShellExecutable {
     if (Test-Path $ShellExe) {
         return
@@ -190,10 +249,27 @@ function Ensure-ShellExecutable {
 $PythonExe = Resolve-Python -Candidate $Python
 $CommonPythonPath = Build-CommonPythonPath
 $DepthEnabled = -not $NoDepth
+$CaptureContext = Resolve-CaptureContext -RequestedTradingDate $TradingDate -RequestedSession $Session
+$ResolvedTradingDate = $CaptureContext.TradingDate
+$ResolvedSession = $CaptureContext.Session
+$PinBackendContext = $Session -ne "auto"
 
 Write-Status "MNQ dashboard shell launch requested" "Green"
 Write-Status "capture lifecycle: external Globex/RTH automations only; this launcher will not start/stop Rithmic capture" "Yellow"
-Write-Status ("backend self-normalize: ON; depth stream: {0}" -f ($(if ($DepthEnabled) { "ON" } else { "OFF" }))) "Yellow"
+Write-Status ("backend self-normalize: ON; depth stream: {0}; n_ticks: {1}" -f ($(if ($DepthEnabled) { "ON" } else { "OFF" }), $DepthNTicks)) "Yellow"
+if (-not [string]::IsNullOrWhiteSpace($CaptureContext.Source)) {
+    Write-Status ("capture context: {0} {1} from {2}" -f $ResolvedTradingDate, $ResolvedSession, $CaptureContext.Source) "Yellow"
+    if ($null -ne $CaptureContext.LastWrite -and $CaptureContext.LastWrite -lt (Get-Date).AddMinutes(-2)) {
+        Write-Status ("capture appears stale; latest write {0}" -f $CaptureContext.LastWrite) "Red"
+    }
+} else {
+    Write-Status "capture context: no matching capture file found; backend will use its own default resolution" "Yellow"
+}
+if ($PinBackendContext) {
+    Write-Status "backend capture context: pinned by explicit -Session" "Yellow"
+} else {
+    Write-Status "backend capture context: auto-resolved continuously; not pinning session/date from latest file" "Yellow"
+}
 
 foreach ($path in @($ServicesRoot, $ShellRoot, $DashboardRoot, $AnalyticsRoot, $RefreshScript)) {
     if (-not (Test-Path $path)) {
@@ -217,7 +293,7 @@ if (-not $NoRefresh) {
     } else {
         $refreshArgs = @(
             "-File", (Quote-PS $RefreshScript),
-            "-Session", $Session,
+            "-Session", $ResolvedSession,
             "-RootSymbol", $RootSymbol,
             "-Python", (Quote-PS $PythonExe),
             "-AnalyticsRoot", (Quote-PS $AnalyticsRoot),
@@ -228,8 +304,8 @@ if (-not $NoRefresh) {
             "-ContinueOnError",
             "-SkipNormalize"
         )
-        if (-not [string]::IsNullOrWhiteSpace($TradingDate)) {
-            $refreshArgs += @("-TradingDate", $TradingDate)
+        if (-not [string]::IsNullOrWhiteSpace($ResolvedTradingDate)) {
+            $refreshArgs += @("-TradingDate", $ResolvedTradingDate)
         }
         $refreshCommand = "& powershell.exe -NoProfile -ExecutionPolicy Bypass $($refreshArgs -join ' ')"
         Start-LoggedPowerShell -Title "mnq-refresh-upkeep" `
@@ -249,7 +325,8 @@ if (Test-BackendHealth -BackendPort $Port) {
         (Set-EnvStatement -Name "PYTHONPATH" -Value $CommonPythonPath),
         (Set-EnvStatement -Name "RA60_ANALYTICS_ROOT" -Value $AnalyticsRoot),
         (Set-EnvStatement -Name "RA60_SELF_NORMALIZE" -Value "1"),
-        (Set-EnvStatement -Name "RA60_DEPTH_ENABLED" -Value ($(if ($DepthEnabled) { "1" } else { "0" })))
+        (Set-EnvStatement -Name "RA60_DEPTH_ENABLED" -Value ($(if ($DepthEnabled) { "1" } else { "0" }))),
+        (Set-EnvStatement -Name "RA60_DEPTH_N_TICKS" -Value ([string]$DepthNTicks))
     )
     $backendArgs = @(
         "-m", "realtime_backend",
@@ -257,13 +334,13 @@ if (Test-BackendHealth -BackendPort $Port) {
         "--port", "$Port",
         "--analytics-root", (Quote-PS $AnalyticsRoot)
     )
-    if ($Session -ne "auto") {
-        $backendArgs += @("--session", $Session)
-        $backendStatements += (Set-EnvStatement -Name "RA60_SESSION" -Value $Session)
+    if ($PinBackendContext -and $ResolvedSession -ne "auto") {
+        $backendArgs += @("--session", $ResolvedSession)
+        $backendStatements += (Set-EnvStatement -Name "RA60_SESSION" -Value $ResolvedSession)
     }
-    if (-not [string]::IsNullOrWhiteSpace($TradingDate)) {
-        $backendArgs += @("--trading-date", $TradingDate)
-        $backendStatements += (Set-EnvStatement -Name "RA60_TRADING_DATE" -Value $TradingDate)
+    if ($PinBackendContext -and -not [string]::IsNullOrWhiteSpace($ResolvedTradingDate)) {
+        $backendArgs += @("--trading-date", $ResolvedTradingDate)
+        $backendStatements += (Set-EnvStatement -Name "RA60_TRADING_DATE" -Value $ResolvedTradingDate)
     }
     $backendCommand = ($backendStatements + @("& $(Quote-PS $PythonExe) $($backendArgs -join ' ')")) -join "; "
     Start-LoggedPowerShell -Title "mnq-realtime-backend" `
@@ -272,10 +349,12 @@ if (Test-BackendHealth -BackendPort $Port) {
         -LogPrefix "backend"
 }
 
-if (Wait-BackendHealth -BackendPort $Port -TimeoutSeconds 30) {
-    Write-Status "backend healthy at http://127.0.0.1:$Port/health" "Green"
-} else {
-    Write-Status "backend health not confirmed within 30s; shell will reconnect when backend comes up" "Yellow"
+if (-not $DryRun) {
+    if (Wait-BackendHealth -BackendPort $Port -TimeoutSeconds 30) {
+        Write-Status "backend healthy at http://127.0.0.1:$Port/health" "Green"
+    } else {
+        Write-Status "backend health not confirmed within 30s; shell will reconnect when backend comes up" "Yellow"
+    }
 }
 
 Ensure-ShellExecutable

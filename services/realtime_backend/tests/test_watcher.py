@@ -67,6 +67,31 @@ def test_resolve_session_uses_overrides(tmp_path: Path) -> None:
     assert session.trading_date == "2026-05-22"
 
 
+def test_watcher_watch_dir_re_resolves_in_auto_mode(tmp_path: Path) -> None:
+    root = _fixture_root(tmp_path)
+    settings = Settings(
+        analytics_root=root,
+        scratch_dir=tmp_path / "scratch" / "dashboard",
+        ewma_calibration_path=None,
+        session_override=None,
+        trading_date_override=None,
+        poll_fallback_interval_seconds=0.0,
+        use_polling_observer=True,
+    )
+    current = [datetime(2026, 5, 21, 20, 0, tzinfo=PT)]
+    watcher = CaptureWatcher(
+        settings,
+        lambda _r: None,
+        now_pt_factory=lambda: current[0],
+    )
+
+    assert watcher.watch_dir == root / "data" / "captures" / "2026-05-22"
+
+    current[0] = datetime(2026, 5, 22, 20, 0, tzinfo=PT)
+
+    assert watcher.watch_dir == root / "data" / "captures" / "2026-05-23"
+
+
 def test_watcher_recomputes_after_trigger(tmp_path: Path) -> None:
     root = _fixture_root(tmp_path)
     settings = _settings(tmp_path, root)

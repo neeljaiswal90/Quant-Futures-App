@@ -277,17 +277,21 @@ class CaptureWatcher:
         use_polling: bool | None = None,
         now_pt_factory: Callable[[], datetime | None] | None = None,
     ) -> None:
+        self._now_pt_factory = now_pt_factory or (lambda: None)
         self._settings = settings
         self._runner = _DebouncedRunner(
             settings,
             on_result,
             on_error=on_error,
-            now_pt_factory=now_pt_factory,
+            now_pt_factory=self._now_pt_factory,
         )
         self._on_price_tick = on_price_tick
         self._on_depth = on_depth
         polling = settings.use_polling_observer if use_polling is None else use_polling
         self._observer: BaseObserver = PollingObserver() if polling else Observer()
+        self._watch_lock = threading.Lock()
+        self._observed_watch: Any | None = None
+        self._watched_dir: Path | None = None
         self._started = False
         self._backstop_stop = threading.Event()
         self._backstop_thread: threading.Thread | None = None
@@ -299,10 +303,41 @@ class CaptureWatcher:
     @property
     def watch_dir(self) -> Path:
         """The capture day directory we watch (created if absent)."""
-        session = resolve_session(self._settings)
+        return self._resolve_watch_dir()
+
+    def _resolve_watch_dir(self) -> Path:
+        """Resolve the capture directory for the currently active session."""
+        session = resolve_session(self._settings, now_pt=self._now_pt_factory())
         capture_dir: Path = session.capture_path.parent
         capture_dir.mkdir(parents=True, exist_ok=True)
         return capture_dir
+
+    def _sync_watch_dir(self) -> None:
+        """Ensure watchdog follows the active capture date directory.
+
+        In auto-session mode the backend must survive Globex/RTH handoffs and
+        probe restarts without staying subscribed to yesterday's capture
+        directory. The runner already re-resolves the exact file on every
+        compute; this keeps the filesystem-event source aligned too.
+        """
+        watch_dir = self._resolve_watch_dir()
+        with self._watch_lock:
+            if self._watched_dir == watch_dir:
+                return
+            if self._observed_watch is not None:
+                try:
+                    self._observer.unschedule(self._observed_watch)
+                except Exception as exc:  # noqa: BLE001
+                    _LOG.debug("failed to unschedule stale capture watch: %s", exc)
+                self._observed_watch = None
+            handler = _CaptureEventHandler(self._runner, watch_dir)
+            self._observed_watch = self._observer.schedule(
+                handler,
+                str(watch_dir),
+                recursive=False,
+            )
+            self._watched_dir = watch_dir
+            _LOG.info("watching capture directory %s", watch_dir)
 
     def seed(self) -> ComputeResult:
         """Run one compute up-front so /snapshot has state before any append."""
@@ -311,10 +346,8 @@ class CaptureWatcher:
     def start(self) -> None:
         if self._started:
             return
-        watch_dir = self.watch_dir
-        handler = _CaptureEventHandler(self._runner, watch_dir)
         self._runner.start()
-        self._observer.schedule(handler, str(watch_dir), recursive=False)
+        self._sync_watch_dir()
         self._observer.start()
         self._start_backstop()
         self._start_fast_price_poller()
@@ -334,6 +367,10 @@ class CaptureWatcher:
 
         def _loop() -> None:
             while not self._backstop_stop.wait(timeout=interval):
+                try:
+                    self._sync_watch_dir()
+                except Exception as exc:  # noqa: BLE001
+                    _LOG.debug("capture watch rebind failed: %s", exc)
                 self._runner.trigger()
 
         self._backstop_thread = threading.Thread(
