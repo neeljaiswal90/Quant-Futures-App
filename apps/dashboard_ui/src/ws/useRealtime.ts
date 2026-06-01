@@ -23,6 +23,7 @@ import type { DashboardState, StoreAction } from "../store/types";
 import { isPriceTick, isSnapshot } from "../contract/guards";
 import type { OrderflowStats, RealtimeMessage } from "@contracts/realtime/events";
 import {
+  appendBoundedLiveFrame,
   isBookmapFrame,
   mergeBackfillWithLiveFrames,
   normalizeBookmapBackfill,
@@ -90,7 +91,7 @@ export function useRealtime(): RealtimeApi {
     const msg = parseMessage(raw);
     if (msg) {
       if (backfillPending.current && isBookmapFrame(msg)) {
-        backfillLiveFrames.current.push(msg);
+        appendBoundedLiveFrame(backfillLiveFrames.current, msg);
       }
       if (isPriceTick(msg.payload)) {
         liveTickRef.current = {

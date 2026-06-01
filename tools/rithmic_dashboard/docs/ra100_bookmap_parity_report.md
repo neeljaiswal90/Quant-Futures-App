@@ -23,6 +23,17 @@ Date: 2026-05-31
 - Added shared `priceGrid` helpers used by heatmap, DOM ladder, and trade bubbles.
 - Prevented snapshot price seeds from rendering as execution bubbles.
 
+## Post-Review Safety Follow-Ups
+
+- Added a 100 MiB REST backfill byte budget with `effective_price_ticks_max`,
+  `effective_depth_columns_max`, `max_response_bytes`, and
+  `estimated_response_bytes` in the response limits block. The backend now
+  returns the newest rows that fit under the budget instead of blindly dumping
+  all configured records.
+- Added a bounded live-frame buffer while REST backfill is in flight. The
+  browser keeps the latest 512 Bookmap frames and drops oldest frames if a
+  backfill request stalls.
+
 ## Scope Notes
 
 - RA-100 fixes browser reload/reconnect while the backend remains running.

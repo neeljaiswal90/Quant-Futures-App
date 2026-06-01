@@ -1,6 +1,8 @@
 import type { DepthPayload, RealtimeMessage } from "@contracts/realtime/events";
 import { isDepth, isPriceTick } from "../contract/guards";
 
+export const LIVE_BACKFILL_BUFFER_CAP = 512;
+
 export type TradeAggressorSide = "buy" | "sell" | "unknown";
 
 export interface BookmapBackfillLimits {
@@ -86,6 +88,21 @@ export function mergeBackfillWithLiveFrames(
     ),
     depth: [...depthBySeq.values()].sort((a, b) => a.ts_ns - b.ts_ns || a.seq - b.seq),
   };
+}
+
+export function appendBoundedLiveFrame(
+  buffer: RealtimeMessage[],
+  msg: RealtimeMessage,
+  cap = LIVE_BACKFILL_BUFFER_CAP,
+): void {
+  if (cap <= 0) {
+    buffer.length = 0;
+    return;
+  }
+  buffer.push(msg);
+  if (buffer.length > cap) {
+    buffer.splice(0, buffer.length - cap);
+  }
 }
 
 export function priceTickKey(tick: Pick<BookmapPriceTickRecord, "ts_ns" | "price" | "volume">): string {

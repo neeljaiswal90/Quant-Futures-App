@@ -7,6 +7,7 @@ decision map without replaying thousands of frames through the websocket queue.
 
 from __future__ import annotations
 
+import json
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
@@ -18,6 +19,7 @@ from realtime_backend.price_ticks import LatestPriceTick
 MAX_PRICE_TICKS = 100_000
 MAX_DEPTH_COLUMNS = 12_000
 MAX_HISTORY_AGE_NS = 8 * 60 * 60 * 1_000_000_000
+MAX_BACKFILL_RESPONSE_BYTES = 100 * 1024 * 1024
 
 PriceKey = tuple[int, float, int]
 DepthKey = tuple[int, tuple[object, ...]]
@@ -89,10 +91,12 @@ class BookmapHistory:
         max_price_ticks: int = MAX_PRICE_TICKS,
         max_depth_columns: int = MAX_DEPTH_COLUMNS,
         max_age_ns: int = MAX_HISTORY_AGE_NS,
+        max_response_bytes: int = MAX_BACKFILL_RESPONSE_BYTES,
     ) -> None:
         self.max_price_ticks = max_price_ticks
         self.max_depth_columns = max_depth_columns
         self.max_age_ns = max_age_ns
+        self.max_response_bytes = max_response_bytes
         self._price_ticks: OrderedDict[PriceKey, PriceTickRecord] = OrderedDict()
         self._depth: OrderedDict[DepthKey, DepthColumnRecord] = OrderedDict()
 
@@ -175,20 +179,87 @@ class BookmapHistory:
     ) -> dict[str, Any]:
         """Return a deterministic compact JSON-serializable backfill payload."""
 
-        return {
+        price_rows, depth_rows = self._rows_under_response_budget()
+        limits = {
+            "price_ticks_max": self.max_price_ticks,
+            "depth_columns_max": self.max_depth_columns,
+            "effective_price_ticks_max": len(price_rows),
+            "effective_depth_columns_max": len(depth_rows),
+            "max_age_seconds": self.max_age_ns // 1_000_000_000,
+            "max_response_bytes": self.max_response_bytes,
+            "estimated_response_bytes": 0,
+        }
+        response = {
             "schema_version": 1,
             "trading_date": trading_date,
             "session": session,
             "generated_at_ns": generated_at_ns,
             "through_seq": through_seq,
-            "limits": {
-                "price_ticks_max": self.max_price_ticks,
-                "depth_columns_max": self.max_depth_columns,
-                "max_age_seconds": self.max_age_ns // 1_000_000_000,
-            },
-            "price_ticks": [record.to_dict() for record in self._price_ticks.values()],
-            "depth": [record.to_dict() for record in self._depth.values()],
+            "limits": limits,
+            "price_ticks": price_rows,
+            "depth": depth_rows,
         }
+        estimate = 0
+        while True:
+            next_estimate = _encoded_len(response)
+            if next_estimate == estimate:
+                break
+            estimate = next_estimate
+            limits["estimated_response_bytes"] = estimate
+        return {
+            **response,
+            "limits": limits,
+        }
+
+    def _rows_under_response_budget(
+        self,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Return newest rows whose serialized response stays under the byte cap."""
+
+        price_rows = [record.to_dict() for record in self._price_ticks.values()]
+        depth_rows = [record.to_dict() for record in self._depth.values()]
+        if self.max_response_bytes <= 0:
+            return [], []
+
+        selected_price: list[dict[str, Any]] = []
+        selected_depth: list[dict[str, Any]] = []
+        row_budget = max(0, self.max_response_bytes - 512)
+        used = 0
+
+        entries: list[tuple[int, int, str, int, dict[str, Any]]] = []
+        for row in price_rows:
+            entries.append((
+                int(row["ts_ns"]),
+                int(row["seq"]),
+                "price",
+                _encoded_len(row) + 2,
+                row,
+            ))
+        for row in depth_rows:
+            entries.append((
+                int(row["ts_ns"]),
+                int(row["seq"]),
+                "depth",
+                _encoded_len(row) + 2,
+                row,
+            ))
+
+        for _ts_ns, _seq, kind, size, row in sorted(
+            entries,
+            key=lambda entry: (entry[0], entry[1], entry[2]),
+            reverse=True,
+        ):
+            if used + size > row_budget:
+                continue
+            used += size
+            if kind == "price":
+                selected_price.append(row)
+            else:
+                selected_depth.append(row)
+
+        selected_price.sort(key=lambda row: (int(row["ts_ns"]), int(row["seq"])))
+        selected_depth.sort(key=lambda row: (int(row["ts_ns"]), int(row["seq"])))
+        return selected_price, selected_depth
 
     def _trim_price_ticks(self, latest_ts_ns: int) -> None:
         cutoff = latest_ts_ns - self.max_age_ns
@@ -231,9 +302,20 @@ def _aggressor_side(
     return "unknown"
 
 
+def _encoded_len(value: object) -> int:
+    return len(
+        json.dumps(
+            value,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    )
+
+
 __all__ = [
     "BookmapHistory",
     "DepthColumnRecord",
+    "MAX_BACKFILL_RESPONSE_BYTES",
     "MAX_DEPTH_COLUMNS",
     "MAX_HISTORY_AGE_NS",
     "MAX_PRICE_TICKS",

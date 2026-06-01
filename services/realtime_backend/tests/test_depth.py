@@ -24,6 +24,7 @@ from realtime_backend.depth import (
     resolve_depth_mid,
 )
 from realtime_backend.feed import FeedState
+from realtime_backend.history import BookmapHistory
 from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings
 from realtime_backend.watcher import CaptureWatcher, ComputeResult
@@ -263,6 +264,31 @@ def test_bookmap_backfill_retains_compact_depth_columns() -> None:
         ]
 
     asyncio.run(scenario())
+
+
+def test_bookmap_backfill_reports_effective_caps_under_byte_guard() -> None:
+    history = BookmapHistory(max_depth_columns=20, max_response_bytes=3_500)
+    for i in range(20):
+        history.append_depth(
+            seq=i + 1,
+            payload=_depth_payload(ts_ns=1_000 + i, bid_size=10 + i),
+            dedupe_key=(i,),
+        )
+
+    payload = history.to_response(
+        generated_at_ns=9_999,
+        through_seq=20,
+        trading_date="2026-06-01",
+        session="globex",
+    )
+    encoded_len = len(
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    )
+
+    assert encoded_len <= payload["limits"]["max_response_bytes"]
+    assert payload["limits"]["effective_depth_columns_max"] == len(payload["depth"])
+    assert payload["limits"]["effective_depth_columns_max"] < 20
+    assert payload["depth"][-1]["seq"] == 20
 
 
 def test_app_replays_latest_depth_before_snapshot_on_ws_connect(tmp_path: Path) -> None:

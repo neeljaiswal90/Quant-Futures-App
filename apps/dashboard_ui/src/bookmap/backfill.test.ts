@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RealtimeMessage } from "@contracts/realtime/events";
 import {
+  appendBoundedLiveFrame,
   mergeBackfillWithLiveFrames,
   normalizeBookmapBackfill,
   priceTickKey,
@@ -121,5 +122,25 @@ describe("Bookmap REST backfill normalization", () => {
     });
     expect(merged.depth).toHaveLength(1);
     expect(merged.depth[0].seq).toBe(3);
+  });
+
+  it("bounds live frames captured while REST backfill is in flight", () => {
+    const frames: RealtimeMessage[] = [];
+    for (let seq = 1; seq <= 5; seq += 1) {
+      appendBoundedLiveFrame(
+        frames,
+        message(seq, seq, {
+          family: "price_tick",
+          price: 30349 + seq,
+          bid: null,
+          ask: null,
+          volume: 1,
+          orderflow: null,
+        }),
+        3,
+      );
+    }
+
+    expect(frames.map((frame) => frame.seq)).toEqual([3, 4, 5]);
   });
 });
