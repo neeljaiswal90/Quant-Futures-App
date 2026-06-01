@@ -24,6 +24,8 @@ export interface EventBubbleItem {
   price: number;
   family: string;
   tier: FeedItem["tier"];
+  side: string | null;
+  direction: string | null;
   text: string;
   strength: number;
 }
@@ -32,8 +34,10 @@ export interface EventBubblePoint extends EventBubbleItem {
   x: number;
   y: number;
   radius: number;
+  shape: EventBubbleShape;
   fillColor: string;
   strokeColor: string;
+  outlineColor: string;
 }
 
 export interface HoveredEventBubble {
@@ -43,20 +47,59 @@ export interface HoveredEventBubble {
 
 type CoordinateFn<T> = (value: T) => Coordinate | number | null;
 
-const FAMILY_FILL: Record<string, string> = {
-  signal: "#58a6ff",
-  sweep: "#22c55e",
-  iceberg: "#38bdf8",
-  absorption: "#f97316",
-  dislocation: "#ef4444",
-  aggressor_flow: "#14b8a6",
+export type EventBubbleShape =
+  | "circle"
+  | "diamond"
+  | "square"
+  | "triangleUp"
+  | "triangleDown"
+  | "star"
+  | "dot";
+
+export interface EventBubbleVisual {
+  shape: EventBubbleShape;
+  fillColor: string;
+  strokeColor: string;
+  outlineColor: string;
+}
+
+export interface EventLegendItem {
+  family: string;
+  label: string;
+  shape: EventBubbleShape;
+  fillColor: string;
+}
+
+const FAMILY_VISUALS: Record<string, Omit<EventBubbleVisual, "strokeColor" | "outlineColor">> = {
+  signal: { shape: "dot", fillColor: "#cbd5e1" },
+  sweep: { shape: "triangleUp", fillColor: "#c084fc" },
+  iceberg: { shape: "diamond", fillColor: "#67e8f9" },
+  absorption: { shape: "square", fillColor: "#e5e7eb" },
+  dislocation: { shape: "star", fillColor: "#f0abfc" },
+  aggressor_flow: { shape: "circle", fillColor: "#818cf8" },
+  vol_regime: { shape: "dot", fillColor: "#fef08a" },
 };
 
-const TIER_STROKE: Record<string, string> = {
-  CRITICAL: "#f85149",
-  HIGH: "#e3b341",
-  MEDIUM: "#58a6ff",
+const SIDE_STROKE = {
+  bidLong: "#7dd3fc",
+  askShort: "#f0abfc",
+  neutral: "#cbd5e1",
+} as const;
+
+const TIER_OUTLINE: Record<string, string> = {
+  CRITICAL: "#fef08a",
+  HIGH: "#e9d5ff",
+  MEDIUM: "#94a3b8",
 };
+
+export const EVENT_LEGEND_ITEMS: readonly EventLegendItem[] = Object.freeze([
+  { family: "iceberg", label: "Iceberg", shape: "diamond", fillColor: FAMILY_VISUALS.iceberg.fillColor },
+  { family: "sweep", label: "Sweep", shape: "triangleUp", fillColor: FAMILY_VISUALS.sweep.fillColor },
+  { family: "absorption", label: "Absorption", shape: "square", fillColor: FAMILY_VISUALS.absorption.fillColor },
+  { family: "dislocation", label: "Dislocation", shape: "star", fillColor: FAMILY_VISUALS.dislocation.fillColor },
+  { family: "aggressor_flow", label: "Aggressor", shape: "circle", fillColor: FAMILY_VISUALS.aggressor_flow.fillColor },
+  { family: "signal", label: "Signal", shape: "dot", fillColor: FAMILY_VISUALS.signal.fillColor },
+]);
 
 export function feedItemToBubbleItem(item: FeedItem): EventBubbleItem | null {
   if (item.price == null || !Number.isFinite(item.price)) return null;
@@ -66,8 +109,20 @@ export function feedItemToBubbleItem(item: FeedItem): EventBubbleItem | null {
     price: item.price,
     family: item.family,
     tier: item.tier,
+    side: item.side ?? null,
+    direction: item.direction ?? null,
     text: item.text,
     strength: item.strength,
+  };
+}
+
+export function eventBubbleVisual(item: Pick<EventBubbleItem, "family" | "tier" | "side" | "direction">): EventBubbleVisual {
+  const base = FAMILY_VISUALS[item.family] ?? FAMILY_VISUALS.signal;
+  return {
+    shape: item.family === "sweep" ? sweepShape(item.direction) : base.shape,
+    fillColor: base.fillColor,
+    strokeColor: sideStroke(item),
+    outlineColor: item.tier ? TIER_OUTLINE[item.tier] : "rgba(203, 213, 225, 0.58)",
   };
 }
 
@@ -86,8 +141,7 @@ export function projectBubbleItems(
         x: Number(x),
         y: Number(y),
         radius: bubbleRadius(item),
-        fillColor: FAMILY_FILL[item.family] ?? "#8b949e",
-        strokeColor: item.tier ? TIER_STROKE[item.tier] : "#c9d1d9",
+        ...eventBubbleVisual(item),
       },
     ];
   });
@@ -123,6 +177,83 @@ function bubbleRadius(item: EventBubbleItem): number {
   return 2.8 + strengthRadius + tierBoost;
 }
 
+function sweepShape(direction: string | null): EventBubbleShape {
+  const normalized = direction?.toLowerCase() ?? "";
+  if (normalized.includes("down") || normalized.includes("short") || normalized.includes("bear")) {
+    return "triangleDown";
+  }
+  return "triangleUp";
+}
+
+function sideStroke(item: Pick<EventBubbleItem, "side" | "direction">): string {
+  const raw = `${item.side ?? ""} ${item.direction ?? ""}`.toLowerCase();
+  if (
+    raw.includes("bid") ||
+    raw.includes("buy") ||
+    raw.includes("long") ||
+    raw.includes("bull") ||
+    raw.includes("up")
+  ) {
+    return SIDE_STROKE.bidLong;
+  }
+  if (
+    raw.includes("ask") ||
+    raw.includes("sell") ||
+    raw.includes("short") ||
+    raw.includes("bear") ||
+    raw.includes("down")
+  ) {
+    return SIDE_STROKE.askShort;
+  }
+  return SIDE_STROKE.neutral;
+}
+
+function drawEventShape(
+  ctx: CanvasRenderingContext2D,
+  point: EventBubblePoint,
+): void {
+  const r = point.shape === "dot" ? Math.max(2.2, point.radius * 0.68) : point.radius;
+  switch (point.shape) {
+    case "diamond":
+      ctx.moveTo(point.x, point.y - r);
+      ctx.lineTo(point.x + r, point.y);
+      ctx.lineTo(point.x, point.y + r);
+      ctx.lineTo(point.x - r, point.y);
+      ctx.closePath();
+      break;
+    case "square":
+      ctx.rect(point.x - r, point.y - r, r * 2, r * 2);
+      break;
+    case "triangleUp":
+      ctx.moveTo(point.x, point.y - r);
+      ctx.lineTo(point.x + r * 0.9, point.y + r * 0.78);
+      ctx.lineTo(point.x - r * 0.9, point.y + r * 0.78);
+      ctx.closePath();
+      break;
+    case "triangleDown":
+      ctx.moveTo(point.x, point.y + r);
+      ctx.lineTo(point.x + r * 0.9, point.y - r * 0.78);
+      ctx.lineTo(point.x - r * 0.9, point.y - r * 0.78);
+      ctx.closePath();
+      break;
+    case "star":
+      for (let index = 0; index < 8; index += 1) {
+        const angle = -Math.PI / 2 + (index * Math.PI) / 4;
+        const radius = index % 2 === 0 ? r : r * 0.42;
+        const x = point.x + Math.cos(angle) * radius;
+        const y = point.y + Math.sin(angle) * radius;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      break;
+    case "circle":
+    case "dot":
+      ctx.arc(point.x, point.y, r, 0, Math.PI * 2);
+      break;
+  }
+}
+
 class EventBubbleRenderer implements IPrimitivePaneRenderer {
   constructor(private readonly points: readonly EventBubblePoint[]) {}
 
@@ -131,14 +262,22 @@ class EventBubbleRenderer implements IPrimitivePaneRenderer {
       for (const point of this.points) {
         ctx.save();
         ctx.beginPath();
-        ctx.arc(point.x, point.y, point.radius, 0, Math.PI * 2);
+        drawEventShape(ctx, point);
         ctx.fillStyle = point.fillColor;
-        ctx.globalAlpha = 0.46;
+        ctx.globalAlpha = 0.5;
         ctx.fill();
         ctx.globalAlpha = 1;
-        ctx.lineWidth = point.tier === "CRITICAL" ? 1.8 : 1;
+        ctx.lineWidth = point.tier === "CRITICAL" ? 1.6 : 1.1;
         ctx.strokeStyle = point.strokeColor;
         ctx.stroke();
+        if (point.tier === "CRITICAL" || point.tier === "HIGH") {
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, point.radius + 2.2, 0, Math.PI * 2);
+          ctx.lineWidth = point.tier === "CRITICAL" ? 1.2 : 0.8;
+          ctx.strokeStyle = point.outlineColor;
+          ctx.globalAlpha = point.tier === "CRITICAL" ? 0.82 : 0.52;
+          ctx.stroke();
+        }
         ctx.restore();
       }
     });

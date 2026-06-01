@@ -211,6 +211,7 @@ export class TradeBubblePrimitive implements ISeriesPrimitive<Time> {
   private requestUpdate: (() => void) | null = null;
   private readonly byKey = new Map<string, TradeBubbleTick>();
   private items: TradeBubbleTick[] = [];
+  private visible = true;
 
   attached(param: SeriesAttachedParameter<Time>): void {
     this.chart = param.chart;
@@ -243,6 +244,10 @@ export class TradeBubblePrimitive implements ISeriesPrimitive<Time> {
       this.view.update([]);
       return;
     }
+    if (!this.visible) {
+      this.view.update([]);
+      return;
+    }
     this.view.update(
       projectTradeBubbles(
         this.items,
@@ -264,6 +269,12 @@ export class TradeBubblePrimitive implements ISeriesPrimitive<Time> {
   appendTick(tick: TradeBubbleTick): void {
     this.byKey.set(tradeBubbleKey(tick), tick);
     this.rebuildItems();
+    this.updateAllViews();
+    this.requestUpdate?.();
+  }
+
+  setVisible(visible: boolean): void {
+    this.visible = visible;
     this.updateAllViews();
     this.requestUpdate?.();
   }

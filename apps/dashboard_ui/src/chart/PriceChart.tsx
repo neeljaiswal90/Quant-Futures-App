@@ -31,6 +31,7 @@ import { CandleAggregator } from "./candles";
 import { MNQ_TICK, formatMnqPrice } from "../contract/render";
 import { useZonePriceLines } from "./useZonePriceLines";
 import { eventBubbleTooltip, useEventMarkers } from "./useEventMarkers";
+import { EVENT_LEGEND_ITEMS, type EventBubbleShape } from "./eventBubbles";
 import { isPriceTick } from "../contract/guards";
 import { useDepthHeatmap } from "./useDepthHeatmap";
 import { formatChartAxisTimePT, formatChartCrosshairTimePT } from "./timeFormat";
@@ -60,6 +61,8 @@ export function PriceChart() {
   const tradeBubbleRef = useRef<TradeBubblePrimitive | null>(null);
   const aggRef = useRef(new CandleAggregator(1));
   const [hoveredTrade, setHoveredTrade] = useState<HoveredTradeBubble | null>(null);
+  const [showExecutions, setShowExecutions] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -257,6 +260,10 @@ export function PriceChart() {
     return () => cancelAnimationFrame(raf);
   }, [bookmapBackfillEpoch, bookmapBackfillRef, liveTickRef, tickEpoch]);
 
+  useEffect(() => {
+    tradeBubbleRef.current?.setVisible(showExecutions);
+  }, [showExecutions]);
+
   useZonePriceLines(priceLineRef);
   useDepthHeatmap(priceLineRef);
   const hoveredEvent = useEventMarkers(chartRef, priceLineRef, eventAnchorRef);
@@ -292,6 +299,49 @@ export function PriceChart() {
         style={{ width: "100%", height: "100%" }}
         aria-label="MNQ decision map"
       />
+      <div className="chart-layer-controls" aria-label="Chart layer controls">
+        <button
+          type="button"
+          className={`chart-toggle ${showExecutions ? "chart-toggle-on" : ""}`}
+          onClick={() => setShowExecutions((value) => !value)}
+          aria-pressed={showExecutions}
+        >
+          {showExecutions ? "Executions on" : "Executions off"}
+        </button>
+        <button
+          type="button"
+          className="chart-toggle"
+          onClick={() => setLegendOpen((value) => !value)}
+          aria-expanded={legendOpen}
+        >
+          Legend
+        </button>
+        {legendOpen && (
+          <div className="chart-legend" role="list">
+            <div className="chart-legend-row chart-legend-execution" role="listitem">
+              <span className="chart-legend-exec chart-legend-exec-buy" />
+              <span>Buy execution</span>
+            </div>
+            <div className="chart-legend-row chart-legend-execution" role="listitem">
+              <span className="chart-legend-exec chart-legend-exec-sell" />
+              <span>Sell execution</span>
+            </div>
+            {EVENT_LEGEND_ITEMS.map((item) => (
+              <div key={item.family} className="chart-legend-row" role="listitem">
+                <span
+                  className={`chart-legend-shape chart-legend-shape-${shapeClass(item.shape)}`}
+                  style={{ backgroundColor: item.fillColor, color: item.fillColor }}
+                />
+                <span>{item.label}</span>
+              </div>
+            ))}
+            <div className="chart-legend-side" role="listitem">
+              <span className="chart-legend-side-bid">bid/long</span>
+              <span className="chart-legend-side-ask">ask/short</span>
+            </div>
+          </div>
+        )}
+      </div>
       {hoveredEvent && (
         <div
           className="event-bubble-tooltip"
@@ -316,4 +366,9 @@ export function PriceChart() {
       )}
     </div>
   );
+}
+
+function shapeClass(shape: EventBubbleShape): string {
+  if (shape === "triangleUp" || shape === "triangleDown") return "triangle";
+  return shape;
 }

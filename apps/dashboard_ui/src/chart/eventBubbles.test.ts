@@ -3,6 +3,8 @@ import {
   anchorSeriesData,
   EVENT_BUBBLE_ID_PREFIX,
   EventBubblePrimitive,
+  EVENT_LEGEND_ITEMS,
+  eventBubbleVisual,
   eventBubbleTooltip,
   feedItemToBubbleItem,
   projectBubbleItems,
@@ -35,6 +37,7 @@ describe("event bubbles", () => {
       eventKey: "iceberg|known",
       text: "iceberg at entry",
       strength: 0.8,
+      side: "ask",
     };
 
     const bubble = feedItemToBubbleItem(item);
@@ -47,7 +50,7 @@ describe("event bubbles", () => {
 
   it("projects time and price into chart coordinates", () => {
     const items: EventBubbleItem[] = [
-      {
+      eventItem({
         id: "a",
         time: 100 as UTCTimestamp,
         price: 30340.5,
@@ -55,8 +58,9 @@ describe("event bubbles", () => {
         family: "dislocation",
         text: "dislocation",
         strength: 0.9,
-      },
-      {
+        direction: "bearish",
+      }),
+      eventItem({
         id: "offscreen",
         time: 101 as UTCTimestamp,
         price: 1,
@@ -64,7 +68,7 @@ describe("event bubbles", () => {
         family: "sweep",
         text: "hidden",
         strength: 0.4,
-      },
+      }),
     ];
 
     const projected = projectBubbleItems(
@@ -78,8 +82,9 @@ describe("event bubbles", () => {
       id: "a",
       x: 120,
       y: 220,
-      fillColor: "#ef4444",
-      strokeColor: "#f85149",
+      shape: "star",
+      fillColor: "#f0abfc",
+      strokeColor: "#f0abfc",
     });
     expect(projected[0].radius).toBeLessThan(7);
   });
@@ -91,6 +96,8 @@ describe("event bubbles", () => {
       price: 30340.13,
       tier: "MEDIUM",
       family: "sweep",
+      side: null,
+      direction: "up",
       text: "sweep at VPOC",
       strength: 0.5,
     };
@@ -102,9 +109,9 @@ describe("event bubbles", () => {
     // Minute-bucketed signals legitimately share a timestamp; setData rejects
     // non-unique / non-ascending times, which previously crashed the chart.
     const items: EventBubbleItem[] = [
-      { id: "c", time: 200 as UTCTimestamp, price: 30350, tier: null, family: "sweep", text: "c", strength: 0.3 },
-      { id: "a", time: 100 as UTCTimestamp, price: 30340, tier: null, family: "sweep", text: "a", strength: 0.3 },
-      { id: "b", time: 100 as UTCTimestamp, price: 30342, tier: "HIGH", family: "iceberg", text: "b", strength: 0.7 },
+      eventItem({ id: "c", time: 200 as UTCTimestamp, price: 30350, tier: null, family: "sweep", text: "c", strength: 0.3 }),
+      eventItem({ id: "a", time: 100 as UTCTimestamp, price: 30340, tier: null, family: "sweep", text: "a", strength: 0.3 }),
+      eventItem({ id: "b", time: 100 as UTCTimestamp, price: 30342, tier: "HIGH", family: "iceberg", text: "b", strength: 0.7 }),
     ];
 
     const anchor = anchorSeriesData(items);
@@ -120,10 +127,32 @@ describe("event bubbles", () => {
     expect(anchorSeriesData([])).toEqual([]);
   });
 
+  it("uses non-execution colors and shapes for signal families", () => {
+    expect(eventBubbleVisual(eventItem({ family: "iceberg", side: "bid" }))).toMatchObject({
+      shape: "diamond",
+      fillColor: "#67e8f9",
+      strokeColor: "#7dd3fc",
+    });
+    expect(eventBubbleVisual(eventItem({ family: "sweep", direction: "down" }))).toMatchObject({
+      shape: "triangleDown",
+      fillColor: "#c084fc",
+    });
+
+    const forbiddenExecutionColors = new Set([
+      "#22c55e",
+      "#3fb950",
+      "#ef4444",
+      "#f85149",
+    ]);
+    for (const item of EVENT_LEGEND_ITEMS) {
+      expect(forbiddenExecutionColors.has(item.fillColor)).toBe(false);
+    }
+  });
+
   it("expands autoscale around event prices", () => {
     const primitive = new EventBubblePrimitive();
     primitive.setItems([
-      {
+      eventItem({
         id: "low",
         time: 100 as UTCTimestamp,
         price: 30340,
@@ -131,8 +160,8 @@ describe("event bubbles", () => {
         family: "sweep",
         text: "low",
         strength: 0.2,
-      },
-      {
+      }),
+      eventItem({
         id: "high",
         time: 101 as UTCTimestamp,
         price: 30350,
@@ -140,7 +169,7 @@ describe("event bubbles", () => {
         family: "iceberg",
         text: "high",
         strength: 0.8,
-      },
+      }),
     ]);
 
     expect(primitive.autoscaleInfo()).toEqual({
@@ -151,3 +180,18 @@ describe("event bubbles", () => {
     });
   });
 });
+
+function eventItem(overrides: Partial<EventBubbleItem> = {}): EventBubbleItem {
+  return {
+    id: "bubble",
+    time: 100 as UTCTimestamp,
+    price: 30340.25,
+    tier: "MEDIUM",
+    family: "sweep",
+    side: null,
+    direction: null,
+    text: "event",
+    strength: 0.5,
+    ...overrides,
+  };
+}
