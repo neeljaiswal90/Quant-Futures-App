@@ -46,6 +46,29 @@ For each session pair:
 - Run the dashboard's `sweep_detector.detect_sweeps()` over the obs01 tick stream + zone level set. Reuse — do NOT re-implement detection. Use the existing dashboard detector even though the analytics detector also exists; the dashboard detector is what's shipping to operators and what RA-094 will score.
 - Collect: list of `SweepEvent` rows enriched with the structural level metadata (level type: VPOC/VWAP/VAH/VAL/LVN/HVN/σ-shelf; tick-distance from session VPOC; etc).
 
+#### Session-completeness provenance (forensic-integrity gate)
+
+Every ingested session MUST carry an `is_complete_session` boolean provenance flag, set during ingestion. The check is the conjunction of:
+
+1. **Capture not currently active** (the existing `_assert_capture_not_active` guard handles the live-conflict case at config time; redundant here is fine for defense-in-depth).
+2. **Capture mtime stale** beyond a session-end threshold: for `rth` sessions, the obs01.jsonl file's last write must be after the session's official close + a buffer (e.g., 13:15 PT + 5 min for RTH); for `globex` sessions, the file's last write must be after the next day's RTH open OR explicitly flagged complete.
+3. **No mid-session gap detected**: scan the obs01 timestamps; if there's a contiguous gap of > 60 seconds during regular session hours (i.e., a capture interruption that didn't auto-recover), mark incomplete.
+4. **Expected event-count floor**: a completed RTH session has thousands of obs01 records; a truncated one has hundreds. Per-session-type heuristic floor (Codex sweep proposes the exact threshold based on observing complete sessions). Below the floor → `is_complete_session=False`.
+
+All four checks pass → `is_complete_session=True`. ANY check fails → `is_complete_session=False` with a `completeness_reasons: list[str]` recording which.
+
+Propagation:
+- Every emitted sweep event row carries `is_complete_session` + `completeness_reasons` from its source session.
+- `sweep_events.jsonl` (the per-event provenance file) records both fields per row.
+- `pipeline_manifest.json` records per-session: `is_complete_session`, `completeness_reasons`, `obs01_record_count`, `obs01_first_ts_ns`, `obs01_last_ts_ns`.
+
+Default behavior:
+- Partial sessions are **EXCLUDED** from the main analysis tables in `sweep_research_report.md`.
+- An optional CLI flag `--include-partial-sessions` re-enables them, BUT they appear ONLY in a clearly-labeled SEPARATE section titled "Preliminary findings — partial sessions" that does NOT mix into the main tables. Sample counts and rates are reported separately so the operator can spot the contamination.
+- The default report header lists "Sessions analyzed: N complete, M partial (excluded)" so the operator sees at a glance how much data the headlines are computed on.
+
+Rationale: a partial session can't compute forward-return labels for sweeps near its truncated end (a sweep at 22:50 PT can't be labeled at τ=300s if the capture stops at 23:10). Even if forward-returns are computable for early-session sweeps, the truncation systematically biases the sample — late-session events are missing AND structural levels derived from the full session (VPOC, VAH/VAL) are recomputed from incomplete data. Mixing partial + complete sessions in the same table without a flag would silently bias every headline rate in this report.
+
 ### 3. Forward-return labeling
 
 For each sweep event, compute forward returns at each horizon `τ ∈ {1s, 5s, 15s, 60s, 300s}`:
@@ -130,11 +153,12 @@ scratch/ra096-sweep-research/<run-id>/
 ```
 
 Report structure:
-1. **Run metadata**: dates analyzed, total sweeps, total sessions, model commit, sklearn version
-2. **Summary findings** (the operator-readable top): 5 bullet headlines, one per question, written in plain English ("VPOC sweeps continue 62% of the time vs 47% for VWAP±σ at 60s horizon — empirical edge.")
-3. **Per-question section** (one per Q1-Q5): tables + brief interpretation + sample-size warnings where applicable
-4. **Statistical hygiene section**: which cells crossed `min_cell_samples` threshold, which didn't, multiple-comparison corrections applied, confidence interval methodology (Wilson scores)
-5. **Actionable next steps**: which findings warrant a model feature, which warrant a separate ticket, which need more data
+1. **Run metadata**: dates analyzed, **N complete sessions + M partial sessions (excluded by default)**, total sweeps in main analysis, total sweeps in preliminary section (if `--include-partial-sessions`), model commit, sklearn version
+2. **Session-completeness summary table**: per-session row with `(date, session, is_complete, completeness_reasons, sweep_count)`. Operator reads this first to know which sessions contributed.
+3. **Summary findings** (the operator-readable top): 5 bullet headlines, one per question, written in plain English ("VPOC sweeps continue 62% of the time vs 47% for VWAP±σ at 60s horizon — empirical edge."). Each headline notes the underlying complete-session sample count.
+4. **Per-question section** (one per Q1-Q5): tables + brief interpretation + sample-size warnings where applicable. **Main tables use complete sessions ONLY.** If `--include-partial-sessions` was set, a clearly-labeled "Preliminary — partial sessions" sub-section follows.
+5. **Statistical hygiene section**: which cells crossed `min_cell_samples` threshold, which didn't, multiple-comparison corrections applied, confidence interval methodology (Wilson scores)
+6. **Actionable next steps**: which findings warrant a model feature, which warrant a separate ticket, which need more data
 
 ### 6. Statistical hygiene (non-negotiable)
 
@@ -170,19 +194,24 @@ Sweep must cover:
 3. **Subprocess shape for label CLI** — show the exact `apps/backtester/src/forward-return-labels/cli.ts` invocation, including how sweep events become its input format. If a shim is needed (the labeler expects RA-092 setup format, not sweep events), document the shim.
 4. **Statistical methodology confirmation** — Wilson CI library (`statsmodels.stats.proportion.proportion_confint` with `method='wilson'` is canonical), chi-squared test source (`scipy.stats.chi2_contingency`), Bonferroni application point.
 5. **Sample size reality check** — given 5-7 sessions of data, what's the expected sweep count per session? Per level type? Per (level, alignment, horizon) cell? If most cells will be below the `min_cell_samples=30` floor, recommend lowering to 15 with explicit "preliminary" flag, OR running the analysis at coarser bucketing (drop the Q5 time-of-day split until more data exists).
-6. **Confirmation no detector/contract/capture/probe touch.**
+6. **Session-completeness check exact threshold values** — propose the per-session-type mtime cutoff (e.g., RTH session: obs01 mtime > 13:20 PT same day), the mid-session gap threshold (60s default), and the obs01 record-count floor by observing the already-captured complete sessions on disk. Show the values + the reasoning. ALL captured sessions on disk at sweep-time must be auditable as complete/partial before the main analysis runs.
+7. **Confirmation no detector/contract/capture/probe touch.**
 
 ## Acceptance
 
 - `sweep_research_report.md` exists in the run dir.
+- **Session-completeness summary table** appears at the top of the report, listing every input session with its `is_complete_session` flag + reasons. Operator can audit which sessions contributed to which numbers.
+- Main analysis tables use **complete sessions only by default**. Partial-session inclusion requires `--include-partial-sessions` AND those results appear in a separately-labeled "Preliminary findings" section that does NOT mix into main tables.
+- `sweep_events.jsonl` records `is_complete_session` + `completeness_reasons` per row.
+- `pipeline_manifest.json` records per-session `is_complete_session`, `completeness_reasons`, `obs01_record_count`, `obs01_first_ts_ns`, `obs01_last_ts_ns`.
 - All 5 questions have a section, with tables, sample sizes, and a plain-English headline.
-- The summary findings at the top of the report contain at least 5 bullet sentences an operator can read in 30 seconds.
+- The summary findings at the top of the report contain at least 5 bullet sentences an operator can read in 30 seconds. Each headline's underlying sample count is from complete sessions only (unless explicitly labeled preliminary).
 - `conditional_tables.json` is parseable + complete.
 - `pipeline_manifest.json` records the SHA-256 chain.
-- `pytest services/scalp_models/tests/research/` passes (the fixture smoke test).
+- `pytest services/scalp_models/tests/research/` passes (the fixture smoke test, including a test that asserts a synthetically-truncated session ingestion → `is_complete_session=False`).
 - `ruff` clean, `mypy` targeted clean, `pytest` clean.
 - Ship report includes the **actual `sweep_research_report.md`** content in the PR description (the operator reads this; the dispatch isn't done if the file is empty).
-- Ship report explicitly states which findings are statistically significant vs which are below sample threshold.
+- Ship report explicitly states which findings are statistically significant vs which are below sample threshold, AND how many complete vs partial sessions contributed.
 
 ## Coordinator review focus
 
