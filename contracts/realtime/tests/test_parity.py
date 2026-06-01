@@ -16,6 +16,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from contracts.realtime import config as cfg
 from contracts.realtime import events as ev
 
@@ -141,6 +144,30 @@ def test_nested_state_fields_match() -> None:
         py_fields = list(model.model_fields.keys())
         assert ts_fields == py_fields, (
             f"{model.__name__} TS<->Py field drift: ts={ts_fields} py={py_fields}"
+        )
+
+
+def test_depth_payload_cap_is_100_levels_per_side() -> None:
+    levels = [ev.DepthLevel(price=30000 + index * 0.25, size=1) for index in range(100)]
+    payload = ev.DepthPayload(
+        ts_ns=1,
+        mid=30012.5,
+        bid_levels=levels,
+        ask_levels=levels,
+        n_ticks=100,
+        quality="live",
+    )
+
+    assert payload.n_ticks == 100
+
+    with pytest.raises(ValidationError):
+        ev.DepthPayload(
+            ts_ns=1,
+            mid=30012.5,
+            bid_levels=levels + [ev.DepthLevel(price=30025.25, size=1)],
+            ask_levels=levels,
+            n_ticks=101,
+            quality="live",
         )
 
 

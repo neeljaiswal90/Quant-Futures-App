@@ -22,6 +22,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from contracts.realtime.events import DEPTH_N_TICKS_MAX
 from rithmic_dashboard.features.live_signals import DEFAULT_TAIL_BYTES
 
 # This package lives at services/realtime_backend/.
@@ -96,6 +97,10 @@ class Settings:
     # the operator gives the second live-stack enablement green-light.
     depth_enabled: bool = False
     depth_emit_interval_seconds: float = 0.250
+    # Operator opt-in for Bookmap-style structural visibility: raise
+    # RA60_DEPTH_N_TICKS above the default 20 when far-from-price depth walls
+    # matter. The contract/backend cap is DEPTH_N_TICKS_MAX; default 20 remains
+    # the quiet near-price scalping profile.
     depth_n_ticks: int = 20
     depth_seed_tail_bytes: int = 20_000_000
     depth_max_active_orders: int = 50_000
@@ -169,7 +174,7 @@ def settings_from_env(**overrides: object) -> Settings:
     if (raw := os.environ.get("RA60_DEPTH_EMIT_INTERVAL_SECONDS")) is not None:
         values["depth_emit_interval_seconds"] = float(raw)
     if (raw := os.environ.get("RA60_DEPTH_N_TICKS")) is not None:
-        values["depth_n_ticks"] = int(raw)
+        values["depth_n_ticks"] = min(max(1, int(raw)), DEPTH_N_TICKS_MAX)
     if (raw := os.environ.get("RA60_DEPTH_SEED_TAIL_BYTES")) is not None:
         values["depth_seed_tail_bytes"] = int(raw)
     if (raw := os.environ.get("RA60_DEPTH_MAX_ACTIVE_ORDERS")) is not None:

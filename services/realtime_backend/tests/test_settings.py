@@ -34,13 +34,13 @@ def test_env_overrides_defaults(monkeypatch) -> None:  # type: ignore[no-untyped
     monkeypatch.setenv("RA60_PORT", "9001")
     monkeypatch.setenv("RA60_SESSION", "rth")
     monkeypatch.setenv("RA60_DEPTH_ENABLED", "1")
-    monkeypatch.setenv("RA60_DEPTH_N_TICKS", "30")
+    monkeypatch.setenv("RA60_DEPTH_N_TICKS", "1000")
     s = settings_from_env()
     assert s.host == "0.0.0.0"
     assert s.port == 9001
     assert s.session_override == "rth"
     assert s.depth_enabled is True
-    assert s.depth_n_ticks == 30
+    assert s.depth_n_ticks == 100
 
 
 def test_explicit_overrides_win_over_env(monkeypatch) -> None:  # type: ignore[no-untyped-def]

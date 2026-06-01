@@ -140,6 +140,22 @@ def test_build_depth_payload_preserves_ordering_and_bounds() -> None:
     assert [level.price for level in payload.ask_levels] == [30220.25, 30220.5]
 
 
+def test_build_depth_payload_accepts_100_level_bookmap_window() -> None:
+    snapshot = DepthSnapshot(
+        mid=30220.0,
+        n_ticks=100,
+        bid_levels=tuple(_level(30220.0 - index * 0.25, 1) for index in range(100)),
+        ask_levels=tuple(_level(30220.25 + index * 0.25, 1) for index in range(100)),
+    )
+
+    payload = build_depth_payload(snapshot, quality="live", ts_ns=1_000)
+
+    assert payload is not None
+    assert payload.n_ticks == 100
+    assert len(payload.bid_levels) == 100
+    assert len(payload.ask_levels) == 100
+
+
 def test_depth_quality_uses_mid_source_and_depth_age() -> None:
     now_ns = 1_000_000_000_000
     fresh_book = now_ns - 5_000_000_000
@@ -289,6 +305,37 @@ def test_bookmap_backfill_reports_effective_caps_under_byte_guard() -> None:
     assert payload["limits"]["effective_depth_columns_max"] == len(payload["depth"])
     assert payload["limits"]["effective_depth_columns_max"] < 20
     assert payload["depth"][-1]["seq"] == 20
+
+
+def test_bookmap_backfill_byte_guard_still_binds_at_100_ticks() -> None:
+    history = BookmapHistory(max_depth_columns=8, max_response_bytes=18_000)
+    for i in range(8):
+        payload = build_depth_payload(
+            DepthSnapshot(
+                mid=30220.0,
+                n_ticks=100,
+                bid_levels=tuple(
+                    _level(30220.0 - index * 0.25, 10 + i) for index in range(100)
+                ),
+                ask_levels=tuple(
+                    _level(30220.25 + index * 0.25, 9 + i) for index in range(100)
+                ),
+            ),
+            quality="live",
+            ts_ns=10_000 + i,
+        )
+        assert payload is not None
+        history.append_depth(seq=i + 1, payload=payload, dedupe_key=(i,))
+
+    response = history.to_response(
+        generated_at_ns=20_000,
+        through_seq=8,
+        trading_date="2026-06-01",
+        session="globex",
+    )
+
+    assert response["limits"]["effective_depth_columns_max"] < 8
+    assert response["limits"]["estimated_response_bytes"] <= response["limits"]["max_response_bytes"]
 
 
 def test_app_replays_latest_depth_before_snapshot_on_ws_connect(tmp_path: Path) -> None:
