@@ -337,10 +337,28 @@ export function anchorSeriesData(
     .map(([time, value]) => ({ time: time as UTCTimestamp, value }));
 }
 
+/**
+ * RA-113: families the operator wants to spot at a glance get a fixed radius
+ * boost on top of the strength/tier sizing, so they read clearly larger than
+ * the common signal/sweep/iceberg markers regardless of strength. Shape already
+ * differs per family (absorption=square, dislocation=star, aggressor=circle);
+ * the size bump is an additional, redundant cue. Tune EMPHASIZED_BUBBLE_RADIUS_
+ * BOOST to taste, or add/remove families from the set.
+ */
+export const EMPHASIZED_BUBBLE_FAMILIES: ReadonlySet<string> = new Set([
+  "absorption",
+  "dislocation",
+  "aggressor_flow",
+]);
+export const EMPHASIZED_BUBBLE_RADIUS_BOOST = 3.5;
+
 function bubbleRadius(item: EventBubbleItem): number {
   const strengthRadius = Math.max(0, Math.min(2.2, item.strength * 2.2));
   const tierBoost = item.tier === "CRITICAL" ? 1.7 : item.tier === "HIGH" ? 0.8 : 0;
-  return 2.8 + strengthRadius + tierBoost;
+  const familyBoost = EMPHASIZED_BUBBLE_FAMILIES.has(item.family)
+    ? EMPHASIZED_BUBBLE_RADIUS_BOOST
+    : 0;
+  return 2.8 + strengthRadius + tierBoost + familyBoost;
 }
 
 function sweepShape(direction: string | null): EventBubbleShape {

@@ -93,7 +93,29 @@ describe("event bubbles", () => {
       fillColor: "#f0abfc",
       strokeColor: "#f0abfc",
     });
-    expect(projected[0].radius).toBeLessThan(7);
+    // RA-113: dislocation is an emphasized family, so it carries the radius
+    // boost on top of its strength/tier sizing.
+    expect(projected[0].radius).toBeGreaterThan(7);
+    expect(projected[0].radius).toBeLessThan(12);
+  });
+
+  it("renders emphasized families larger than other signals (RA-113)", () => {
+    // Same strength + tier; only the family differs. Absorption, dislocation,
+    // and aggressor_flow must project to a clearly larger radius than a plain
+    // signal/sweep so the operator can spot them at a glance.
+    const project = (family: string) =>
+      projectBubbleItems(
+        [eventItem({ id: family, family, strength: 0.5, tier: null, price: 30340.5 })],
+        () => 120,
+        () => 220,
+      )[0].radius;
+
+    const baseline = project("sweep");
+    for (const family of ["absorption", "dislocation", "aggressor_flow"]) {
+      expect(project(family)).toBeGreaterThan(baseline + 3);
+    }
+    // A non-emphasized family stays at the baseline size.
+    expect(project("signal")).toBe(baseline);
   });
 
   it("formats hover tooltip with family and MNQ price", () => {
