@@ -48,6 +48,7 @@ class SignalDatasetRow(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    schema_version: int = 1
     ts_ns: int
     family: DatasetFamily
     event_type: str
