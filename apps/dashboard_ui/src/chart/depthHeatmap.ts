@@ -28,6 +28,15 @@ export const MAX_DEPTH_COLUMNS = 12_000;
 export const MAX_VISIBLE_DEPTH_COLUMNS = 420;
 export const MAX_DEPTH_CELLS = 32_000;
 export const MIN_DEPTH_CELL_WIDTH = 1.5;
+/**
+ * RA-108-bug-fix: cap a single depth cell's time width. Without this cap, a
+ * column whose next-column-timestamp is far in the future (capture/backend
+ * restart, network reconnect, session boundary) renders as a horizontal
+ * block spanning minutes — both visually wrong AND a perf hit since giant
+ * filled rectangles burn fillRect cost. 30s is a generous upper bound on
+ * legitimate inter-column gaps at 4 fps emission with debouncing.
+ */
+export const MAX_DEPTH_CELL_DURATION_SECONDS = 30;
 /** RA-111: depth-payload count per chunk during cold backfill replay. */
 export const HYDRATION_DEPTH_CHUNK_SIZE = 200;
 export const DEPTH_CONTRAST_WINDOW_SECONDS = 10 * 60;
@@ -318,7 +327,16 @@ function sampledVisibleIntervals(
   for (let i = 0; i < columns.length; i += 1) {
     const startSeconds = columns[i].seconds;
     const nextSeconds = columns[i + 1]?.seconds ?? nowSeconds;
-    const endSeconds = Math.max(startSeconds + 0.25, nextSeconds);
+    // RA-108-bug-fix: clamp the cell's time-end to startSeconds +
+    // MAX_DEPTH_CELL_DURATION_SECONDS. Without this, a depth column followed
+    // by a long capture/backend gap renders as a horizontal block stretching
+    // across the gap. The MIN side keeps the existing 0.25s minimum so
+    // tightly-spaced columns still get visible cells.
+    const rawEnd = Math.max(startSeconds + 0.25, nextSeconds);
+    const endSeconds = Math.min(
+      rawEnd,
+      startSeconds + MAX_DEPTH_CELL_DURATION_SECONDS,
+    );
     if (overlapsVisibleRange(startSeconds, endSeconds, visibleRange)) {
       intervals.push({ column: columns[i], startSeconds, endSeconds });
     }

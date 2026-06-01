@@ -77,6 +77,32 @@ describe("depth heatmap projection", () => {
     expect(x).toBe(5);
   });
 
+  it("caps single cell time-width when next column is far in the future (RA-108-bug-fix)", () => {
+    // A column followed by a 25-minute gap (capture restart) must NOT produce
+    // a 25-minute-wide cell. The cap (MAX_DEPTH_CELL_DURATION_SECONDS = 30s)
+    // bounds the cell's horizontal width. timeToCoordinate maps 1s -> 10
+    // pixels in this test fixture; the cell width should be 300 pixels max
+    // (30s × 10), not the multi-thousand-pixel block the gap would create.
+    const firstColumn = column(BASE_NS, 100);
+    const secondColumn = column(BASE_NS + 25 * 60 * 1_000_000_000, 25);
+    const cells = projectDepthHeatmapCells(
+      [firstColumn, secondColumn],
+      timeToCoordinate,
+      priceToCoordinate,
+      {
+        nowSeconds: BASE_SECONDS + 25 * 60 + 5,
+        // Visible range only includes the first column's time + the cap window.
+        visibleRange: { from: BASE_SECONDS - 1, to: BASE_SECONDS + 60 },
+        sessionMaxSize: 100,
+      },
+    );
+    // The first column's cells should render with the capped width, not 25 min.
+    const firstColumnCells = cells.filter((c) => c.x === 0);
+    expect(firstColumnCells.length).toBeGreaterThan(0);
+    // 30s × 10 px/s = 300 px max. Without the cap this would be 25*60*10 = 15000 px.
+    expect(firstColumnCells[0].width).toBeLessThanOrEqual(310);
+  });
+
   it("draws each retained snapshot as a time-spanning price column", () => {
     const cells = projectDepthHeatmapCells(
       [column(BASE_NS, 100), column(BASE_NS + 2_000_000_000, 25)],
