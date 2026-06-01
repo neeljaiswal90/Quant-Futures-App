@@ -1,0 +1,393 @@
+{
+  "scenario": "c",
+  "mode": "live-burst",
+  "timestamp": "2026-06-01T16:10:33.772Z",
+  "before": {
+    "backend": {
+      "status": "ok",
+      "role": "realtime_backend",
+      "seq": 20037,
+      "clients": 5
+    },
+    "wsSample": {
+      "durationMs": 5010,
+      "frames": 17,
+      "fps": 3.3932135728542914,
+      "avgBytes": 4439.529411764706,
+      "firstSeq": 20035,
+      "lastSeq": 20053,
+      "deltaSeq": 18,
+      "counts": {
+        "depth": 2,
+        "snapshot": 1,
+        "price_tick": 12,
+        "heartbeat": 1,
+        "signal": 1
+      }
+    }
+  },
+  "after": {
+    "backend": {
+      "status": "ok",
+      "role": "realtime_backend",
+      "seq": 20114,
+      "clients": 5
+    },
+    "wsSample": {
+      "durationMs": 5004,
+      "frames": 21,
+      "fps": 4.1966426858513195,
+      "avgBytes": 3607.5238095238096,
+      "firstSeq": 20114,
+      "lastSeq": 20134,
+      "deltaSeq": 20,
+      "counts": {
+        "depth": 3,
+        "snapshot": 1,
+        "price_tick": 13,
+        "absorption": 3,
+        "heartbeat": 1
+      }
+    },
+    "page": {
+      "title": "MNQ Realtime — Decision Support",
+      "url": "http://127.0.0.1:5173/?ra109=c-1780330207183",
+      "text": "MNQ REALTIME\nLIVE\nschema v1\nEnable alerts\nEnd day\nPRICE CONTEXT\n30490.50\nbid 30485.75\nask 30486.00\nσ 9.74\nregime LOW\nCVD -1,677\nvΔ -922\nflow high\n\t\n\t\n\n\n\n\t\n\t\n\n\t\n\t\nVOL 2\nCVD -23 Δ +1\nExecutions on\nIcebergs on\nLegend\nDOM LADDER\nFollow\nlive · 4s\nFollow price\nRecenter\n30488.25\n18\n30488.00\n17\n30487.75\n13\n30487.50\n18\n30487.25\n19\n30487.00\n11\n30486.75\n16\n30486.50\n15\n30486.25\n9\n30486.00\n3\n1\n30485.75\n4\n30485.50\n9\n30485.25\n12\n30485.00\n19\n30484.75\n16\n30484.50\n13\n30484.25\n13\n30484.00\n9\n30483.75\n10\n30483.50\n7\n30483.25\n12\n30483.00\n11\n30482.75\n11\n30482.50\n10\n30482.25\n15\n30482.00\n10\n30481.75\n10\n30481.50\n7\n30481.25\n30481.00\n30480.75\n30480.50\n30480.25\n30480.00\n30479.75\n30479.50\n30479.25\n30479.00\n30478.75\nLIVE FEED\nBEAR\nHIGH\nbuy absorbed at 30,517.25: vol 139, delta -27, confidence low\nBEAR\nHIGH\nbuy absorbed at 30,518.75: vol 140, delta -10, confidence low\nBULL\nHIGH\nsell absorbed at 30,519.75: vol 140, delta +14, confidence low\nNEUT\nAGG\nStacked footprint sell imbalance across 6 prices from 30,496.25 to 30,497.50\nNEUT\nAGG\nStacked footprint buy imbalance across 8 prices from 30,533.25 to 30,535.00\nNEUT\nICE\nIceberg-like bid-side refill at Iceberg bid 30,517.75: 52 refills, 52 consumed via OBS confirmation",
+      "hasPriceContext": true,
+      "hasDomLadder": true,
+      "hasDepthWaiting": false,
+      "hasLiveFeed": true,
+      "canvases": [
+        {
+          "width": 928,
+          "height": 549,
+          "clientWidth": 928,
+          "clientHeight": 549
+        },
+        {
+          "width": 928,
+          "height": 549,
+          "clientWidth": 928,
+          "clientHeight": 549
+        },
+        {
+          "width": 70,
+          "height": 549,
+          "clientWidth": 70,
+          "clientHeight": 549
+        },
+        {
+          "width": 70,
+          "height": 549,
+          "clientWidth": 70,
+          "clientHeight": 549
+        },
+        {
+          "width": 928,
+          "height": 274,
+          "clientWidth": 928,
+          "clientHeight": 274
+        },
+        {
+          "width": 928,
+          "height": 274,
+          "clientWidth": 928,
+          "clientHeight": 274
+        },
+        {
+          "width": 70,
+          "height": 274,
+          "clientWidth": 70,
+          "clientHeight": 274
+        },
+        {
+          "width": 70,
+          "height": 274,
+          "clientWidth": 70,
+          "clientHeight": 274
+        },
+        {
+          "width": 928,
+          "height": 28,
+          "clientWidth": 928,
+          "clientHeight": 28
+        },
+        {
+          "width": 928,
+          "height": 28,
+          "clientWidth": 928,
+          "clientHeight": 28
+        },
+        {
+          "width": 70,
+          "height": 28,
+          "clientWidth": 70,
+          "clientHeight": 28
+        }
+      ]
+    }
+  },
+  "coldBackfill": null,
+  "cpu": {
+    "totalMs": 15048.71,
+    "sampleCount": 10318,
+    "topSelf": [
+      {
+        "name": "(idle)",
+        "ms": 13748.7,
+        "samples": 1,
+        "pct": 91.36
+      },
+      {
+        "name": "(program)",
+        "ms": 845.25,
+        "samples": 1,
+        "pct": 5.62
+      },
+      {
+        "name": "(garbage collector)",
+        "ms": 44.06,
+        "samples": 1,
+        "pct": 0.29
+      },
+      {
+        "name": "assert @ node_modules/.vite/deps/lightweight-charts.js?v=3f9a29d7:482:15",
+        "ms": 18.6,
+        "samples": 12,
+        "pct": 0.12
+      },
+      {
+        "name": "(anonymous) @ src/chart/eventBubbles.ts:59:23",
+        "ms": 17.95,
+        "samples": 6,
+        "pct": 0.12
+      },
+      {
+        "name": "depthCellColor @ src/chart/depthHeatmap.ts:132:30",
+        "ms": 14.83,
+        "samples": 6,
+        "pct": 0.1
+      },
+      {
+        "name": "key @ node_modules/.vite/deps/lightweight-charts.js?v=3f9a29d7:7702:5",
+        "ms": 13.65,
+        "samples": 14,
+        "pct": 0.09
+      },
+      {
+        "name": "depthContrastStats @ src/chart/depthHeatmap.ts:94:34",
+        "ms": 13.22,
+        "samples": 8,
+        "pct": 0.09
+      },
+      {
+        "name": "fillText",
+        "ms": 12.87,
+        "samples": 4,
+        "pct": 0.09
+      },
+      {
+        "name": "(anonymous) @ src/chart/depthHeatmap.ts:231:35",
+        "ms": 12.83,
+        "samples": 1,
+        "pct": 0.09
+      }
+    ],
+    "topTotal": [
+      {
+        "name": "(root)",
+        "ms": 15048.71,
+        "samples": 1,
+        "pct": 100
+      },
+      {
+        "name": "(idle)",
+        "ms": 13748.7,
+        "samples": 1,
+        "pct": 91.36
+      },
+      {
+        "name": "(program)",
+        "ms": 845.25,
+        "samples": 1,
+        "pct": 5.62
+      },
+      {
+        "name": "(anonymous) @ node_modules/.vite/deps/lightweight-charts.js?v=3f9a29d7:10883:62",
+        "ms": 235.84,
+        "samples": 1,
+        "pct": 1.57
+      },
+      {
+        "name": "_private__drawImpl @ node_modules/.vite/deps/lightweight-charts.js?v=3f9a29d7:10813:20",
+        "ms": 235.76,
+        "samples": 1,
+        "pct": 1.57
+      },
+      {
+        "name": "_internal_paint @ node_modules/.vite/deps/lightweight-charts.js?v=3f9a29d7:10527:17",
+        "ms": 166.35,
+        "samples": 1,
+        "pct": 1.11
+      },
+      {
+        "name": "_internal_paint @ node_modules/.vite/deps/lightweight-charts.js?v=3f9a29d7:9650:17",
+        "ms": 156.96,
+        "samples": 1,
+        "pct": 1.04
+      },
+      {
+        "name": "_internal_updateAllViews @ node_modules/.vite/deps/lightweight-charts.js?v=3f9a29d7:3933:26",
+        "ms": 144.15,
+        "samples": 12,
+        "pct": 0.96
+      },
+      {
+        "name": "commitMutationEffectsOnFiber @ node_modules/.vite/deps/chunk-KVMAXHTM.js?v=3f9a29d7:17740:45",
+        "ms": 143.05,
+        "samples": 17,
+        "pct": 0.95
+      },
+      {
+        "name": "recursivelyTraverseMutationEffects @ node_modules/.vite/deps/chunk-KVMAXHTM.js?v=3f9a29d7:17717:51",
+        "ms": 133.83,
+        "samples": 16,
+        "pct": 0.89
+      }
+    ],
+    "heatmapSelfMs": 183.32,
+    "heatmapSelfPct": 1.22,
+    "heatmapTotalMs": 381.01,
+    "heatmapTotalPct": 2.53
+  },
+  "trace": {
+    "wallMs": 15021.6,
+    "targetThread": "23000:22580",
+    "targetThreadName": "CrRendererMain",
+    "eventCount": 61451,
+    "targetEventCount": 15048,
+    "breakdown": {
+      "jsMs": 2361.22,
+      "renderMs": 501.28,
+      "otherMs": 2339.36,
+      "jsPctWall": 15.72,
+      "renderPctWall": 3.34,
+      "otherPctWall": 15.57
+    },
+    "longTasks": [],
+    "longTaskCount": 0,
+    "frame": {
+      "count": 99,
+      "avgMs": 135.4,
+      "p95Ms": 568.16,
+      "p99Ms": 695.76
+    },
+    "topEvents": [
+      {
+        "name": "RunTask",
+        "ms": 1289.61,
+        "count": 3583,
+        "maxMs": 19.16,
+        "pctWall": 8.59
+      },
+      {
+        "name": "ThreadControllerImpl::RunTask",
+        "ms": 1265.15,
+        "count": 3441,
+        "maxMs": 19.13,
+        "pctWall": 8.42
+      },
+      {
+        "name": "v8.callFunction",
+        "ms": 613.48,
+        "count": 785,
+        "maxMs": 5.87,
+        "pctWall": 4.08
+      },
+      {
+        "name": "FunctionCall",
+        "ms": 606.37,
+        "count": 785,
+        "maxMs": 5.86,
+        "pctWall": 4.04
+      },
+      {
+        "name": "FireAnimationFrame",
+        "ms": 322.65,
+        "count": 100,
+        "maxMs": 5.89,
+        "pctWall": 2.15
+      },
+      {
+        "name": "Layout",
+        "ms": 308.3,
+        "count": 85,
+        "maxMs": 10.71,
+        "pctWall": 2.05
+      },
+      {
+        "name": "SimpleWatcher::OnHandleReady",
+        "ms": 165.91,
+        "count": 183,
+        "maxMs": 3.38,
+        "pctWall": 1.1
+      },
+      {
+        "name": "TimerFire",
+        "ms": 142.59,
+        "count": 505,
+        "maxMs": 4.13,
+        "pctWall": 0.95
+      },
+      {
+        "name": "Paint",
+        "ms": 127.66,
+        "count": 213,
+        "maxMs": 1.53,
+        "pctWall": 0.85
+      },
+      {
+        "name": "PrePaint",
+        "ms": 59.02,
+        "count": 140,
+        "maxMs": 1.64,
+        "pctWall": 0.39
+      },
+      {
+        "name": "Commit",
+        "ms": 46.29,
+        "count": 140,
+        "maxMs": 0.9,
+        "pctWall": 0.31
+      },
+      {
+        "name": "Receive mojo message",
+        "ms": 22.13,
+        "count": 90,
+        "maxMs": 6.75,
+        "pctWall": 0.15
+      },
+      {
+        "name": "MajorGC",
+        "ms": 21.68,
+        "count": 9,
+        "maxMs": 3.15,
+        "pctWall": 0.14
+      },
+      {
+        "name": "Layerize",
+        "ms": 21.62,
+        "count": 140,
+        "maxMs": 0.7,
+        "pctWall": 0.14
+      },
+      {
+        "name": "V8.GCFinalizeMC",
+        "ms": 21.37,
+        "count": 9,
+        "maxMs": 3.12,
+        "pctWall": 0.14
+      }
+    ]
+  }
+}

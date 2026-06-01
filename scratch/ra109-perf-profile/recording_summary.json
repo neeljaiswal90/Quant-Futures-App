@@ -1,0 +1,410 @@
+[
+  {
+    "scenario": "a",
+    "path": "D:\\Quant-futures-app\\scratch\\ra109-perf-profile\\scenario-a.json",
+    "before": {
+      "backend": {
+        "status": "ok",
+        "role": "realtime_backend",
+        "seq": 19863,
+        "clients": 3
+      },
+      "wsSample": {
+        "durationMs": 5011,
+        "frames": 19,
+        "fps": 3.7916583516264217,
+        "avgBytes": 4024.8947368421054,
+        "firstSeq": 19863,
+        "lastSeq": 19881,
+        "deltaSeq": 18,
+        "counts": {
+          "depth": 4,
+          "snapshot": 1,
+          "price_tick": 13,
+          "heartbeat": 1
+        }
+      }
+    },
+    "coldBackfill": null,
+    "after": {
+      "backend": {
+        "status": "ok",
+        "role": "realtime_backend",
+        "seq": 19943,
+        "clients": 5
+      },
+      "wsSample": {
+        "durationMs": 5013,
+        "frames": 20,
+        "fps": 3.9896269698783167,
+        "avgBytes": 3853.6,
+        "firstSeq": 19941,
+        "lastSeq": 19961,
+        "deltaSeq": 20,
+        "counts": {
+          "depth": 3,
+          "snapshot": 1,
+          "price_tick": 15,
+          "heartbeat": 1
+        }
+      },
+      "page": {
+        "title": "MNQ Realtime — Decision Support",
+        "url": "http://127.0.0.1:5173/?ra109=a-1780330145223",
+        "text": "MNQ REALTIME\nLIVE\nschema v1\nEnable alerts\nEnd day\nPRICE CONTEXT\n30504.50\nbid 30503.00\nask 30503.50\nσ 9.73\nregime LOW\nCVD -1,803\nvΔ 108\nflow high\n\t\n\t\n\n\n\n\t\n\t\n\n\t\n\t\nVOL 6\nCVD -48 Δ -1\nExecutions on\nIcebergs on\nLegend\nDOM LADDER\nFollow\nlive · 3s\nFollow price\nRecenter\n30505.50\n12\n30505.25\n16\n30505.00\n17\n30504.75\n14\n30504.50\n11\n30504.25\n12\n30504.00\n13\n30503.75\n12\n30503.50\n7\n30503.25\n8\n30503.00\n13\n30502.75\n13\n30502.50\n12\n30502.25\n12\n30502.00\n16\n30501.75\n13\n30501.50\n12\n30501.25\n11\n30501.00\n13\n30500.75\n14\n30500.50\n16\n30500.25\n19\n30500.00\n15\n30499.75\n11\n30499.50\n14\n30499.25\n19\n30499.00\n18\n30498.75\n20\n30498.50\nICE\n30498.25\n30498.00\n30497.75\n30497.50\n30497.25\n30497.00\n30496.75\n30496.50\n30496.25\n30496.00\nLIVE FEED\nNEUT\nAGG\nStacked footprint buy imbalance across 8 prices from 30,533.25 to 30,535.00\nNEUT\nICE\nIceberg-like bid-side refill at Iceberg bid 30,517.75: 52 refills, 52 consumed via OBS confirmation\nNEUT\nICE\nIceberg-like ask-side refill at Iceberg ask 30,525.50: 75 refills, 75 consumed via OBS confirmation\nNEUT\nICE\nIceberg-like ask-side refill at Iceberg ask 30,525.50: 71 refills, 71 consumed via OBS confirmation\nNEUT\nAGG\nvDelta flipped bullish: 30s delta +66 after 10s confirmation\nNEUT\nABS",
+        "hasPriceContext": true,
+        "hasDomLadder": true,
+        "hasDepthWaiting": false,
+        "hasLiveFeed": true,
+        "canvases": [
+          {
+            "width": 928,
+            "height": 549,
+            "clientWidth": 928,
+            "clientHeight": 549
+          },
+          {
+            "width": 928,
+            "height": 549,
+            "clientWidth": 928,
+            "clientHeight": 549
+          },
+          {
+            "width": 70,
+            "height": 549,
+            "clientWidth": 70,
+            "clientHeight": 549
+          },
+          {
+            "width": 70,
+            "height": 549,
+            "clientWidth": 70,
+            "clientHeight": 549
+          },
+          {
+            "width": 928,
+            "height": 274,
+            "clientWidth": 928,
+            "clientHeight": 274
+          },
+          {
+            "width": 928,
+            "height": 274,
+            "clientWidth": 928,
+            "clientHeight": 274
+          },
+          {
+            "width": 70,
+            "height": 274,
+            "clientWidth": 70,
+            "clientHeight": 274
+          },
+          {
+            "width": 70,
+            "height": 274,
+            "clientWidth": 70,
+            "clientHeight": 274
+          },
+          {
+            "width": 928,
+            "height": 28,
+            "clientWidth": 928,
+            "clientHeight": 28
+          },
+          {
+            "width": 928,
+            "height": 28,
+            "clientWidth": 928,
+            "clientHeight": 28
+          },
+          {
+            "width": 70,
+            "height": 28,
+            "clientWidth": 70,
+            "clientHeight": 28
+          }
+        ]
+      }
+    },
+    "traceEvents": 71719,
+    "cpuNodes": 729
+  },
+  {
+    "scenario": "b",
+    "path": "D:\\Quant-futures-app\\scratch\\ra109-perf-profile\\scenario-b.json",
+    "before": {
+      "backend": {
+        "status": "ok",
+        "role": "realtime_backend",
+        "seq": 19961,
+        "clients": 5
+      },
+      "wsSample": {
+        "durationMs": 5011,
+        "frames": 13,
+        "fps": 2.5942925563759727,
+        "avgBytes": 5703.538461538462,
+        "firstSeq": 19962,
+        "lastSeq": 19973,
+        "deltaSeq": 11,
+        "counts": {
+          "depth": 3,
+          "snapshot": 1,
+          "price_tick": 8,
+          "heartbeat": 1
+        }
+      }
+    },
+    "coldBackfill": {
+      "elapsedMs": 1646,
+      "bytes": 5567396,
+      "generated_at_ns": 1780330178475440600,
+      "through_seq": 19974,
+      "price_ticks": 13838,
+      "depth": 2748,
+      "limits": {
+        "price_ticks_max": 100000,
+        "depth_columns_max": 12000,
+        "effective_price_ticks_max": 13838,
+        "effective_depth_columns_max": 2748,
+        "max_age_seconds": 28800,
+        "max_response_bytes": 104857600,
+        "estimated_response_bytes": 5567396
+      }
+    },
+    "after": {
+      "backend": {
+        "status": "ok",
+        "role": "realtime_backend",
+        "seq": 20026,
+        "clients": 5
+      },
+      "wsSample": {
+        "durationMs": 4941,
+        "frames": 11,
+        "fps": 2.2262699858328276,
+        "avgBytes": 6608.363636363636,
+        "firstSeq": 20025,
+        "lastSeq": 20036,
+        "deltaSeq": 11,
+        "counts": {
+          "depth": 2,
+          "snapshot": 1,
+          "price_tick": 7,
+          "heartbeat": 1
+        }
+      },
+      "page": {
+        "title": "MNQ Realtime — Decision Support",
+        "url": "http://127.0.0.1:5173/?ra109=1780330179596",
+        "text": "MNQ REALTIME\nLIVE\nschema v1\nEnable alerts\nEnd day\nPRICE CONTEXT\n30504.00\nbid 30503.25\nask 30503.50\nσ 9.73\nregime LOW\nCVD -1,384\nvΔ 25\nflow high\n\t\n\t\n\n\n\n\t\n\t\n\n\t\n\t\nVOL 2\nCVD +2 Δ +1\nExecutions on\nIcebergs on\nLegend\nDOM LADDER\nFollow\nlive · 1s\nFollow price\nRecenter\n30511.00\n30510.75\n30510.50\n30510.25\n30510.00\n30509.75\n30509.50\n30509.25\n30509.00\n30508.75\n30508.50\n30508.25\n11\n30508.00\n21\n30507.75\n14\n30507.50\n11\n30507.25\n14\n30507.00\n18\n30506.75\n11\n30506.50\n14\n30506.25\n15\n30506.00\n15\n30505.75\n15\n30505.50\n13\n30505.25\n14\n30505.00\n16\n30504.75\n13\n30504.50\n17\n30504.25\n12\n30504.00\n9\n30503.75\n8\n30503.50\n3\n3\n30503.25\n10\n30503.00\n16\n30502.75\n11\n30502.50\n12\n30502.25\n11\n30502.00\n16\n30501.75\n14\n30501.50\nLIVE FEED\nNEUT\nAGG\nStacked footprint buy imbalance across 8 prices from 30,533.25 to 30,535.00\nNEUT\nICE\nIceberg-like bid-side refill at Iceberg bid 30,517.75: 52 refills, 52 consumed via OBS confirmation\nNEUT\nICE\nIceberg-like ask-side refill at Iceberg ask 30,525.50: 75 refills, 75 consumed via OBS confirmation\nNEUT\nICE\nIceberg-like ask-side refill at Iceberg ask 30,525.50: 71 refills, 71 consumed via OBS confirmation\nNEUT\nAGG\nvDelta flipped bullish: 30s delta +66 after 10s confirmation\nNEUT\nABS\nbuy abs",
+        "hasPriceContext": true,
+        "hasDomLadder": true,
+        "hasDepthWaiting": false,
+        "hasLiveFeed": true,
+        "canvases": [
+          {
+            "width": 928,
+            "height": 549,
+            "clientWidth": 928,
+            "clientHeight": 549
+          },
+          {
+            "width": 928,
+            "height": 549,
+            "clientWidth": 928,
+            "clientHeight": 549
+          },
+          {
+            "width": 70,
+            "height": 549,
+            "clientWidth": 70,
+            "clientHeight": 549
+          },
+          {
+            "width": 70,
+            "height": 549,
+            "clientWidth": 70,
+            "clientHeight": 549
+          },
+          {
+            "width": 928,
+            "height": 274,
+            "clientWidth": 928,
+            "clientHeight": 274
+          },
+          {
+            "width": 928,
+            "height": 274,
+            "clientWidth": 928,
+            "clientHeight": 274
+          },
+          {
+            "width": 70,
+            "height": 274,
+            "clientWidth": 70,
+            "clientHeight": 274
+          },
+          {
+            "width": 70,
+            "height": 274,
+            "clientWidth": 70,
+            "clientHeight": 274
+          },
+          {
+            "width": 928,
+            "height": 28,
+            "clientWidth": 928,
+            "clientHeight": 28
+          },
+          {
+            "width": 928,
+            "height": 28,
+            "clientWidth": 928,
+            "clientHeight": 28
+          },
+          {
+            "width": 70,
+            "height": 28,
+            "clientWidth": 70,
+            "clientHeight": 28
+          }
+        ]
+      }
+    },
+    "traceEvents": 99592,
+    "cpuNodes": 1281
+  },
+  {
+    "scenario": "c",
+    "path": "D:\\Quant-futures-app\\scratch\\ra109-perf-profile\\scenario-c.json",
+    "before": {
+      "backend": {
+        "status": "ok",
+        "role": "realtime_backend",
+        "seq": 20037,
+        "clients": 5
+      },
+      "wsSample": {
+        "durationMs": 5010,
+        "frames": 17,
+        "fps": 3.3932135728542914,
+        "avgBytes": 4439.529411764706,
+        "firstSeq": 20035,
+        "lastSeq": 20053,
+        "deltaSeq": 18,
+        "counts": {
+          "depth": 2,
+          "snapshot": 1,
+          "price_tick": 12,
+          "heartbeat": 1,
+          "signal": 1
+        }
+      }
+    },
+    "coldBackfill": null,
+    "after": {
+      "backend": {
+        "status": "ok",
+        "role": "realtime_backend",
+        "seq": 20114,
+        "clients": 5
+      },
+      "wsSample": {
+        "durationMs": 5004,
+        "frames": 21,
+        "fps": 4.1966426858513195,
+        "avgBytes": 3607.5238095238096,
+        "firstSeq": 20114,
+        "lastSeq": 20134,
+        "deltaSeq": 20,
+        "counts": {
+          "depth": 3,
+          "snapshot": 1,
+          "price_tick": 13,
+          "absorption": 3,
+          "heartbeat": 1
+        }
+      },
+      "page": {
+        "title": "MNQ Realtime — Decision Support",
+        "url": "http://127.0.0.1:5173/?ra109=c-1780330207183",
+        "text": "MNQ REALTIME\nLIVE\nschema v1\nEnable alerts\nEnd day\nPRICE CONTEXT\n30490.50\nbid 30485.75\nask 30486.00\nσ 9.74\nregime LOW\nCVD -1,677\nvΔ -922\nflow high\n\t\n\t\n\n\n\n\t\n\t\n\n\t\n\t\nVOL 2\nCVD -23 Δ +1\nExecutions on\nIcebergs on\nLegend\nDOM LADDER\nFollow\nlive · 4s\nFollow price\nRecenter\n30488.25\n18\n30488.00\n17\n30487.75\n13\n30487.50\n18\n30487.25\n19\n30487.00\n11\n30486.75\n16\n30486.50\n15\n30486.25\n9\n30486.00\n3\n1\n30485.75\n4\n30485.50\n9\n30485.25\n12\n30485.00\n19\n30484.75\n16\n30484.50\n13\n30484.25\n13\n30484.00\n9\n30483.75\n10\n30483.50\n7\n30483.25\n12\n30483.00\n11\n30482.75\n11\n30482.50\n10\n30482.25\n15\n30482.00\n10\n30481.75\n10\n30481.50\n7\n30481.25\n30481.00\n30480.75\n30480.50\n30480.25\n30480.00\n30479.75\n30479.50\n30479.25\n30479.00\n30478.75\nLIVE FEED\nBEAR\nHIGH\nbuy absorbed at 30,517.25: vol 139, delta -27, confidence low\nBEAR\nHIGH\nbuy absorbed at 30,518.75: vol 140, delta -10, confidence low\nBULL\nHIGH\nsell absorbed at 30,519.75: vol 140, delta +14, confidence low\nNEUT\nAGG\nStacked footprint sell imbalance across 6 prices from 30,496.25 to 30,497.50\nNEUT\nAGG\nStacked footprint buy imbalance across 8 prices from 30,533.25 to 30,535.00\nNEUT\nICE\nIceberg-like bid-side refill at Iceberg bid 30,517.75: 52 refills, 52 consumed via OBS confirmation",
+        "hasPriceContext": true,
+        "hasDomLadder": true,
+        "hasDepthWaiting": false,
+        "hasLiveFeed": true,
+        "canvases": [
+          {
+            "width": 928,
+            "height": 549,
+            "clientWidth": 928,
+            "clientHeight": 549
+          },
+          {
+            "width": 928,
+            "height": 549,
+            "clientWidth": 928,
+            "clientHeight": 549
+          },
+          {
+            "width": 70,
+            "height": 549,
+            "clientWidth": 70,
+            "clientHeight": 549
+          },
+          {
+            "width": 70,
+            "height": 549,
+            "clientWidth": 70,
+            "clientHeight": 549
+          },
+          {
+            "width": 928,
+            "height": 274,
+            "clientWidth": 928,
+            "clientHeight": 274
+          },
+          {
+            "width": 928,
+            "height": 274,
+            "clientWidth": 928,
+            "clientHeight": 274
+          },
+          {
+            "width": 70,
+            "height": 274,
+            "clientWidth": 70,
+            "clientHeight": 274
+          },
+          {
+            "width": 70,
+            "height": 274,
+            "clientWidth": 70,
+            "clientHeight": 274
+          },
+          {
+            "width": 928,
+            "height": 28,
+            "clientWidth": 928,
+            "clientHeight": 28
+          },
+          {
+            "width": 928,
+            "height": 28,
+            "clientWidth": 928,
+            "clientHeight": 28
+          },
+          {
+            "width": 70,
+            "height": 28,
+            "clientWidth": 70,
+            "clientHeight": 28
+          }
+        ]
+      }
+    },
+    "traceEvents": 61451,
+    "cpuNodes": 787
+  }
+]
