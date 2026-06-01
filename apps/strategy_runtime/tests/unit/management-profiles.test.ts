@@ -34,6 +34,7 @@ const DEMOTED_REPLAY_STRATEGY_IDS = [
   'vwap_overnight_reversal_long',
   'vwap_overnight_reversal_short',
   'regime_shock_reversion_short_v2',
+  'regime_shock_reversion_short_v2_utc_16_18_exclusion',
 ] as const satisfies readonly StrategyId[];
 
 function fixtureCandidate(strategyId: StrategyId): Candidate {
@@ -96,6 +97,24 @@ describe('MGMT-01 management profile substrate', () => {
     }
   });
 
+
+  it('resolves the v2 UTC 16-18 exclusion profile without fallback and mirrors v2 behavior', () => {
+    const base = resolveManagementProfile('regime_shock_reversion_short_v2', { allow_fallback: false }).profile;
+    const variant = resolveManagementProfile('regime_shock_reversion_short_v2_utc_16_18_exclusion', { allow_fallback: false }).profile;
+
+    expect(variant.profile_id).toBe('regime_shock_reversion_short_v2_utc_16_18_exclusion_management_v1');
+    expect(variant.strategy_id).toBe('regime_shock_reversion_short_v2_utc_16_18_exclusion');
+    expect(base.profile_id).toBe('regime_shock_reversion_short_v2_management_v1');
+    expect(base.strategy_id).toBe('regime_shock_reversion_short_v2');
+    expect({
+      ...variant,
+      profile_id: base.profile_id,
+      strategy_id: base.strategy_id,
+      display_name: base.display_name,
+      reasons: base.reasons,
+    }).toEqual(base);
+    expect(validateManagementProfile(variant)).toEqual([]);
+  });
   it('builds deterministic target and initial-stop plans from journaled candidates', () => {
     const candidate = fixtureCandidate('breakout_retest_long');
     const profile = resolveManagementProfile(candidate.strategy_id).profile;
@@ -287,3 +306,4 @@ describe('MGMT-01 management profile substrate', () => {
     );
   });
 });
+

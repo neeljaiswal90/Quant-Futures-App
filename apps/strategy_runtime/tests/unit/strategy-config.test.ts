@@ -18,7 +18,7 @@ import {
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const EXPECTED_STRATEGY_CONFIG_HASH =
-  '0fc4a9b52dbf84f31076df6a80e4f47cc694ae7c41e4df5993b470192efeac0c';
+  '22c80535af8c009b05dd452d778a24570231c8510eec842cf39af4e7168d978a';
 
 const STRATEGY_CONFIG_FILES = [
   'shared.yaml',
@@ -33,6 +33,7 @@ const STRATEGY_CONFIG_FILES = [
   'vwap_overnight_reversal_long.yaml',
   'vwap_overnight_reversal_short.yaml',
   'regime_shock_reversion_short_v2.yaml',
+  'regime_shock_reversion_short_v2_utc_16_18_exclusion.yaml',
   'regime_shock_reversion_short_v3.yaml',
   'regime_shock_reversion_short_v4_delay.yaml',
   'regime_shock_reversion_short_v4_persist.yaml',
@@ -138,6 +139,7 @@ describe('STRAT-07 strategy config surface', () => {
     expect(config.strategies.vwap_overnight_reversal_short.exclude_first_minutes).toBe(15);
     expect(config.strategies.regime_shock_reversion_short_v2.high_shock_threshold_pos).toBe(2);
     expect(config.strategies.regime_shock_reversion_short_v2.low_shock_threshold_pos).toBe(2.7);
+    expect(config.strategies.regime_shock_reversion_short_v2_utc_16_18_exclusion.high_shock_threshold_pos).toBe(2);
     expect(config.strategies.regime_shock_reversion_short_v3.vix_pct_overfire_lower_bound).toBe(0.67);
     expect(config.strategies.regime_shock_reversion_short_v3.vix_pct_overfire_upper_bound).toBe(0.85);
     expect(config.strategies.regime_shock_reversion_short_v4_delay.entry_confirmation_delay_bars).toBe(1);
@@ -154,6 +156,7 @@ describe('STRAT-07 strategy config surface', () => {
       vwap_overnight_reversal_long: 90,
       vwap_overnight_reversal_short: 100,
       regime_shock_reversion_short_v2: 110,
+      regime_shock_reversion_short_v2_utc_16_18_exclusion: 115,
       regime_shock_reversion_short_v3: 120,
       regime_shock_reversion_short_v4_delay: 130,
       regime_shock_reversion_short_v4_persist: 140,
@@ -286,3 +289,5 @@ describe('STRAT-07 strategy config surface', () => {
     expect(configuredRank.ranked_candidate_ids).toEqual(['candidate-short', 'candidate-long']);
   });
 });
+
+

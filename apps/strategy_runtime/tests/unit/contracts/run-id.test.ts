@@ -22,6 +22,7 @@ const EXPLICIT_REPLAY_STRATEGY_IDS = [
   'vwap_overnight_reversal_long',
   'vwap_overnight_reversal_short',
   'regime_shock_reversion_short_v2',
+  'regime_shock_reversion_short_v2_utc_16_18_exclusion',
 ] as const satisfies readonly StrategyId[];
 
 describe('QFA-115 deriveRunId — fixture cross-check', () => {
@@ -179,6 +180,7 @@ describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
     ['trend_pullback_short', 'tp_short'],
     ['breakout_retest_long', 'bro_long'],
     ['breakdown_retest_short', 'bro_short'],
+    ['regime_shock_reversion_short_v2_utc_16_18_exclusion', 'rsr_short_v2_u1618x'],
     ['regime_shock_reversion_short_v4_delay', 'rsr_short_v4_delay'],
     ['regime_shock_reversion_short_v4_persist', 'rsr_short_v4_persist'],
     ['regime_shock_reversion_short_v5_strict_deadline', 'rsr_short_v5_sd'],
@@ -207,3 +209,4 @@ describe('QFA-115 deriveStrategyToken (Q-2.2 + A1)', () => {
     }
   });
 });
+

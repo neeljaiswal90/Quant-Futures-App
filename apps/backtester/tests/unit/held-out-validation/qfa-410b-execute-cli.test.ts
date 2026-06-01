@@ -13,6 +13,7 @@ const EXPLICIT_REPLAY_STRATEGY_IDS = [
   'vwap_overnight_reversal_long',
   'vwap_overnight_reversal_short',
   'regime_shock_reversion_short_v2',
+  'regime_shock_reversion_short_v2_utc_16_18_exclusion',
 ] as const satisfies readonly StrategyId[];
 
 interface Qfa410bExecuteModule {
@@ -273,3 +274,4 @@ function writeFixtureJson(path: string, value: unknown): void {
 function npxBin(): string {
   return process.platform === 'win32' ? 'npx.cmd' : 'npx';
 }
+

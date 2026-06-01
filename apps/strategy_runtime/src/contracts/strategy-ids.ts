@@ -14,6 +14,7 @@ export const REGISTERED_INACTIVE_STRATEGY_IDS = [
   'vwap_overnight_reversal_long',
   'vwap_overnight_reversal_short',
   'regime_shock_reversion_short_v2',
+  'regime_shock_reversion_short_v2_utc_16_18_exclusion',
   'regime_shock_reversion_short_v3',
   'regime_shock_reversion_short_v4_delay',
   'regime_shock_reversion_short_v4_persist',
@@ -44,3 +45,4 @@ export function parseStrategyId(value: string): StrategyId {
   }
   return value;
 }
+

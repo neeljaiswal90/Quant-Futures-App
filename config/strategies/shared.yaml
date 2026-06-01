@@ -18,8 +18,10 @@ ranking:
     vwap_overnight_reversal_long: 90
     vwap_overnight_reversal_short: 100
     regime_shock_reversion_short_v2: 110
+    regime_shock_reversion_short_v2_utc_16_18_exclusion: 115
     regime_shock_reversion_short_v3: 120
     regime_shock_reversion_short_v4_delay: 130
     regime_shock_reversion_short_v4_persist: 140
     regime_shock_reversion_short_v5_strict_deadline: 150
     regime_shock_reversion_short_v5_trail_at_deadline: 160
+

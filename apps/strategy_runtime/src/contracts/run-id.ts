@@ -59,6 +59,7 @@ const STRATEGY_ID_TO_RUN_ID_ABBREV: Record<StrategyId, string> = {
   vwap_overnight_reversal_long: 'vor_long',
   vwap_overnight_reversal_short: 'vor_short',
   regime_shock_reversion_short_v2: 'rsr_short_v2',
+  regime_shock_reversion_short_v2_utc_16_18_exclusion: 'rsr_short_v2_u1618x',
   regime_shock_reversion_short_v3: 'rsr_short_v3',
   regime_shock_reversion_short_v4_delay: 'rsr_short_v4_delay',
   regime_shock_reversion_short_v4_persist: 'rsr_short_v4_persist',
@@ -180,3 +181,4 @@ export function deriveRunId(spec: RunSpec): RunIdentity {
   const run_id = `bt-${root}-${bar}-${win}-${strat}-${hash12}`;
   return { run_id, run_spec_hash };
 }
+

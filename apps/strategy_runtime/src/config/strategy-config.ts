@@ -129,6 +129,7 @@ export interface StrategyConfigById {
   readonly vwap_overnight_reversal_long: VwapOvernightReversalStrategyParameters;
   readonly vwap_overnight_reversal_short: VwapOvernightReversalStrategyParameters;
   readonly regime_shock_reversion_short_v2: RegimeMeanReversionStrategyParameters;
+  readonly regime_shock_reversion_short_v2_utc_16_18_exclusion: RegimeMeanReversionStrategyParameters;
   readonly regime_shock_reversion_short_v3: RegimeShockReversionShortV3StrategyParameters;
   readonly regime_shock_reversion_short_v4_delay: RegimeShockReversionShortV4DelayStrategyParameters;
   readonly regime_shock_reversion_short_v4_persist: RegimeShockReversionShortV4PersistStrategyParameters;
@@ -237,6 +238,10 @@ export const DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG: RegimeMeanReversion
   minimum_target_rr: 1,
 };
 
+export const DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_UTC_16_18_EXCLUSION_CONFIG: RegimeMeanReversionStrategyParameters = {
+  ...DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
+};
+
 export const DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V3_CONFIG: RegimeShockReversionShortV3StrategyParameters = {
   ...DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
   vix_pct_overfire_lower_bound: 0.67,
@@ -309,6 +314,7 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     vwap_overnight_reversal_long: 90,
     vwap_overnight_reversal_short: 100,
     regime_shock_reversion_short_v2: 110,
+    regime_shock_reversion_short_v2_utc_16_18_exclusion: 115,
     regime_shock_reversion_short_v3: 120,
     regime_shock_reversion_short_v4_delay: 130,
     regime_shock_reversion_short_v4_persist: 140,
@@ -337,6 +343,7 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   vwap_overnight_reversal_long: DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG,
   vwap_overnight_reversal_short: DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG,
   regime_shock_reversion_short_v2: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
+  regime_shock_reversion_short_v2_utc_16_18_exclusion: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_UTC_16_18_EXCLUSION_CONFIG,
   regime_shock_reversion_short_v3: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V3_CONFIG,
   regime_shock_reversion_short_v4_delay: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V4_DELAY_CONFIG,
   regime_shock_reversion_short_v4_persist: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V4_PERSIST_CONFIG,
@@ -362,6 +369,7 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   vwap_overnight_reversal_long: 'vwap_overnight_reversal_long.yaml',
   vwap_overnight_reversal_short: 'vwap_overnight_reversal_short.yaml',
   regime_shock_reversion_short_v2: 'regime_shock_reversion_short_v2.yaml',
+  regime_shock_reversion_short_v2_utc_16_18_exclusion: 'regime_shock_reversion_short_v2_utc_16_18_exclusion.yaml',
   regime_shock_reversion_short_v3: 'regime_shock_reversion_short_v3.yaml',
   regime_shock_reversion_short_v4_delay: 'regime_shock_reversion_short_v4_delay.yaml',
   regime_shock_reversion_short_v4_persist: 'regime_shock_reversion_short_v4_persist.yaml',
@@ -429,6 +437,10 @@ export function loadStrategyRuntimeConfig(
     regime_shock_reversion_short_v2: parseRegimeMeanReversionConfig(
       'regime_shock_reversion_short_v2',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v2), sourceFiles),
+    ),
+    regime_shock_reversion_short_v2_utc_16_18_exclusion: parseRegimeMeanReversionConfig(
+      'regime_shock_reversion_short_v2_utc_16_18_exclusion',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v2_utc_16_18_exclusion), sourceFiles),
     ),
     regime_shock_reversion_short_v4_delay: parseRegimeShockReversionShortV4DelayConfig(
       'regime_shock_reversion_short_v4_delay',
@@ -499,6 +511,7 @@ export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
   strategyId:
     | 'regime_shock_reversion_short_v2'
+    | 'regime_shock_reversion_short_v2_utc_16_18_exclusion'
     | 'regime_shock_reversion_short_v5_strict_deadline'
     | 'regime_shock_reversion_short_v5_trail_at_deadline',
 ): RegimeMeanReversionStrategyParameters;
@@ -614,6 +627,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'vwap_overnight_reversal_long',
     'vwap_overnight_reversal_short',
     'regime_shock_reversion_short_v2',
+    'regime_shock_reversion_short_v2_utc_16_18_exclusion',
     'regime_shock_reversion_short_v3',
     'regime_shock_reversion_short_v4_delay',
     'regime_shock_reversion_short_v4_persist',
@@ -641,6 +655,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         vwap_overnight_reversal_long: readNumber(strategyPriority, 'vwap_overnight_reversal_long', '$.ranking.strategy_priority', issues),
         vwap_overnight_reversal_short: readNumber(strategyPriority, 'vwap_overnight_reversal_short', '$.ranking.strategy_priority', issues),
         regime_shock_reversion_short_v2: readNumber(strategyPriority, 'regime_shock_reversion_short_v2', '$.ranking.strategy_priority', issues),
+        regime_shock_reversion_short_v2_utc_16_18_exclusion: readNumber(strategyPriority, 'regime_shock_reversion_short_v2_utc_16_18_exclusion', '$.ranking.strategy_priority', issues),
         regime_shock_reversion_short_v3: readNumber(strategyPriority, 'regime_shock_reversion_short_v3', '$.ranking.strategy_priority', issues),
         regime_shock_reversion_short_v4_delay: readNumber(strategyPriority, 'regime_shock_reversion_short_v4_delay', '$.ranking.strategy_priority', issues),
         regime_shock_reversion_short_v4_persist: readNumber(strategyPriority, 'regime_shock_reversion_short_v4_persist', '$.ranking.strategy_priority', issues),
@@ -737,6 +752,7 @@ function parseRegimeMeanReversionConfig(
     | 'regime_mean_reversion_long'
     | 'regime_mean_reversion_short'
     | 'regime_shock_reversion_short_v2'
+    | 'regime_shock_reversion_short_v2_utc_16_18_exclusion'
     | 'regime_shock_reversion_short_v5_strict_deadline'
     | 'regime_shock_reversion_short_v5_trail_at_deadline',
   input: unknown,
@@ -1379,3 +1395,6 @@ function throwIfIssues(issues: ConfigValidationIssue[]) {
     );
   }
 }
+
+
+

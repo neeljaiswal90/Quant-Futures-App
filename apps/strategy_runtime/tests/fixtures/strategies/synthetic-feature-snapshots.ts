@@ -639,6 +639,58 @@ export const STRATEGY_SYNTHETIC_FIXTURES = {
       },
     }),
   },
+  regime_shock_reversion_short_v2_utc_16_18_exclusion: {
+    fixture_id: 'fixture_regime_shock_reversion_short_v2_utc_16_18_exclusion',
+    strategy_id: 'regime_shock_reversion_short_v2_utc_16_18_exclusion',
+    description: 'High-regime upside shock eligible for the inactive v2 UTC 16-18 exclusion hypothesis outside the excluded window.',
+    expected_direction: 'short',
+    expected_gate_state: 'armed',
+    expected_reason_fragments: ['regime_high', 'signed_shock_vwap', 'armed'],
+    snapshot: makeSnapshot({
+      fixtureId: 'fixture_regime_shock_reversion_short_v2_utc_16_18_exclusion',
+      sourceEventId: 'source-bar-regime-shock-reversion-short-v2-utc-16-18-exclusion',
+      createdOffsetNs: 15n * 60_000_000_000n,
+      direction: 'short',
+      bidPx: 18614.875,
+      askPx: 18615.125,
+      lastTradePrice: 18615,
+      barsStartClose: 18600,
+      trend: 'down',
+      indicators: {
+        supertrend_direction: 'down',
+        ema_9: 18608,
+        ema_21: 18604,
+        ema_50: 18600,
+        vwap: 18600,
+        atr_14: 6,
+        atr_14_pts: 6,
+        adx_14: 18,
+        sigma_pts: 6,
+        z_ema9: 1.15,
+        z_ofi_blend: 0.42,
+      },
+      structure: {
+        bos_direction: 'range',
+      },
+      microstructure: {
+        spread_pts: 0.25,
+        ofi_z: 0.44,
+        depth_imbalance: 0.2,
+        queue_imbalance: 0.18,
+      },
+      regimeLabel: 'high',
+      context: {
+        session_vwap: 18600,
+        signed_shock_vwap: {
+          value: 2.5,
+          anchor_type: 'vwap',
+          anchor_value: 18600,
+          sigma_basis: 'atr_14',
+          sigma_basis_value: 6,
+        },
+      },
+    }),
+  },
   regime_shock_reversion_short_v4_delay: {
     fixture_id: 'fixture_regime_shock_reversion_short_v4_delay',
     strategy_id: 'regime_shock_reversion_short_v4_delay',
@@ -906,3 +958,5 @@ export const STRATEGY_SYNTHETIC_FIXTURES = {
 export function listSyntheticStrategyFixtures(): readonly SyntheticStrategyFixture[] {
   return [];
 }
+
+
