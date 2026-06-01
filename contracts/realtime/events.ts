@@ -41,6 +41,7 @@ export const KNOWN_FAMILIES = [
   "snapshot",
   "heartbeat",
   "error",
+  "persistent_level",
 ] as const;
 
 export const ENVELOPE_FIELDS = [
@@ -250,6 +251,39 @@ export interface ErrorPayload {
   message: string;
 }
 
+/**
+ * RA-108: per-source evidence contributing to a level's persistence. Each
+ * entry records WHY a level is structural — which upstream detector, how
+ * many observations, when the last one fired, cumulative size at price.
+ */
+export interface PersistentLevelEvidence {
+  source: "resting_size" | "iceberg_refill" | "absorption" | "sweep_anchor";
+  count: number;
+  last_seen_ts_ns: number;
+  cumulative_size: number;
+}
+
+/**
+ * RA-108: session-long structural price level. Unlike RA-107a wall markers
+ * (short-window, visible-depth only), persistent levels are session-scoped
+ * and remain marked even when price moves far from them.
+ *
+ * Lifecycle: active → deteriorating → broken (one final emit then silent).
+ * Side: bid = floor (buyers defending below mid), ask = ceiling, unknown = rare.
+ */
+export interface PersistentLevelPayload {
+  family: "persistent_level";
+  level_id: string;
+  price: number;
+  side: "bid" | "ask" | "unknown";
+  persistence_seconds: number;
+  confidence: Confidence;
+  evidence: PersistentLevelEvidence[];
+  last_active_ts_ns: number;
+  status: "active" | "deteriorating" | "broken";
+  notes: string | null;
+}
+
 /** Catch-all for unknown / future families (RA-050 extensibility). */
 export interface GenericPayload {
   family: string;
@@ -268,6 +302,7 @@ export type RealtimePayload =
   | SnapshotPayload
   | HeartbeatPayload
   | ErrorPayload
+  | PersistentLevelPayload
   | GenericPayload;
 
 // --- Envelope --------------------------------------------------------------

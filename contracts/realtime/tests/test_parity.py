@@ -190,6 +190,83 @@ def test_depth_payload_still_accepts_100_levels_post_ra104b() -> None:
     assert payload.n_ticks == 100
 
 
+def test_persistent_level_payload_round_trips() -> None:
+    """RA-108: PersistentLevelPayload constructs + serializes correctly."""
+    evidence = [
+        ev.PersistentLevelEvidence(
+            source="iceberg_refill",
+            count=4,
+            last_seen_ts_ns=1_000_000_000,
+            cumulative_size=400.0,
+        ),
+        ev.PersistentLevelEvidence(
+            source="absorption",
+            count=2,
+            last_seen_ts_ns=1_500_000_000,
+            cumulative_size=120.0,
+        ),
+    ]
+    payload = ev.PersistentLevelPayload(
+        level_id="30600.0_ask",
+        price=30600.0,
+        side="ask",
+        persistence_seconds=315.0,
+        confidence="high",
+        evidence=evidence,
+        last_active_ts_ns=1_500_000_000,
+        status="active",
+        notes=None,
+    )
+
+    assert payload.family == "persistent_level"
+    assert payload.side == "ask"
+    assert payload.status == "active"
+    assert payload.confidence == "high"
+    assert len(payload.evidence) == 2
+    assert payload.evidence[0].source == "iceberg_refill"
+
+
+def test_persistent_level_envelope_resolves_via_parse_payload() -> None:
+    """RA-108: envelope discriminated-union routes 'persistent_level' to its
+    typed model, not GenericPayload."""
+    raw = {
+        "family": "persistent_level",
+        "level_id": "30520.0_bid",
+        "price": 30520.0,
+        "side": "bid",
+        "persistence_seconds": 120.0,
+        "confidence": "medium",
+        "evidence": [
+            {
+                "source": "resting_size",
+                "count": 3,
+                "last_seen_ts_ns": 2_000_000_000,
+                "cumulative_size": 80.0,
+            }
+        ],
+        "last_active_ts_ns": 2_000_000_000,
+        "status": "active",
+    }
+    parsed = ev.parse_payload(raw)
+    assert isinstance(parsed, ev.PersistentLevelPayload)
+    assert parsed.price == 30520.0
+
+
+def test_persistent_level_status_enum_rejects_invalid() -> None:
+    """RA-108: status must be one of active/deteriorating/broken."""
+    with pytest.raises(ValidationError):
+        ev.PersistentLevelPayload(
+            level_id="x",
+            price=30000.0,
+            side="ask",
+            persistence_seconds=10.0,
+            confidence="low",
+            evidence=[],
+            last_active_ts_ns=1,
+            status="unknown",  # type: ignore[arg-type]
+        )
+
+
 # --------------------------------------------------------------------------
 # config.py ⇄ config.ts
 # --------------------------------------------------------------------------

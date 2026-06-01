@@ -80,6 +80,7 @@ KNOWN_FAMILIES: tuple[str, ...] = (
     "snapshot",
     "heartbeat",
     "error",
+    "persistent_level",
 )
 
 # Envelope field order — mirrored in events.ts ENVELOPE_FIELDS for parity.
@@ -356,6 +357,58 @@ class ErrorPayload(RealtimePayload):
     message: str
 
 
+class PersistentLevelEvidence(BaseModel):
+    """RA-108: per-source evidence contributing to a level's persistence.
+
+    Each entry records WHY a level is being marked structural: which
+    upstream detector (iceberg refill chain, absorption cluster, sweep
+    anchor, sustained resting size), how many observations have
+    accumulated, when the last one fired, and the cumulative size that
+    has rested or transacted at this price.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["resting_size", "iceberg_refill", "absorption", "sweep_anchor"]
+    count: int = Field(ge=1)
+    last_seen_ts_ns: int
+    cumulative_size: float = Field(ge=0)
+
+
+class PersistentLevelPayload(RealtimePayload):
+    """RA-108: session-long structural price level.
+
+    A level is "persistent" when multiple upstream detectors agree it's
+    been defended over time. Unlike RA-107a wall markers (short-window,
+    visible-depth only), persistent levels are session-scoped and remain
+    marked on the chart even when price moves far from them — they will
+    matter again on retest.
+
+    Lifecycle:
+        active        — currently accumulating evidence; trade off this
+        deteriorating — no new evidence for the deterioration window;
+                        operator should be cautious
+        broken        — price traded through with conviction; one final
+                        emit, then this level stops being emitted
+
+    Side semantics:
+        bid — buyers defending floor below mid
+        ask — sellers defending ceiling above mid
+        unknown — direction ambiguous (rare; usually mid-straddling cluster)
+    """
+
+    family: Literal["persistent_level"] = "persistent_level"
+    level_id: str  # stable across emissions for the same (price, side) pair
+    price: float
+    side: Literal["bid", "ask", "unknown"]
+    persistence_seconds: float = Field(ge=0.0)
+    confidence: Confidence
+    evidence: list[PersistentLevelEvidence] = Field(default_factory=list)
+    last_active_ts_ns: int
+    status: Literal["active", "deteriorating", "broken"]
+    notes: str | None = None
+
+
 class GenericPayload(RealtimePayload):
     """Catch-all for unknown / future families (RA-050 extensibility).
 
@@ -379,6 +432,7 @@ _PAYLOAD_REGISTRY: dict[str, type[RealtimePayload]] = {
     "snapshot": SnapshotPayload,
     "heartbeat": HeartbeatPayload,
     "error": ErrorPayload,
+    "persistent_level": PersistentLevelPayload,
 }
 
 
@@ -493,6 +547,8 @@ __all__ = [
     "SnapshotPayload",
     "HeartbeatPayload",
     "ErrorPayload",
+    "PersistentLevelEvidence",
+    "PersistentLevelPayload",
     "GenericPayload",
     "parse_payload",
     "RealtimeMessage",
