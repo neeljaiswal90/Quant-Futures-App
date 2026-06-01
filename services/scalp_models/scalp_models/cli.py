@@ -64,6 +64,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Override the active-capture guard. Use only in a quiet/test window.",
     )
+    pipeline.add_argument(
+        "--parallel-sessions",
+        type=int,
+        default=1,
+        help=(
+            "Run per-session replay + labels concurrently across N worker "
+            "processes (default 1 = sequential). Capped at the session count. "
+            "Each session is still single-threaded; this only overlaps sessions."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.command == "pipeline":
         from scalp_models.pipeline import (
@@ -103,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
                 min_negatives=args.min_negatives,
                 tick_size=args.tick_size,
                 allow_live_capture_contention=args.allow_live_capture_contention,
+                parallel_sessions=args.parallel_sessions,
             )
         )
         print(

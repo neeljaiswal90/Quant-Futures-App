@@ -57,6 +57,11 @@ class PipelineConfig:
     allow_live_capture_contention: bool = False
     live_write_stale_seconds: int = LIVE_WRITE_STALE_SECONDS
     node_runner: str = "npx.cmd" if os.name == "nt" else "npx"
+    # When > 1, the per-session phase (replay + labels) runs concurrently
+    # across that many worker processes. Capped at len(sessions). Merge +
+    # train remain in the parent. Each session is single-threaded; this only
+    # parallelizes across sessions.
+    parallel_sessions: int = 1
 
 
 @dataclass(frozen=True)
@@ -112,10 +117,34 @@ def run_pipeline(config: PipelineConfig) -> PipelineResult:
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True)
 
-    session_results: list[SessionPipelineResult] = []
+    # Run the capture-not-active guard once per session SEQUENTIALLY in the
+    # parent, before spawning any worker. The guard introspects sibling
+    # processes via PowerShell, and parallel guard checks self-confuse:
+    # each worker's PowerShell process has a command line containing
+    # `capture-rithmic-probe` (literally, as the regex it's about to run),
+    # so a concurrent worker spots it and false-positives. Running the
+    # guard in the parent before fan-out is the only correct ordering.
     for session in config.sessions:
         _assert_capture_not_active(session, config)
-        session_results.append(_run_session(config, run_dir, session))
+
+    worker_count = max(1, min(config.parallel_sessions, len(config.sessions)))
+    if worker_count > 1:
+        from multiprocessing import get_context
+
+        # spawn context picks a clean interpreter per worker — required on
+        # Windows and safer everywhere when the parent has imported a lot.
+        ctx = get_context("spawn")
+        with ctx.Pool(processes=worker_count) as pool:
+            session_results = list(
+                pool.starmap(
+                    _run_session,
+                    [(config, run_dir, session) for session in config.sessions],
+                )
+            )
+    else:
+        session_results = []
+        for session in config.sessions:
+            session_results.append(_run_session(config, run_dir, session))
 
     merged_setups = run_dir / "merged_setups.jsonl"
     merged_labels = run_dir / "merged_labels.jsonl"
@@ -454,6 +483,7 @@ def _write_manifest(
             "min_positives": config.min_positives,
             "min_negatives": config.min_negatives,
             "tick_size": config.tick_size,
+            "parallel_sessions": config.parallel_sessions,
         },
         "sessions": [_session_manifest(item) for item in sessions],
         "merged_inputs": {
