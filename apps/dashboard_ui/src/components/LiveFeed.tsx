@@ -4,7 +4,7 @@
  * pure sortFeed / feedOpacity helpers.
  */
 import { useMemo } from "react";
-import { useDashboard } from "../store/context";
+import { useDashboardSelector } from "../store/context";
 import { useNow } from "../hooks/useNow";
 import { feedBias, feedOpacity, sortFeed, type FeedBias } from "../contract/render";
 
@@ -19,9 +19,10 @@ const BIAS_LABEL: Record<FeedBias, string> = {
 };
 
 export function LiveFeed() {
-  const { state } = useDashboard();
+  // RA-112: subscribe only to the feed slice — no re-render on price/depth.
+  const feedSlice = useDashboardSelector((s) => s.feed);
   const now = useNow(2000);
-  const feed = useMemo(() => sortFeed(state.feed), [state.feed]);
+  const feed = useMemo(() => sortFeed(feedSlice), [feedSlice]);
   const rowNodes = useMemo(
     () =>
       feed.map((item) => {

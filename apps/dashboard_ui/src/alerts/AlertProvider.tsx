@@ -23,7 +23,7 @@ import type { AlertConfig } from "@contracts/realtime/config";
 import { AlertEngine } from "./AlertEngine";
 import { DEFAULT_ALERT_CONFIG, loadConfig, saveConfig } from "./config";
 import { createAlertMemory, decideAlert } from "./decision";
-import { useDashboard } from "../store/context";
+import { useDashboard, useDashboardSelector } from "../store/context";
 
 interface AlertApi {
   enabled: boolean;
@@ -39,7 +39,10 @@ const AlertContext = createContext<AlertApi | null>(null);
 
 export function AlertProvider({ children }: { children: ReactNode }) {
   const engineRef = useRef<AlertEngine>(new AlertEngine());
-  const { state, dispatch } = useDashboard();
+  // RA-112: subscribe only to the feed slice; the current price for alert
+  // decisions is read from liveTickRef at event time (no per-tick re-render).
+  const { dispatch, liveTickRef } = useDashboard();
+  const feed = useDashboardSelector((s) => s.feed);
 
   const [enabled, setEnabled] = useState(false);
   const [notificationsGranted, setNotificationsGranted] = useState(false);
@@ -62,12 +65,13 @@ export function AlertProvider({ children }: { children: ReactNode }) {
 
   // Edge-trigger alerts on the newest tiered feed event.
   useEffect(() => {
-    const latest = state.feed[state.feed.length - 1];
+    const latest = feed[feed.length - 1];
     if (!latest || !latest.tier) return;
     if (latest.seq <= lastSeenSeq.current) return;
     lastSeenSeq.current = latest.seq;
+    const currentPrice = liveTickRef.current?.price ?? null;
     const decision = decideAlert(latest, {
-      currentPrice: state.price.price,
+      currentPrice,
       config,
       nowMs: Date.now(),
       memory: alertMemory.current,
@@ -77,7 +81,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
         kind: "raise-critical",
         critical: {
           seq: latest.seq,
-          triggerPrice: latest.price ?? state.price.price ?? 0,
+          triggerPrice: latest.price ?? currentPrice ?? 0,
           description: latest.text,
           raisedAtMs: Date.now(),
         },
@@ -91,7 +95,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       },
       { audio: decision.audio, notification: decision.notification },
     );
-  }, [state.feed, state.price.price, config, dispatch]);
+  }, [feed, config, dispatch, liveTickRef]);
 
   const setConfig = useCallback((next: AlertConfig) => {
     setConfigState(next);

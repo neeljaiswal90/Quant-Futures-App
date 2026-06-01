@@ -16,13 +16,14 @@ import {
   type ISeriesApi,
   type SeriesType,
 } from "lightweight-charts";
-import { useDashboard } from "../store/context";
+import { useDashboardSelector } from "../store/context";
 import { zoneToPriceLine } from "../contract/render";
 
 export function useZonePriceLines<T extends SeriesType>(
   seriesRef: RefObject<ISeriesApi<T> | null>,
 ) {
-  const { state } = useDashboard();
+  // RA-112: subscribe only to the zones slice.
+  const zones = useDashboardSelector((s) => s.zones);
   const linesRef = useRef<Map<string, IPriceLine>>(new Map());
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export function useZonePriceLines<T extends SeriesType>(
     const lines = linesRef.current;
     const seen = new Set<string>();
 
-    for (const zone of state.zones) {
+    for (const zone of zones) {
       const desc = zoneToPriceLine(zone);
       seen.add(desc.id);
       const existing = lines.get(desc.id);
@@ -57,7 +58,7 @@ export function useZonePriceLines<T extends SeriesType>(
         lines.delete(id);
       }
     }
-  }, [state.zones, seriesRef]);
+  }, [zones, seriesRef]);
 
   // Clear on unmount so a remounted chart starts clean.
   useEffect(() => {

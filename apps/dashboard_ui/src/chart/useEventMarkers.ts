@@ -13,7 +13,7 @@ import type {
   SeriesType,
   Time,
 } from "lightweight-charts";
-import { useDashboard } from "../store/context";
+import { useDashboardSelector } from "../store/context";
 import {
   anchorSeriesData,
   EVENT_BUBBLE_ID_PREFIX,
@@ -33,16 +33,18 @@ export function useEventMarkers<T extends SeriesType>(
   anchorSeriesRef?: RefObject<ISeriesApi<"Line"> | null>,
   options: { showIcebergCoverage?: boolean } = {},
 ): HoveredEventBubble | null {
-  const { state } = useDashboard();
+  // RA-112: subscribe only to the history slice (drives event bubbles); no
+  // re-render on price/depth/zone churn.
+  const history = useDashboardSelector((s) => s.history);
   const primitiveRef = useRef<EventBubblePrimitive | null>(null);
   const [hovered, setHovered] = useState<HoveredEventBubble | null>(null);
 
   const items = useMemo(
     () =>
-      state.history
+      history
         .map(feedItemToBubbleItem)
         .filter((item): item is EventBubbleItem => item !== null),
-    [state.history],
+    [history],
   );
   const drawnItems = useMemo(
     () => items.slice(-MAX_DRAWN_EVENT_BUBBLES),

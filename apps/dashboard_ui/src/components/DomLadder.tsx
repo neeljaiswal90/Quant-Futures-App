@@ -3,7 +3,7 @@ import type { DepthPayload } from "@contracts/realtime/events";
 import { formatMnqPrice } from "../contract/render";
 import { priceToTickKey, snapPrice, tickKeyToPrice } from "../chart/priceGrid";
 import { useNow } from "../hooks/useNow";
-import { useDashboard } from "../store/context";
+import { useDashboardSelector } from "../store/context";
 import {
   buildDomLadderRows,
   domLadderWheelShift,
@@ -24,10 +24,15 @@ function ageLabel(tsNs: number): string {
 }
 
 export function DomLadder() {
-  const { state } = useDashboard();
+  // RA-112: subscribe to the four slices the ladder consumes (depth, price,
+  // zones, history) instead of the whole state — no re-render on sigma/regime/
+  // persistent-level/conn churn.
+  const depth = useDashboardSelector((s) => s.depth);
+  const lastPrice = useDashboardSelector((s) => s.price.price);
+  const zones = useDashboardSelector((s) => s.zones);
+  const history = useDashboardSelector((s) => s.history);
   const now = useNow(1000);
-  const depth = state.depth;
-  const activePrice = depth?.mid ?? state.price.price;
+  const activePrice = depth?.mid ?? lastPrice;
   const [centerPrice, setCenterPrice] = useState<number | null>(null);
   const [centerNTicks, setCenterNTicks] = useState<number | null>(null);
   const [mode, setMode] = useState<DomLadderMode>("follow");
@@ -96,12 +101,12 @@ export function DomLadder() {
     return buildDomLadderRows({
       depth,
       centerPrice,
-      lastPrice: state.price.price,
-      zones: state.zones,
-      history: state.history,
+      lastPrice,
+      zones,
+      history,
       nowMs: now,
     });
-  }, [centerPrice, depth, now, state.history, state.price.price, state.zones]);
+  }, [centerPrice, depth, now, history, lastPrice, zones]);
 
   const empty =
     !depth ||

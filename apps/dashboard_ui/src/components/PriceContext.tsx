@@ -1,11 +1,13 @@
 /**
  * Tier-4 price context: last price, bid/ask, sigma, and vol regime.
  *
- * This is a small text readout; it re-renders on store updates (including
- * ticks). The high-frequency rendering path that must NOT re-render is the
- * chart canvas — that one reads refs. A few-Hz text update here is fine.
+ * This is a small text readout; it re-renders on price/sigma/regime updates
+ * (including ticks — the price slice changes per tick, which is expected here).
+ * The high-frequency rendering path that must NOT re-render is the chart
+ * canvas — that one reads refs. RA-112: subscribed to the price/sigma/regime
+ * slices so it no longer re-renders on depth, feed, or zone events.
  */
-import { useDashboard } from "../store/context";
+import { useDashboardSelector } from "../store/context";
 import { formatMnqPrice } from "../contract/render";
 
 const REGIME_COLOR: Record<string, string> = {
@@ -15,8 +17,10 @@ const REGIME_COLOR: Record<string, string> = {
 };
 
 export function PriceContext() {
-  const { state } = useDashboard();
-  const { price, bid, ask, orderflow } = state.price;
+  const priceSlice = useDashboardSelector((s) => s.price);
+  const sigma = useDashboardSelector((s) => s.sigma);
+  const regime = useDashboardSelector((s) => s.regime);
+  const { price, bid, ask, orderflow } = priceSlice;
   const cvd = orderflow?.cvd;
   const vDelta = orderflow?.v_delta;
 
@@ -34,12 +38,12 @@ export function PriceContext() {
           ask <b>{ask != null ? formatMnqPrice(ask) : "—"}</b>
         </span>
         <span className="kv">
-          σ <b>{state.sigma != null ? state.sigma.toFixed(2) : "—"}</b>
+          σ <b>{sigma != null ? sigma.toFixed(2) : "—"}</b>
         </span>
         <span className="kv">
           regime{" "}
-          <b style={{ color: REGIME_COLOR[state.regime ?? "NORMAL"] }}>
-            {state.regime ?? "—"}
+          <b style={{ color: REGIME_COLOR[regime ?? "NORMAL"] }}>
+            {regime ?? "—"}
           </b>
         </span>
         <span className="kv">

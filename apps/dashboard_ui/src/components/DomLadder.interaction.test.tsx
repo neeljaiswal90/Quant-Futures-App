@@ -5,8 +5,14 @@ import { initialState, type DashboardState } from "../store/types";
 
 const mockUseDashboard = vi.hoisted(() => vi.fn());
 
+// RA-112: DomLadder now reads slices via useDashboardSelector. Derive the
+// selector + whole-state hooks from the same mock so existing
+// `mockUseDashboard.mockReturnValue({ state })` calls continue to drive it.
 vi.mock("../store/context", () => ({
   useDashboard: mockUseDashboard,
+  useDashboardState: () => mockUseDashboard().state,
+  useDashboardSelector: (selector: (s: DashboardState) => unknown) =>
+    selector(mockUseDashboard().state as DashboardState),
 }));
 
 import { DomLadder } from "./DomLadder";

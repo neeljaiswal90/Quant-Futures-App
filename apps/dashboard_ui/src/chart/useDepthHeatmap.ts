@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { IChartApi, ISeriesApi, MouseEventParams, Time } from "lightweight-charts";
-import { useDashboard } from "../store/context";
+import { useDashboard, useDashboardSelector } from "../store/context";
 import {
   DEPTH_HEATMAP_ID_PREFIX,
   DepthHeatmapPrimitive,
@@ -22,7 +22,13 @@ export function useDepthHeatmap(
   chartRef: RefObject<IChartApi | null>,
   seriesRef: RefObject<ISeriesApi<"Line"> | null>,
 ): HoveredDepthCell | null {
-  const { state, bookmapBackfillRef, bookmapBackfillEpoch } = useDashboard();
+  // RA-112: subscribe only to the depth + persistentLevels slices. The anchor
+  // price for top-K level ranking is read from liveTickRef (NOT a reactive
+  // subscription) inside the effect, so this hook does not re-render the chart
+  // on every price tick — re-ranking instead rides the depth cadence.
+  const { liveTickRef, bookmapBackfillRef, bookmapBackfillEpoch } = useDashboard();
+  const depth = useDashboardSelector((s) => s.depth);
+  const persistentLevels = useDashboardSelector((s) => s.persistentLevels);
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
   const wallManagerRef = useRef<WallMarkerManager | null>(null);
   const persistentLevelManagerRef = useRef<PersistentLevelManager | null>(null);
@@ -56,21 +62,28 @@ export function useDepthHeatmap(
   }, [seriesRef]);
 
   useEffect(() => {
-    if (!state.depth) return;
-    primitiveRef.current?.appendSnapshot(state.depth);
+    if (!depth) return;
+    primitiveRef.current?.appendSnapshot(depth);
     const snapshot = primitiveRef.current?.accumulatorSnapshot();
     if (snapshot) wallManagerRef.current?.update(snapshot.scores, snapshot.mid);
-  }, [state.depth]);
+    // RA-112: re-rank persistent levels against the latest price on each depth
+    // tick. Reading liveTickRef (not a reactive price subscription) keeps the
+    // top-K anchor current as price drifts WITHOUT re-rendering on every tick.
+    persistentLevelManagerRef.current?.update(
+      persistentLevels,
+      liveTickRef.current?.price ?? null,
+    );
+  }, [depth, persistentLevels, liveTickRef]);
 
   // RA-108: persistent-levels render. Updates whenever the store's
-  // persistentLevels map changes (new emit / status transition) or when
-  // current price moves (we sort top-K by absolute distance from mid).
+  // persistentLevels map changes (new emit / status transition). Price-driven
+  // re-ranking rides the depth effect above (anchored off liveTickRef).
   useEffect(() => {
     persistentLevelManagerRef.current?.update(
-      state.persistentLevels,
-      state.price.price,
+      persistentLevels,
+      liveTickRef.current?.price ?? null,
     );
-  }, [state.persistentLevels, state.price.price]);
+  }, [persistentLevels, liveTickRef]);
 
   useEffect(() => {
     let intervalId = 0;

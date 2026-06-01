@@ -15,11 +15,17 @@
  * The hook is intentionally thin; the testable state machine lives in the
  * reducer + backoff modules.
  */
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { backoffDelayMs } from "./backoff";
-import { initialState, reducer } from "../store/reducer";
 import { parseMessage } from "../store/reducer";
-import type { DashboardState, StoreAction } from "../store/types";
+import { createDashboardStore, type DashboardStore } from "../store/store";
+import type { StoreAction } from "../store/types";
 import { isPriceTick, isSnapshot } from "../contract/guards";
 import type { OrderflowStats, RealtimeMessage } from "@contracts/realtime/events";
 import {
@@ -47,7 +53,14 @@ export interface LiveTick {
 }
 
 export interface RealtimeApi {
-  state: DashboardState;
+  /**
+   * External store backing selector-scoped subscriptions. Read slices via
+   * `useDashboardSelector` (re-renders only when the selected slice changes);
+   * `useDashboardState` subscribes to the whole state for back-compat. The
+   * store reference is STABLE for the provider's lifetime, so consumers that
+   * read only refs/dispatch never re-render on frames.
+   */
+  store: DashboardStore;
   dispatch: React.Dispatch<StoreAction>;
   /**
    * Latest price/snapshot tick. Read by the chart imperatively via this ref
@@ -65,7 +78,12 @@ export interface RealtimeApi {
 }
 
 export function useRealtime(): RealtimeApi {
-  const [state, dispatch] = useReducer(reducer, undefined, initialState);
+  // The store lives outside React; created once and stable for the lifetime
+  // of the provider. `dispatch` is the store's stable method.
+  const storeRef = useRef<DashboardStore | null>(null);
+  if (storeRef.current === null) storeRef.current = createDashboardStore();
+  const store = storeRef.current;
+  const dispatch = store.dispatch;
 
   const liveTickRef = useRef<LiveTick | null>(null);
   const snapshotRef = useRef<RealtimeMessage | null>(null);
@@ -126,7 +144,7 @@ export function useRealtime(): RealtimeApi {
       }
     }
     dispatch({ kind: "message", raw, nowMs: Date.now() });
-  }, []);
+  }, [dispatch]);
 
   const hydrateBookmapBackfill = useCallback(async () => {
     if (backfillInFlight.current) return;
@@ -173,7 +191,7 @@ export function useRealtime(): RealtimeApi {
       // Clear it explicitly; the next gap bumps resyncEpoch and re-fires.
       if (!applied) dispatch({ kind: "resync-failed" });
     }
-  }, [snapshotUrl, applyFrame, hydrateBookmapBackfill]);
+  }, [snapshotUrl, applyFrame, hydrateBookmapBackfill, dispatch]);
 
   // `connect` and `scheduleReconnect` are mutually recursive. We break the
   // useCallback dependency cycle by routing the recursion through a ref.
@@ -186,7 +204,7 @@ export function useRealtime(): RealtimeApi {
     reconnectTimer.current = setTimeout(() => {
       connectRef.current();
     }, delay);
-  }, []);
+  }, [dispatch]);
 
   const connect = useCallback(() => {
     if (reconnectTimer.current) {
@@ -232,18 +250,24 @@ export function useRealtime(): RealtimeApi {
       if (closedByUs.current) return;
       scheduleReconnect();
     };
-  }, [wsUrl, applyFrame, hydrateBookmapBackfill, scheduleReconnect]);
+  }, [wsUrl, applyFrame, hydrateBookmapBackfill, scheduleReconnect, dispatch]);
 
   connectRef.current = connect;
 
   // Drive resync on EVERY seq gap. Keyed on the monotonic resyncEpoch (not the
   // `resyncing` boolean) so a fresh gap always re-fires — even if a prior
   // resync failed and left `resyncing` true (true->true is no transition).
+  // Subscribed via useSyncExternalStore so this hook re-runs the effect on a
+  // gap WITHOUT the hook itself re-rendering on every frame.
+  const resyncEpoch = useSyncExternalStore(
+    store.subscribe,
+    () => store.getState().resyncEpoch,
+  );
   useEffect(() => {
-    if (state.resyncEpoch > 0 && !resyncInFlight.current) {
+    if (resyncEpoch > 0 && !resyncInFlight.current) {
       void resync();
     }
-  }, [state.resyncEpoch, resync]);
+  }, [resyncEpoch, resync]);
 
   // Connection lifecycle + a 1s clock pulse for staleness/decay re-eval.
   useEffect(() => {
@@ -264,13 +288,20 @@ export function useRealtime(): RealtimeApi {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return {
-    state,
-    dispatch,
-    liveTickRef,
-    snapshotRef,
-    tickEpoch,
-    bookmapBackfillRef,
-    bookmapBackfillEpoch,
-  };
+  // The api object MUST be referentially stable — it is the context value, and
+  // a changing identity would re-render every `useDashboard()` consumer on
+  // every frame (the exact pathology this refactor removes). All members are
+  // stable (store, store.dispatch, and refs), so memoize on `store` alone.
+  return useMemo(
+    () => ({
+      store,
+      dispatch,
+      liveTickRef,
+      snapshotRef,
+      tickEpoch,
+      bookmapBackfillRef,
+      bookmapBackfillEpoch,
+    }),
+    [store, dispatch],
+  );
 }

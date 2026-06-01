@@ -3,7 +3,7 @@
  * Kept open by default so a reload never hides the tape.
  */
 import { useMemo } from "react";
-import { useDashboard } from "../store/context";
+import { useDashboardSelector } from "../store/context";
 
 function fmtTime(tsNs: number): string {
   const d = new Date(Math.floor(tsNs / 1e6));
@@ -11,8 +11,9 @@ function fmtTime(tsNs: number): string {
 }
 
 export function HistoryPanel() {
-  const { state } = useDashboard();
-  const rows = useMemo(() => [...state.history].reverse(), [state.history]);
+  // RA-112: subscribe only to the history slice.
+  const history = useDashboardSelector((s) => s.history);
+  const rows = useMemo(() => [...history].reverse(), [history]);
   const rowNodes = useMemo(
     () =>
       rows.map((item) => (
@@ -29,7 +30,7 @@ export function HistoryPanel() {
 
   return (
     <div className="panel">
-      <h2>Session history ({state.history.length})</h2>
+      <h2>Session history ({history.length})</h2>
       {rows.length === 0 ? (
         <p className="empty">No events yet this session.</p>
       ) : (

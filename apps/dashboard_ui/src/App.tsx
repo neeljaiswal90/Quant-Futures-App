@@ -1,7 +1,7 @@
 /**
  * App composition — dashboard-first layout.
  */
-import { DashboardProvider, useDashboard } from "./store/context";
+import { DashboardProvider, useDashboardSelector } from "./store/context";
 import { AlertProvider } from "./alerts/AlertProvider";
 import { TopBar } from "./components/TopBar";
 import { Banners } from "./components/Banners";
@@ -17,10 +17,12 @@ import { ChartErrorBoundary } from "./chart/ChartErrorBoundary";
 import { isEmpty } from "./store/selectors";
 
 function ChartArea() {
-  const { state } = useDashboard();
+  // RA-112: subscribe to the derived emptiness boolean only — flips once
+  // (awaiting → live), never re-renders the chart panel on data churn.
+  const empty = useDashboardSelector(isEmpty);
   return (
     <div className="chart-panel">
-      {isEmpty(state) ? (
+      {empty ? (
         <div className="empty" style={{ padding: 16 }}>
           Awaiting first snapshot from the realtime feed…
         </div>
