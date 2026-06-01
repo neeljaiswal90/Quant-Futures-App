@@ -306,6 +306,7 @@ describe('QFA-114 simple-yaml block sequences', () => {
         'strategies/breakout_retest_long.yaml',
         'strategies/shared.yaml',
         'strategies/regime_shock_reversion_short_v2.yaml',
+        'strategies/regime_shock_reversion_short_v2_utc_16_18_exclusion.yaml',
         'strategies/regime_shock_reversion_short_v3.yaml',
         'strategies/regime_shock_reversion_short_v4_delay.yaml',
         'strategies/regime_shock_reversion_short_v4_persist.yaml',
@@ -372,3 +373,4 @@ describe('QFA-114 simple-yaml block sequences', () => {
     });
   });
 });
+

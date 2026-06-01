@@ -7,6 +7,7 @@ import { generateLiquiditySweepReversalShort } from './liquidity_sweep_reversal_
 import { generateRegimeMeanReversionLong } from './regime_mean_reversion_long.js';
 import { generateRegimeMeanReversionShort } from './regime_mean_reversion_short.js';
 import { generateRegimeShockReversionShortV2 } from './regime_shock_reversion_short_v2.js';
+import { generateRegimeShockReversionShortV2Utc1618Exclusion } from './regime_shock_reversion_short_v2_utc_16_18_exclusion.js';
 import { generateRegimeShockReversionShortV3 } from './regime_shock_reversion_short_v3.js';
 import { generateRegimeShockReversionShortV4Delay } from './regime_shock_reversion_short_v4_delay.js';
 import { generateRegimeShockReversionShortV4Persist } from './regime_shock_reversion_short_v4_persist.js';
@@ -133,6 +134,16 @@ const STRATEGY_REGISTRY_ENTRIES = {
     synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v2',
     enabled_in_v1: false,
   },
+  regime_shock_reversion_short_v2_utc_16_18_exclusion: {
+    strategy_id: 'regime_shock_reversion_short_v2_utc_16_18_exclusion',
+    display_name: 'Regime Shock Reversion Short V2 UTC 16-18 Exclusion',
+    direction: 'short',
+    setup_family: 'regime_shock_reversion',
+    implementation_status: 'active',
+    extraction_ticket: 'V2-PF-C-LATE-AM-REGISTERED-INACTIVE-IMPL-01',
+    synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v2_utc_16_18_exclusion',
+    enabled_in_v1: false,
+  },
   regime_shock_reversion_short_v3: {
     strategy_id: 'regime_shock_reversion_short_v3',
     display_name: 'Regime Shock Reversion Short V3',
@@ -201,6 +212,7 @@ const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> 
   vwap_overnight_reversal_long: generateVwapOvernightReversalLong,
   vwap_overnight_reversal_short: generateVwapOvernightReversalShort,
   regime_shock_reversion_short_v2: generateRegimeShockReversionShortV2,
+  regime_shock_reversion_short_v2_utc_16_18_exclusion: generateRegimeShockReversionShortV2Utc1618Exclusion,
   regime_shock_reversion_short_v3: generateRegimeShockReversionShortV3,
   regime_shock_reversion_short_v4_delay: generateRegimeShockReversionShortV4Delay,
   regime_shock_reversion_short_v4_persist: generateRegimeShockReversionShortV4Persist,
@@ -291,3 +303,4 @@ export function validateStrategyRegistry(): readonly string[] {
 
   return issues;
 }
+

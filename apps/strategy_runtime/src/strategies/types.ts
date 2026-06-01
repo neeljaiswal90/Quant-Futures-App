@@ -106,6 +106,7 @@ export interface StrategyRegistryEntry {
     | 'QFA-7xx-S3-v2'
     | 'CYCLE4-V3-IMPL'
     | 'CYCLE4-V4-COMBINED-01'
+    | 'V2-PF-C-LATE-AM-REGISTERED-INACTIVE-IMPL-01'
   | 'STRAT-V5-DEADLINE-VARIANTS-01';
   readonly synthetic_fixture_id: StrategyFixtureId;
   readonly enabled_in_v1: boolean;
@@ -123,6 +124,7 @@ export type StrategyFixtureId =
   | 'fixture_vwap_overnight_reversal_long'
   | 'fixture_vwap_overnight_reversal_short'
   | 'fixture_regime_shock_reversion_short_v2'
+  | 'fixture_regime_shock_reversion_short_v2_utc_16_18_exclusion'
   | 'fixture_regime_shock_reversion_short_v3'
   | 'fixture_regime_shock_reversion_short_v4_delay'
   | 'fixture_regime_shock_reversion_short_v4_persist'
@@ -169,3 +171,4 @@ export interface StrategyGenerationResult {
 export type ActiveStrategyGenerator = (
   input: StrategyEvaluationInput,
 ) => StrategyGenerationResult;
+

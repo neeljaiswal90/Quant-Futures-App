@@ -406,6 +406,17 @@ export const REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE = {
   ],
 } as const satisfies ManagementProfile;
 
+export const REGIME_SHOCK_REVERSION_SHORT_V2_UTC_16_18_EXCLUSION_MANAGEMENT_PROFILE: ManagementProfile = {
+  ...REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
+  profile_id: 'regime_shock_reversion_short_v2_utc_16_18_exclusion_management_v1',
+  strategy_id: 'regime_shock_reversion_short_v2_utc_16_18_exclusion',
+  display_name: 'Regime Shock Reversion Short V2 UTC 16-18 Exclusion Management V1',
+  reasons: [
+    'management_profile:regime_shock_reversion_short_v2_utc_16_18_exclusion',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+  ],
+};
 export const REGIME_SHOCK_REVERSION_SHORT_V3_MANAGEMENT_PROFILE = {
   profile_id: 'regime_shock_reversion_short_v3_management_v1',
   profile_version: MANAGEMENT_PROFILE_VERSION,
@@ -539,6 +550,7 @@ export const V1_MANAGEMENT_PROFILES = {
   vwap_overnight_reversal_long: VWAP_OVERNIGHT_REVERSAL_LONG_MANAGEMENT_PROFILE,
   vwap_overnight_reversal_short: VWAP_OVERNIGHT_REVERSAL_SHORT_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v2: REGIME_SHOCK_REVERSION_SHORT_V2_MANAGEMENT_PROFILE,
+  regime_shock_reversion_short_v2_utc_16_18_exclusion: REGIME_SHOCK_REVERSION_SHORT_V2_UTC_16_18_EXCLUSION_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v3: REGIME_SHOCK_REVERSION_SHORT_V3_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v4_delay: REGIME_SHOCK_REVERSION_SHORT_V4_DELAY_MANAGEMENT_PROFILE,
   regime_shock_reversion_short_v4_persist: REGIME_SHOCK_REVERSION_SHORT_V4_PERSIST_MANAGEMENT_PROFILE,
@@ -596,3 +608,4 @@ export function validateAllDefaultManagementProfiles(): void {
   }
   assertValidManagementProfile(FALLBACK_MANAGEMENT_PROFILE);
 }
+

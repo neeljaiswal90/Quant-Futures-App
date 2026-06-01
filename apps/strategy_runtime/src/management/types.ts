@@ -52,6 +52,7 @@ export type ManagementProfileId =
   | 'vwap_overnight_reversal_long_management_v1'
   | 'vwap_overnight_reversal_short_management_v1'
   | 'regime_shock_reversion_short_v2_management_v1'
+  | 'regime_shock_reversion_short_v2_utc_16_18_exclusion_management_v1'
   | 'regime_shock_reversion_short_v3_management_v1'
   | 'regime_shock_reversion_short_v4_delay_management_v1'
   | 'regime_shock_reversion_short_v4_persist_management_v1'
@@ -674,3 +675,4 @@ function compareIssues(
 function round6(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
+

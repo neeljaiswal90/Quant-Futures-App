@@ -109,6 +109,7 @@ describe('STRAT-01 active strategy registry', () => {
       'vwap_overnight_reversal_long',
       'vwap_overnight_reversal_short',
       'regime_shock_reversion_short_v2',
+      'regime_shock_reversion_short_v2_utc_16_18_exclusion',
       'regime_shock_reversion_short_v3',
       'regime_shock_reversion_short_v4_delay',
       'regime_shock_reversion_short_v4_persist',
@@ -185,6 +186,7 @@ describe('STRAT-01 active strategy registry', () => {
       'vwap_overnight_reversal_long',
       'vwap_overnight_reversal_short',
       'regime_shock_reversion_short_v2',
+      'regime_shock_reversion_short_v2_utc_16_18_exclusion',
     ] as const) {
       expect(getStrategyRegistryEntry(strategyId)).toEqual(
         expect.objectContaining({
@@ -213,6 +215,12 @@ describe('STRAT-01 active strategy registry', () => {
         extraction_ticket: 'QFA-7xx-S3-v2',
       }),
     );
+    expect(getStrategyRegistryEntry('regime_shock_reversion_short_v2_utc_16_18_exclusion')).toEqual(
+      expect.objectContaining({
+        strategy_id: 'regime_shock_reversion_short_v2_utc_16_18_exclusion',
+        extraction_ticket: 'V2-PF-C-LATE-AM-REGISTERED-INACTIVE-IMPL-01',
+      }),
+    );
     expect(listExecutableStrategyIds()).toEqual([]);
   });
 
@@ -237,3 +245,5 @@ describe('STRAT-01 active strategy registry', () => {
     expect(findings).toEqual([]);
   });
 });
+
+

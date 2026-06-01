@@ -7,6 +7,7 @@ export * from './regime_mean_reversion_common.js';
 export * from './regime_mean_reversion_long.js';
 export * from './regime_mean_reversion_short.js';
 export * from './regime_shock_reversion_short_v2.js';
+export * from './regime_shock_reversion_short_v2_utc_16_18_exclusion.js';
 export * from './regime_shock_reversion_short_v3.js';
 export * from './regime_shock_reversion_short_v4_common.js';
 export * from './regime_shock_reversion_short_v4_delay.js';
@@ -21,3 +22,4 @@ export * from './vwap_overnight_reversal_long.js';
 export * from './vwap_overnight_reversal_short.js';
 export * from './regime_shock_reversion_short_v5_strict_deadline.js';
 export * from './regime_shock_reversion_short_v5_trail_at_deadline.js';
+
