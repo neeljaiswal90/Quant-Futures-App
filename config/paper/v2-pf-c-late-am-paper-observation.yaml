@@ -1,0 +1,38 @@
+session:
+  strategy_id: regime_shock_reversion_short_v2_utc_16_18_exclusion
+  mode: paper
+  adapter_kind: mock
+  app_config_path: config/app.example.json
+  journal_dir: journals/paper/v2-pf-c-late-am-paper-observation
+
+execution:
+  plant_scope: ORDER_PLANT
+  capability_mask_id: execution-capability-mask-v1-adr0018-paper-only-order-plant
+  capability_mask_version: 1
+  reconnect_policy:
+    max_attempts: 3
+    initial_delay_ms: 250
+    max_delay_ms: 2000
+    retry_budget_ms: 10000
+    jitter: seeded
+  live_account_allowlist: []
+  live_account_verification_enabled: false
+  shutdown_quarantine_timeout_ms: 30000
+
+observability:
+  market_data_source: simulation
+  local_obs_replay_path: null
+  local_obs_replay_pace_mode: realtime
+  metrics:
+    enabled: true
+    host: 127.0.0.1
+    port: 9469
+  slo_budgets_source: qfa-627-provisional-registry
+  slo_budget_overrides: {}
+
+paper_observation:
+  trading_days_min: 45
+  trading_days_preferred: 60
+  residual_low_fidelity_trades: 43
+  residual_low_fidelity_fraction_percent: 5.81867388
+  authority_created: false

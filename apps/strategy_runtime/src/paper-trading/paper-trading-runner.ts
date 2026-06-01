@@ -16,6 +16,7 @@ import {
   type SessionId,
   type UnixNs,
 } from '../contracts/index.js';
+import type { StrategyId } from '../contracts/strategy-ids.js';
 import {
   LiveTickerSubscriber,
   LocalObsReplaySource,
@@ -110,6 +111,7 @@ export interface PaperTradingSessionConfig {
   readonly slo_budget_overrides: Readonly<Record<string, number>>;
   readonly run_id: RunId;
   readonly session_id: SessionId;
+  readonly explicit_strategy_ids?: readonly StrategyId[];
   readonly duration_ms?: number;
   readonly shutdown_quarantine_timeout_ms: number;
 }
@@ -245,6 +247,13 @@ export function resolvePaperTradingSessionConfig(
     DEFAULT_PAPER_SESSION_CONFIG_PATH;
   const yaml = loadPaperSessionConfigFile(paperSessionConfigPath);
   const yamlSession = recordAt(yaml, 'session');
+  const resolvedStrategyId = input.overrides?.strategy_id ?? stringAt(yamlSession, 'strategy_id') ?? DEFAULT_PAPER_STRATEGY_ID;
+  const explicitStrategyIds = input.overrides?.explicit_strategy_ids;
+  if (explicitStrategyIds !== undefined) {
+    if (explicitStrategyIds.length !== 1 || explicitStrategyIds[0] !== resolvedStrategyId) {
+      throw new Error('paper session explicit_strategy_ids must contain exactly the configured strategy_id');
+    }
+  }
   const yamlExecution = recordAt(yaml, 'execution');
   const yamlReconnect = recordAt(yamlExecution, 'reconnect_policy');
   const yamlObservability = recordAt(yaml, 'observability');
@@ -273,7 +282,7 @@ export function resolvePaperTradingSessionConfig(
   });
   return {
     paper_session_config_path: paperSessionConfigPath,
-    strategy_id: input.overrides?.strategy_id ?? stringAt(yamlSession, 'strategy_id') ?? DEFAULT_PAPER_STRATEGY_ID,
+    strategy_id: resolvedStrategyId,
     app_config_path: input.overrides?.app_config_path ?? stringAt(yamlSession, 'app_config_path') ?? DEFAULT_APP_CONFIG_PATH,
     journal_dir:
       input.overrides?.journal_dir ??
@@ -350,6 +359,7 @@ export function resolvePaperTradingSessionConfig(
       {},
     run_id: input.overrides?.run_id ?? makeRunId('paper-session-run'),
     session_id: input.overrides?.session_id ?? makeSessionId('paper-session'),
+    explicit_strategy_ids: explicitStrategyIds,
     duration_ms:
       input.overrides?.duration_ms ??
       parseOptionalPositiveInteger(env.QFA_PAPER_SESSION_DURATION_MS) ??
@@ -554,6 +564,8 @@ export class PaperTradingSession {
       execution_adapter: createSimulatedExecutionAdapter({
         venue_costs: loadVenueCostTable(),
       }),
+      runtime_mode: 'paper',
+      paper_observation_explicit_strategy_ids: this.config.explicit_strategy_ids,
       latency_metrics_endpoint: this.config.metrics_endpoint,
     });
 

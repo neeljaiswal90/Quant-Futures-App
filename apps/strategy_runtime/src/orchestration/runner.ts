@@ -64,7 +64,7 @@ import {
   type SessionRiskState,
 } from '../risk/index.js';
 import {
-  getActiveStrategyGenerator,
+  getStrategyGenerator,
   listExecutableStrategyIds,
   rankCandidates,
   toRankEventPayload,
@@ -126,6 +126,8 @@ export interface StrategyRuntimeRunnerOptions {
   readonly max_candidates_per_cycle?: number;
   readonly initial_session_risk_state?: SessionRiskState;
   readonly strategy_config?: StrategyRuntimeConfig;
+  readonly runtime_mode?: 'paper';
+  readonly paper_observation_explicit_strategy_ids?: readonly StrategyId[];
   readonly latency_metrics_endpoint?: LatencyMetricsEndpointConfig;
 }
 
@@ -189,6 +191,7 @@ export class StrategyRuntimeRunner {
   private readonly mnqSessionCalendar: MnqSessionCalendarConfig;
   private readonly mnqRollCalendar: MnqRollCalendarConfig;
   private readonly maxCandidatesPerCycle: number;
+  private readonly strategyIds: readonly StrategyId[];
   private readonly appConfigRef: ConfigLineageRef;
   private readonly strategyConfig: StrategyRuntimeConfig;
   private readonly strategyConfigHash: string;
@@ -228,6 +231,16 @@ export class StrategyRuntimeRunner {
     this.mnqSessionCalendar = options.mnq_session_calendar ?? DEFAULT_MNQ_SESSION_CALENDAR_CONFIG;
     this.mnqRollCalendar = options.mnq_roll_calendar ?? DEFAULT_MNQ_ROLL_CALENDAR_CONFIG;
     this.maxCandidatesPerCycle = options.max_candidates_per_cycle ?? 1;
+    const paperObservationStrategyIds = options.paper_observation_explicit_strategy_ids;
+    if (paperObservationStrategyIds !== undefined) {
+      if (options.runtime_mode !== 'paper') {
+        throw new Error('paper_observation_explicit_strategy_ids may only be used with runtime_mode=paper');
+      }
+      if (paperObservationStrategyIds.length === 0) {
+        throw new Error('paper_observation_explicit_strategy_ids must contain at least one strategy id when provided');
+      }
+    }
+    this.strategyIds = paperObservationStrategyIds ?? listExecutableStrategyIds();
     this.sessionRisk = options.initial_session_risk_state;
     this.strategyConfig =
       options.strategy_config ??
@@ -296,7 +309,7 @@ export class StrategyRuntimeRunner {
     const candidateEvents: JournalEventEnvelope<'CANDIDATE', JournalEventPayloadFor<'CANDIDATE'>>[] = [];
     const candidates: Candidate[] = [];
 
-    for (const strategyId of listExecutableStrategyIds()) {
+    for (const strategyId of this.strategyIds) {
       const result: { readonly evaluation: StrategyEvaluation; readonly candidate?: Candidate } = eligibility.candidate_eligible
         ? evaluateStrategySafely(strategyId, snapshot, this.strategyConfig)
         : {
@@ -1239,7 +1252,7 @@ function evaluateStrategySafely(
 ): { readonly evaluation: StrategyEvaluation; readonly candidate?: Candidate } {
   const decisionStartMs = performance.now();
   try {
-    return getActiveStrategyGenerator(strategyId)({
+    return getStrategyGenerator(strategyId)({
       strategy_id: strategyId,
       snapshot,
       strategy_config: strategyConfig,
