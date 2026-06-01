@@ -82,7 +82,7 @@ interface CorpusManifest {
 interface SessionConfig {
   readonly label: string;
   readonly regime: string;
-  readonly month: 'feb' | 'mar';
+  readonly month: 'feb' | 'mar' | 'apr';
   readonly session_id: string;
   readonly scope: 'full_rth' | 'first_1800s_prefix';
   readonly prefix_duration_ns: bigint | null;
@@ -210,6 +210,15 @@ const SESSION_CONFIGS: readonly SessionConfig[] = Object.freeze([
     scope: 'first_1800s_prefix',
     prefix_duration_ns: 1_800_000_000_000n,
     rationale: 'Clean early-March session outside the 2026-03-17..20 expiry-thinning zone; bounded to 1800s per ADR-0011.',
+  },
+  {
+    label: 'apr16_low_full_rth',
+    regime: 'apr_low_coverage',
+    month: 'apr',
+    session_id: '2026-04-16-rth',
+    scope: 'full_rth',
+    prefix_duration_ns: null,
+    rationale: 'Real low-regime full-RTH source session added by QFA-402C-FIDELITY-COVERAGE-EXTEND-01 to replace target zero-probe cells with observed queue residual probes.',
   },
 ]);
 
@@ -1275,6 +1284,7 @@ async function main(): Promise<void> {
   const manifests = Object.freeze({
     feb: readManifest('feb'),
     mar: readManifest('mar'),
+    apr: readManifest('apr'),
   });
   const sessions = [];
   for (const config of SESSION_CONFIGS) {
