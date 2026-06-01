@@ -14,6 +14,7 @@ import type {
   ErrorPayload,
   HeartbeatPayload,
   IcebergPayload,
+  PersistentLevelPayload,
   PriceTickPayload,
   RealtimePayload,
   SignalPayload,
@@ -56,6 +57,9 @@ export function isHeartbeat(p: RealtimePayload): p is HeartbeatPayload {
 export function isError(p: RealtimePayload): p is ErrorPayload {
   return p.family === "error";
 }
+export function isPersistentLevel(p: RealtimePayload): p is PersistentLevelPayload {
+  return p.family === "persistent_level";
+}
 
 const KNOWN = new Set<string>([
   "signal",
@@ -68,6 +72,7 @@ const KNOWN = new Set<string>([
   "zone_update",
   "snapshot",
   "heartbeat",
+  "persistent_level",
   "error",
 ]);
 

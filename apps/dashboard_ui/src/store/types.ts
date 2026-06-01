@@ -8,6 +8,7 @@
  */
 import type {
   DepthPayload,
+  PersistentLevelPayload,
   Regime,
   OrderflowStats,
   ScenarioState,
@@ -61,6 +62,17 @@ export interface DashboardState {
   /** Latest bounded depth snapshot; chart primitive owns retained history. */
   depth: DepthPayload | null;
 
+  /**
+   * RA-108: session-long persistent levels keyed by level_id. The backend
+   * emits one PersistentLevelPayload per state change (promotion or status
+   * transition). The reducer keeps the latest payload per level so the
+   * chart manager can re-render the current set on each store update.
+   * Levels with status="broken" stay in the map briefly so the chart layer
+   * can run the fade-out animation, then a follow-up reducer call drops
+   * them. v1: broken levels stay until the next session reset.
+   */
+  persistentLevels: Record<string, PersistentLevelPayload>;
+
   zones: ZoneState[];
   scenarios: ScenarioState[];
 
@@ -101,6 +113,7 @@ export function initialState(): DashboardState {
       lastFrameAtMs: null,
     },
     depth: null,
+    persistentLevels: {},
     sigma: null,
     regime: null,
     zones: [],

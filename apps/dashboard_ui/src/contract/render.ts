@@ -18,6 +18,7 @@ import type {
 import {
   isAbsorption,
   isIceberg,
+  isPersistentLevel,
   isSignal,
   isSweep,
   isVolRegime,
@@ -232,6 +233,17 @@ function payloadText(p: RealtimePayload): string {
   if (isAbsorption(p))
     return p.description || `Absorption ${p.side} ${p.score.toFixed(2)}`;
   if (isVolRegime(p)) return p.description || `Regime ${p.regime}`;
+  if (isPersistentLevel(p)) {
+    // RA-108: feed-row format. Operator scans for "LVL ask 30525.50 high"
+    // and knows it's a structural level worth respecting.
+    const verb =
+      p.status === "deteriorating"
+        ? "fading"
+        : p.status === "broken"
+          ? "broken"
+          : p.confidence;
+    return `LVL ${p.side} ${formatMnqPrice(p.price)} ${verb}`;
+  }
   // Unknown / generic family — render the family name, never crash.
   const desc = (p as Record<string, unknown>).description;
   return typeof desc === "string" && desc ? desc : p.family;
@@ -262,6 +274,7 @@ function payloadPrice(p: RealtimePayload): number | undefined {
     return metadataNumber(p, "level_price", "price", "zone_price");
   }
   if (isSweep(p) || isIceberg(p) || isAbsorption(p)) return p.price;
+  if (isPersistentLevel(p)) return p.price;
   return undefined;
 }
 
@@ -275,12 +288,14 @@ function metadataText(p: SignalPayload, ...keys: string[]): string | undefined {
 
 function payloadLevelId(p: RealtimePayload): string | null | undefined {
   if (isSignal(p) || isSweep(p) || isIceberg(p) || isAbsorption(p)) return p.level_id;
+  if (isPersistentLevel(p)) return p.level_id;
   return undefined;
 }
 
 function payloadSide(p: RealtimePayload): string | undefined {
   if (isSignal(p)) return metadataText(p, "side", "aggressor_side", "stacked_side");
   if (isIceberg(p) || isAbsorption(p)) return p.side;
+  if (isPersistentLevel(p)) return p.side === "unknown" ? undefined : p.side;
   return undefined;
 }
 
@@ -336,7 +351,10 @@ export function isFeedFamily(family: string): boolean {
     family === "sweep" ||
     family === "iceberg" ||
     family === "absorption" ||
-    family === "vol_regime"
+    family === "vol_regime" ||
+    // RA-108: persistent-level promotions / transitions surface as LVL chips
+    // in the feed alongside the dashed/solid price lines on the chart.
+    family === "persistent_level"
   );
 }
 

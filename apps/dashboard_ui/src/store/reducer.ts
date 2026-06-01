@@ -17,6 +17,7 @@ import {
   isError,
   isHeartbeat,
   isIceberg,
+  isPersistentLevel,
   isPriceTick,
   isSignal,
   isSnapshot,
@@ -132,10 +133,25 @@ function applyPayload(
     return next;
   }
 
+  // RA-108: persistent-level payloads update the persistentLevels map keyed
+  // by level_id. The chart manager reads from this map on each render and
+  // applies its own diff to add/update/remove price lines.
+  if (isPersistentLevel(p)) {
+    const persistentLevels = { ...next.persistentLevels, [p.level_id]: p };
+    next = { ...next, persistentLevels };
+    // Fall through: persistent_level is also a feed family so the operator
+    // sees the LVL chip in the LiveFeed when a level is promoted / transitions.
+  }
+
   // Feed + history accumulation for the discrete event families.
   if (
     isFeedFamily(p.family) &&
-    (isSignal(p) || isSweep(p) || isIceberg(p) || isAbsorption(p) || isVolRegime(p))
+    (isSignal(p) ||
+      isSweep(p) ||
+      isIceberg(p) ||
+      isAbsorption(p) ||
+      isVolRegime(p) ||
+      isPersistentLevel(p))
   ) {
     const item = messageToFeedItem(msg);
     const feed = [...next.feed, item].slice(-FEED_CAP);

@@ -13,6 +13,7 @@ import {
   HYDRATION_DEPTH_CHUNK_SIZE,
   type HoveredDepthCell,
 } from "./depthHeatmap";
+import { PersistentLevelManager } from "./persistentLevels";
 import { WallMarkerManager } from "./wallMarkers";
 
 const DEPTH_BACKFILL_POLL_INTERVAL_MS = 100;
@@ -24,6 +25,7 @@ export function useDepthHeatmap(
   const { state, bookmapBackfillRef, bookmapBackfillEpoch } = useDashboard();
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
   const wallManagerRef = useRef<WallMarkerManager | null>(null);
+  const persistentLevelManagerRef = useRef<PersistentLevelManager | null>(null);
   const [hovered, setHovered] = useState<HoveredDepthCell | null>(null);
 
   useEffect(() => {
@@ -36,7 +38,16 @@ export function useDepthHeatmap(
     // createPriceLine is layout-only (not a primitive) - no autoscale re-entry.
     const wallManager = new WallMarkerManager(series);
     wallManagerRef.current = wallManager;
+    // RA-108: session-long structural levels (separate from RA-107a wall
+    // markers). Different line style (solid/dotted/dashed by confidence,
+    // vs RA-107a's dashed). Anchored even when price moves far from level.
+    const persistentLevelManager = new PersistentLevelManager(series);
+    persistentLevelManagerRef.current = persistentLevelManager;
     return () => {
+      persistentLevelManager.clear();
+      if (persistentLevelManagerRef.current === persistentLevelManager) {
+        persistentLevelManagerRef.current = null;
+      }
       wallManager.clear();
       if (wallManagerRef.current === wallManager) wallManagerRef.current = null;
       series.detachPrimitive(primitive);
@@ -50,6 +61,16 @@ export function useDepthHeatmap(
     const snapshot = primitiveRef.current?.accumulatorSnapshot();
     if (snapshot) wallManagerRef.current?.update(snapshot.scores, snapshot.mid);
   }, [state.depth]);
+
+  // RA-108: persistent-levels render. Updates whenever the store's
+  // persistentLevels map changes (new emit / status transition) or when
+  // current price moves (we sort top-K by absolute distance from mid).
+  useEffect(() => {
+    persistentLevelManagerRef.current?.update(
+      state.persistentLevels,
+      state.price.price,
+    );
+  }, [state.persistentLevels, state.price.price]);
 
   useEffect(() => {
     let intervalId = 0;
