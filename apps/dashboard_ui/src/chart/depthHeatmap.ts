@@ -53,7 +53,12 @@ export const MAX_DEPTH_CELL_DURATION_SECONDS = 30;
 /** RA-111: depth-payload count per chunk during cold backfill replay. */
 export const HYDRATION_DEPTH_CHUNK_SIZE = 200;
 export const DEPTH_CONTRAST_WINDOW_SECONDS = 10 * 60;
-export const DEPTH_CONTRAST_PERCENTILE = 0.25;
+/**
+ * RA-112d: floor percentile — liquidity at/below this drops to fully dark.
+ * Raised 0.25 → 0.35 so the bottom third of the book (thin noise) recedes to
+ * black, leaving the heatmap bimodal: dark background, isolated bright walls.
+ */
+export const DEPTH_CONTRAST_PERCENTILE = 0.35;
 /**
  * RA-112c: the heatmap's "bright point". Liquidity at/above this percentile of
  * the rolling window saturates to full intensity. Using a robust high
@@ -65,12 +70,14 @@ export const DEPTH_CONTRAST_PERCENTILE = 0.25;
 export const DEPTH_CONTRAST_BRIGHT_PERCENTILE = 0.95;
 export const DEPTH_CONTRAST_MIN_SCORE = 5.0;
 /**
- * RA-112c: intensity transfer exponent. Was 0.5 (sqrt), which LIFTED mid-range
- * liquidity toward the top so most cells looked equally bright. 1.0 (linear)
- * over a robust p95 normalization gives an honest spread: thin liquidity stays
- * faint, walls clearly separate. Raise above 1.0 to suppress mid-range further.
+ * RA-112c/d: intensity transfer exponent. 0.5 (sqrt) lifted mid-range up so
+ * everything looked equally bright; 1.0 gave an honest spread. 2.0 makes it
+ * BIMODAL — mid/thin liquidity is pushed down toward dark and only genuine
+ * walls (top of the p95-normalized range) glow, so individual strong levels
+ * read as isolated bright lines instead of a continuous wash. Lower toward 1.0
+ * to light up more of the book; raise to isolate walls further.
  */
-export const DEPTH_INTENSITY_POWER = 1.0;
+export const DEPTH_INTENSITY_POWER = 2.0;
 /**
  * RA-112c: widened the opacity range so contrast reads on a dark background.
  * Thin liquidity is now near-invisible (0.06) and walls are fully opaque (1.0),

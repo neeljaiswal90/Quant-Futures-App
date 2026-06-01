@@ -1,7 +1,13 @@
 import { MNQ_TICK } from "../contract/render";
 import { snapPrice } from "./priceGrid";
 
-export const DEFAULT_HALF_LIFE_SECONDS = 43;
+/**
+ * RA-112d: shortened 43s → 18s so the heatmap tracks CURRENT resting size more
+ * crisply and old liquidity smears less across time (shorter horizontal
+ * trails). A persistent wall that keeps getting refilled still accumulates and
+ * stands out; transient liquidity decays away in ~18s instead of lingering.
+ */
+export const DEFAULT_HALF_LIFE_SECONDS = 18;
 export const DEFAULT_PRUNE_THRESHOLD = 0.5;
 export const MAX_ACCUMULATOR_PRICE_KEYS = 2_000;
 
