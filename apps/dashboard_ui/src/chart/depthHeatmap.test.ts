@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { UTCTimestamp } from "lightweight-charts";
 import { depthPayload } from "../store/fixtures";
+import { DepthPersistenceAccumulator } from "./depthPersistence";
 import {
   DepthHeatmapPrimitive,
   coordinateForEpochSeconds,
@@ -9,6 +10,7 @@ import {
   depthContrastStats,
   depthIntensity,
   depthPayloadToColumn,
+  depthHeatmapTooltip,
   projectDepthHeatmapCells,
   type DepthHistoryColumn,
 } from "./depthHeatmap";
@@ -67,6 +69,7 @@ describe("depth heatmap projection", () => {
     expect(cells[0]).toMatchObject({
       price: 30090,
       size: 100,
+      rawSize: 100,
       x: 0,
       width: 20,
       quality: "live",
@@ -90,7 +93,7 @@ describe("depth heatmap projection", () => {
   });
 
   it("uses a stable session max so quiet periods do not self-normalize hot", () => {
-    expect(depthIntensity(10, 100)).toBeLessThan(depthIntensity(10, 10));
+    expect(depthIntensity(50, 100, 10)).toBeLessThan(depthIntensity(50, 50, 10));
   });
 
   it("uses a 10-minute rolling max and ignores old liquidity spikes", () => {
@@ -119,8 +122,9 @@ describe("depth heatmap projection", () => {
             ...Array.from({ length: 100 }, (_, index) => ({
               price: 30070 + index * 0.25,
               size: 10,
+              rawSize: 10,
             })),
-            { price: 30095, size: 500 },
+            { price: 30095, size: 500, rawSize: 500 },
           ],
         },
       ],
@@ -134,6 +138,7 @@ describe("depth heatmap projection", () => {
 
     expect(cells).toHaveLength(1);
     expect(cells[0].size).toBe(500);
+    expect(cells[0].rawSize).toBe(500);
   });
 
   it("mutes stale depth without changing the size scale", () => {
@@ -163,6 +168,64 @@ describe("depth heatmap projection", () => {
     const converted = depthPayloadToColumn(payload);
 
     expect(converted?.levels).toHaveLength(200);
+  });
+
+  it("stores persistence score in size and current raw lots in rawSize", () => {
+    const acc = new DepthPersistenceAccumulator();
+    const first = depthPayloadToColumn(
+      {
+        ...depthPayload(BASE_NS),
+        bid_levels: [{ price: 30090, size: 10 }],
+        ask_levels: [],
+      },
+      acc,
+    );
+    const second = depthPayloadToColumn(
+      {
+        ...depthPayload(BASE_NS + 250_000_000),
+        bid_levels: [{ price: 30090, size: 10 }],
+        ask_levels: [],
+      },
+      acc,
+    );
+
+    expect(first?.levels[0]).toMatchObject({ price: 30090, size: 10, rawSize: 10 });
+    expect(second?.levels[0].rawSize).toBe(10);
+    expect(second?.levels[0].size ?? 0).toBeGreaterThan(19);
+  });
+
+  it("keeps decaying persistence cells after a raw level disappears", () => {
+    const acc = new DepthPersistenceAccumulator();
+    depthPayloadToColumn(
+      {
+        ...depthPayload(BASE_NS),
+        bid_levels: [{ price: 30090, size: 50 }],
+        ask_levels: [],
+      },
+      acc,
+    );
+    const faded = depthPayloadToColumn(
+      {
+        ...depthPayload(BASE_NS + 1_000_000_000),
+        bid_levels: [{ price: 30091, size: 1 }],
+        ask_levels: [],
+      },
+      acc,
+    );
+
+    const oldPrice = faded?.levels.find((level) => level.price === 30090);
+    expect(oldPrice?.rawSize).toBe(0);
+    expect(oldPrice?.size ?? 0).toBeGreaterThan(40);
+  });
+
+  it("formats hover tooltip with raw size and persistence score", () => {
+    expect(
+      depthHeatmapTooltip({
+        price: 30547.5,
+        size: 4823.4,
+        rawSize: 12,
+      }),
+    ).toBe("30547.50 | persist 4,823 lot-frames | size 12 lots");
   });
 
   it("keeps the primitive below the price and event layers", () => {
@@ -195,5 +258,63 @@ describe("depth heatmap projection", () => {
 
     expect(primitive.columnCount()).toBe(2);
     expect(primitive.autoscaleInfo()).toBeNull();
+  });
+
+  it("replays setHistory through the same accumulator path as live appends", () => {
+    const payloads = [
+      {
+        ...depthPayload(BASE_NS),
+        bid_levels: [{ price: 30090, size: 10 }],
+        ask_levels: [],
+      },
+      {
+        ...depthPayload(BASE_NS + 250_000_000),
+        bid_levels: [{ price: 30090, size: 10 }],
+        ask_levels: [],
+      },
+      {
+        ...depthPayload(BASE_NS + 500_000_000),
+        bid_levels: [{ price: 30090.25, size: 1 }],
+        ask_levels: [],
+      },
+    ];
+    const live = new DepthHeatmapPrimitive();
+    for (const payload of payloads) live.appendSnapshot(payload);
+
+    const replay = new DepthHeatmapPrimitive();
+    replay.setHistory(payloads);
+
+    expect(replay.columnsForTest()).toEqual(live.columnsForTest());
+  });
+
+  it("shows persistent scores while hiding sub-floor transient noise", () => {
+    const cells = projectDepthHeatmapCells(
+      [
+        {
+          tsNs: BASE_NS,
+          seconds: BASE_SECONDS,
+          mid: 30090.25,
+          quality: "live",
+          levels: [
+            ...Array.from({ length: 100 }, (_, index) => ({
+              price: 30070 + index * 0.25,
+              size: 100,
+              rawSize: 0,
+            })),
+            { price: 30095, size: 2_000, rawSize: 10 },
+          ],
+        },
+      ],
+      timeToCoordinate,
+      priceToCoordinate,
+      {
+        nowSeconds: BASE_SECONDS + 1,
+        visibleRange: { from: BASE_SECONDS - 1, to: BASE_SECONDS + 2 },
+      },
+    );
+
+    expect(cells).toHaveLength(1);
+    expect(cells[0].price).toBe(30095);
+    expect(cells[0].intensity).toBeGreaterThan(0.9);
   });
 });

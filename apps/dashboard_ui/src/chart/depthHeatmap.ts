@@ -7,14 +7,20 @@ import type {
   IPrimitivePaneView,
   ISeriesApi,
   ISeriesPrimitive,
+  PrimitiveHoveredItem,
   SeriesAttachedParameter,
   SeriesType,
   Time,
   UTCTimestamp,
 } from "lightweight-charts";
 import type { DepthPayload, DepthQuality } from "@contracts/realtime/events";
-import { MNQ_TICK } from "../contract/render";
+import { MNQ_TICK, formatMnqPrice } from "../contract/render";
 import { DEPTH_N_TICKS_HARD_CAP } from "./depthLimits";
+import {
+  DepthPersistenceAccumulator,
+  rawLevelMap,
+  type DepthPersistenceInputLevel,
+} from "./depthPersistence";
 import { snapPrice } from "./priceGrid";
 
 export const DEPTH_HISTORY_WINDOW_SECONDS = 8 * 60 * 60;
@@ -23,13 +29,19 @@ export const MAX_VISIBLE_DEPTH_COLUMNS = 420;
 export const MAX_DEPTH_CELLS = 32_000;
 export const MIN_DEPTH_CELL_WIDTH = 1.5;
 export const DEPTH_CONTRAST_WINDOW_SECONDS = 10 * 60;
-export const DEPTH_CONTRAST_PERCENTILE = 0.6;
-export const DEPTH_CONTRAST_MIN_FRACTION = 0.05;
+export const DEPTH_CONTRAST_PERCENTILE = 0.25;
+export const DEPTH_CONTRAST_MIN_SCORE = 5.0;
+export const DEPTH_INTENSITY_POWER = 0.5;
+export const DEPTH_MIN_SHOWN_OPACITY = 0.15;
 export const DEPTH_MAX_OPACITY = 0.95;
+export const DEPTH_HEATMAP_ID_PREFIX = "depth-heatmap:";
 
 export interface DepthHistoryLevel {
   price: number;
+  /** Decay-weighted persistence score in lot-frames, not raw lots. */
   size: number;
+  /** Current raw resting size for this price in the source depth frame. */
+  rawSize: number;
 }
 
 export interface DepthHistoryColumn {
@@ -41,6 +53,7 @@ export interface DepthHistoryColumn {
 }
 
 export interface DepthHeatmapCell extends DepthHistoryLevel {
+  id: string;
   x: number;
   y: number;
   width: number;
@@ -48,6 +61,11 @@ export interface DepthHeatmapCell extends DepthHistoryLevel {
   intensity: number;
   fillColor: string;
   quality: DepthQuality;
+}
+
+export interface HoveredDepthCell {
+  item: DepthHeatmapCell;
+  point: { x: number; y: number };
 }
 
 export interface VisibleTimeRangeSeconds {
@@ -62,15 +80,8 @@ export interface DepthContrastStats {
 
 type CoordinateFn<T> = (value: T) => Coordinate | number | null;
 
-export function depthPayloadToColumn(payload: DepthPayload): DepthHistoryColumn | null {
-  if (
-    payload.quality === "unavailable" ||
-    payload.bid_levels.length + payload.ask_levels.length === 0
-  ) {
-    return null;
-  }
-
-  const levels = [
+function rawDepthLevels(payload: DepthPayload): DepthPersistenceInputLevel[] {
+  return [
     ...payload.bid_levels.slice(0, DEPTH_N_TICKS_HARD_CAP),
     ...payload.ask_levels.slice(0, DEPTH_N_TICKS_HARD_CAP),
   ]
@@ -80,8 +91,33 @@ export function depthPayloadToColumn(payload: DepthPayload): DepthHistoryColumn 
       level.size > 0
     ))
     .map((level) => ({ price: snapPrice(level.price), size: level.size }));
+}
 
-  if (levels.length === 0) return null;
+export function depthPayloadToColumn(
+  payload: DepthPayload,
+  accumulator = new DepthPersistenceAccumulator(),
+): DepthHistoryColumn | null {
+  if (
+    payload.quality === "unavailable" ||
+    payload.bid_levels.length + payload.ask_levels.length === 0
+  ) {
+    return null;
+  }
+
+  const rawLevels = rawDepthLevels(payload);
+  if (rawLevels.length === 0) return null;
+
+  const rawByPrice = rawLevelMap(rawLevels);
+  const persistence = accumulator.update(rawLevels, payload.ts_ns);
+  const levels: DepthHistoryLevel[] = [];
+  for (const [price, size] of persistence) {
+    levels.push({
+      price,
+      size,
+      rawSize: rawByPrice.get(price) ?? 0,
+    });
+  }
+  levels.sort((a, b) => a.price - b.price);
 
   return {
     tsNs: payload.ts_ns,
@@ -170,10 +206,10 @@ export function depthContrastStats(
   }
 
   sizes.sort((a, b) => a - b);
-  const p60 = percentile(sizes, DEPTH_CONTRAST_PERCENTILE);
+  const p25 = percentile(sizes, DEPTH_CONTRAST_PERCENTILE);
   return {
     rollingMaxSize,
-    floorSize: Math.max(p60, DEPTH_CONTRAST_MIN_FRACTION * rollingMaxSize),
+    floorSize: Math.max(p25, DEPTH_CONTRAST_MIN_SCORE),
   };
 }
 
@@ -185,12 +221,16 @@ export function depthIntensity(
   if (!Number.isFinite(size) || size <= 0) return 0;
   if (!Number.isFinite(rollingMaxSize) || rollingMaxSize <= 0) return 0;
   if (size <= floorSize) return 0;
-  const scaled = (size / rollingMaxSize) ** 2;
+  if (rollingMaxSize <= floorSize) return 1;
+  const scaled = ((size - floorSize) / (rollingMaxSize - floorSize)) ** DEPTH_INTENSITY_POWER;
   return Math.max(0, Math.min(1, scaled));
 }
 
 export function depthCellOpacity(intensity: number, quality: DepthQuality): number {
-  const base = Math.max(0, Math.min(1, intensity)) * DEPTH_MAX_OPACITY;
+  const clamped = Math.max(0, Math.min(1, intensity));
+  if (clamped <= 0) return 0;
+  const base =
+    DEPTH_MIN_SHOWN_OPACITY + clamped * (DEPTH_MAX_OPACITY - DEPTH_MIN_SHOWN_OPACITY);
   if (quality === "stale_l1") return base * 0.35;
   if (quality === "inferred") return base * 0.72;
   return quality === "live" ? base : 0;
@@ -326,6 +366,7 @@ export function projectDepthHeatmapCells(
       if (intensity <= 0) continue;
       cells.push({
         ...level,
+        id: `${DEPTH_HEATMAP_ID_PREFIX}${interval.column.tsNs}|${level.price}`,
         x: xStart,
         y: band.y,
         width,
@@ -339,6 +380,10 @@ export function projectDepthHeatmapCells(
   }
 
   return cells;
+}
+
+export function depthHeatmapTooltip(cell: Pick<DepthHeatmapCell, "price" | "size" | "rawSize">): string {
+  return `${formatMnqPrice(cell.price)} | persist ${Math.round(cell.size).toLocaleString()} lot-frames | size ${Math.round(cell.rawSize).toLocaleString()} lots`;
 }
 
 class DepthHeatmapRenderer implements IPrimitivePaneRenderer {
@@ -371,10 +416,45 @@ class DepthHeatmapPaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer {
     return new DepthHeatmapRenderer(this.cells);
   }
+
+  hitTest(x: number, y: number): PrimitiveHoveredItem | null {
+    const cell = this.cellAtPoint(x, y);
+    if (cell == null) return null;
+    return {
+      externalId: cell.id,
+      zOrder: "bottom",
+      distance: 0,
+      hitTestPriority: 0,
+      cursorStyle: "crosshair",
+      itemType: "marker",
+    };
+  }
+
+  itemById(id: unknown): DepthHeatmapCell | null {
+    if (typeof id !== "string") return null;
+    return this.cells.find((cell) => cell.id === id) ?? null;
+  }
+
+  cellAtPoint(x: number, y: number): DepthHeatmapCell | null {
+    let best: DepthHeatmapCell | null = null;
+    for (const cell of this.cells) {
+      if (
+        x >= cell.x &&
+        x <= cell.x + cell.width &&
+        y >= cell.y &&
+        y <= cell.y + cell.height &&
+        (best == null || cell.intensity > best.intensity)
+      ) {
+        best = cell;
+      }
+    }
+    return best;
+  }
 }
 
 export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private readonly view = new DepthHeatmapPaneView();
+  private readonly persistence = new DepthPersistenceAccumulator();
   private chart: IChartApiBase<Time> | null = null;
   private series: ISeriesApi<SeriesType, Time> | null = null;
   private requestUpdate: (() => void) | null = null;
@@ -391,6 +471,8 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
     this.chart = null;
     this.series = null;
     this.requestUpdate = null;
+    this.persistence.clear();
+    this.columns = [];
     this.view.update([]);
   }
 
@@ -427,7 +509,9 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   }
 
   appendSnapshot(payload: DepthPayload): void {
-    const column = depthPayloadToColumn(payload);
+    const last = this.columns.at(-1);
+    if (last && payload.ts_ns <= last.tsNs) return;
+    const column = depthPayloadToColumn(payload, this.persistence);
     if (column == null) {
       // A single transient unavailable depth frame can occur while the backend
       // is between trade/mid observations. Keep the retained time x price
@@ -437,13 +521,7 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
       return;
     }
 
-    const last = this.columns.at(-1);
-    if (last && column.tsNs < last.tsNs) return;
-    if (last && column.tsNs === last.tsNs) {
-      this.columns[this.columns.length - 1] = column;
-    } else {
-      this.columns.push(column);
-    }
+    this.columns.push(column);
 
     this.trimHistory(column.seconds);
     this.updateAllViews();
@@ -456,21 +534,32 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
 
   setHistory(payloads: readonly DepthPayload[]): void {
     this.columns = [];
-    for (const payload of payloads) {
-      const column = depthPayloadToColumn(payload);
+    this.persistence.clear();
+    for (const payload of normalizedDepthPayloads(payloads)) {
+      const column = depthPayloadToColumn(payload, this.persistence);
       if (column == null) continue;
-      const last = this.columns.at(-1);
-      if (last && column.tsNs < last.tsNs) continue;
-      if (last && column.tsNs === last.tsNs) {
-        this.columns[this.columns.length - 1] = column;
-      } else {
-        this.columns.push(column);
-      }
+      this.columns.push(column);
     }
     const latest = this.columns.at(-1);
     if (latest) this.trimHistory(latest.seconds);
     this.updateAllViews();
     this.requestUpdate?.();
+  }
+
+  itemById(id: unknown): DepthHeatmapCell | null {
+    return this.view.itemById(id);
+  }
+
+  cellAtPoint(x: number, y: number): DepthHeatmapCell | null {
+    return this.view.cellAtPoint(x, y);
+  }
+
+  hitTest(x: number, y: number): PrimitiveHoveredItem | null {
+    return this.view.hitTest(x, y);
+  }
+
+  columnsForTest(): readonly DepthHistoryColumn[] {
+    return this.columns;
   }
 
   private trimHistory(latestSeconds: number): void {
@@ -483,4 +572,10 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
       this.columns.shift();
     }
   }
+}
+
+function normalizedDepthPayloads(payloads: readonly DepthPayload[]): DepthPayload[] {
+  const byTs = new Map<number, DepthPayload>();
+  for (const payload of payloads) byTs.set(payload.ts_ns, payload);
+  return [...byTs.values()].sort((a, b) => a.ts_ns - b.ts_ns);
 }

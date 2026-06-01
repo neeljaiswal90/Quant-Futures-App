@@ -34,6 +34,7 @@ import { useZonePriceLines } from "./useZonePriceLines";
 import { eventBubbleTooltip, useEventMarkers } from "./useEventMarkers";
 import { EVENT_LEGEND_ITEMS, type EventBubbleShape } from "./eventBubbles";
 import { isPriceTick } from "../contract/guards";
+import { depthHeatmapTooltip } from "./depthHeatmap";
 import { useDepthHeatmap } from "./useDepthHeatmap";
 import { formatChartAxisTimePT, formatChartCrosshairTimePT } from "./timeFormat";
 import {
@@ -380,7 +381,7 @@ export function PriceChart() {
   }, [showExecutions]);
 
   useZonePriceLines(priceLineRef);
-  useDepthHeatmap(priceLineRef);
+  const hoveredDepth = useDepthHeatmap(chartRef, priceLineRef);
   const hoveredEvent = useEventMarkers(chartRef, priceLineRef, eventAnchorRef, {
     showIcebergCoverage,
   });
@@ -501,6 +502,17 @@ export function PriceChart() {
           }}
         >
           {tradeBubbleTooltip(hoveredTrade.item)}
+        </div>
+      )}
+      {hoveredDepth && !hoveredEvent && !hoveredTrade && (
+        <div
+          className="event-bubble-tooltip"
+          style={{
+            left: hoveredDepth.point.x + 12,
+            top: hoveredDepth.point.y + 12,
+          }}
+        >
+          {depthHeatmapTooltip(hoveredDepth.item)}
         </div>
       )}
     </div>

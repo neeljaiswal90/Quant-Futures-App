@@ -4,18 +4,24 @@
  * The store keeps only the latest DepthPayload; this hook/primitive retains a
  * bounded column history so high-frequency depth does not inflate React state.
  */
-import { useEffect, useRef, type RefObject } from "react";
-import type { ISeriesApi } from "lightweight-charts";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import type { IChartApi, ISeriesApi, MouseEventParams, Time } from "lightweight-charts";
 import { useDashboard } from "../store/context";
-import { DepthHeatmapPrimitive } from "./depthHeatmap";
+import {
+  DEPTH_HEATMAP_ID_PREFIX,
+  DepthHeatmapPrimitive,
+  type HoveredDepthCell,
+} from "./depthHeatmap";
 
 const DEPTH_BACKFILL_POLL_INTERVAL_MS = 100;
 
 export function useDepthHeatmap(
+  chartRef: RefObject<IChartApi | null>,
   seriesRef: RefObject<ISeriesApi<"Line"> | null>,
-): void {
+): HoveredDepthCell | null {
   const { state, bookmapBackfillRef, bookmapBackfillEpoch } = useDashboard();
   const primitiveRef = useRef<DepthHeatmapPrimitive | null>(null);
+  const [hovered, setHovered] = useState<HoveredDepthCell | null>(null);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -49,4 +55,35 @@ export function useDepthHeatmap(
     intervalId = window.setInterval(flushBackfill, DEPTH_BACKFILL_POLL_INTERVAL_MS);
     return () => window.clearInterval(intervalId);
   }, [bookmapBackfillEpoch, bookmapBackfillRef]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const handleMove = (param: MouseEventParams<Time>) => {
+      const objectId = param.hoveredInfo?.objectId ?? param.hoveredObjectId;
+      if (
+        typeof objectId === "string" &&
+        objectId.startsWith(DEPTH_HEATMAP_ID_PREFIX) &&
+        param.point
+      ) {
+        const item = primitiveRef.current?.itemById(objectId);
+        if (item) {
+          setHovered({ item, point: { x: param.point.x, y: param.point.y } });
+          return;
+        }
+      }
+      if (param.point) {
+        const item = primitiveRef.current?.cellAtPoint(param.point.x, param.point.y);
+        if (item) {
+          setHovered({ item, point: { x: param.point.x, y: param.point.y } });
+          return;
+        }
+      }
+      setHovered(null);
+    };
+    chart.subscribeCrosshairMove(handleMove);
+    return () => chart.unsubscribeCrosshairMove(handleMove);
+  }, [chartRef]);
+
+  return hovered;
 }
