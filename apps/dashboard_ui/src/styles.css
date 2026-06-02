@@ -187,7 +187,10 @@ body {
 .main {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(420px, 1fr) minmax(190px, 0.3fr);
+  /* Row 1 (top-context) = compact auto height.
+     Row 2 (decision-surface = chart + dom ladder) = 2fr → dominant element.
+     Row 3 (bottom-row = feed + history + posture) = 1fr → support panels. */
+  grid-template-rows: auto minmax(440px, 2fr) minmax(220px, 1fr);
   gap: 8px;
   min-height: 0;
   height: 100%;
@@ -195,6 +198,10 @@ body {
 
 .top-context {
   display: grid;
+  /* PriceContext is the full-width summary; Scenarios sits to the right and
+     auto-hides when empty (renders null), so this collapses to one column
+     on quiet days. */
+  grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
 }
@@ -224,7 +231,8 @@ body {
 
 .bottom-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  /* Three equal columns: LiveFeed / HistoryPanel / TradePosture. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
   height: 100%;
@@ -232,6 +240,9 @@ body {
 
 .bottom-row > .panel {
   min-height: 0;
+  /* Bottom-row panels need their own scroll so the row stays compact while
+     long feeds/history don't push the chart up. */
+  overflow: auto;
 }
 
 .dom-ladder {
@@ -929,6 +940,9 @@ button.btn:disabled {
   }
 
   .bottom-row {
+    grid-template-columns: 1fr;
+  }
+  .top-context {
     grid-template-columns: 1fr;
   }
 

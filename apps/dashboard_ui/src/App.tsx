@@ -42,9 +42,16 @@ function Shell() {
       <TopBar />
       <Banners />
       <div className="main">
+        {/*
+         * Layout (operator-locked 2026-06-01):
+         *   1. PriceContext (+ Scenarios when active) — compact summary row.
+         *   2. Decision surface — chart is the dominant element (fills 1fr),
+         *      DomLadder column to its right.
+         *   3. Bottom row — three equal columns: LiveFeed / HistoryPanel /
+         *      TradePosture (the trade-strategy synthesis panel).
+         */}
         <div className="top-context">
           <PriceContext />
-          <TradePosture />
           <Scenarios />
         </div>
         <div className="decision-surface">
@@ -54,6 +61,7 @@ function Shell() {
         <div className="bottom-row">
           <LiveFeed />
           <HistoryPanel />
+          <TradePosture />
         </div>
       </div>
       <SettingsPanel />
