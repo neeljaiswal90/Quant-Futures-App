@@ -99,8 +99,84 @@ export function MethodologyHealth() {
       >
         Δq-rms <b>{fmtSignedTicks(divergence)}</b>
       </span>
+
+      {/* RA-112e step 10 / Move 3 — active cap + shadow guardrail surfacing */}
+      <CapBlock m={m} />
     </div>
   );
+}
+
+function CapBlock({ m }: { m: import("@contracts/realtime/events").MethodologyHealthPayload }) {
+  const activeBasis = m.active_cap_basis_dominant;
+  const shadowBasis = m.shadow_cap_basis_dominant;
+  if (activeBasis == null && shadowBasis == null) return null;
+
+  // Per the operator's spec, display full-ladder span (more interpretable
+  // than per-tier values in a compact chip).
+  const yzMean = m.shadow_yz_mean_ladder_span_pts;
+  const p99Mean = m.shadow_p99_mean_ladder_span_pts;
+  const shadowSpanPts =
+    yzMean != null && p99Mean != null ? Math.max(yzMean, p99Mean) : null;
+
+  // Health flags. Order matters: regression states first, then info states.
+  const healthShare = m.shadow_cap_health_share || {};
+  const healthFlags: string[] = [];
+  const tagShown: Array<[string, string]> = [
+    ["refresh_failed_using_last_valid", "REFRESH FAIL"],
+    ["missing_using_atr_fallback", "ATR FALLBACK"],
+    ["yz_bipower_divergence", "YZ/BV DIVERGENCE"],
+    ["yz_unavailable_warmup", "YZ WARMUP"],
+    ["low_sample", "LOW SAMPLE"],
+    ["tail_concentrated", "TAIL CONCENTRATED"],
+    ["stale", "STALE"],
+  ];
+  for (const [k, label] of tagShown) {
+    const share = healthShare[k] ?? 0;
+    if (share > 0.5) healthFlags.push(label);   // present in >50% of window
+  }
+
+  return (
+    <>
+      <span
+        className="health-chip health-info"
+        title="Active cap that drove the rendered shelves. legacy_atr = production behavior; atr_fallback would indicate the shadow emergency path."
+      >
+        ACTIVE CAP <b>{fmtCapBasis(activeBasis)}</b>
+      </span>
+      <span
+        className={`health-chip ${healthFlags.length > 0 ? "health-warn" : "health-info"}`}
+        title="Shadow YZ/p99 cap that WOULD drive shelves if vol_guardrail_enabled were true. Reported alongside the active cap for A/B comparison."
+      >
+        SHADOW CAP{" "}
+        <b>
+          {fmtCapBasis(shadowBasis)}
+          {shadowSpanPts != null ? ` ${shadowSpanPts.toFixed(1)}pt` : ""}
+        </b>
+      </span>
+      {healthFlags.length > 0 ? (
+        <span
+          className="health-chip health-warn"
+          title="Calibration / shadow-cap health flags active in >50% of the observation window."
+        >
+          <b>{healthFlags.join(" · ")}</b>
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function fmtCapBasis(b: string | null): string {
+  if (b == null) return "—";
+  // Compact display so the chip stays on one line.
+  switch (b) {
+    case "legacy_atr": return "ATR";
+    case "yz": return "YZ";
+    case "p99_realized_range": return "p99";
+    case "last_valid_p99_realized_range": return "p99 (stale)";
+    case "yz_p99_equal": return "YZ=p99";
+    case "atr_fallback": return "ATR (fallback)";
+    default: return b;
+  }
 }
 
 function fmtPct(v: number | null): string {
