@@ -34,6 +34,7 @@ from starlette.responses import JSONResponse
 from realtime_backend.config.router import create_config_router
 from realtime_backend.config.store import AlertConfigStore
 from realtime_backend.connection_manager import ConnectionManager
+from realtime_backend.calibration.loader import CalibrationLoader, TailCapCalibration
 from realtime_backend.feed import FeedState
 from realtime_backend.methodology_health import MethodologyHealthAccumulator
 from realtime_backend.orderflow import build_orderflow_stats
@@ -54,6 +55,7 @@ from realtime_backend.zone_snapshots import (
 )
 from realtime_backend.sigma_zones_v3 import (
     METHOD_VERSION_V3,
+    VolGuardrailConfig,
     ZoneShelvesResult,
     compute_zone_shelves,
 )
@@ -143,6 +145,9 @@ def _build_zone_snapshot_candidate(
     bound_source: dict[str, str] = {}
     atr_14_60m: float | None = None
     atr_cap: float | None = None
+    active_cap_dict: dict[str, Any] | None = None
+    shadow_vol_dict: dict[str, Any] | None = None
+    shadow_boundary_dicts: tuple[dict[str, Any], ...] = ()
     if shelves_result is not None:
         shelves_tuple = tuple(
             Shelf(
@@ -164,6 +169,43 @@ def _build_zone_snapshot_candidate(
         bound_source = dict(shelves_result.bound_source)
         atr_14_60m = shelves_result.atr_14_60m
         atr_cap = shelves_result.atr_cap
+        # RA-112e step 10 / Move 3 — surface the shadow guardrail diagnostics.
+        if shelves_result.active_cap is not None:
+            ac = shelves_result.active_cap
+            active_cap_dict = {
+                "cap_basis": ac.cap_basis,
+                "cap_health": list(ac.cap_health),
+                "cap_ladder_span_points": ac.cap_ladder_span_points,
+                "cap_n_points": dict(ac.cap_n_points),
+            }
+        if shelves_result.shadow_vol_guardrail is not None:
+            sv = shelves_result.shadow_vol_guardrail
+            shadow_vol_dict = {
+                "enabled": False,         # this commit ships in shadow mode only
+                "shadow_enabled": True,
+                "cap_basis": sv.cap_basis,
+                "cap_health": list(sv.cap_health),
+                "cap_ladder_span_points": sv.cap_ladder_span_points,
+                "cap_n_points": dict(sv.cap_n_points),
+                "yz_ladder_span_points": sv.yz_ladder_span_points,
+                "p99_ladder_span_points": sv.p99_ladder_span_points,
+            }
+        if shelves_result.shadow_boundaries:
+            shadow_boundary_dicts = tuple(
+                {
+                    "family": b.family,
+                    "name": b.name,
+                    "tier": b.tier,
+                    "low": b.low,
+                    "high": b.high,
+                    "raw_estimator_width_points": b.raw_estimator_width_points,
+                    "active_cap_n_points": b.active_cap_n_points,
+                    "final_width_points": b.final_width_points,
+                    "shadow_vol_guardrail_cap_n_points": b.shadow_vol_guardrail_cap_n_points,
+                    "shadow_vol_guardrail_width_points": b.shadow_vol_guardrail_width_points,
+                }
+                for b in shelves_result.shadow_boundaries
+            )
 
     return ZoneSnapshot(
         schema_version=ZONE_SNAPSHOT_SCHEMA_VERSION,
@@ -190,6 +232,9 @@ def _build_zone_snapshot_candidate(
         reference_lines=reference_lines,
         cap_bind_flags=cap_bind_flags,
         bound_source=bound_source,
+        active_cap=active_cap_dict,
+        shadow_vol_guardrail=shadow_vol_dict,
+        shadow_boundaries=shadow_boundary_dicts,
     )
 
 
@@ -305,6 +350,48 @@ class RealtimeBackend:
         # characteristics), not the prior Globex's. RTH-only tape never has
         # 14h of bars so it relies on this cross-session memory.
         self._prior_atr_60m_by_session: dict[str, float] = {}
+
+        # RA-112e step 10 / Move 3 — tail-cap calibration loaders per session
+        # kind. Resolved against the project-root-anchored data path so the
+        # backend finds the files regardless of cwd.
+        calib_dir = self._resolve_data_path(settings.tail_cap_calibration_dir)
+        self._calibration_loaders: dict[str, CalibrationLoader] = {
+            "rth": CalibrationLoader(
+                calib_dir, symbol=settings.zone_snapshot_symbol, session_kind="rth"
+            ),
+            "globex": CalibrationLoader(
+                calib_dir, symbol=settings.zone_snapshot_symbol, session_kind="globex"
+            ),
+        }
+        # Refresh once at startup. Per the spec, the runtime path uses
+        # last-valid on a future refresh failure — that's enforced by the
+        # loader itself.
+        for kind, loader in self._calibration_loaders.items():
+            cal = loader.refresh()
+            if cal is None:
+                logger.warning(
+                    "no tail-cap calibration for session_kind=%s at %s; "
+                    "shadow guardrail will fall back to ATR on this session",
+                    kind, loader.expected_path,
+                )
+            else:
+                logger.info(
+                    "loaded tail-cap calibration: %s (p99=%.2fpt, %d/%d sessions, "
+                    "low_sample=%s, tail_concentration=%s)",
+                    loader.expected_path, cal.p99_range_points,
+                    cal.lookback_sessions_used,
+                    cal.lookback_sessions_requested,
+                    cal.is_low_sample,
+                    cal.tail_concentration_health,
+                )
+        self._vol_guardrail_config = VolGuardrailConfig(
+            enabled=settings.vol_guardrail_enabled,
+            shadow_enabled=settings.vol_guardrail_shadow_enabled,
+            yz_window_minutes=settings.vol_guardrail_yz_window_minutes,
+            yz_subbar_minutes=settings.vol_guardrail_yz_subbar_minutes,
+            yz_sigma_multiplier=settings.vol_guardrail_yz_sigma_multiplier,
+            ladder_tiers=settings.vol_guardrail_ladder_tiers,
+        )
 
     def _resolve_data_path(self, configured: Any) -> Any:
         """Anchor a relative data-dir setting on the project root.
@@ -488,6 +575,17 @@ class RealtimeBackend:
             for v in self._prior_atr_60m_by_session.values():
                 prior_atr = v
                 break
+        # RA-112e step 10 / Move 3 — pull the current calibration for this
+        # session kind. ``current()`` prefers the latest refresh; if that
+        # failed, it returns last-valid; if neither, None (shadow guardrail
+        # falls back to ATR for this compute pass).
+        loader = self._calibration_loaders.get(result.session)
+        calibration = loader.current() if loader is not None else None
+        using_last_valid = bool(
+            loader is not None
+            and not loader.status().get("last_refresh_ok")
+            and calibration is not None
+        )
         try:
             return await asyncio.to_thread(
                 compute_zone_shelves,
@@ -498,6 +596,9 @@ class RealtimeBackend:
                 bin_size_ticks=int(bin_size_ticks),
                 prior_atr_60m=prior_atr,
                 reference_lines=envelope.get("reference_lines", []),
+                vol_guardrail_config=self._vol_guardrail_config,
+                calibration=calibration,
+                calibration_using_last_valid=using_last_valid,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("v3 shelf compute failed: %s", exc)
@@ -661,6 +762,8 @@ class RealtimeBackend:
                 ],
                 cap_bind_flags=dict(candidate.cap_bind_flags or {}),
                 anchor=anchor_value,
+                active_cap=candidate.active_cap,
+                shadow_vol_guardrail=candidate.shadow_vol_guardrail,
             )
         except Exception as exc:  # noqa: BLE001 — diagnostics never fail compute
             logger.warning("methodology health observe failed: %s", exc)

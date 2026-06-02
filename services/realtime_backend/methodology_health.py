@@ -48,6 +48,13 @@ class _Observation:
     shelf_lows: dict[str, float]
     shelf_highs: dict[str, float]
     anchor: float | None
+    # RA-112e step 10 / Move 3 — shadow guardrail surfacing.
+    active_cap_basis: str | None = None
+    shadow_cap_basis: str | None = None
+    shadow_cap_health: tuple[str, ...] = ()
+    shadow_yz_span_pts: float | None = None
+    shadow_p99_span_pts: float | None = None
+    shadow_cap_span_pts: float | None = None
 
 
 class MethodologyHealthAccumulator:
@@ -82,6 +89,8 @@ class MethodologyHealthAccumulator:
         shelves: Iterable[dict[str, Any]],
         cap_bind_flags: dict[str, bool] | None,
         anchor: float | None,
+        active_cap: dict[str, Any] | None = None,
+        shadow_vol_guardrail: dict[str, Any] | None = None,
     ) -> None:
         cap_bind: dict[str, bool] = dict(cap_bind_flags or {})
         lows: dict[str, float] = {}
@@ -99,6 +108,21 @@ class MethodologyHealthAccumulator:
                 highs[key] = float(high)
             except (TypeError, ValueError):
                 continue
+        active_cap_basis: str | None = None
+        shadow_cap_basis: str | None = None
+        shadow_cap_health: tuple[str, ...] = ()
+        shadow_yz_span_pts: float | None = None
+        shadow_p99_span_pts: float | None = None
+        shadow_cap_span_pts: float | None = None
+        if isinstance(active_cap, dict):
+            active_cap_basis = active_cap.get("cap_basis")
+        if isinstance(shadow_vol_guardrail, dict):
+            shadow_cap_basis = shadow_vol_guardrail.get("cap_basis")
+            sh = shadow_vol_guardrail.get("cap_health") or ()
+            shadow_cap_health = tuple(sh) if isinstance(sh, (list, tuple)) else ()
+            shadow_yz_span_pts = shadow_vol_guardrail.get("yz_ladder_span_points")
+            shadow_p99_span_pts = shadow_vol_guardrail.get("p99_ladder_span_points")
+            shadow_cap_span_pts = shadow_vol_guardrail.get("cap_ladder_span_points")
         self._obs.append(
             _Observation(
                 ts_ns=ts_ns,
@@ -109,6 +133,12 @@ class MethodologyHealthAccumulator:
                 shelf_lows=lows,
                 shelf_highs=highs,
                 anchor=anchor,
+                active_cap_basis=active_cap_basis,
+                shadow_cap_basis=shadow_cap_basis,
+                shadow_cap_health=shadow_cap_health,
+                shadow_yz_span_pts=shadow_yz_span_pts,
+                shadow_p99_span_pts=shadow_p99_span_pts,
+                shadow_cap_span_pts=shadow_cap_span_pts,
             )
         )
         self._prune(ts_ns)
@@ -133,9 +163,20 @@ class MethodologyHealthAccumulator:
                 },
                 "warmup_share": 0.0,
                 "estimator_width_divergence_sup_1_ticks": None,
+                "active_cap_basis_dominant": None,
+                "shadow_cap_basis_dominant": None,
+                "shadow_cap_health_share": {},
+                "shadow_yz_p99_mean_pts": None,
             }
         emit_count = sum(1 for o in self._obs if o.emitted)
         elapsed_min = max(self._window_ns, 1) / 1e9 / 60.0
+        # Shadow guardrail surfacing: which basis dominates, which health
+        # states are most prevalent, average YZ/p99 spans in the window.
+        active_basis_share = self._share_of(o.active_cap_basis for o in self._obs)
+        shadow_basis_share = self._share_of(o.shadow_cap_basis for o in self._obs)
+        health_share = self._health_share()
+        yz_mean = self._mean_nonnull(o.shadow_yz_span_pts for o in self._obs)
+        p99_mean = self._mean_nonnull(o.shadow_p99_span_pts for o in self._obs)
         return {
             "window_seconds": self.window_seconds,
             "observation_count": total,
@@ -156,7 +197,51 @@ class MethodologyHealthAccumulator:
             "estimator_width_divergence_sup_1_ticks": (
                 self._estimator_width_divergence_ticks("SUP_1")
             ),
+            # RA-112e step 10 / Move 3 — shadow guardrail surfacing.
+            "active_cap_basis_dominant": _argmax_or_none(active_basis_share),
+            "shadow_cap_basis_dominant": _argmax_or_none(shadow_basis_share),
+            "shadow_cap_health_share": health_share,
+            "shadow_yz_mean_ladder_span_pts": yz_mean,
+            "shadow_p99_mean_ladder_span_pts": p99_mean,
         }
+
+    def _share_of(self, values: Iterable[str | None]) -> dict[str, float]:
+        counts: dict[str, int] = {}
+        total = 0
+        for v in values:
+            if v is None:
+                continue
+            counts[v] = counts.get(v, 0) + 1
+            total += 1
+        if total == 0:
+            return {}
+        return {k: v / total for k, v in counts.items()}
+
+    def _health_share(self) -> dict[str, float]:
+        """Fraction of observations where each cap_health tag was set. Tags
+        are additive (an observation can carry multiple) so shares can sum
+        past 1.0."""
+        n = len(self._obs)
+        if n == 0:
+            return {}
+        counts: dict[str, int] = {}
+        for o in self._obs:
+            for tag in o.shadow_cap_health:
+                counts[tag] = counts.get(tag, 0) + 1
+        return {k: v / n for k, v in counts.items()}
+
+    def _mean_nonnull(self, values: Iterable[float | None]) -> float | None:
+        s = 0.0
+        n = 0
+        for v in values:
+            if v is None:
+                continue
+            try:
+                s += float(v)
+                n += 1
+            except (TypeError, ValueError):
+                continue
+        return None if n == 0 else s / n
 
     # ----- internals -----------------------------------------------------
 
@@ -240,6 +325,13 @@ class MethodologyHealthAccumulator:
         if not deltas:
             return None
         return sum(deltas) / len(deltas)
+
+
+def _argmax_or_none(share: dict[str, float]) -> str | None:
+    """Return the key with the largest share, or None on empty dict."""
+    if not share:
+        return None
+    return max(share.items(), key=lambda kv: kv[1])[0]
 
 
 __all__ = ["DEFAULT_WINDOW_SECONDS", "MethodologyHealthAccumulator"]

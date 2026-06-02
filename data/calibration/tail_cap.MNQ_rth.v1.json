@@ -7,7 +7,7 @@
       "note": "v1 disabled; planned for v2 with L1 sync"
     }
   },
-  "computed_at_ts_ns": 1780428141120278700,
+  "computed_at_ts_ns": 1780428892674542300,
   "effective_sample_note": "overlapping windows; effective independent sample is lower than n_windows",
   "generator_version": "compute_tail_cap.v1",
   "lookback_sessions_requested": 20,
@@ -41,6 +41,13 @@
     "2026-05-20"
   ],
   "symbol": "MNQ",
+  "tail_concentration": {
+    "health": "concentrated",
+    "max_single_session_share": 1.0,
+    "p99_exceedance_unique_sessions": 1,
+    "top_window_count": 25,
+    "unique_sessions_in_top_windows": 1
+  },
   "tick_size": 0.25,
   "unit": "points",
   "uses_sessions_strictly_before": "2026-06-02",

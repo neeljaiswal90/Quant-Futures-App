@@ -480,6 +480,15 @@ class MethodologyHealthPayload(RealtimePayload):
     )
     warmup_share: float = 0.0
     estimator_width_divergence_sup_1_ticks: float | None = None
+    # RA-112e step 10 / Move 3 — volatility guardrail surfacing (shadow mode).
+    # None until shadow_enabled produces its first observation.
+    active_cap_basis_dominant: str | None = None
+    shadow_cap_basis_dominant: str | None = None
+    # Share-of-window for each health tag (additive — sums can exceed 1.0
+    # when multiple tags apply to the same observation).
+    shadow_cap_health_share: dict[str, float] = Field(default_factory=dict)
+    shadow_yz_mean_ladder_span_pts: float | None = None
+    shadow_p99_mean_ladder_span_pts: float | None = None
 
 
 class AuctionStatePayload(RealtimePayload):

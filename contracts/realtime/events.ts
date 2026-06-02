@@ -347,6 +347,14 @@ export interface MethodologyHealthPayload {
   anchor_vs_value_distribution: AnchorVsValueDistribution;
   warmup_share: number;
   estimator_width_divergence_sup_1_ticks: number | null;
+  // RA-112e step 10 / Move 3 — volatility guardrail surfacing (shadow mode).
+  // null until shadow_enabled produces its first observation.
+  active_cap_basis_dominant: string | null;
+  shadow_cap_basis_dominant: string | null;
+  // share-of-window per health tag; additive so sums can exceed 1.0.
+  shadow_cap_health_share: Record<string, number>;
+  shadow_yz_mean_ladder_span_pts: number | null;
+  shadow_p99_mean_ladder_span_pts: number | null;
 }
 
 export interface AuctionStatePayload {

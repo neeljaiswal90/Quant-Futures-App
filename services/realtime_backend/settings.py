@@ -143,6 +143,22 @@ class Settings:
     methodology_health_interval_seconds: float = 10.0
     methodology_health_window_seconds: int = 600
 
+    # RA-112e step 10 / Move 3 — volatility guardrail (shadow mode this commit).
+    # ``enabled`` False = production shelves use legacy ATR cap (no behavior
+    # change). ``shadow_enabled`` True = new YZ/p99 cap is computed each pass
+    # and surfaced in diagnostics + zone snapshots for A/B comparison.
+    # Flag flip to enabled=True is a separate commit.
+    vol_guardrail_enabled: bool = False
+    vol_guardrail_shadow_enabled: bool = True
+    vol_guardrail_yz_window_minutes: int = 60
+    vol_guardrail_yz_subbar_minutes: int = 5
+    vol_guardrail_yz_sigma_multiplier: float = 3.0
+    vol_guardrail_ladder_tiers: int = 3
+    # Where compute_tail_cap.py writes its v1 calibration JSONs.
+    tail_cap_calibration_dir: Path = field(
+        default_factory=lambda: Path("data/calibration")
+    )
+
     # RA-112e: directory for the append-only zone-snapshot stream.
     # See services/realtime_backend/zone_snapshots.py for schema details.
     zone_snapshot_dir: Path = field(

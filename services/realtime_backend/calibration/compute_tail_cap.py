@@ -85,6 +85,29 @@ class SessionSkipReason:
 
 
 @dataclass(slots=True)
+class TailConcentration:
+    """Diagnostic for *how* the p99 was produced. Not a quality judgment.
+
+    A high ``max_single_session_share`` means the p99 is heavily influenced by
+    one trading session — the value is still honest, but the methodology
+    panel surfaces this as ``tail_concentrated`` so the operator knows the
+    cap basis isn't broad-corpus stable yet.
+
+    Fields:
+      top_window_count             — how many widest windows we inspected
+      unique_sessions_in_top_windows — number of distinct sessions covering them
+      max_single_session_share     — max fraction of top windows from one session
+      p99_exceedance_unique_sessions — distinct sessions among windows ≥ p99
+      health                       — "concentrated" | "diversified" | "unknown"
+    """
+    top_window_count: int
+    unique_sessions_in_top_windows: int
+    max_single_session_share: float
+    p99_exceedance_unique_sessions: int
+    health: str
+
+
+@dataclass(slots=True)
 class CalibrationArtifact:
     """Wire shape of the calibration JSON. Mirrors the reviewed v1 spec.
 
@@ -119,6 +142,9 @@ class CalibrationArtifact:
     price_source: str               # "raw_trade_prints" in v1
     range_stats_points: RangeStatsPoints
     bad_tick_filter: dict           # {"enabled", "method", "params"}
+    # Optional diagnostics. Forward-compatible: v1 consumers MUST tolerate
+    # the absence of these fields (the integration tests pin this).
+    tail_concentration: TailConcentration | None = None
 
 
 def _iter_trade_ticks(obs01_path: Path) -> Iterable[tuple[int, float]]:
@@ -283,6 +309,13 @@ def compute_calibration(
         max=max(ranges),
     )
 
+    # tail_concentration diagnostic — counts how many distinct sessions
+    # populate the widest end of the realized-range distribution.
+    tail_window_n = min(25, len(scan.pooled))
+    tail_concentration = _compute_tail_concentration(
+        scan=scan, p99_value=stats.p99, top_window_count=tail_window_n,
+    )
+
     artifact = CalibrationArtifact(
         schema_version=SCHEMA_VERSION,
         generator_version=GENERATOR_VERSION,
@@ -313,8 +346,54 @@ def compute_calibration(
             "method": "trade_price_vs_l1_sanity",
             "params": {"note": "v1 disabled; planned for v2 with L1 sync"},
         },
+        tail_concentration=tail_concentration,
     )
     return artifact, scan
+
+
+def _compute_tail_concentration(
+    *,
+    scan: ScanResult,
+    p99_value: float,
+    top_window_count: int,
+) -> TailConcentration:
+    """Diagnose how diversified the widest realized-range windows are across
+    the lookback sessions. NOT a quality judgment — a 'concentrated' tail
+    just means one session is over-represented at the top end."""
+    flat: list[tuple[str, RealizedRangeWindow]] = []
+    for date_str, windows in scan.per_session.items():
+        for w in windows:
+            flat.append((date_str, w))
+    flat.sort(key=lambda pair: pair[1].range_points, reverse=True)
+    top = flat[: max(0, top_window_count)]
+
+    top_session_counts: dict[str, int] = {}
+    for date_str, _ in top:
+        top_session_counts[date_str] = top_session_counts.get(date_str, 0) + 1
+    n_top = len(top) or 1
+    unique_top = len(top_session_counts)
+    max_share = max(top_session_counts.values(), default=0) / n_top
+
+    p99_exceedance_sessions: set[str] = set()
+    for date_str, w in flat:
+        if w.range_points < p99_value:
+            break
+        p99_exceedance_sessions.add(date_str)
+
+    if not flat:
+        health = "unknown"
+    elif unique_top <= 2 or max_share >= 0.8:
+        health = "concentrated"
+    else:
+        health = "diversified"
+
+    return TailConcentration(
+        top_window_count=len(top),
+        unique_sessions_in_top_windows=unique_top,
+        max_single_session_share=max_share,
+        p99_exceedance_unique_sessions=len(p99_exceedance_sessions),
+        health=health,
+    )
 
 
 def write_calibration_atomic(

@@ -57,6 +57,14 @@ from rithmic_analytics.features.sigma_zones_v2 import (
     compute_sigma_zones_v2,
 )
 
+# RA-112e step 10 / Move 3 — volatility guardrail (shadow mode in this commit).
+from realtime_backend.calibration.loader import TailCapCalibration
+from realtime_backend.volatility_estimators import (
+    OhlcBar,
+    YangZhangEstimate,
+    yang_zhang_variance,
+)
+
 # Operator-locked families. v3 (RMS) is primary visual, v2 is shadow
 # subordinate, v3-quantile is a sibling estimator (step 6) we run alongside
 # v3-RMS so the touch corpus can adjudicate which one ships as production.
@@ -87,6 +95,95 @@ DEFAULT_TAIL_BYTES: int = 150_000_000
 # trust — the shelves are still computed (so the operator sees the rough
 # location) but tagged is_warmup=true and the UI marks them as such.
 WARMUP_MIN_TAPE_MINUTES: float = 30.0
+
+# RA-112e step 10 / Move 3 — volatility-guardrail config defaults.
+VOL_GUARDRAIL_YZ_WINDOW_MINUTES: int = 60
+VOL_GUARDRAIL_YZ_SUBBAR_MINUTES: int = 5
+VOL_GUARDRAIL_YZ_SIGMA_MULTIPLIER: float = 3.0
+VOL_GUARDRAIL_LADDER_TIERS: int = 3   # SUP_1/SUP_2/SUP_3 + DEM_1/DEM_2/DEM_3
+# Min sub-bars required for a stable 60-min YZ estimate (4 of 12 = 20 min).
+VOL_GUARDRAIL_YZ_MIN_SUBBARS: int = 4
+
+
+# Allowed values for the new schema fields per the operator's spec. Kept as
+# module-level constants so tests + serializers can reference them.
+
+CAP_BASIS_LEGACY_ATR = "legacy_atr"
+CAP_BASIS_YZ = "yz"
+CAP_BASIS_P99 = "p99_realized_range"
+CAP_BASIS_YZ_P99_EQUAL = "yz_p99_equal"
+CAP_BASIS_LAST_VALID_P99 = "last_valid_p99_realized_range"
+CAP_BASIS_ATR_FALLBACK = "atr_fallback"
+
+CAP_HEALTH_OK = "ok"
+CAP_HEALTH_LOW_SAMPLE = "low_sample"
+CAP_HEALTH_TAIL_CONCENTRATED = "tail_concentrated"
+CAP_HEALTH_STALE = "stale"
+CAP_HEALTH_REFRESH_FAILED = "refresh_failed_using_last_valid"
+CAP_HEALTH_MISSING_USING_ATR = "missing_using_atr_fallback"
+CAP_HEALTH_YZ_WARMUP = "yz_unavailable_warmup"
+CAP_HEALTH_YZ_BV_DIVERGENCE = "yz_bipower_divergence"
+
+ZONE_WIDTH_SOURCE_UNCAPPED = "estimator_uncapped"
+ZONE_WIDTH_SOURCE_LEGACY_ATR_CAPPED = "estimator_capped_by_legacy_atr"
+ZONE_WIDTH_SOURCE_VOL_GUARDRAIL_CAPPED = "estimator_capped_by_vol_guardrail"
+ZONE_WIDTH_SOURCE_ATR_FALLBACK_CAPPED = "atr_fallback_capped"
+ZONE_WIDTH_SOURCE_SHADOW_FLOOR = "shadow_floor_candidate"
+
+
+@dataclass(frozen=True, slots=True)
+class VolGuardrailConfig:
+    """Runtime tuning for the YZ/p99 volatility guardrail. Default state
+    matches the operator's spec: SHADOW MODE (compute + log, do not apply).
+
+    ``enabled=False`` means production zones still use the legacy ATR cap.
+    ``shadow_enabled=True`` means the new cap is computed and serialized
+    alongside the active one so the methodology panel can A/B them.
+    """
+    enabled: bool = False
+    shadow_enabled: bool = True
+    yz_window_minutes: int = VOL_GUARDRAIL_YZ_WINDOW_MINUTES
+    yz_subbar_minutes: int = VOL_GUARDRAIL_YZ_SUBBAR_MINUTES
+    yz_sigma_multiplier: float = VOL_GUARDRAIL_YZ_SIGMA_MULTIPLIER
+    realized_range_horizon_minutes: int = 60
+    ladder_tiers: int = VOL_GUARDRAIL_LADDER_TIERS
+
+
+@dataclass(frozen=True, slots=True)
+class CapResolution:
+    """Per-snapshot decision record for one cap path (active or shadow).
+
+    ``cap_basis`` is one of the CAP_BASIS_* constants.
+    ``cap_health`` is a list of CAP_HEALTH_* tags (multiple may apply,
+    e.g. low_sample + tail_concentrated).
+    ``cap_n_points`` is the displacement from anchor for each tier
+    (keyed by str tier so the dict survives JSON round-trip).
+    """
+    cap_basis: str
+    cap_health: tuple[str, ...]
+    cap_ladder_span_points: float
+    cap_n_points: dict[str, float]   # "1"/"2"/"3" → points
+    # YZ / p99 inputs (None if not computed / not used):
+    yz_ladder_span_points: float | None
+    p99_ladder_span_points: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class ShadowZoneBoundary:
+    """Per-tier shadow shelf boundary, paired by name with the active shelf.
+    The boundary IS the candidate the new cap would produce, but it does NOT
+    drive the chart in this commit — see ``VolGuardrailConfig.enabled``.
+    """
+    family: str
+    name: str
+    tier: int
+    low: float
+    high: float
+    raw_estimator_width_points: float
+    active_cap_n_points: float
+    final_width_points: float
+    shadow_vol_guardrail_cap_n_points: float
+    shadow_vol_guardrail_width_points: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +228,16 @@ class ZoneShelvesResult:
     # returned but the UI marks them as "warming up".
     tape_minutes: float
     is_warmup: bool
+    # RA-112e step 10 / Move 3 — volatility guardrail (shadow mode).
+    # ``active_cap`` describes the cap that *did* drive ``shelves`` — in this
+    # commit it is always the legacy ATR path, because vol_guardrail.enabled
+    # ships False. ``shadow_vol_guardrail`` is the parallel YZ/p99 cap
+    # computed each pass and logged for A/B regardless of enabled state, as
+    # long as ``shadow_enabled`` is True. ``shadow_boundaries`` are the
+    # candidate per-tier shelves the new cap WOULD produce.
+    active_cap: CapResolution | None = None
+    shadow_vol_guardrail: CapResolution | None = None
+    shadow_boundaries: tuple[ShadowZoneBoundary, ...] = ()
 
 
 def compute_zone_shelves(
@@ -146,6 +253,10 @@ def compute_zone_shelves(
     cap_atr_fraction: float = DEFAULT_CAP_ATR_FRACTION,
     tick_size: float = DEFAULT_TICK_SIZE,
     reference_lines: Iterable[dict[str, Any]] = (),
+    # RA-112e step 10 / Move 3 — volatility guardrail (shadow mode).
+    vol_guardrail_config: VolGuardrailConfig | None = None,
+    calibration: TailCapCalibration | None = None,
+    calibration_using_last_valid: bool = False,
 ) -> ZoneShelvesResult | None:
     """Compute v3 + v2 shelves from the current capture tail.
 
@@ -230,6 +341,40 @@ def compute_zone_shelves(
         reference_lines=refs,
     )
 
+    # ---- volatility guardrail (RA-112e step 10 / Move 3, shadow mode) -----
+    # Computed unconditionally when shadow_enabled is True so the methodology
+    # panel can A/B against the legacy ATR cap. The new boundaries only DRIVE
+    # the chart when vol_guardrail_config.enabled is also True — which it is
+    # not at this commit.
+    cfg = vol_guardrail_config or VolGuardrailConfig()
+    active_cap = _resolve_active_cap(
+        atr_cap=atr_cap,
+        atr_cap_source=atr_source,
+        ladder_tiers=cfg.ladder_tiers,
+    )
+    shadow_cap: CapResolution | None = None
+    shadow_boundaries: tuple[ShadowZoneBoundary, ...] = ()
+    if cfg.shadow_enabled or cfg.enabled:
+        yz_estimate = compute_live_yz(df, config=cfg)
+        shadow_cap = _resolve_shadow_cap(
+            config=cfg,
+            anchor=anchor,
+            yz_estimate=yz_estimate,
+            calibration=calibration,
+            refresh_failed=calibration_using_last_valid,
+            using_last_valid=calibration_using_last_valid,
+            atr_cap=atr_cap,
+            atr_cap_source=atr_source,
+        )
+        shadow_boundaries = tuple(_build_shadow_boundaries(
+            anchor=anchor,
+            sigma_above=sigma_above,
+            sigma_below=sigma_below,
+            shadow_cap=shadow_cap,
+            active_cap=active_cap,
+            ladder_tiers=cfg.ladder_tiers,
+        ))
+
     return ZoneShelvesResult(
         shelves=tuple(v3_shelves + v3q_shelves + v2_shelves),
         cap_bind_flags={**v3_caps, **v3q_caps, **v2_caps},
@@ -242,6 +387,9 @@ def compute_zone_shelves(
         atr_cap_source=atr_source,
         tape_minutes=tape_minutes,
         is_warmup=is_warmup,
+        active_cap=active_cap,
+        shadow_vol_guardrail=shadow_cap,
+        shadow_boundaries=shadow_boundaries,
     )
 
 
@@ -467,6 +615,253 @@ def _v3_shelves(
         prev_bot = bot
 
     return shelves, caps, sources
+
+
+# ---------------------------------------------------------------------------
+# RA-112e step 10 / Move 3 — volatility guardrail (shadow mode)
+# ---------------------------------------------------------------------------
+
+
+def _build_subbars_from_tape(
+    df: pd.DataFrame, *, window_minutes: int, subbar_minutes: int,
+) -> list[OhlcBar]:
+    """Aggregate the trailing ``window_minutes`` of the tape into OHLC
+    sub-bars of size ``subbar_minutes``.
+
+    Returns at most ``window_minutes / subbar_minutes`` bars. Sub-bars with
+    zero trades are skipped (no OHLC defined). Caller checks the bar count
+    against ``VOL_GUARDRAIL_YZ_MIN_SUBBARS`` to decide if YZ is warming up.
+    """
+    if df is None or len(df) == 0:
+        return []
+    if "event_ts_ns" not in df.columns or "price" not in df.columns:
+        return []
+    last_ts = int(df["event_ts_ns"].iloc[-1])
+    window_ns = window_minutes * 60 * 1_000_000_000
+    subbar_ns = subbar_minutes * 60 * 1_000_000_000
+    start_ts = last_ts - window_ns
+    # Numpy view for speed; pandas .between is comparable but iterates more
+    ts = df["event_ts_ns"].to_numpy(dtype="int64")
+    px = df["price"].to_numpy(dtype="float64")
+    mask = ts >= start_ts
+    ts = ts[mask]
+    px = px[mask]
+    if ts.size == 0:
+        return []
+    bars: list[OhlcBar] = []
+    bucket_start = start_ts
+    while bucket_start < last_ts:
+        bucket_end = bucket_start + subbar_ns
+        idx_mask = (ts >= bucket_start) & (ts < bucket_end)
+        chunk = px[idx_mask]
+        if chunk.size > 0:
+            o = float(chunk[0])
+            c = float(chunk[-1])
+            h = float(chunk.max())
+            l = float(chunk.min())
+            if min(o, h, l, c) > 0:
+                bars.append(OhlcBar(open=o, high=h, low=l, close=c))
+        bucket_start = bucket_end
+    return bars
+
+
+def compute_live_yz(
+    df: pd.DataFrame, *, config: VolGuardrailConfig,
+) -> YangZhangEstimate | None:
+    """Aggregate the tape into sub-bars and compute the trailing YZ.
+
+    Returns None when the trailing window doesn't have enough sub-bars for
+    a stable estimate (caller treats this as the YZ-warmup path and uses
+    p99 alone for the shadow cap)."""
+    bars = _build_subbars_from_tape(
+        df,
+        window_minutes=config.yz_window_minutes,
+        subbar_minutes=config.yz_subbar_minutes,
+    )
+    if len(bars) < VOL_GUARDRAIL_YZ_MIN_SUBBARS:
+        return None
+    return yang_zhang_variance(
+        bars,
+        window_minutes=config.yz_window_minutes,
+        include_overnight=False,
+    )
+
+
+def _resolve_active_cap(
+    *, atr_cap: float, atr_cap_source: str, ladder_tiers: int,
+) -> CapResolution:
+    """The cap that *actually* drives production shelves in this commit.
+
+    Per the integration spec: the active path is ALWAYS ``legacy_atr``.
+    The ``atr_fallback`` label is reserved for the SHADOW emergency path
+    where no valid YZ/p99 calibration is available — it does not apply
+    to the active path, even when ATR itself is using a constant fallback
+    (that's a cold-start condition, not a methodology emergency).
+    """
+    # cap_n in legacy semantics is the displacement from anchor:
+    #   tier n top = anchor + (n/2) * atr_cap
+    cap_n: dict[str, float] = {
+        str(n): (n / 2.0) * atr_cap for n in range(1, ladder_tiers + 1)
+    }
+    return CapResolution(
+        cap_basis=CAP_BASIS_LEGACY_ATR,
+        cap_health=(CAP_HEALTH_OK,),
+        cap_ladder_span_points=ladder_tiers * (atr_cap / 2.0),
+        cap_n_points=cap_n,
+        yz_ladder_span_points=None,
+        p99_ladder_span_points=None,
+    )
+
+
+def _resolve_shadow_cap(
+    *,
+    config: VolGuardrailConfig,
+    anchor: float,
+    yz_estimate: YangZhangEstimate | None,
+    calibration: TailCapCalibration | None,
+    refresh_failed: bool,
+    using_last_valid: bool,
+    atr_cap: float,
+    atr_cap_source: str,
+) -> CapResolution:
+    """Build the shadow YZ/p99 cap per the operator's formula:
+
+        yz_ladder_span = yz.ladder_span_points(anchor, multiplier=3.0)
+        p99_ladder_span = calibration.p99_range_points
+        cap_ladder_span = max(yz_ladder_span, p99_ladder_span)
+        cap_n = (n / ladder_tiers) * cap_ladder_span
+
+    Health states are additive — multiple may apply (low_sample,
+    tail_concentrated, yz_unavailable_warmup, refresh_failed_using_last_valid).
+    """
+    yz_span: float | None = None
+    p99_span: float | None = None
+    health: list[str] = []
+
+    if yz_estimate is not None:
+        yz_span = yz_estimate.ladder_span_points(
+            anchor_price=anchor,
+            sigma_multiplier=config.yz_sigma_multiplier,
+        )
+    else:
+        health.append(CAP_HEALTH_YZ_WARMUP)
+
+    if calibration is not None:
+        p99_span = calibration.p99_range_points
+        if calibration.is_low_sample:
+            health.append(CAP_HEALTH_LOW_SAMPLE)
+        if calibration.tail_concentration_health == "concentrated":
+            health.append(CAP_HEALTH_TAIL_CONCENTRATED)
+        if using_last_valid:
+            health.append(CAP_HEALTH_REFRESH_FAILED)
+    else:
+        # No calibration object at all — emergency path, fall to ATR.
+        cap_ladder_span = config.ladder_tiers * (atr_cap / 2.0)
+        cap_n: dict[str, float] = {
+            str(n): (n / 2.0) * atr_cap
+            for n in range(1, config.ladder_tiers + 1)
+        }
+        return CapResolution(
+            cap_basis=CAP_BASIS_ATR_FALLBACK,
+            cap_health=(CAP_HEALTH_MISSING_USING_ATR, *health),
+            cap_ladder_span_points=cap_ladder_span,
+            cap_n_points=cap_n,
+            yz_ladder_span_points=yz_span,
+            p99_ladder_span_points=None,
+        )
+
+    # Pick the basis label by which input drove the max.
+    if yz_span is None:
+        basis = CAP_BASIS_P99 if not using_last_valid else CAP_BASIS_LAST_VALID_P99
+        cap_ladder_span = p99_span  # type: ignore[assignment]
+    elif p99_span is None:
+        basis = CAP_BASIS_YZ
+        cap_ladder_span = yz_span
+    else:
+        if abs(yz_span - p99_span) < 1e-6:
+            basis = CAP_BASIS_YZ_P99_EQUAL
+            cap_ladder_span = yz_span
+        elif yz_span > p99_span:
+            basis = CAP_BASIS_YZ
+            cap_ladder_span = yz_span
+        else:
+            basis = (
+                CAP_BASIS_LAST_VALID_P99 if using_last_valid else CAP_BASIS_P99
+            )
+            cap_ladder_span = p99_span
+
+    if not health:
+        health.append(CAP_HEALTH_OK)
+
+    cap_n: dict[str, float] = {
+        str(n): (n / config.ladder_tiers) * cap_ladder_span
+        for n in range(1, config.ladder_tiers + 1)
+    }
+    return CapResolution(
+        cap_basis=basis,
+        cap_health=tuple(health),
+        cap_ladder_span_points=cap_ladder_span,
+        cap_n_points=cap_n,
+        yz_ladder_span_points=yz_span,
+        p99_ladder_span_points=p99_span,
+    )
+
+
+def _build_shadow_boundaries(
+    *,
+    anchor: float,
+    sigma_above: float,
+    sigma_below: float,
+    shadow_cap: CapResolution,
+    active_cap: CapResolution,
+    ladder_tiers: int,
+) -> list[ShadowZoneBoundary]:
+    """Build per-tier shadow boundaries paired with the active ones.
+
+    Mirrors the active ``_v3_shelves`` cumulative tier logic so SUP_n /
+    DEM_n shadow boundaries align by name. ``raw_estimator_width_points``
+    is captured pre-cap so the operator can see how much each cap squeezed
+    the estimator."""
+    out: list[ShadowZoneBoundary] = []
+    for side, sigma in (("SUP", sigma_above), ("DEM", sigma_below)):
+        prev_active = 0.0
+        prev_shadow = 0.0
+        for n in range(1, ladder_tiers + 1):
+            name = f"{side}_{n}"
+            raw_disp = n * sigma             # uncapped estimator displacement
+            active_disp = active_cap.cap_n_points[str(n)]
+            shadow_disp = shadow_cap.cap_n_points[str(n)]
+            # cap is a CEILING — the actual displacement is min(raw, cap)
+            active_eff = min(raw_disp, active_disp)
+            shadow_eff = min(raw_disp, shadow_disp)
+            if side == "SUP":
+                active_low = anchor + prev_active
+                active_high = anchor + active_eff
+                shadow_low = anchor + prev_shadow
+                shadow_high = anchor + shadow_eff
+            else:
+                active_low = anchor - active_eff
+                active_high = anchor - prev_active
+                shadow_low = anchor - shadow_eff
+                shadow_high = anchor - prev_shadow
+            raw_width = max(0.0, raw_disp - (n - 1) * sigma)  # constant per tier
+            active_width = max(0.0, active_eff - prev_active)
+            shadow_width = max(0.0, shadow_eff - prev_shadow)
+            out.append(ShadowZoneBoundary(
+                family=FAMILY_V3,
+                name=name,
+                tier=n,
+                low=shadow_low,
+                high=shadow_high,
+                raw_estimator_width_points=raw_width,
+                active_cap_n_points=active_disp,
+                final_width_points=active_width,
+                shadow_vol_guardrail_cap_n_points=shadow_disp,
+                shadow_vol_guardrail_width_points=shadow_width,
+            ))
+            prev_active = active_eff
+            prev_shadow = shadow_eff
+    return out
 
 
 # ---------------------------------------------------------------------------

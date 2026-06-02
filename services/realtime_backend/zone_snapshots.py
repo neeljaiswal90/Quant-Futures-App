@@ -157,6 +157,16 @@ class ZoneSnapshot:
     reference_lines: tuple[ReferenceLine, ...]
     cap_bind_flags: dict[str, bool]
     bound_source: dict[str, str]
+    # RA-112e step 10 / Move 3 — volatility guardrail (shadow mode this commit).
+    # ``active_cap`` describes the cap that drove the ``shelves`` field.
+    # ``shadow_vol_guardrail`` is the parallel YZ/p99 cap, populated only when
+    # shadow_enabled. Both are dicts (not nested dataclasses) so the snapshot
+    # stream serializes them via asdict() without further plumbing.
+    # ``shadow_boundaries`` carries per-tier candidate SUP/DEM boundaries the
+    # new cap WOULD produce; the chart does not consume them in this commit.
+    active_cap: dict[str, Any] | None = None
+    shadow_vol_guardrail: dict[str, Any] | None = None
+    shadow_boundaries: tuple[dict[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
