@@ -86,6 +86,13 @@ body {
 .status-reconnecting { color: var(--yellow); border-color: var(--yellow); }
 .status-closed { color: var(--red); border-color: var(--red); }
 
+/* RA-112e step 3: auction-vs-value chip colors. Distinct from regime/status
+   palette so the operator reads them as separate axes at a glance. */
+.auction-above_value { color: #f0abfc; border-color: #f0abfc; }   /* pink-300 — supply side */
+.auction-inside_value { color: var(--muted); border-color: var(--muted); }
+.auction-below_value { color: #7dd3fc; border-color: #7dd3fc; }   /* sky-300 — demand side */
+.auction-unknown { color: var(--muted); border-color: var(--muted); opacity: 0.6; }
+
 .banner {
   border-radius: 6px;
   padding: 10px 14px;

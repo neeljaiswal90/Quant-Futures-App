@@ -10,6 +10,7 @@
  */
 import type {
   AbsorptionPayload,
+  AuctionStatePayload,
   DepthPayload,
   ErrorPayload,
   HeartbeatPayload,
@@ -60,6 +61,9 @@ export function isError(p: RealtimePayload): p is ErrorPayload {
 export function isPersistentLevel(p: RealtimePayload): p is PersistentLevelPayload {
   return p.family === "persistent_level";
 }
+export function isAuctionState(p: RealtimePayload): p is AuctionStatePayload {
+  return p.family === "auction_state";
+}
 
 const KNOWN = new Set<string>([
   "signal",
@@ -73,6 +77,7 @@ const KNOWN = new Set<string>([
   "snapshot",
   "heartbeat",
   "persistent_level",
+  "auction_state",
   "error",
 ]);
 

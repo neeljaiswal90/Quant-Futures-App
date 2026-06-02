@@ -13,6 +13,7 @@
 import type { RealtimeMessage, RealtimePayload } from "@contracts/realtime/events";
 import {
   isAbsorption,
+  isAuctionState,
   isDepth,
   isError,
   isHeartbeat,
@@ -83,6 +84,10 @@ function applyPayload(
       },
       sigma: p.sigma,
       regime: p.regime,
+      // RA-112e step 3: snapshot carries the chip state for cold-start. Older
+      // snapshots without the field leave it null (renders no chip).
+      auctionVsValue: p.auction_vs_value ?? null,
+      auctionDistanceTicks: p.auction_distance_ticks ?? null,
       zones: p.zones,
       scenarios: p.open_scenarios,
       feed: mergeFeedItems(next.feed, snapshotFeed, FEED_CAP),
@@ -130,6 +135,18 @@ function applyPayload(
 
   if (isError(p)) {
     next = { ...next, lastError: { code: p.code, message: p.message } };
+    return next;
+  }
+
+  // RA-112e step 3: auction-vs-value transition event. Updates the chip
+  // state between snapshot refreshes; the snapshot path seeds the same
+  // fields on cold start.
+  if (isAuctionState(p)) {
+    next = {
+      ...next,
+      auctionVsValue: p.state,
+      auctionDistanceTicks: p.distance_ticks,
+    };
     return next;
   }
 

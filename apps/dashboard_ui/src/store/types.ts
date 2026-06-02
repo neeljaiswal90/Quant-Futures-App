@@ -7,6 +7,7 @@
  * Tier-4 price-context panel and banner-decay math.
  */
 import type {
+  AuctionVsValueState,
   DepthPayload,
   PersistentLevelPayload,
   Regime,
@@ -56,6 +57,16 @@ export interface DashboardState {
   price: PriceState;
   sigma: number | null;
   regime: Regime | null;
+
+  /**
+   * RA-112e step 3: rolling tactical-anchor (60-min VWAP) position vs the
+   * full-session value area. Separate state from `regime` (which measures
+   * volatility) — they describe different things and render as their own
+   * chip in the top bar. `null` until the first frame with envelope.
+   */
+  auctionVsValue: AuctionVsValueState | null;
+  /** Non-negative distance from the nearest value-area boundary, in ticks. */
+  auctionDistanceTicks: number | null;
 
   heartbeat: HeartbeatState;
 
@@ -116,6 +127,8 @@ export function initialState(): DashboardState {
     persistentLevels: {},
     sigma: null,
     regime: null,
+    auctionVsValue: null,
+    auctionDistanceTicks: null,
     zones: [],
     scenarios: [],
     feed: [],
