@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator
 
 from contracts.realtime.events import DepthPayload, ErrorPayload, make_message
@@ -39,8 +40,114 @@ from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings, settings_from_env
 from realtime_backend.shutdown import EndDayShutdownService, ShutdownTarget
 from realtime_backend.watcher import CaptureWatcher, ComputeResult
+from realtime_backend.zone_snapshots import (
+    ReferenceLine,
+    SCHEMA_VERSION as ZONE_SNAPSHOT_SCHEMA_VERSION,
+    SessionAnchors,
+    TacticalAnchor,
+    ZoneSnapshot,
+    ZoneSnapshotParams,
+    ZoneSnapshotStream,
+    classify_rolling_anchor_vs_value,
+)
 
 logger = logging.getLogger("ra60.realtime_backend")
+
+
+# RA-112e: bumped together with any schema-relevant change to ZoneSnapshot.
+_ZONE_METHOD_VERSIONS: dict[str, str] = {
+    "tactical": "v3.0.0-pending",   # placeholder until RA-112f step 4 lands.
+    "legacy": "v2.0.0",
+    "stream_schema": str(ZONE_SNAPSHOT_SCHEMA_VERSION),
+}
+
+
+def _build_zone_snapshot_candidate(
+    *,
+    result: ComputeResult,
+    params: ZoneSnapshotParams,
+    now_ts_ns: int,
+    symbol: str,
+) -> ZoneSnapshot:
+    """Project a ComputeResult into the as-of zone snapshot schema.
+
+    Step 1 populates everything except ``shelves`` / ``cap_bind_flags`` /
+    ``bound_source`` (those land with the v3 shelf compute in step 4).
+    """
+    envelope = result.envelope or {}
+    vah = _as_float(envelope.get("vah"))
+    val = _as_float(envelope.get("val"))
+    vpoc = _as_float(envelope.get("vpoc"))
+    atr_14_5m = _as_float(envelope.get("atr_14"))
+
+    live_vwap = result.signals.live_vwap
+    anchor_value = live_vwap.vwap if live_vwap is not None else None
+    window_minutes = (
+        live_vwap.window_minutes if live_vwap is not None else params.vwap_window_minutes
+    )
+    last_ts = result.last_append_ts_ns or now_ts_ns
+    if anchor_value is None:
+        tactical_anchor: TacticalAnchor | None = None
+    else:
+        tactical_anchor = TacticalAnchor(
+            method=f"vwap_w_{window_minutes}m",
+            value=float(anchor_value),
+            window_start_ts_ns=last_ts - window_minutes * 60 * 1_000_000_000,
+            window_end_ts_ns=last_ts,
+        )
+
+    state, distance = classify_rolling_anchor_vs_value(
+        anchor_value, vah=vah, val=val, tick_size=params.tick_size
+    )
+
+    reference_lines = tuple(
+        ReferenceLine(
+            source=str(line.get("source", "")),
+            price=float(line["price"]),
+            label=str(line.get("text", line.get("source", ""))),
+        )
+        for line in envelope.get("reference_lines", [])
+        if isinstance(line, dict) and line.get("price") is not None
+    )
+
+    return ZoneSnapshot(
+        schema_version=ZONE_SNAPSHOT_SCHEMA_VERSION,
+        zone_snapshot_seq=0,  # restamped by the stream.
+        as_of_ts_ns=now_ts_ns,
+        input_cutoff_ts_ns=last_ts,
+        emit_reason="pending",  # restamped by the stream.
+        symbol=symbol,
+        session=result.session,
+        method_versions=dict(_ZONE_METHOD_VERSIONS),
+        params_hash=params.hash(),
+        session_anchors=SessionAnchors(
+            vah=vah,
+            val=val,
+            vpoc=vpoc,
+            atr_14_5m=atr_14_5m,
+            atr_14_60m=None,  # populated when step 4 wires the 60m ATR.
+            atr_cap=None,
+        ),
+        tactical_anchor=tactical_anchor,
+        rolling_anchor_vs_session_value=state,
+        rolling_anchor_distance_ticks=distance,
+        shelves=(),       # populated in RA-112f step 4.
+        reference_lines=reference_lines,
+        cap_bind_flags={},
+        bound_source={},
+    )
+
+
+def _as_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    if result != result:  # NaN
+        return None
+    return result
 
 
 class RealtimeBackend:
@@ -58,6 +165,23 @@ class RealtimeBackend:
         self.watcher: CaptureWatcher | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        # RA-112e: append-only as-of zone-snapshot stream.
+        self._zone_snapshot_stream = ZoneSnapshotStream(
+            settings.zone_snapshot_dir,
+            symbol=settings.zone_snapshot_symbol,
+        )
+        # Reasonable step-1 defaults; the values that don't yet have a live
+        # source (cap timeframe, etc.) stay constant so params_hash is stable.
+        self._zone_snapshot_params = ZoneSnapshotParams(
+            vwap_window_minutes=settings.vwap_window_minutes,
+            cap_atr_fraction=0.5,
+            va_pct=0.70,
+            atr_period=14,
+            atr_bar_size_min_bin=5,
+            atr_bar_size_min_cap=60,
+            bin_size_ticks=20,
+            bin_size_mode="adaptive",
+        )
 
     # ----- watcher → loop marshaling ------------------------------------
 
@@ -117,6 +241,28 @@ class RealtimeBackend:
                 current_price=result.current_price,
                 price_tick=result.price_tick,
             )
+            # RA-112e: append-only as-of snapshot of the zone state. Sync I/O
+            # is offloaded so the event loop never blocks on disk flush.
+            await self._record_zone_snapshot(result)
+
+    async def _record_zone_snapshot(self, result: ComputeResult) -> None:
+        """Project the compute result into a ZoneSnapshot and emit-if-material.
+
+        Safe to call after every compute pass; the stream's policy debounces.
+        Failures are logged and swallowed so a write hiccup never blanks the feed.
+        """
+        try:
+            candidate = _build_zone_snapshot_candidate(
+                result=result,
+                params=self._zone_snapshot_params,
+                now_ts_ns=time.time_ns(),
+                symbol=self.settings.zone_snapshot_symbol,
+            )
+            await asyncio.to_thread(
+                self._zone_snapshot_stream.maybe_emit, candidate
+            )
+        except Exception as exc:  # noqa: BLE001 — isolate persistence failures
+            logger.warning("zone snapshot emit failed: %s", exc)
 
     async def _handle_fast_price_tick(self, tick: LatestPriceTick) -> None:
         await self.feed.emit_price_tick(tick, orderflow=None)
@@ -168,6 +314,9 @@ class RealtimeBackend:
                 current_price=seed.current_price,
                 price_tick=seed.price_tick,
             )
+            # RA-112e: seed the zone-snapshot stream with the boot state so
+            # the JSONL file always opens with a session_open record.
+            await self._record_zone_snapshot(seed)
         except Exception as exc:  # noqa: BLE001
             logger.warning("initial seed compute failed: %s", exc)
         self.watcher.start()
@@ -182,6 +331,9 @@ class RealtimeBackend:
         if self.watcher is not None:
             await asyncio.to_thread(self.watcher.stop)
             self.watcher = None
+        # RA-112e: flush + close the zone-snapshot file handle. Idempotent.
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(self._zone_snapshot_stream.close)
         await self.manager.close_all()
 
 

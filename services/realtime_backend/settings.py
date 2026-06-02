@@ -129,6 +129,13 @@ class Settings:
     heartbeat_interval_seconds: float = 5.0
     staleness_threshold_seconds: float = 30.0
 
+    # RA-112e: directory for the append-only zone-snapshot stream.
+    # See services/realtime_backend/zone_snapshots.py for schema details.
+    zone_snapshot_dir: Path = field(
+        default_factory=lambda: Path("data/zone_snapshots")
+    )
+    zone_snapshot_symbol: str = "MNQ"
+
     cors_origins: tuple[str, ...] = field(default=DEFAULT_CORS_ORIGINS)
 
     def resolved_calibration_path(self) -> Path | None:

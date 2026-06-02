@@ -62,6 +62,10 @@ class ComputeResult:
     current_price: float | None
     last_append_ts_ns: int | None
     price_tick: LatestPriceTick | None
+    # RA-112e: session kind ("globex" / "rth") — needed by the zone-snapshot
+    # stream so file paths roll cleanly across the session boundary. Populated
+    # from DashboardSession.session in run_compute().
+    session: str = "unknown"
 
 
 ResultCallback = Callable[[ComputeResult], None]
@@ -128,6 +132,7 @@ def run_compute(
         current_price=current_price,
         last_append_ts_ns=_last_append_ts_ns(session.capture_path, signals),
         price_tick=price_tick,
+        session=str(session.session),
     )
 
 

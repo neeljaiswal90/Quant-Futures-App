@@ -115,6 +115,43 @@ def test_health_handler_reports_status(tmp_path: Path) -> None:
     assert "seq" in payload and "clients" in payload
 
 
+def test_backend_writes_zone_snapshot_on_seed(tmp_path: Path) -> None:
+    """RA-112e: the seed compute must drop a session_open record to the
+    zone-snapshot stream so the JSONL file is non-empty from boot."""
+    async def scenario() -> None:
+        settings = replace(
+            _fixture_settings(tmp_path),
+            zone_snapshot_dir=tmp_path / "zone_snapshots",
+        )
+        backend = RealtimeBackend(settings)
+        await backend.start()
+        try:
+            # Give the seed's async _record_zone_snapshot time to land.
+            await asyncio.sleep(0.05)
+        finally:
+            await backend.stop()
+
+        files = list((tmp_path / "zone_snapshots").glob("*.jsonl"))
+        assert files, "expected a zone_snapshot file to be created on seed"
+        lines = files[0].read_text(encoding="utf-8").splitlines()
+        assert lines, "expected at least one record in the snapshot file"
+        first = json.loads(lines[0])
+        assert first["schema_version"] == 1
+        assert first["zone_snapshot_seq"] == 1
+        assert first["emit_reason"] == "session_open"
+        assert first["symbol"] == "MNQ"
+        assert first["session"] == "globex"
+        # Tactical anchor should be populated from the fixture's live VWAP.
+        assert first["tactical_anchor"] is not None
+        assert first["tactical_anchor"]["method"].startswith("vwap_w_")
+        # Session anchors come from the fixture envelope.
+        assert first["session_anchors"]["vah"] is not None
+        # File path matches the trading-date / symbol / session convention.
+        assert files[0].name.endswith("_MNQ_globex.jsonl")
+
+    asyncio.run(scenario())
+
+
 def test_backend_lifecycle_seeds_snapshot_and_emits_heartbeat(tmp_path: Path) -> None:
     async def scenario() -> None:
         backend = RealtimeBackend(_fixture_settings(tmp_path))
