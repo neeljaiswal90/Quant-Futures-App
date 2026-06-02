@@ -152,6 +152,89 @@ def test_backend_writes_zone_snapshot_on_seed(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_touch_logger_writes_touch_and_outcome(tmp_path: Path) -> None:
+    """RA-112e step 2: drive a synthetic crossing through the live wiring and
+    verify a touch row + at least one outcome row land on disk."""
+    from realtime_backend.price_ticks import LatestPriceTick
+
+    async def scenario() -> None:
+        settings = replace(
+            _fixture_settings(tmp_path),
+            zone_snapshot_dir=tmp_path / "zone_snapshots",
+            zone_touch_root=tmp_path,
+        )
+        backend = RealtimeBackend(settings)
+        await backend.start()
+        try:
+            # Seed established the detector levels (VPOC 29400 / VAH 29425 / VAL 29375).
+            await asyncio.sleep(0.05)
+
+            # Synthesize a price sequence that crosses VPOC from below.
+            # Default min_distance = 4 ticks = 1.0 pt, so we start ≥1pt away.
+            base_ns = int(
+                datetime(2026, 5, 21, 19, 30, tzinfo=PT).timestamp()
+                * 1_000_000_000
+            )
+            tick_below = LatestPriceTick(
+                trade_ts_ns=base_ns,
+                price=29398.0,
+                volume=1,
+                aggressor_side="buy",
+            )
+            tick_at = LatestPriceTick(
+                trade_ts_ns=base_ns + 1_000_000_000,
+                price=29400.0,
+                volume=2,
+                aggressor_side="buy",
+            )
+            # First sample establishes the side baseline; second fires the touch.
+            await asyncio.to_thread(
+                backend._ingest_price_tick_for_touches, tick_below
+            )
+            await asyncio.to_thread(
+                backend._ingest_price_tick_for_touches, tick_at
+            )
+
+            # Drive a post-touch tick well past the 1-min horizon so the
+            # outcome row finalizes.
+            tick_future = LatestPriceTick(
+                trade_ts_ns=base_ns + 70_000_000_000,
+                price=29402.0,
+                volume=1,
+                aggressor_side="buy",
+            )
+            await asyncio.to_thread(
+                backend._ingest_price_tick_for_touches, tick_future
+            )
+        finally:
+            await backend.stop()
+
+        # Touches file populated.
+        touches = list((tmp_path / "zone_touches").glob("*.jsonl"))
+        assert touches, "expected a zone_touches JSONL file"
+        touch_lines = touches[0].read_text(encoding="utf-8").splitlines()
+        assert touch_lines, "expected at least one touch record"
+        rec = json.loads(touch_lines[0])
+        assert rec["event_id"].startswith("MNQ-")
+        assert rec["zone_id"] == "ref-vpoc-29400.00"
+        assert rec["approach_side"] == "from_below"
+        assert rec["touch_price"] == 29400.0
+        # Reference back to the snapshot stream.
+        assert rec["zone_snapshot_seq"] >= 1
+
+        # Outcomes file has at least the 1-min row (later horizons may stay
+        # pending depending on flush timing — that's fine, they'd land later).
+        outcomes = list((tmp_path / "zone_outcomes").glob("*.jsonl"))
+        assert outcomes, "expected a zone_outcomes JSONL file"
+        outcome_lines = outcomes[0].read_text(encoding="utf-8").splitlines()
+        assert outcome_lines, "expected at least one outcome record"
+        first_outcome = json.loads(outcome_lines[0])
+        assert first_outcome["event_id"] == rec["event_id"]
+        assert first_outcome["horizon_sec"] in (60, 180, 300, 600)
+
+    asyncio.run(scenario())
+
+
 def test_backend_lifecycle_seeds_snapshot_and_emits_heartbeat(tmp_path: Path) -> None:
     async def scenario() -> None:
         backend = RealtimeBackend(_fixture_settings(tmp_path))

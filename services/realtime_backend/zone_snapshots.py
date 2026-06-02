@@ -340,6 +340,11 @@ class ZoneSnapshotStream:
         return self._seq
 
     @property
+    def current_session(self) -> str | None:
+        """The session label of the last emitted snapshot, or None pre-boot."""
+        return self._current_session
+
+    @property
     def current_path(self) -> Path | None:
         return self._current_path
 

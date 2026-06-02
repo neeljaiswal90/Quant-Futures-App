@@ -50,6 +50,16 @@ from realtime_backend.zone_snapshots import (
     ZoneSnapshotStream,
     classify_rolling_anchor_vs_value,
 )
+from realtime_backend.zone_touches import (
+    OutcomeTracker,
+    RollingFeatureAccumulator,
+    SCHEMA_VERSION as ZONE_TOUCH_SCHEMA_VERSION,
+    Touch,
+    TouchDetector,
+    TouchEvent,
+    ZoneTouchStream,
+    monitored_levels_from_snapshot_dict,
+)
 
 logger = logging.getLogger("ra60.realtime_backend")
 
@@ -182,6 +192,20 @@ class RealtimeBackend:
             bin_size_ticks=20,
             bin_size_mode="adaptive",
         )
+        # RA-112e step 2: zone-touch + outcome event logger.
+        self._zone_touch_stream = ZoneTouchStream(
+            settings.zone_touch_root,
+            symbol=settings.zone_snapshot_symbol,
+        )
+        self._touch_detector = TouchDetector()
+        self._feature_accumulator = RollingFeatureAccumulator()
+        self._outcome_tracker = OutcomeTracker(
+            write_row=self._zone_touch_stream.write_outcome,
+        )
+        # The compute-rate path and the fast-poller path both surface price
+        # ticks. Dedupe by trade_ts_ns so the touch pipeline sees each tick
+        # exactly once regardless of which producer ran first.
+        self._last_touch_processed_ts_ns: int | None = None
 
     # ----- watcher → loop marshaling ------------------------------------
 
@@ -244,12 +268,21 @@ class RealtimeBackend:
             # RA-112e: append-only as-of snapshot of the zone state. Sync I/O
             # is offloaded so the event loop never blocks on disk flush.
             await self._record_zone_snapshot(result)
+            # RA-112e step 2: also feed the compute-rate price tick into the
+            # touch logger. Idempotent: a higher-rate fast-poller call with
+            # the same trade_ts_ns is swallowed by the dedupe guard.
+            if result.price_tick is not None:
+                await asyncio.to_thread(
+                    self._ingest_price_tick_for_touches, result.price_tick
+                )
 
     async def _record_zone_snapshot(self, result: ComputeResult) -> None:
         """Project the compute result into a ZoneSnapshot and emit-if-material.
 
         Safe to call after every compute pass; the stream's policy debounces.
         Failures are logged and swallowed so a write hiccup never blanks the feed.
+        Also refreshes the touch detector's monitored level set when the
+        snapshot is the latest one — the detector reads zone state from here.
         """
         try:
             candidate = _build_zone_snapshot_candidate(
@@ -261,14 +294,97 @@ class RealtimeBackend:
             await asyncio.to_thread(
                 self._zone_snapshot_stream.maybe_emit, candidate
             )
+            # Refresh detector level set from the latest snapshot's reference
+            # lines + shelves. Done unconditionally even if maybe_emit chose
+            # to throttle — the in-memory levels track the latest known state.
+            self._touch_detector.update_levels(
+                monitored_levels_from_snapshot_dict(candidate.to_dict())
+            )
         except Exception as exc:  # noqa: BLE001 — isolate persistence failures
             logger.warning("zone snapshot emit failed: %s", exc)
 
+    def _ingest_price_tick_for_touches(self, tick: LatestPriceTick) -> None:
+        """Feed a price tick to the touch logger pipeline.
+
+        Idempotent: ticks repeated at the same ``trade_ts_ns`` are swallowed so
+        the compute-rate path and the fast-poller path can both call us safely.
+
+        Runs synchronously (deque ops + simple arithmetic + JSONL append).
+        Caller invokes via ``asyncio.to_thread`` so the event loop never blocks.
+        """
+        ts_ns = tick.trade_ts_ns
+        if (
+            self._last_touch_processed_ts_ns is not None
+            and ts_ns <= self._last_touch_processed_ts_ns
+        ):
+            return
+        self._last_touch_processed_ts_ns = ts_ns
+        self._feature_accumulator.on_trade(
+            ts_ns=ts_ns,
+            price=tick.price,
+            volume=tick.volume,
+            aggressor_side=tick.aggressor_side,
+        )
+        touches = self._touch_detector.on_price_tick(
+            price=tick.price, ts_ns=ts_ns
+        )
+        self._outcome_tracker.on_price_tick(price=tick.price, ts_ns=ts_ns)
+        for touch in touches:
+            try:
+                self._dispatch_touch(touch)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("touch dispatch failed: %s", exc)
+
+    def _dispatch_touch(self, touch: Touch) -> None:
+        """Write a touch event + register outcomes. Synchronous I/O."""
+        ts_ns = touch.touch_ts_ns
+        event_id = self._zone_touch_stream.next_event_id(
+            session=self._touch_detector_session(), ts_ns=ts_ns
+        )
+        features = self._feature_accumulator.features_at(ts_ns)
+        event = TouchEvent(
+            schema_version=ZONE_TOUCH_SCHEMA_VERSION,
+            event_id=event_id,
+            touch_event_seq=self._zone_touch_stream.touch_seq,
+            touch_ts_ns=ts_ns,
+            symbol=self.settings.zone_snapshot_symbol,
+            session=self._touch_detector_session(),
+            zone_snapshot_seq=self._zone_snapshot_stream.current_seq,
+            zone_id=touch.level.zone_id,
+            zone_family=touch.level.zone_family,
+            zone_low=touch.level.low,
+            zone_high=touch.level.high,
+            touch_price=touch.touch_price,
+            approach_side=touch.approach_side,
+            expected_bounce_direction=touch.expected_bounce_direction,
+            pre_touch_features=features,
+            method_versions=dict(_ZONE_METHOD_VERSIONS),
+        )
+        self._zone_touch_stream.write_touch(event)
+        self._outcome_tracker.register_touch(event)
+
+    def _touch_detector_session(self) -> str:
+        """Return the session label the touch logger is currently scoped to."""
+        return self._zone_snapshot_stream.current_session or "unknown"
+
     async def _handle_fast_price_tick(self, tick: LatestPriceTick) -> None:
         await self.feed.emit_price_tick(tick, orderflow=None)
+        await asyncio.to_thread(self._ingest_price_tick_for_touches, tick)
 
     async def _handle_depth(self, payload: DepthPayload) -> None:
         await self.feed.emit_depth(payload)
+        # Pipe top-of-book sizes into the feature accumulator so depth
+        # imbalance / microprice are populated for the next touch.
+        top_bid = payload.bid_levels[0] if payload.bid_levels else None
+        top_ask = payload.ask_levels[0] if payload.ask_levels else None
+        await asyncio.to_thread(
+            self._feature_accumulator.on_depth,
+            ts_ns=payload.ts_ns,
+            bid_price=top_bid.price if top_bid is not None else None,
+            ask_price=top_ask.price if top_ask is not None else None,
+            bid_size=float(top_bid.size) if top_bid is not None else None,
+            ask_size=float(top_ask.size) if top_ask is not None else None,
+        )
 
     async def _handle_error(self, exc: Exception) -> None:
         logger.warning("detector pass failed: %s", exc)
@@ -334,6 +450,14 @@ class RealtimeBackend:
         # RA-112e: flush + close the zone-snapshot file handle. Idempotent.
         with contextlib.suppress(Exception):
             await asyncio.to_thread(self._zone_snapshot_stream.close)
+        # RA-112e step 2: flush any outcome rows whose horizon has passed,
+        # then close the touch + outcome file handles.
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(
+                self._outcome_tracker.flush_overdue, time.time_ns()
+            )
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(self._zone_touch_stream.close)
         await self.manager.close_all()
 
 

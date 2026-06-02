@@ -136,6 +136,11 @@ class Settings:
     )
     zone_snapshot_symbol: str = "MNQ"
 
+    # RA-112e step 2: root for the append-only touch + outcome streams.
+    # The ZoneTouchStream writes under <root>/zone_touches/ and
+    # <root>/zone_outcomes/ so both streams share a single configured root.
+    zone_touch_root: Path = field(default_factory=lambda: Path("data"))
+
     cors_origins: tuple[str, ...] = field(default=DEFAULT_CORS_ORIGINS)
 
     def resolved_calibration_path(self) -> Path | None:
