@@ -524,6 +524,10 @@ def build_snapshot_payload(
         for rs in recent_signals
     ]
 
+    # RA-112e step 3: stamp the auction-vs-value chip state onto the snapshot
+    # so cold-start clients render correctly without waiting for a transition.
+    auction_state, auction_distance = _auction_state_for_snapshot(signals, envelope)
+
     return SnapshotPayload(
         price=price,
         sigma=sigma,
@@ -531,7 +535,41 @@ def build_snapshot_payload(
         zones=zones_from_envelope(envelope),
         recent_signals=signal_payloads,
         open_scenarios=[],
+        auction_vs_value=auction_state,
+        auction_distance_ticks=auction_distance,
+        cap_bind_flags={},  # populated when RA-112f step 4 lands live shelves.
     )
+
+
+def _auction_state_for_snapshot(
+    signals: LiveSignals | None,
+    envelope: dict[str, Any] | None,
+) -> tuple[str | None, float | None]:
+    """Classify the rolling-anchor vs full-session value-area state.
+
+    Returns ``(state, distance_ticks)`` where state is one of the four
+    AuctionVsValueState literals. ``(None, None)`` if either side of the
+    comparison is unavailable — keeps the SnapshotPayload field omittable.
+    """
+    if signals is None or envelope is None:
+        return None, None
+    anchor = signals.live_vwap.vwap if signals.live_vwap is not None else None
+    vah = envelope.get("vah")
+    val = envelope.get("val")
+    if anchor is None or vah is None or val is None:
+        return None, None
+    try:
+        anchor_f = float(anchor)
+        vah_f = float(vah)
+        val_f = float(val)
+    except (TypeError, ValueError):
+        return None, None
+    # Import locally to avoid a circular dep between signals and zone_snapshots.
+    from realtime_backend.zone_snapshots import classify_rolling_anchor_vs_value
+    state, dist = classify_rolling_anchor_vs_value(
+        anchor_f, vah=vah_f, val=val_f
+    )
+    return state, dist
 
 
 def _recent_confidence(rs: RecentSignal) -> str:

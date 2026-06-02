@@ -42,7 +42,17 @@ export const KNOWN_FAMILIES = [
   "heartbeat",
   "error",
   "persistent_level",
+  "auction_state",
 ] as const;
+
+// RA-112e step 3: rolling tactical-anchor position vs full-session value area.
+export const AUCTION_VS_VALUE_STATES = [
+  "above_value",
+  "inside_value",
+  "below_value",
+  "unknown",
+] as const;
+export type AuctionVsValueState = typeof AUCTION_VS_VALUE_STATES[number];
 
 export const ENVELOPE_FIELDS = [
   "type",
@@ -236,6 +246,21 @@ export interface SnapshotPayload {
   zones: ZoneState[];
   recent_signals: SignalPayload[];
   open_scenarios: ScenarioState[];
+  // RA-112e step 3: rolling tactical-anchor (60-min VWAP) position vs the
+  // full-session value area. Optional so older snapshots still parse.
+  auction_vs_value?: AuctionVsValueState | null;
+  auction_distance_ticks?: number | null;
+  cap_bind_flags?: Record<string, boolean>;
+}
+
+export interface AuctionStatePayload {
+  family: "auction_state";
+  state: AuctionVsValueState;
+  distance_ticks: number;
+  prior_state: AuctionVsValueState | null;
+  anchor_price: number | null;
+  vah: number | null;
+  val: number | null;
 }
 
 export interface HeartbeatPayload {
@@ -303,6 +328,7 @@ export type RealtimePayload =
   | HeartbeatPayload
   | ErrorPayload
   | PersistentLevelPayload
+  | AuctionStatePayload
   | GenericPayload;
 
 // --- Envelope --------------------------------------------------------------

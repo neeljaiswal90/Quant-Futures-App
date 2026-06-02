@@ -81,7 +81,15 @@ KNOWN_FAMILIES: tuple[str, ...] = (
     "heartbeat",
     "error",
     "persistent_level",
+    "auction_state",
 )
+
+# RA-112e step 3: rolling tactical-anchor position vs full-session value area.
+# A separate state from `Regime` (which measures vol) — the rolling 60-min
+# VWAP can sit above, inside, or below today's value area regardless of vol.
+AuctionVsValueState = Literal[
+    "above_value", "inside_value", "below_value", "unknown"
+]
 
 # Envelope field order — mirrored in events.ts ENVELOPE_FIELDS for parity.
 ENVELOPE_FIELDS: tuple[str, ...] = (
@@ -338,6 +346,32 @@ class SnapshotPayload(RealtimePayload):
     zones: list[ZoneState] = Field(default_factory=list)
     recent_signals: list[SignalPayload] = Field(default_factory=list)
     open_scenarios: list[ScenarioState] = Field(default_factory=list)
+    # RA-112e step 3: rolling tactical-anchor (60-min VWAP) position vs the
+    # full-session value area. Optional so older snapshots without the field
+    # still parse; absent / None → renders as "unknown" / no chip.
+    auction_vs_value: AuctionVsValueState | None = None
+    auction_distance_ticks: float | None = None
+    # Cap-bind flags per σ tier (RA-112f step 4 will populate when shelves
+    # are computed live). Empty dict today.
+    cap_bind_flags: dict[str, bool] = Field(default_factory=dict)
+
+
+class AuctionStatePayload(RealtimePayload):
+    """RA-112e step 3: standalone auction-vs-value chip event.
+
+    Emitted on every state transition (above ↔ inside ↔ below) so the
+    dashboard chip updates between snapshot refreshes. Carries the same
+    fields as the SnapshotPayload addition plus a ``prior_state`` so the
+    transition direction is explicit in the wire.
+    """
+
+    family: Literal["auction_state"] = "auction_state"
+    state: AuctionVsValueState
+    distance_ticks: float = 0.0
+    prior_state: AuctionVsValueState | None = None
+    anchor_price: float | None = None
+    vah: float | None = None
+    val: float | None = None
 
 
 class HeartbeatPayload(RealtimePayload):
@@ -433,6 +467,7 @@ _PAYLOAD_REGISTRY: dict[str, type[RealtimePayload]] = {
     "heartbeat": HeartbeatPayload,
     "error": ErrorPayload,
     "persistent_level": PersistentLevelPayload,
+    "auction_state": AuctionStatePayload,
 }
 
 
@@ -519,6 +554,7 @@ __all__ = [
     "ORDERFLOW_QUALITIES",
     "DEPTH_QUALITIES",
     "DEPTH_N_TICKS_MAX",
+    "AuctionVsValueState",
     "FlowDirection",
     "TradeAggressor",
     "InferredDirection",
@@ -549,6 +585,7 @@ __all__ = [
     "ErrorPayload",
     "PersistentLevelEvidence",
     "PersistentLevelPayload",
+    "AuctionStatePayload",
     "GenericPayload",
     "parse_payload",
     "RealtimeMessage",

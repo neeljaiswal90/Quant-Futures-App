@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from rithmic_dashboard.features.recent_signals_panel import RecentSignal
 from rithmic_dashboard.models import (
     AbsorptionProxyEvent,
@@ -350,3 +352,51 @@ def test_build_snapshot_unknown_regime_is_none() -> None:
     sig = _signals(regime=_regime("UNKNOWN"))
     snap = build_snapshot_payload(sig, envelope=None, recent_signals=[])
     assert snap.regime is None
+
+
+def test_build_snapshot_carries_auction_above_value() -> None:
+    """RA-112e step 3: rolling-anchor 29440 with value 29375-29425 -> above."""
+    sig = _signals()  # _vwap() defaults to vwap=29400
+    # Override the VWAP to land above VAH.
+    sig = _replace_live_vwap(sig, 29440.0)
+    envelope = {"reference_lines": [], "vah": 29425.0, "val": 29375.0}
+    snap = build_snapshot_payload(sig, envelope=envelope, recent_signals=[])
+    assert snap.auction_vs_value == "above_value"
+    # (29440 - 29425) / 0.25 = 60 ticks above VAH.
+    assert snap.auction_distance_ticks == pytest.approx(60.0)
+
+
+def test_build_snapshot_carries_auction_inside_value() -> None:
+    sig = _signals()  # vwap defaults to 29400 — inside [29375, 29425].
+    envelope = {"reference_lines": [], "vah": 29425.0, "val": 29375.0}
+    snap = build_snapshot_payload(sig, envelope=envelope, recent_signals=[])
+    assert snap.auction_vs_value == "inside_value"
+    assert snap.auction_distance_ticks == 0.0
+
+
+def test_build_snapshot_carries_auction_below_value() -> None:
+    sig = _signals()
+    sig = _replace_live_vwap(sig, 29350.0)  # below VAL.
+    envelope = {"reference_lines": [], "vah": 29425.0, "val": 29375.0}
+    snap = build_snapshot_payload(sig, envelope=envelope, recent_signals=[])
+    assert snap.auction_vs_value == "below_value"
+    # (29375 - 29350) / 0.25 = 100 ticks below VAL.
+    assert snap.auction_distance_ticks == pytest.approx(100.0)
+
+
+def test_build_snapshot_auction_state_none_when_envelope_lacks_value_area() -> None:
+    """Missing VAH/VAL -> field omitted (renders no chip on client)."""
+    sig = _signals()
+    snap = build_snapshot_payload(
+        sig, envelope={"reference_lines": []}, recent_signals=[]
+    )
+    assert snap.auction_vs_value is None
+    assert snap.auction_distance_ticks is None
+    assert snap.cap_bind_flags == {}
+
+
+def _replace_live_vwap(sig: LiveSignals, value: float) -> LiveSignals:
+    """Test helper: clone a LiveSignals with the live_vwap.vwap field changed."""
+    import dataclasses
+    new_vwap = dataclasses.replace(sig.live_vwap, vwap=value)
+    return dataclasses.replace(sig, live_vwap=new_vwap)

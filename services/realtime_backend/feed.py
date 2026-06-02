@@ -28,6 +28,7 @@ from typing import Any
 
 from contracts.realtime.events import (
     AbsorptionPayload,
+    AuctionStatePayload,
     DepthPayload,
     HeartbeatPayload,
     IcebergPayload,
@@ -83,6 +84,9 @@ class FeedState:
         default_factory=PersistentLevelDetector,
         init=False,
     )
+    # RA-112e step 3: track the auction-vs-value state across diffs so we only
+    # broadcast an AuctionStatePayload on real transitions (not every cycle).
+    _last_auction_state: str | None = field(default=None, init=False)
 
     # ----- seq -----------------------------------------------------------
 
@@ -245,7 +249,59 @@ class FeedState:
             await self._broadcast_and_account(message)
             emitted += 1
 
+        # RA-112e step 3: broadcast an AuctionStatePayload when the rolling-
+        # anchor-vs-value classification transitions. The chip on the
+        # dashboard reads this between snapshot refreshes; cold-start state
+        # comes from SnapshotPayload.auction_vs_value.
+        auction_payload = self._build_auction_transition(current, envelope)
+        if auction_payload is not None:
+            async with self._lock:
+                seq = await self._next_seq()
+            message = make_message(
+                type="event",
+                payload=auction_payload,
+                seq=seq,
+                tier=None,
+            )
+            await self._broadcast_and_account(message)
+            emitted += 1
+            self._last_auction_state = auction_payload.state
+
         return emitted
+
+    def _build_auction_transition(
+        self,
+        signals: LiveSignals,
+        envelope: dict[str, Any] | None,
+    ) -> AuctionStatePayload | None:
+        """Return an AuctionStatePayload iff the auction-vs-value state changed."""
+        if envelope is None:
+            return None
+        anchor = signals.live_vwap.vwap if signals.live_vwap is not None else None
+        vah = envelope.get("vah")
+        val = envelope.get("val")
+        if anchor is None or vah is None or val is None:
+            return None
+        try:
+            anchor_f = float(anchor)
+            vah_f = float(vah)
+            val_f = float(val)
+        except (TypeError, ValueError):
+            return None
+        from realtime_backend.zone_snapshots import classify_rolling_anchor_vs_value
+        state, dist = classify_rolling_anchor_vs_value(
+            anchor_f, vah=vah_f, val=val_f
+        )
+        if state == self._last_auction_state:
+            return None
+        return AuctionStatePayload(
+            state=state,  # type: ignore[arg-type]
+            distance_ticks=dist,
+            prior_state=self._last_auction_state,  # type: ignore[arg-type]
+            anchor_price=anchor_f,
+            vah=vah_f,
+            val=val_f,
+        )
 
     async def emit_price_tick(
         self,

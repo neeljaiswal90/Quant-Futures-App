@@ -69,6 +69,102 @@ def _feed(maxsize: int = 256) -> FeedState:
     return FeedState(manager=ConnectionManager(client_queue_maxsize=maxsize), settings=settings)
 
 
+def test_auction_state_emits_on_first_pass_when_envelope_present() -> None:
+    """RA-112e step 3: first compute with a value-area envelope broadcasts the
+    auction-vs-value state once so cold-start clients have it."""
+    async def scenario() -> None:
+        feed = _feed()
+        received: list[str] = []
+        await feed.manager.connect(_collector(received))
+        env = {"vah": 29425.0, "val": 29375.0, "reference_lines": []}
+        emitted = await feed.emit_signal_diff(
+            _signals(), envelope=env, recent_signals=[], current_price=29400.0,
+        )
+        # signals tuple is empty -> only the auction_state transition fires.
+        assert emitted == 1
+        # Let the per-client writer task drain to the sink.
+        await asyncio.sleep(0.05)
+        frames = [json.loads(f) for f in received]
+        auction = [f for f in frames if f["payload"]["family"] == "auction_state"]
+        assert len(auction) == 1
+        payload = auction[0]["payload"]
+        assert payload["state"] == "inside_value"
+        assert payload["prior_state"] is None  # first observation
+        assert payload["distance_ticks"] == 0.0
+
+    asyncio.run(scenario())
+
+
+def test_auction_state_skips_emit_when_unchanged() -> None:
+    """Same envelope on consecutive passes — no second auction_state frame."""
+    async def scenario() -> None:
+        feed = _feed()
+        await feed.manager.connect(_noop)
+        env = {"vah": 29425.0, "val": 29375.0, "reference_lines": []}
+        first = await feed.emit_signal_diff(
+            _signals(), envelope=env, recent_signals=[], current_price=29400.0,
+        )
+        second = await feed.emit_signal_diff(
+            _signals(), envelope=env, recent_signals=[], current_price=29400.0,
+        )
+        assert first == 1   # auction_state once.
+        assert second == 0  # no change -> nothing.
+
+    asyncio.run(scenario())
+
+
+def test_auction_state_emits_on_transition_with_prior_state() -> None:
+    """Anchor crosses from inside to above -> single transition event with
+    the prior state populated."""
+    import dataclasses
+
+    async def scenario() -> None:
+        feed = _feed()
+        received: list[str] = []
+        await feed.manager.connect(_collector(received))
+        env = {"vah": 29425.0, "val": 29375.0, "reference_lines": []}
+
+        # First pass: inside_value (vwap defaults to 29400).
+        await feed.emit_signal_diff(
+            _signals(), envelope=env, recent_signals=[], current_price=29400.0,
+        )
+        await asyncio.sleep(0.05)
+        received.clear()
+
+        # Second pass: same envelope, but rolling anchor jumps above VAH.
+        sig = _signals()
+        sig = dataclasses.replace(
+            sig, live_vwap=dataclasses.replace(sig.live_vwap, vwap=29440.0)
+        )
+        emitted = await feed.emit_signal_diff(
+            sig, envelope=env, recent_signals=[], current_price=29440.0,
+        )
+        assert emitted == 1
+        await asyncio.sleep(0.05)
+        frames = [json.loads(f) for f in received]
+        payload = frames[-1]["payload"]
+        assert payload["family"] == "auction_state"
+        assert payload["state"] == "above_value"
+        assert payload["prior_state"] == "inside_value"
+        # (29440 - 29425) / 0.25 = 60 ticks.
+        assert payload["distance_ticks"] == 60.0
+
+    asyncio.run(scenario())
+
+
+def test_auction_state_not_emitted_without_envelope() -> None:
+    """No value-area envelope -> no auction-state events at all."""
+    async def scenario() -> None:
+        feed = _feed()
+        await feed.manager.connect(_noop)
+        emitted = await feed.emit_signal_diff(
+            _signals(), envelope=None, recent_signals=[], current_price=29400.0,
+        )
+        assert emitted == 0
+
+    asyncio.run(scenario())
+
+
 def test_seq_is_monotonic_across_emits() -> None:
     async def scenario() -> None:
         feed = _feed()
