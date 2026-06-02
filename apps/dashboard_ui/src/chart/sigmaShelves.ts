@@ -31,10 +31,13 @@ import type {
 import type { Shelf } from "@contracts/realtime/events";
 
 export const FAMILY_V3 = "sigma_v3_vwap_anchor";
+export const FAMILY_V3_QUANTILE = "sigma_v3_vwap_anchor_quantile";
 export const FAMILY_V2 = "sigma_v2_session_value_anchor";
 
-/** Fill opacity (0 = transparent .. 1 = opaque) for v3 shelves. */
+/** Fill opacity (0 = transparent .. 1 = opaque) for v3 RMS shelves. */
 const V3_FILL_ALPHA = 0.18;
+/** Outline opacity for the v3 quantile shadow (RA-112e step 6). */
+const V3_QUANTILE_OUTLINE_ALPHA = 0.7;
 /** Outline (no fill) opacity for v2 legacy shelves. */
 const V2_OUTLINE_ALPHA = 0.55;
 
@@ -88,14 +91,21 @@ export function projectShelves(
     const top = priceToCoordinate(shelf.high);
     const bottom = priceToCoordinate(shelf.low);
     if (top == null || bottom == null) continue;
-    const isV3 = shelf.family === FAMILY_V3;
-    const baseColor = shelfFillColor(shelf, 1.0);
+    // Fill only the production v3 RMS family. Quantile + v2 render as
+    // outlined-only (different stroke styles in the renderer pick them
+    // apart visually). Outline alpha differs by family so v3 quantile
+    // reads as a foreground comparison vs v2 as a subordinate legacy.
+    const isV3Rms = shelf.family === FAMILY_V3;
+    const isV3Quantile = shelf.family === FAMILY_V3_QUANTILE;
+    const outlineAlpha = isV3Quantile
+      ? V3_QUANTILE_OUTLINE_ALPHA
+      : V2_OUTLINE_ALPHA;
     projected.push({
       shelf,
       top: Number(top),
       bottom: Number(bottom),
-      fillColor: shelfFillColor(shelf, isV3 ? V3_FILL_ALPHA : 0),
-      outlineColor: hexWithAlpha(baseColor.replace(/^rgba\(/, "rgb(").split(",").slice(0, 3).join(",") + ")", V2_OUTLINE_ALPHA),
+      fillColor: shelfFillColor(shelf, isV3Rms ? V3_FILL_ALPHA : 0),
+      outlineColor: shelfFillColor(shelf, outlineAlpha),
     });
   }
   return projected;
@@ -106,12 +116,30 @@ class SigmaShelvesRenderer implements IPrimitivePaneRenderer {
 
   draw(target: CanvasRenderingTarget2D): void {
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
-      // Two passes so v3 fills always sit beneath v2 outlines visually.
+      // Three passes so the visual hierarchy is consistent:
+      //   1. v3 RMS — filled (primary, production).
+      //   2. v3 quantile — dotted outline (RA-112e step 6 shadow estimator).
+      //   3. v2 legacy — dashed outline (older shadow comparison).
       for (const p of this.shelves) {
         if (p.shelf.family !== FAMILY_V3) continue;
         if (p.bottom < 0 || p.top > mediaSize.height) continue;
         ctx.fillStyle = p.fillColor;
         ctx.fillRect(0, p.top, mediaSize.width, Math.max(1, p.bottom - p.top));
+      }
+      for (const p of this.shelves) {
+        if (p.shelf.family !== FAMILY_V3_QUANTILE) continue;
+        if (p.bottom < 0 || p.top > mediaSize.height) continue;
+        ctx.save();
+        ctx.strokeStyle = p.outlineColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 4]);  // dotted, distinct from v2 dashed
+        ctx.strokeRect(
+          0,
+          p.top,
+          mediaSize.width,
+          Math.max(1, p.bottom - p.top),
+        );
+        ctx.restore();
       }
       for (const p of this.shelves) {
         if (p.shelf.family !== FAMILY_V2) continue;

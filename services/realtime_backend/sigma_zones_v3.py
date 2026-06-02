@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+import numpy as np
 import pandas as pd
 
 from rithmic_analytics.features.atr import NS_1H, compute_atr_from_ticks
@@ -52,15 +53,26 @@ from rithmic_analytics.features.sigma_zones_v2 import (
     DEFAULT_CAP_ATR_FRACTION,
     DEFAULT_TICK_SIZE,
     DEFAULT_WINDOW_MINUTES,
+    _trailing_window_residuals,
     compute_sigma_zones_v2,
 )
 
-# Operator-locked families. v3 is primary visual, v2 is shadow subordinate.
-FAMILY_V3 = "sigma_v3_vwap_anchor"
+# Operator-locked families. v3 (RMS) is primary visual, v2 is shadow
+# subordinate, v3-quantile is a sibling estimator (step 6) we run alongside
+# v3-RMS so the touch corpus can adjudicate which one ships as production.
+FAMILY_V3 = "sigma_v3_vwap_anchor"                 # RMS one-sided dispersion
+FAMILY_V3_QUANTILE = "sigma_v3_vwap_anchor_quantile"  # local nonparametric
 FAMILY_V2 = "sigma_v2_session_value_anchor"
 
 # Method version stamped on snapshots so future replays can disambiguate.
 METHOD_VERSION_V3 = "v3.0.0"
+
+# RA-112e step 6: per-tier quantiles for the local volume-weighted excursion
+# estimator. Tuned per the operator's design (2026-06-01): Q70/Q85/Q95 of
+# one-sided residuals — slightly less aggressive than Q68/Q90/Q97 so the
+# inner tier holds more touches and the outer tier stays comparable to the
+# RMS-based σ3 width on a normally-distributed window.
+QUANTILE_TIERS: tuple[float, float, float] = (0.70, 0.85, 0.95)
 
 # Last-known-good fallback when the live tape is too young for ATR(14, 60-min).
 # Tuned against recent globex sessions (RA-112b empirical: 60m ATR ~= 62-66pt).
@@ -197,6 +209,20 @@ def compute_zone_shelves(
         reference_lines=refs,
     )
 
+    # ---- v3 quantile (shadow estimator, RA-112e step 6) -------------------
+    # Re-derive residuals + weights for the same trailing window the v2
+    # compute used internally, then build the quantile-driven shelves so
+    # the touch corpus can adjudicate which estimator predicts better
+    # reactions over time. Both estimators share the same anchor + cap.
+    _, residuals_w, weights_w = _trailing_window_residuals(
+        df, window_minutes=window_minutes
+    )
+    v3q_shelves, v3q_caps, v3q_sources = _v3_quantile_shelves(
+        anchor=anchor, residuals=residuals_w, weights=weights_w,
+        atr_cap=atr_cap, vah=float(vah), val=float(val),
+        tick_size=tick_size, reference_lines=refs,
+    )
+
     # ---- v2 legacy (shadow, VAH/VAL-anchored) — only ±1σ and ±2σ tiers,
     # mirroring the sigma_zones_v2 module's existing four-zone output -------
     v2_shelves, v2_caps, v2_sources = _v2_legacy_shelves_from_v2(
@@ -205,9 +231,9 @@ def compute_zone_shelves(
     )
 
     return ZoneShelvesResult(
-        shelves=tuple(v3_shelves + v2_shelves),
-        cap_bind_flags={**v3_caps, **v2_caps},
-        bound_source={**v3_sources, **v2_sources},
+        shelves=tuple(v3_shelves + v3q_shelves + v2_shelves),
+        cap_bind_flags={**v3_caps, **v3q_caps, **v2_caps},
+        bound_source={**v3_sources, **v3q_sources, **v2_sources},
         anchor=anchor,
         sigma_above=sigma_above,
         sigma_below=sigma_below,
@@ -217,6 +243,157 @@ def compute_zone_shelves(
         tape_minutes=tape_minutes,
         is_warmup=is_warmup,
     )
+
+
+# ---------------------------------------------------------------------------
+# Local volume-weighted quantile estimator (RA-112e step 6)
+# ---------------------------------------------------------------------------
+
+
+def _volume_weighted_quantile(
+    values: np.ndarray, weights: np.ndarray, q: float
+) -> float:
+    """Return the volume-weighted ``q``-quantile of ``values``.
+
+    Sorts values ascending, walks the cumulative weight to find the index
+    whose cumulative weight first crosses ``q × total_weight``. Returns the
+    value at that index. Returns 0.0 on empty input.
+
+    Notes:
+      * ``q`` is clamped to [0, 1].
+      * If total_weight ≤ 0, returns 0.0.
+      * Larger weights pull the quantile toward heavier trades — a 5-lot
+        trade at price+10 has 5× the impact of a 1-lot trade at price+10
+        on the resulting quantile.
+    """
+    if len(values) == 0 or len(weights) == 0:
+        return 0.0
+    qc = max(0.0, min(1.0, q))
+    order = np.argsort(values)
+    sorted_values = values[order]
+    sorted_weights = weights[order]
+    cum_w = np.cumsum(sorted_weights)
+    total = float(cum_w[-1])
+    if total <= 0:
+        return 0.0
+    target = qc * total
+    idx = int(np.searchsorted(cum_w, target))
+    idx = min(idx, len(sorted_values) - 1)
+    return float(sorted_values[idx])
+
+
+def _one_sided_quantiles(
+    residuals: np.ndarray, weights: np.ndarray, *, side: str, quantiles: tuple[float, ...]
+) -> tuple[float, ...]:
+    """Compute one-sided volume-weighted quantiles of residual magnitudes.
+
+    ``side='above'`` keeps positive residuals; ``side='below'`` keeps
+    negative residuals and takes their absolute value. Each returned value
+    is the magnitude of the residual at that quantile — meant to be added to
+    (above) or subtracted from (below) the anchor to produce the shelf top
+    or bottom.
+    """
+    if side not in {"above", "below"}:
+        raise ValueError(f"side must be 'above' or 'below', got {side!r}")
+    if len(residuals) == 0:
+        return tuple(0.0 for _ in quantiles)
+    mask = residuals > 0 if side == "above" else residuals < 0
+    if not mask.any():
+        return tuple(0.0 for _ in quantiles)
+    side_values = np.abs(residuals[mask])
+    side_weights = weights[mask]
+    return tuple(
+        _volume_weighted_quantile(side_values, side_weights, q) for q in quantiles
+    )
+
+
+def _v3_quantile_shelves(
+    *,
+    anchor: float,
+    residuals: np.ndarray,
+    weights: np.ndarray,
+    atr_cap: float,
+    vah: float,
+    val: float,
+    tick_size: float,
+    reference_lines: list[dict[str, Any]],
+    quantile_tiers: tuple[float, float, float] = QUANTILE_TIERS,
+) -> tuple[list[ShelfDescriptor], dict[str, bool], dict[str, str]]:
+    """Build six shelves whose widths come from one-sided quantiles of
+    residuals, with the same ATR-cap guardrail as the RMS estimator.
+
+    SUP_n top = anchor + min(quantile_above[n-1], (n/2)·ATR_cap)
+    DEM_n bot = anchor − min(quantile_below[n-1], (n/2)·ATR_cap)
+
+    Non-overlapping shelves; identical bookkeeping (bound_source, cap_bound,
+    confluence) to ``_v3_shelves`` so downstream consumers don't need to
+    distinguish — only the ``family`` differs.
+    """
+    above_widths = _one_sided_quantiles(
+        residuals, weights, side="above", quantiles=quantile_tiers
+    )
+    below_widths = _one_sided_quantiles(
+        residuals, weights, side="below", quantiles=quantile_tiers
+    )
+
+    shelves: list[ShelfDescriptor] = []
+    caps: dict[str, bool] = {}
+    sources: dict[str, str] = {}
+
+    # Supply: walk up from anchor.
+    prev_top = anchor
+    for n, raw_width in enumerate(above_widths, start=1):
+        cap_n = (n / 2.0) * atr_cap
+        if raw_width <= cap_n:
+            top = anchor + raw_width
+            src = "estimator"
+        else:
+            top = anchor + cap_n
+            src = "atr_cap"
+        top = max(anchor, top)
+        name = f"SUP_{n}"
+        # Sort low/high before building so we don't pass low > high when
+        # quantiles return a SMALLER value at a HIGHER tier (degenerate /
+        # quiet window). _build_shelf normalizes anyway.
+        shelves.append(
+            _build_shelf(
+                family=FAMILY_V3_QUANTILE, name=name, tier=n,
+                low=min(prev_top, top), high=max(prev_top, top),
+                bound_source=src,
+                vah=vah, val=val, tick_size=tick_size,
+                reference_lines=reference_lines,
+            )
+        )
+        caps[f"{FAMILY_V3_QUANTILE}:{name}"] = src == "atr_cap"
+        sources[f"{FAMILY_V3_QUANTILE}:{name}"] = src
+        prev_top = max(prev_top, top)
+
+    # Demand: walk down from anchor.
+    prev_bot = anchor
+    for n, raw_width in enumerate(below_widths, start=1):
+        cap_n = (n / 2.0) * atr_cap
+        if raw_width <= cap_n:
+            bot = anchor - raw_width
+            src = "estimator"
+        else:
+            bot = anchor - cap_n
+            src = "atr_cap"
+        bot = min(anchor, bot)
+        name = f"DEM_{n}"
+        shelves.append(
+            _build_shelf(
+                family=FAMILY_V3_QUANTILE, name=name, tier=n,
+                low=min(prev_bot, bot), high=max(prev_bot, bot),
+                bound_source=src,
+                vah=vah, val=val, tick_size=tick_size,
+                reference_lines=reference_lines,
+            )
+        )
+        caps[f"{FAMILY_V3_QUANTILE}:{name}"] = src == "atr_cap"
+        sources[f"{FAMILY_V3_QUANTILE}:{name}"] = src
+        prev_bot = min(prev_bot, bot)
+
+    return shelves, caps, sources
 
 
 # ---------------------------------------------------------------------------
@@ -523,7 +700,9 @@ __all__ = [
     "DEFAULT_TAIL_BYTES",
     "FAMILY_V2",
     "FAMILY_V3",
+    "FAMILY_V3_QUANTILE",
     "METHOD_VERSION_V3",
+    "QUANTILE_TIERS",
     "WARMUP_MIN_TAPE_MINUTES",
     "ShelfDescriptor",
     "ZoneShelvesResult",

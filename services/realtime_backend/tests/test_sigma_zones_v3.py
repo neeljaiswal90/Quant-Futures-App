@@ -7,15 +7,22 @@ import math
 
 import pytest
 
+import numpy as np
+
 from realtime_backend.sigma_zones_v3 import (
     DEFAULT_PRIOR_ATR_60M,
     FAMILY_V2,
     FAMILY_V3,
+    FAMILY_V3_QUANTILE,
+    QUANTILE_TIERS,
     ShelfDescriptor,
     _build_shelf,
     _nearest_structural,
+    _one_sided_quantiles,
     _resolve_atr_60m,
+    _v3_quantile_shelves,
     _v3_shelves,
+    _volume_weighted_quantile,
     compute_zone_shelves,
 )
 
@@ -157,6 +164,114 @@ class TestNearestStructural:
         assert nearest == "lvn"
 
 
+class TestVolumeWeightedQuantile:
+    def test_median_with_equal_weights(self):
+        values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        weights = np.ones(5)
+        # Median (q=0.5) of [1..5] is 3.
+        assert _volume_weighted_quantile(values, weights, 0.5) == 3.0
+
+    def test_weighting_pulls_quantile(self):
+        """A heavy weight on a large value shifts the quantile upward."""
+        values = np.array([1.0, 2.0, 3.0, 4.0, 10.0])
+        # 10 has weight 100; the rest are 1 — cum_w hits q×total inside the 10.
+        weights = np.array([1.0, 1.0, 1.0, 1.0, 100.0])
+        # At q=0.5: total=104, target=52. cum_w sequence: 1,2,3,4,104. idx
+        # of first >= 52 is index 4 (value=10).
+        assert _volume_weighted_quantile(values, weights, 0.5) == 10.0
+
+    def test_empty_returns_zero(self):
+        assert _volume_weighted_quantile(np.array([]), np.array([]), 0.7) == 0.0
+
+    def test_q_clamped_to_unit_interval(self):
+        values = np.array([1.0, 2.0, 3.0])
+        weights = np.ones(3)
+        assert _volume_weighted_quantile(values, weights, 1.5) == 3.0   # last
+        assert _volume_weighted_quantile(values, weights, -0.5) == 1.0  # first
+
+
+class TestOneSidedQuantiles:
+    def test_above_only_keeps_positive_residuals(self):
+        residuals = np.array([-5.0, -3.0, 2.0, 4.0, 6.0])
+        weights = np.ones(5)
+        widths = _one_sided_quantiles(
+            residuals, weights, side="above", quantiles=(0.5, 0.95),
+        )
+        # Positive residuals are [2, 4, 6]. Median = 4, 95th ~= 6.
+        assert widths[0] == 4.0
+        assert widths[1] == 6.0
+
+    def test_below_only_keeps_negative_residuals_as_magnitudes(self):
+        residuals = np.array([-6.0, -4.0, -2.0, 3.0, 5.0])
+        weights = np.ones(5)
+        widths = _one_sided_quantiles(
+            residuals, weights, side="below", quantiles=(0.5, 0.95),
+        )
+        # Negative magnitudes [2, 4, 6]; median 4, 95th 6.
+        assert widths[0] == 4.0
+        assert widths[1] == 6.0
+
+    def test_no_side_data_returns_zeros(self):
+        residuals = np.array([1.0, 2.0, 3.0])  # all positive
+        weights = np.ones(3)
+        widths = _one_sided_quantiles(
+            residuals, weights, side="below", quantiles=(0.7, 0.9),
+        )
+        assert widths == (0.0, 0.0)
+
+
+class TestV3QuantileGeometry:
+    def test_six_shelves_anchored_at_vwap_w(self):
+        # Symmetric residuals -> quantile widths equal on both sides.
+        residuals = np.concatenate(
+            [np.linspace(-10, -1, 50), np.linspace(1, 10, 50)]
+        )
+        weights = np.ones_like(residuals)
+        shelves, caps, srcs = _v3_quantile_shelves(
+            anchor=30419.0, residuals=residuals, weights=weights,
+            atr_cap=200.0, vah=30560.0, val=30424.0, tick_size=0.25,
+            reference_lines=[],
+        )
+        assert len(shelves) == 6
+        sup = [s for s in shelves if s.name.startswith("SUP_")]
+        dem = [s for s in shelves if s.name.startswith("DEM_")]
+        # SUP_1 bottom == anchor (no shelf-crosses-anchor pathology).
+        assert sup[0].low == 30419.0
+        # DEM_1 top == anchor.
+        assert dem[0].high == 30419.0
+        # All shelves carry the quantile family tag.
+        assert all(s.family == FAMILY_V3_QUANTILE for s in shelves)
+
+    def test_cap_binds_when_quantile_exceeds_cap(self):
+        # Huge residuals -> quantiles huge -> cap binds.
+        residuals = np.concatenate(
+            [np.full(50, -100.0), np.full(50, 100.0)]
+        )
+        weights = np.ones_like(residuals)
+        shelves, caps, srcs = _v3_quantile_shelves(
+            anchor=30000.0, residuals=residuals, weights=weights,
+            atr_cap=20.0, vah=30100.0, val=29900.0, tick_size=0.25,
+            reference_lines=[],
+        )
+        for s in shelves:
+            assert s.bound_source == "atr_cap"
+            assert s.cap_bound is True
+
+    def test_no_residuals_collapses_to_anchor(self):
+        shelves, _, _ = _v3_quantile_shelves(
+            anchor=30000.0, residuals=np.array([]), weights=np.array([]),
+            atr_cap=20.0, vah=30100.0, val=29900.0, tick_size=0.25,
+            reference_lines=[],
+        )
+        # Zero-width shelves at the anchor are fine; they just don't render.
+        for s in shelves:
+            assert s.low == 30000.0
+            assert s.high == 30000.0
+
+    def test_quantile_tiers_default_70_85_95(self):
+        assert QUANTILE_TIERS == (0.70, 0.85, 0.95)
+
+
 class TestBuildShelf:
     def test_low_high_normalized(self):
         s = _build_shelf(
@@ -258,6 +373,25 @@ class TestComputeZoneShelvesE2E:
         assert {s.name for s in v3} == {
             "SUP_1", "SUP_2", "SUP_3", "DEM_1", "DEM_2", "DEM_3"
         }
+
+    def test_also_emits_v3_quantile_family_alongside_rms(self, tmp_path):
+        """RA-112e step 6: the quantile estimator runs in shadow next to RMS."""
+        path = tmp_path / "tape.jsonl"
+        _write_synthetic_tape(path)
+        out = compute_zone_shelves(
+            capture_path=path,
+            vah=30500.0, val=30400.0, vpoc=30450.0,
+            bin_size_ticks=8, prior_atr_60m=60.0,
+            tail_bytes=10_000_000,
+        )
+        assert out is not None
+        v3q = [s for s in out.shelves if s.family == FAMILY_V3_QUANTILE]
+        assert len(v3q) == 6
+        # Quantile family shares the anchor with RMS (both use VWAP_w).
+        v3 = [s for s in out.shelves if s.family == FAMILY_V3]
+        sup_1_rms = next(s for s in v3 if s.name == "SUP_1")
+        sup_1_q = next(s for s in v3q if s.name == "SUP_1")
+        assert sup_1_rms.low == sup_1_q.low == out.anchor
 
     def test_v3_shelves_do_not_cross_the_anchor(self, tmp_path):
         """Regression for the v2 pathology: SUP_1 LOW must equal the anchor,
