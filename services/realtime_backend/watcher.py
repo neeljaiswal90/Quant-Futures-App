@@ -66,6 +66,11 @@ class ComputeResult:
     # stream so file paths roll cleanly across the session boundary. Populated
     # from DashboardSession.session in run_compute().
     session: str = "unknown"
+    # RA-112e step 4: obs01 capture path. The v3 shelf compute reads the
+    # trade-tape tail to derive sigma_above / sigma_below / ATR(60m). Optional
+    # so older callers + tests that don't set it still work; the snapshot
+    # pipeline skips shelf compute when None.
+    capture_path: Path | None = None
 
 
 ResultCallback = Callable[[ComputeResult], None]
@@ -133,6 +138,7 @@ def run_compute(
         last_append_ts_ns=_last_append_ts_ns(session.capture_path, signals),
         price_tick=price_tick,
         session=str(session.session),
+        capture_path=signals.source_path,  # obs01 sibling for v3 shelf compute.
     )
 
 

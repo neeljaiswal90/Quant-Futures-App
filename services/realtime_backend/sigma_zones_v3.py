@@ -400,11 +400,20 @@ def _nearest_structural(
 def _load_tape_tail(
     capture_path: Path, *, tail_bytes: int
 ) -> pd.DataFrame | None:
-    """Read the trailing ``tail_bytes`` of an obs01 capture into a trades DF.
+    """Read the trailing ``tail_bytes`` of a capture into a trades DataFrame.
 
-    Uses a raw byte-tail scan + JSON decode rather than the full
-    ``load_obs01_trades`` so we don't pay the cost of parsing a 100MB+ file
-    on every compute cycle. Drops the partial first line.
+    Tolerant of two schemas seen in this codebase:
+
+    * **obs01 nested**: ``{"type": "TRADE", "payload": {"exchange_event_ts_ns":
+      ..., "price": ..., "quantity": ...}}`` — what the production normalizer
+      writes and the live realtime backend reads via ``signals.source_path``.
+    * **raw flat**: ``{"stream": "LAST_TRADE", "exchange_event_ts_ns": ...,
+      "price": ..., "size": ...}`` — what the raw capture writer emits and
+      what the realtime_backend test fixture uses.
+
+    Both shapes converge to ``(event_ts_ns, price, quantity)`` rows. Uses a
+    byte-tail scan rather than the full ``load_obs01_trades`` so a 100MB+
+    capture doesn't dominate the compute pass. Drops the partial first line.
     """
     if not capture_path.exists():
         return None
@@ -420,21 +429,9 @@ def _load_tape_tail(
                     o = json.loads(raw)
                 except Exception:
                     continue
-                p = o.get("payload")
-                if (
-                    not p
-                    or "price" not in p
-                    or "quantity" not in p
-                    or "exchange_event_ts_ns" not in p
-                ):
-                    continue
-                rows.append(
-                    (
-                        int(p["exchange_event_ts_ns"]),
-                        float(p["price"]),
-                        int(p["quantity"]),
-                    )
-                )
+                row = _trade_from_record(o)
+                if row is not None:
+                    rows.append(row)
     except OSError:
         return None
     if not rows:
@@ -442,6 +439,36 @@ def _load_tape_tail(
     df = pd.DataFrame(rows, columns=["event_ts_ns", "price", "quantity"])
     df = df.sort_values("event_ts_ns").reset_index(drop=True)
     return df
+
+
+def _trade_from_record(o: dict[str, Any]) -> tuple[int, float, int] | None:
+    """Extract (ts_ns, price, qty) from either an obs01 or a raw capture row.
+
+    Returns None on any malformed shape so the caller can continue past it.
+    """
+    # obs01 nested.
+    payload = o.get("payload")
+    if isinstance(payload, dict):
+        ts = payload.get("exchange_event_ts_ns")
+        price = payload.get("price")
+        qty = payload.get("quantity")
+        if ts is not None and price is not None and qty is not None:
+            try:
+                return int(ts), float(price), int(qty)
+            except (TypeError, ValueError):
+                return None
+        return None
+    # raw flat (the realtime_backend test fixture uses this; the field is
+    # ``size`` rather than ``quantity``).
+    ts = o.get("exchange_event_ts_ns")
+    price = o.get("price")
+    qty = o.get("size") if "size" in o else o.get("quantity")
+    if ts is not None and price is not None and qty is not None:
+        try:
+            return int(ts), float(price), int(qty)
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def _resolve_atr_60m(

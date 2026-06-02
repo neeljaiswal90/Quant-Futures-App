@@ -44,11 +44,17 @@ from realtime_backend.zone_snapshots import (
     ReferenceLine,
     SCHEMA_VERSION as ZONE_SNAPSHOT_SCHEMA_VERSION,
     SessionAnchors,
+    Shelf,
     TacticalAnchor,
     ZoneSnapshot,
     ZoneSnapshotParams,
     ZoneSnapshotStream,
     classify_rolling_anchor_vs_value,
+)
+from realtime_backend.sigma_zones_v3 import (
+    METHOD_VERSION_V3,
+    ZoneShelvesResult,
+    compute_zone_shelves,
 )
 from realtime_backend.zone_touches import (
     OutcomeTracker,
@@ -66,7 +72,7 @@ logger = logging.getLogger("ra60.realtime_backend")
 
 # RA-112e: bumped together with any schema-relevant change to ZoneSnapshot.
 _ZONE_METHOD_VERSIONS: dict[str, str] = {
-    "tactical": "v3.0.0-pending",   # placeholder until RA-112f step 4 lands.
+    "tactical": METHOD_VERSION_V3,   # v3.0.0 — VWAP-anchored shelves live.
     "legacy": "v2.0.0",
     "stream_schema": str(ZONE_SNAPSHOT_SCHEMA_VERSION),
 }
@@ -78,12 +84,12 @@ def _build_zone_snapshot_candidate(
     params: ZoneSnapshotParams,
     now_ts_ns: int,
     symbol: str,
+    shelves_result: ZoneShelvesResult | None = None,
 ) -> ZoneSnapshot:
-    """Project a ComputeResult into the as-of zone snapshot schema.
-
-    Step 1 populates everything except ``shelves`` / ``cap_bind_flags`` /
-    ``bound_source`` (those land with the v3 shelf compute in step 4).
-    """
+    """Project a ComputeResult + optional shelf compute into the snapshot
+    schema. When shelves_result is None, the shelf-related fields ship as
+    empty containers (matches the step-1 baseline behavior; the touch
+    detector falls back to reference-line-only monitoring)."""
     envelope = result.envelope or {}
     vah = _as_float(envelope.get("vah"))
     val = _as_float(envelope.get("val"))
@@ -91,11 +97,21 @@ def _build_zone_snapshot_candidate(
     atr_14_5m = _as_float(envelope.get("atr_14"))
 
     live_vwap = result.signals.live_vwap
-    anchor_value = live_vwap.vwap if live_vwap is not None else None
     window_minutes = (
         live_vwap.window_minutes if live_vwap is not None else params.vwap_window_minutes
     )
     last_ts = result.last_append_ts_ns or now_ts_ns
+    # RA-112e step 4: when v3 shelves are computed this cycle, source the
+    # tactical anchor from the same compute so the snapshot's `tactical_anchor`
+    # and `shelves[*].low`/`high` reference IDENTICAL anchor values. Falling
+    # back to LiveSignals.live_vwap.vwap when no shelves are available keeps
+    # the anchor populated for the step-1 baseline path.
+    if shelves_result is not None:
+        anchor_value: float | None = float(shelves_result.anchor)
+    elif live_vwap is not None:
+        anchor_value = live_vwap.vwap
+    else:
+        anchor_value = None
     if anchor_value is None:
         tactical_anchor: TacticalAnchor | None = None
     else:
@@ -120,6 +136,34 @@ def _build_zone_snapshot_candidate(
         if isinstance(line, dict) and line.get("price") is not None
     )
 
+    # RA-112e step 4: project v3 + v2-legacy shelves onto the snapshot.
+    shelves_tuple: tuple[Shelf, ...] = ()
+    cap_bind_flags: dict[str, bool] = {}
+    bound_source: dict[str, str] = {}
+    atr_14_60m: float | None = None
+    atr_cap: float | None = None
+    if shelves_result is not None:
+        shelves_tuple = tuple(
+            Shelf(
+                family=s.family,
+                name=s.name,
+                low=s.low,
+                high=s.high,
+                tier=s.tier,
+                bound_source=s.bound_source,
+                cap_bound=s.cap_bound,
+                overlaps_vah=s.overlaps_vah,
+                overlaps_val=s.overlaps_val,
+                nearest_structural_level=s.nearest_structural_level,
+                distance_to_structural_level_ticks=s.distance_to_structural_level_ticks,
+            )
+            for s in shelves_result.shelves
+        )
+        cap_bind_flags = dict(shelves_result.cap_bind_flags)
+        bound_source = dict(shelves_result.bound_source)
+        atr_14_60m = shelves_result.atr_14_60m
+        atr_cap = shelves_result.atr_cap
+
     return ZoneSnapshot(
         schema_version=ZONE_SNAPSHOT_SCHEMA_VERSION,
         zone_snapshot_seq=0,  # restamped by the stream.
@@ -135,16 +179,16 @@ def _build_zone_snapshot_candidate(
             val=val,
             vpoc=vpoc,
             atr_14_5m=atr_14_5m,
-            atr_14_60m=None,  # populated when step 4 wires the 60m ATR.
-            atr_cap=None,
+            atr_14_60m=atr_14_60m,
+            atr_cap=atr_cap,
         ),
         tactical_anchor=tactical_anchor,
         rolling_anchor_vs_session_value=state,
         rolling_anchor_distance_ticks=distance,
-        shelves=(),       # populated in RA-112f step 4.
+        shelves=shelves_tuple,
         reference_lines=reference_lines,
-        cap_bind_flags={},
-        bound_source={},
+        cap_bind_flags=cap_bind_flags,
+        bound_source=bound_source,
     )
 
 
@@ -210,6 +254,10 @@ class RealtimeBackend:
         # ticks. Dedupe by trade_ts_ns so the touch pipeline sees each tick
         # exactly once regardless of which producer ran first.
         self._last_touch_processed_ts_ns: int | None = None
+        # RA-112e step 4: most-recent 60-min ATR(14) produced by a successful
+        # v3 compute. Used as a fallback when a fresh session's tape is too
+        # young for 14 hours of 60-min bars.
+        self._prior_atr_60m: float | None = None
 
     def _resolve_data_path(self, configured: Any) -> Any:
         """Anchor a relative data-dir setting on the project root.
@@ -305,11 +353,21 @@ class RealtimeBackend:
         snapshot is the latest one — the detector reads zone state from here.
         """
         try:
+            # RA-112e step 4: compute v3 + v2 shelves from the live tape.
+            # The compute is sync + I/O-heavy (tape tail read + ATR + σ);
+            # offload to a thread so the event loop is never blocked.
+            shelves_result = await self._compute_shelves(result)
+            if shelves_result is not None and shelves_result.atr_cap_source == "computed":
+                # Tonight's tape matured enough — remember the value so fresh
+                # sessions can fall back to it before they accumulate 14h.
+                self._prior_atr_60m = shelves_result.atr_14_60m
+
             candidate = _build_zone_snapshot_candidate(
                 result=result,
                 params=self._zone_snapshot_params,
                 now_ts_ns=time.time_ns(),
                 symbol=self.settings.zone_snapshot_symbol,
+                shelves_result=shelves_result,
             )
             await asyncio.to_thread(
                 self._zone_snapshot_stream.maybe_emit, candidate
@@ -322,6 +380,37 @@ class RealtimeBackend:
             )
         except Exception as exc:  # noqa: BLE001 — isolate persistence failures
             logger.warning("zone snapshot emit failed: %s", exc)
+
+    async def _compute_shelves(
+        self, result: ComputeResult
+    ) -> ZoneShelvesResult | None:
+        """Run the v3 shelf compute against the live tape. Returns None on
+        any non-fatal failure (no capture path, no envelope, etc.) — the
+        snapshot pipeline ships empty shelves on None and downstream
+        consumers stay tolerant."""
+        if result.capture_path is None:
+            return None
+        envelope = result.envelope or {}
+        vah = _as_float(envelope.get("vah"))
+        val = _as_float(envelope.get("val"))
+        vpoc = _as_float(envelope.get("vpoc"))
+        bin_size_ticks = envelope.get("bin_size_ticks") or 8
+        if vah is None or val is None or vpoc is None:
+            return None
+        try:
+            return await asyncio.to_thread(
+                compute_zone_shelves,
+                capture_path=result.capture_path,
+                vah=vah,
+                val=val,
+                vpoc=vpoc,
+                bin_size_ticks=int(bin_size_ticks),
+                prior_atr_60m=self._prior_atr_60m,
+                reference_lines=envelope.get("reference_lines", []),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("v3 shelf compute failed: %s", exc)
+            return None
 
     def _ingest_price_tick_for_touches(self, tick: LatestPriceTick) -> None:
         """Feed a price tick to the touch logger pipeline.

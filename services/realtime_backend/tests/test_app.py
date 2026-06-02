@@ -156,6 +156,47 @@ def test_backend_writes_zone_snapshot_on_seed(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_backend_seed_populates_v3_shelves_on_snapshot(tmp_path: Path) -> None:
+    """RA-112e step 4: the seed compute calls v3 shelf compute and the resulting
+    shelves land in the zone_snapshot record (not the empty step-1 placeholder)."""
+    async def scenario() -> None:
+        settings = replace(
+            _fixture_settings(tmp_path),
+            zone_snapshot_dir=tmp_path / "zone_snapshots",
+        )
+        backend = RealtimeBackend(settings)
+        await backend.start()
+        try:
+            await asyncio.sleep(0.2)
+        finally:
+            await backend.stop()
+
+        files = list((tmp_path / "zone_snapshots").glob("*.jsonl"))
+        assert files, "expected a zone_snapshot file to be created on seed"
+        lines = files[0].read_text(encoding="utf-8").splitlines()
+        assert lines
+        first = json.loads(lines[0])
+        # v3 + v2 shelves should now populate (was empty in step 1).
+        assert len(first["shelves"]) > 0, "expected populated shelves (step 4)"
+        families = {s["family"] for s in first["shelves"]}
+        assert "sigma_v3_vwap_anchor" in families
+        # v3 invariant: SUP_1 bottom == anchor (no shelf-crosses-anchor bug).
+        sup_1 = next(
+            s for s in first["shelves"]
+            if s["family"] == "sigma_v3_vwap_anchor" and s["name"] == "SUP_1"
+        )
+        anchor_value = first["tactical_anchor"]["value"]
+        assert abs(sup_1["low"] - anchor_value) < 1e-6
+        # cap_bind_flags + bound_source dicts cover every shelf.
+        shelf_keys = {f"{s['family']}:{s['name']}" for s in first["shelves"]}
+        assert set(first["cap_bind_flags"].keys()) == shelf_keys
+        assert set(first["bound_source"].keys()) == shelf_keys
+        # method_versions reflects the live v3 tactical compute.
+        assert first["method_versions"]["tactical"] == "v3.0.0"
+
+    asyncio.run(scenario())
+
+
 def test_touch_logger_writes_touch_and_outcome(tmp_path: Path) -> None:
     """RA-112e step 2: drive a synthetic crossing through the live wiring and
     verify a touch row + at least one outcome row land on disk."""
