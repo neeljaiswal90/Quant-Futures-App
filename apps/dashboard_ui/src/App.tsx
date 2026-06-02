@@ -10,6 +10,7 @@ import { Scenarios } from "./components/Scenarios";
 import { LiveFeed } from "./components/LiveFeed";
 import { PriceContext } from "./components/PriceContext";
 import { TradePosture } from "./components/TradePosture";
+import { MethodologyHealth } from "./components/MethodologyHealth";
 import {
   HorizontalSplitter,
   MAX_CHART_FRACTION,
@@ -114,6 +115,7 @@ function Shell() {
           <TradePosture />
         </div>
       </div>
+      <MethodologyHealth />
       <SettingsPanel />
       <Footer />
     </div>

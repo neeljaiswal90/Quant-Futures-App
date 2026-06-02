@@ -10,6 +10,7 @@ import type {
   AuctionVsValueState,
   DepthPayload,
   MbpPulsePayload,
+  MethodologyHealthPayload,
   PersistentLevelPayload,
   Regime,
   OrderflowStats,
@@ -114,6 +115,14 @@ export interface DashboardState {
    * client-side. ``null`` until the first pulse lands.
    */
   mbpPulse: MbpPulsePayload | null;
+  /**
+   * RA-112e step 8: rolling methodology-health diagnostics. The backend
+   * broadcasts on a slow cadence (default 10s) — null until the first
+   * snapshot pass has been observed. The diagnostics panel renders cap-bind
+   * rate, shelf-cross-anchor rate, anchor-vs-value distribution, warmup
+   * share, and v3 RMS-vs-quantile width divergence.
+   */
+  methodologyHealth: MethodologyHealthPayload | null;
   scenarios: ScenarioState[];
 
   /** Rolling event feed, newest-appended (capped at FEED_CAP). */
@@ -162,6 +171,7 @@ export function initialState(): DashboardState {
     tacticalStatus: null,
     tacticalTapeMinutes: null,
     mbpPulse: null,
+    methodologyHealth: null,
     zones: [],
     scenarios: [],
     feed: [],

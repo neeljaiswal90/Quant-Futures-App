@@ -44,6 +44,7 @@ export const KNOWN_FAMILIES = [
   "persistent_level",
   "auction_state",
   "mbp_pulse",
+  "methodology_health",
 ] as const;
 
 // RA-112e step 3: rolling tactical-anchor position vs full-session value area.
@@ -315,6 +316,39 @@ export interface MbpPulsePayload {
   spread_max_5s: number | null;
 }
 
+/**
+ * RA-112e step 8: share-of-window decomposition of the auction-vs-value
+ * chip across the methodology-health window.
+ */
+export interface AnchorVsValueDistribution {
+  above_value: number;
+  inside_value: number;
+  below_value: number;
+  unknown: number;
+}
+
+/**
+ * RA-112e step 8: rolling diagnostics for the methodology rework. Broadcast
+ * on a slow cadence (default 10s). Cap-bind rate fields are null when no
+ * observations carried any flag for that family yet; cross-anchor rates
+ * default to 0.0 (healthy state).
+ */
+export interface MethodologyHealthPayload {
+  family: "methodology_health";
+  ts_ns: number;
+  window_seconds: number;
+  observation_count: number;
+  emit_count: number;
+  emit_rate_per_minute: number;
+  v3_cap_bind_rate: number | null;
+  v3_quantile_cap_bind_rate: number | null;
+  v3_shelf_cross_anchor_failure_rate: number;
+  v2_shelf_cross_anchor_failure_rate: number;
+  anchor_vs_value_distribution: AnchorVsValueDistribution;
+  warmup_share: number;
+  estimator_width_divergence_sup_1_ticks: number | null;
+}
+
 export interface AuctionStatePayload {
   family: "auction_state";
   state: AuctionVsValueState;
@@ -392,6 +426,7 @@ export type RealtimePayload =
   | PersistentLevelPayload
   | AuctionStatePayload
   | MbpPulsePayload
+  | MethodologyHealthPayload
   | GenericPayload;
 
 // --- Envelope --------------------------------------------------------------

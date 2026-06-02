@@ -35,6 +35,7 @@ from realtime_backend.config.router import create_config_router
 from realtime_backend.config.store import AlertConfigStore
 from realtime_backend.connection_manager import ConnectionManager
 from realtime_backend.feed import FeedState
+from realtime_backend.methodology_health import MethodologyHealthAccumulator
 from realtime_backend.orderflow import build_orderflow_stats
 from realtime_backend.price_ticks import LatestPriceTick
 from realtime_backend.settings import Settings, settings_from_env
@@ -253,6 +254,13 @@ class RealtimeBackend:
         self._heartbeat_task: asyncio.Task[None] | None = None
         # RA-112e step 7: live MBP1 pulse broadcaster.
         self._mbp_pulse_task: asyncio.Task[None] | None = None
+        # RA-112e step 8: methodology-health accumulator + broadcaster.
+        # Fed from _record_zone_snapshot on every compute pass; broadcast
+        # to clients on a slow cadence (default 10s) by _methodology_health_loop.
+        self._methodology_health = MethodologyHealthAccumulator(
+            window_seconds=settings.methodology_health_window_seconds,
+        )
+        self._methodology_health_task: asyncio.Task[None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         # RA-112e: append-only as-of zone-snapshot stream.
         # Resolve relative paths against the project root (two levels up from
@@ -432,7 +440,7 @@ class RealtimeBackend:
                 symbol=self.settings.zone_snapshot_symbol,
                 shelves_result=shelves_result,
             )
-            await asyncio.to_thread(
+            emitted = await asyncio.to_thread(
                 self._zone_snapshot_stream.maybe_emit, candidate
             )
             # Refresh detector level set from the latest snapshot's reference
@@ -440,6 +448,16 @@ class RealtimeBackend:
             # to throttle — the in-memory levels track the latest known state.
             self._touch_detector.update_levels(
                 monitored_levels_from_snapshot_dict(candidate.to_dict())
+            )
+            # RA-112e step 8: feed the methodology-health accumulator. We
+            # observe EVERY compute pass (not just emitted ones) so cap-bind
+            # rate / cross-anchor rate reflect the real geometry frequency,
+            # not the throttled emit cadence. ``emitted`` is the bool result
+            # from maybe_emit so emit_rate_per_minute still tracks broadcasts.
+            self._observe_methodology_health(
+                candidate=candidate,
+                shelves_result=shelves_result,
+                emitted=bool(emitted),
             )
         except Exception as exc:  # noqa: BLE001 — isolate persistence failures
             logger.warning("zone snapshot emit failed: %s", exc)
@@ -609,6 +627,65 @@ class RealtimeBackend:
         except asyncio.CancelledError:
             raise
 
+    # ----- methodology health (step 8) ----------------------------------
+
+    def _observe_methodology_health(
+        self,
+        *,
+        candidate: ZoneSnapshot,
+        shelves_result: ZoneShelvesResult | None,
+        emitted: bool,
+    ) -> None:
+        """Project a zone-snapshot candidate into the methodology-health
+        accumulator. Called from _record_zone_snapshot on every compute pass
+        — emit-or-not — so the rates reflect the real geometry frequency."""
+        try:
+            anchor_value: float | None = (
+                candidate.tactical_anchor.value
+                if candidate.tactical_anchor is not None
+                else None
+            )
+            self._methodology_health.observe(
+                ts_ns=candidate.as_of_ts_ns,
+                emitted=emitted,
+                auction_state=candidate.rolling_anchor_vs_session_value,
+                tactical_status=_tactical_status_from(shelves_result),
+                shelves=[
+                    {
+                        "family": s.family,
+                        "name": s.name,
+                        "low": s.low,
+                        "high": s.high,
+                    }
+                    for s in candidate.shelves
+                ],
+                cap_bind_flags=dict(candidate.cap_bind_flags or {}),
+                anchor=anchor_value,
+            )
+        except Exception as exc:  # noqa: BLE001 — diagnostics never fail compute
+            logger.warning("methodology health observe failed: %s", exc)
+
+    async def _methodology_health_loop(self) -> None:
+        """RA-112e step 8: broadcast the rolling diagnostics on a slow cadence.
+
+        Default 10s — slow enough that React isn't churning, fast enough that
+        a regression in cap_bind_rate or shelf_cross_anchor_failure_rate is
+        visible to the operator within a sub-minute window.
+        """
+        interval = self.settings.methodology_health_interval_seconds
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    metrics = self._methodology_health.metrics(time.time_ns())
+                    await self.feed.emit_methodology_health(metrics)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "methodology health emit failed: %s", exc
+                    )
+        except asyncio.CancelledError:
+            raise
+
     # ----- lifespan ------------------------------------------------------
 
     async def start(self) -> None:
@@ -655,6 +732,9 @@ class RealtimeBackend:
         self.watcher.start()
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         self._mbp_pulse_task = asyncio.create_task(self._mbp_pulse_loop())
+        self._methodology_health_task = asyncio.create_task(
+            self._methodology_health_loop()
+        )
 
     async def stop(self) -> None:
         if self._heartbeat_task is not None:
@@ -667,6 +747,11 @@ class RealtimeBackend:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._mbp_pulse_task
             self._mbp_pulse_task = None
+        if self._methodology_health_task is not None:
+            self._methodology_health_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._methodology_health_task
+            self._methodology_health_task = None
         if self.watcher is not None:
             await asyncio.to_thread(self.watcher.stop)
             self.watcher = None

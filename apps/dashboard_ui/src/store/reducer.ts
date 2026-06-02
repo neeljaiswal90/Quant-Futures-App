@@ -19,6 +19,7 @@ import {
   isHeartbeat,
   isIceberg,
   isMbpPulse,
+  isMethodologyHealth,
   isPersistentLevel,
   isPriceTick,
   isSignal,
@@ -167,6 +168,13 @@ function applyPayload(
   // stale pulse never lingers if a field went from non-null to null.
   if (isMbpPulse(p)) {
     next = { ...next, mbpPulse: p };
+    return next;
+  }
+
+  // RA-112e step 8: rolling methodology-health diagnostics. Slow cadence
+  // (default 10s); the diagnostics panel reads from this slice.
+  if (isMethodologyHealth(p)) {
+    next = { ...next, methodologyHealth: p };
     return next;
   }
 

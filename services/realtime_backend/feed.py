@@ -33,6 +33,7 @@ from contracts.realtime.events import (
     HeartbeatPayload,
     IcebergPayload,
     MbpPulsePayload,
+    MethodologyHealthPayload,
     OrderflowStats,
     PriceTickPayload,
     RealtimeMessage,
@@ -427,6 +428,36 @@ class FeedState:
             return None
         try:
             payload = MbpPulsePayload(**pulse_dict)
+        except Exception:
+            return None
+        async with self._lock:
+            seq = await self._next_seq()
+        message = make_message(
+            type="event", payload=payload, seq=seq, tier=None
+        )
+        await self._broadcast_and_account(message)
+        return message
+
+    async def emit_methodology_health(
+        self, metrics: dict[str, Any]
+    ) -> RealtimeMessage | None:
+        """RA-112e step 8: broadcast the rolling methodology-health metrics so
+        the dashboard's diagnostics panel can render cap-bind rate, shelf-
+        cross-anchor rate, anchor-vs-value distribution, warmup share, and
+        estimator divergence.
+
+        ``metrics`` is a dict from MethodologyHealthAccumulator.metrics(). We
+        suppress the emit when no observations have landed yet (cold start)
+        so the dashboard does not flash transient zeros.
+        """
+        if metrics.get("observation_count", 0) == 0:
+            return None
+        payload_dict = {
+            "ts_ns": time.time_ns(),
+            **metrics,
+        }
+        try:
+            payload = MethodologyHealthPayload(**payload_dict)
         except Exception:
             return None
         async with self._lock:

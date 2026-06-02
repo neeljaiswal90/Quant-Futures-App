@@ -83,6 +83,7 @@ KNOWN_FAMILIES: tuple[str, ...] = (
     "persistent_level",
     "auction_state",
     "mbp_pulse",
+    "methodology_health",
 )
 
 # RA-112e step 3: rolling tactical-anchor position vs full-session value area.
@@ -439,6 +440,48 @@ class MbpPulsePayload(RealtimePayload):
     spread_max_5s: float | None = None
 
 
+class AnchorVsValueDistribution(BaseModel):
+    """RA-112e step 8: share-of-window decomposition of the auction-vs-value
+    chip across the methodology-health window. Floats in [0, 1] summing to ~1.
+    """
+
+    above_value: float = 0.0
+    inside_value: float = 0.0
+    below_value: float = 0.0
+    unknown: float = 0.0
+
+
+class MethodologyHealthPayload(RealtimePayload):
+    """RA-112e step 8: rolling diagnostics for the methodology rework.
+
+    Broadcast on a slow cadence (default 10s) — these metrics shift slowly,
+    so a high-frequency emit would just churn React for no benefit. The
+    audit reviewer asked for: cap-bind rate, shelf-cross-anchor rate,
+    touch-decay rate, estimator divergence. Touch-decay needs persistent
+    per-zone touch counting and is deferred; everything else is here.
+
+    Cap-bind rate fields are `None` when no observations carried any flag
+    for that family — the dashboard treats `None` as "not yet observed."
+    Cross-anchor rates default to 0.0 (the healthy state).
+    """
+
+    family: Literal["methodology_health"] = "methodology_health"
+    ts_ns: int
+    window_seconds: int
+    observation_count: int = 0
+    emit_count: int = 0
+    emit_rate_per_minute: float = 0.0
+    v3_cap_bind_rate: float | None = None
+    v3_quantile_cap_bind_rate: float | None = None
+    v3_shelf_cross_anchor_failure_rate: float = 0.0
+    v2_shelf_cross_anchor_failure_rate: float = 0.0
+    anchor_vs_value_distribution: AnchorVsValueDistribution = Field(
+        default_factory=AnchorVsValueDistribution
+    )
+    warmup_share: float = 0.0
+    estimator_width_divergence_sup_1_ticks: float | None = None
+
+
 class AuctionStatePayload(RealtimePayload):
     """RA-112e step 3: standalone auction-vs-value chip event.
 
@@ -552,6 +595,7 @@ _PAYLOAD_REGISTRY: dict[str, type[RealtimePayload]] = {
     "persistent_level": PersistentLevelPayload,
     "auction_state": AuctionStatePayload,
     "mbp_pulse": MbpPulsePayload,
+    "methodology_health": MethodologyHealthPayload,
 }
 
 
@@ -673,6 +717,8 @@ __all__ = [
     "PersistentLevelPayload",
     "AuctionStatePayload",
     "MbpPulsePayload",
+    "AnchorVsValueDistribution",
+    "MethodologyHealthPayload",
     "GenericPayload",
     "parse_payload",
     "RealtimeMessage",

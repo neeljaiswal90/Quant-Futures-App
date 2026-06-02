@@ -135,6 +135,14 @@ class Settings:
     # accumulator per-tick at touch_ts so accuracy is unaffected.
     mbp_pulse_interval_seconds: float = 1.0
 
+    # RA-112e step 8: cadence + window of the methodology-health broadcast.
+    # 10s emit cadence is fine — these are rolling rates that shift slowly.
+    # 600s rolling window is the audit-reviewer default (10 minutes of recent
+    # compute passes); shorter would be noisy, longer would drown out fresh
+    # regressions in stale history.
+    methodology_health_interval_seconds: float = 10.0
+    methodology_health_window_seconds: int = 600
+
     # RA-112e: directory for the append-only zone-snapshot stream.
     # See services/realtime_backend/zone_snapshots.py for schema details.
     zone_snapshot_dir: Path = field(

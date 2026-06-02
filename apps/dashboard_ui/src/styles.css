@@ -773,6 +773,41 @@ body {
   color: var(--muted);
 }
 
+/* RA-112e step 8: methodology health diagnostics strip. Slim row, monospace,
+   color-coded chips. Lives above the Footer. */
+.health-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+}
+.health-label {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.health-chip {
+  font-family: var(--mono, ui-monospace, "Cascadia Mono", Menlo, monospace);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.health-chip b {
+  font-weight: 600;
+}
+.health-ok       { color: var(--green);  border-color: var(--green);  }
+.health-warn     { color: var(--yellow); border-color: var(--yellow); }
+.health-alarm    { color: var(--red);    border-color: var(--red);    }
+.health-info     { color: var(--muted);  border-color: var(--border); }
+.health-pending  { color: var(--muted);  border-color: var(--border); opacity: 0.6; }
+
 button.btn {
   background: var(--panel);
   color: var(--text);
