@@ -83,8 +83,10 @@ function Shell() {
   const handleResize = useCallback((f: number) => setChartFraction(f), []);
 
   // grid-template-rows piped from state so the chart row / bottom row sizes
-  // track the splitter in real time. 6px is the splitter handle.
-  const gridRows = `auto ${chartFraction}fr 6px ${1 - chartFraction}fr`;
+  // track the splitter in real time. 6px is the splitter handle. Trailing
+  // `auto` is the methodology-health diagnostics strip (RA-112e step 8) —
+  // sized to content so it never steals fr-space from the chart/bottom rows.
+  const gridRows = `auto ${chartFraction}fr 6px ${1 - chartFraction}fr auto`;
 
   return (
     <div className="app">
@@ -114,8 +116,8 @@ function Shell() {
           <HistoryPanel />
           <TradePosture />
         </div>
+        <MethodologyHealth />
       </div>
-      <MethodologyHealth />
       <SettingsPanel />
       <Footer />
     </div>
