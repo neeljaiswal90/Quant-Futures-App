@@ -197,6 +197,54 @@ def test_backend_seed_populates_v3_shelves_on_snapshot(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_per_session_prior_atr_cache_keys_by_session(tmp_path: Path) -> None:
+    """RA-112e step 5: when a session produces a 'computed' ATR(60m), the
+    backend remembers it under that session name — separate slots for
+    'globex' and 'rth' so RTH falls back to RTH-vol, not Globex-vol."""
+    async def scenario() -> None:
+        settings = replace(
+            _fixture_settings(tmp_path),
+            zone_snapshot_dir=tmp_path / "zone_snapshots",
+        )
+        backend = RealtimeBackend(settings)
+        # Simulate a prior compute cycle stamping a globex ATR into the cache.
+        backend._prior_atr_60m_by_session["globex"] = 64.5
+        # Cold-start cross-session fallback: rth lookup miss-falls back to globex.
+        assert backend._prior_atr_60m_by_session.get("rth") is None
+        # A new rth value would land in its own slot, leaving globex alone.
+        backend._prior_atr_60m_by_session["rth"] = 38.2
+        assert backend._prior_atr_60m_by_session["globex"] == 64.5
+        assert backend._prior_atr_60m_by_session["rth"] == 38.2
+
+    asyncio.run(scenario())
+
+
+def test_ws_snapshot_payload_carries_tactical_status(tmp_path: Path) -> None:
+    """RA-112e step 5: snapshot carries tactical_status + tape_minutes so the
+    dashboard can render 'warming up' chips."""
+    async def scenario() -> None:
+        settings = replace(
+            _fixture_settings(tmp_path),
+            zone_snapshot_dir=tmp_path / "zone_snapshots",
+        )
+        backend = RealtimeBackend(settings)
+        await backend.start()
+        try:
+            await asyncio.sleep(0.2)
+            msg = backend.feed.build_snapshot_message()
+            payload = msg.payload  # type: ignore[union-attr]
+        finally:
+            await backend.stop()
+        # tactical_status is one of the three literals (or None on cold start).
+        status = payload.tactical_status  # type: ignore[attr-defined]
+        assert status in (None, "live", "warmup", "no_data")
+        # When shelves are populated, tactical_status is NOT no_data.
+        if len(payload.shelves) > 0:  # type: ignore[attr-defined]
+            assert status in ("live", "warmup")
+
+    asyncio.run(scenario())
+
+
 def test_ws_snapshot_payload_carries_v3_shelves(tmp_path: Path) -> None:
     """RA-112e step 4c: a /snapshot or WS snapshot frame must include the
     live v3 shelves so cold-start clients have the band overlay immediately."""

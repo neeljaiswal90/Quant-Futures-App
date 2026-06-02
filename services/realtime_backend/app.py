@@ -192,6 +192,20 @@ def _build_zone_snapshot_candidate(
     )
 
 
+def _tactical_status_from(shelves_result: ZoneShelvesResult | None) -> str | None:
+    """Project a ZoneShelvesResult onto the contract's TacticalStatus enum.
+
+    None -> "no_data" (no v3 shelves available this cycle — the snapshot
+    ships shelves=[] and the dashboard hides the σ ladder).
+    is_warmup -> "warmup" (shelves available but trailing window too short
+    for stable σ; UI should render them dimmed/labelled).
+    else -> "live".
+    """
+    if shelves_result is None:
+        return "no_data"
+    return "warmup" if shelves_result.is_warmup else "live"
+
+
 def _shelf_to_dict(s: Any) -> dict[str, Any]:
     """Convert a ShelfDescriptor to the wire-shape dict the contract Shelf
     model accepts. Stays small + explicit rather than dataclasses.asdict so we
@@ -276,7 +290,11 @@ class RealtimeBackend:
         # RA-112e step 4: most-recent 60-min ATR(14) produced by a successful
         # v3 compute. Used as a fallback when a fresh session's tape is too
         # young for 14 hours of 60-min bars.
-        self._prior_atr_60m: float | None = None
+        # RA-112e step 5: keyed by session ("globex" / "rth") so an RTH
+        # session falls back to the prior RTH's ATR (which captures RTH-vol
+        # characteristics), not the prior Globex's. RTH-only tape never has
+        # 14h of bars so it relies on this cross-session memory.
+        self._prior_atr_60m_by_session: dict[str, float] = {}
 
     def _resolve_data_path(self, configured: Any) -> Any:
         """Anchor a relative data-dir setting on the project root.
@@ -363,6 +381,11 @@ class RealtimeBackend:
                     dict(shelves_result.cap_bind_flags)
                     if shelves_result is not None else None
                 ),
+                tactical_status=_tactical_status_from(shelves_result),
+                tactical_tape_minutes=(
+                    shelves_result.tape_minutes
+                    if shelves_result is not None else None
+                ),
             )
             # RA-112e step 2: also feed the compute-rate price tick into the
             # touch logger. Idempotent: a higher-rate fast-poller call with
@@ -392,9 +415,13 @@ class RealtimeBackend:
             # offload to a thread so the event loop is never blocked.
             shelves_result = await self._compute_shelves(result)
             if shelves_result is not None and shelves_result.atr_cap_source == "computed":
-                # Tonight's tape matured enough — remember the value so fresh
-                # sessions can fall back to it before they accumulate 14h.
-                self._prior_atr_60m = shelves_result.atr_14_60m
+                # RA-112e step 5: remember the value KEYED BY SESSION. An RTH
+                # session is structurally too short for ATR(14, 60m) to ever
+                # compute from RTH-only tape, so its fallback chain depends
+                # on this per-session memory persisting across globex→rth.
+                self._prior_atr_60m_by_session[result.session] = (
+                    shelves_result.atr_14_60m
+                )
 
             candidate = _build_zone_snapshot_candidate(
                 result=result,
@@ -432,6 +459,15 @@ class RealtimeBackend:
         bin_size_ticks = envelope.get("bin_size_ticks") or 8
         if vah is None or val is None or vpoc is None:
             return None
+        # RA-112e step 5: pick the prior ATR by SESSION first; fall back to
+        # whatever the OTHER session last produced if the current one has no
+        # history yet (e.g. cold start before any RTH compute has run).
+        prior_atr = self._prior_atr_60m_by_session.get(result.session)
+        if prior_atr is None:
+            # any other session's value beats DEFAULT_PRIOR_ATR_60M on cold start
+            for v in self._prior_atr_60m_by_session.values():
+                prior_atr = v
+                break
         try:
             return await asyncio.to_thread(
                 compute_zone_shelves,
@@ -440,7 +476,7 @@ class RealtimeBackend:
                 val=val,
                 vpoc=vpoc,
                 bin_size_ticks=int(bin_size_ticks),
-                prior_atr_60m=self._prior_atr_60m,
+                prior_atr_60m=prior_atr,
                 reference_lines=envelope.get("reference_lines", []),
             )
         except Exception as exc:  # noqa: BLE001
@@ -584,6 +620,11 @@ class RealtimeBackend:
                 ),
                 cap_bind_flags=(
                     dict(seed_shelves.cap_bind_flags)
+                    if seed_shelves is not None else None
+                ),
+                tactical_status=_tactical_status_from(seed_shelves),
+                tactical_tape_minutes=(
+                    seed_shelves.tape_minutes
                     if seed_shelves is not None else None
                 ),
             )

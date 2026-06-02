@@ -93,6 +93,10 @@ class FeedState:
     # this in sync via update_snapshot_inputs.
     _last_shelves: list[dict[str, Any]] = field(default_factory=list, init=False)
     _last_cap_bind_flags: dict[str, bool] = field(default_factory=dict, init=False)
+    # RA-112e step 5: Globex/RTH split. Cached tactical status (live | warmup |
+    # no_data) so SnapshotPayload reflects the most-recent compute pass.
+    _last_tactical_status: str | None = field(default=None, init=False)
+    _last_tactical_tape_minutes: float | None = field(default=None, init=False)
 
     # ----- seq -----------------------------------------------------------
 
@@ -117,6 +121,8 @@ class FeedState:
         price_tick: LatestPriceTick | None = None,
         shelves: list[dict[str, Any]] | None = None,
         cap_bind_flags: dict[str, bool] | None = None,
+        tactical_status: str | None = None,
+        tactical_tape_minutes: float | None = None,
     ) -> None:
         """Refresh the cached state used to build snapshots + heartbeats.
 
@@ -137,6 +143,10 @@ class FeedState:
             self._last_shelves = shelves
         if cap_bind_flags is not None:
             self._last_cap_bind_flags = cap_bind_flags
+        if tactical_status is not None:
+            self._last_tactical_status = tactical_status
+        if tactical_tape_minutes is not None:
+            self._last_tactical_tape_minutes = tactical_tape_minutes
 
     def build_snapshot_message(self, seq: int | None = None) -> RealtimeMessage:
         """Build a snapshot envelope at ``seq`` (defaults to current seq)."""
@@ -147,6 +157,8 @@ class FeedState:
             current_price=self._last_current_price,
             shelves=self._last_shelves,
             cap_bind_flags=self._last_cap_bind_flags,
+            tactical_status=self._last_tactical_status,
+            tactical_tape_minutes=self._last_tactical_tape_minutes,
         )
         return make_message(
             type="snapshot",

@@ -81,6 +81,11 @@ export function TradePosture() {
   const auctionState = useDashboardSelector((s) => s.auctionVsValue);
   const auctionDistanceTicks = useDashboardSelector((s) => s.auctionDistanceTicks);
   const regime = useDashboardSelector((s) => s.regime);
+  // RA-112e step 5: Globex/RTH split. When the trailing window is too short
+  // for stable σ (right after RTH open) the backend marks the snapshot as
+  // "warmup" — render a banner so the operator doesn't trust the shelves.
+  const tacticalStatus = useDashboardSelector((s) => s.tacticalStatus);
+  const tacticalTapeMinutes = useDashboardSelector((s) => s.tacticalTapeMinutes);
 
   const posture: TradePosture = useMemo(
     () =>
@@ -113,6 +118,24 @@ export function TradePosture() {
   return (
     <div className="panel posture-panel">
       <h2>Trade posture</h2>
+
+      {/* RA-112e step 5: warmup banner. Sits above the summary so the
+          operator can't read the rest without seeing it first. */}
+      {tacticalStatus === "warmup" && (
+        <div className="posture-warmup" role="status">
+          ⚠ Tactical warm-up — trailing window only
+          {tacticalTapeMinutes != null
+            ? ` ${tacticalTapeMinutes.toFixed(0)}/30 min`
+            : ""}{" "}
+          of data. Shelves shown but σ is unstable; treat with caution until
+          the window matures.
+        </div>
+      )}
+      {tacticalStatus === "no_data" && (
+        <div className="posture-warmup" role="status">
+          ⚠ No v3 shelves this cycle — awaiting envelope + tape.
+        </div>
+      )}
 
       {/* Top row — bias + location summary chips */}
       <div className="posture-summary">

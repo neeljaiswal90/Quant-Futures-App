@@ -14,6 +14,7 @@ import type {
   OrderflowStats,
   ScenarioState,
   Shelf,
+  TacticalStatus,
   Tier,
   ZoneState,
 } from "@contracts/realtime/events";
@@ -93,6 +94,16 @@ export interface DashboardState {
    * snapshot + zone_update; empty until the first v3 compute lands.
    */
   shelves: Shelf[];
+  /**
+   * RA-112e step 5: Globex/RTH tactical split. ``warmup`` = trailing window
+   * too short for stable σ (right after RTH open, etc.) — shelves are still
+   * rendered but the Trade Posture panel marks them. ``no_data`` = no shelves
+   * available this cycle. ``null`` = older snapshot (treat as live for back-
+   * compat).
+   */
+  tacticalStatus: TacticalStatus | null;
+  /** Trailing-window span in minutes used by the latest compute. */
+  tacticalTapeMinutes: number | null;
   scenarios: ScenarioState[];
 
   /** Rolling event feed, newest-appended (capped at FEED_CAP). */
@@ -138,6 +149,8 @@ export function initialState(): DashboardState {
     auctionVsValue: null,
     auctionDistanceTicks: null,
     shelves: [],
+    tacticalStatus: null,
+    tacticalTapeMinutes: null,
     zones: [],
     scenarios: [],
     feed: [],

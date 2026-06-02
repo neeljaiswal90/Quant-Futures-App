@@ -91,6 +91,16 @@ AuctionVsValueState = Literal[
     "above_value", "inside_value", "below_value", "unknown"
 ]
 
+# RA-112e step 5: Globex/RTH tactical split status.
+#   live     — trailing 60-min window has matured enough that σ + shelves
+#              are trustworthy (≥ WARMUP_MIN_TAPE_MINUTES of data).
+#   warmup   — shelves are still computed (so the chart shows rough levels)
+#              but the trailing window is too short for stable σ — the UI
+#              should mark the shelves as warming up.
+#   no_data  — no shelves available this cycle (cold start, missing envelope,
+#              etc.). Different from warmup: no shelves at all to render.
+TacticalStatus = Literal["live", "warmup", "no_data"]
+
 # Envelope field order — mirrored in events.ts ENVELOPE_FIELDS for parity.
 ENVELOPE_FIELDS: tuple[str, ...] = (
     "type",
@@ -387,6 +397,12 @@ class SnapshotPayload(RealtimePayload):
     # yet (cold start) or no envelope was available.
     cap_bind_flags: dict[str, bool] = Field(default_factory=dict)
     shelves: list[Shelf] = Field(default_factory=list)
+    # RA-112e step 5: tactical status. None = legacy clients/older snapshots;
+    # consumers should treat None as "live" for back-compat.
+    tactical_status: TacticalStatus | None = None
+    # How much of the trailing window the compute used (minutes). Useful for
+    # debugging + showing "warming up — 12/30 min" style chips.
+    tactical_tape_minutes: float | None = None
 
 
 class AuctionStatePayload(RealtimePayload):
@@ -588,6 +604,7 @@ __all__ = [
     "DEPTH_QUALITIES",
     "DEPTH_N_TICKS_MAX",
     "AuctionVsValueState",
+    "TacticalStatus",
     "FlowDirection",
     "TradeAggressor",
     "InferredDirection",

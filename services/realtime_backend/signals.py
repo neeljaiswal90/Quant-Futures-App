@@ -496,6 +496,8 @@ def build_snapshot_payload(
     current_price: float | None = None,
     shelves: list[dict[str, Any]] | None = None,
     cap_bind_flags: dict[str, bool] | None = None,
+    tactical_status: str | None = None,
+    tactical_tape_minutes: float | None = None,
 ) -> SnapshotPayload:
     """Assemble the full SnapshotPayload for initial load / resync.
 
@@ -551,6 +553,8 @@ def build_snapshot_payload(
         auction_distance_ticks=auction_distance,
         cap_bind_flags=cap_bind_flags or {},
         shelves=shelves or [],
+        tactical_status=tactical_status,  # type: ignore[arg-type]
+        tactical_tape_minutes=tactical_tape_minutes,
     )
 
 

@@ -70,6 +70,12 @@ DEFAULT_PRIOR_ATR_60M: float = 65.0
 # of trades on a busy session — well above the 60-min trailing window.
 DEFAULT_TAIL_BYTES: int = 150_000_000
 
+# RA-112e step 5: warmup threshold. When the trailing window has less than
+# this many minutes of trades, the one-sided σ estimators are too noisy to
+# trust — the shelves are still computed (so the operator sees the rough
+# location) but tagged is_warmup=true and the UI marks them as such.
+WARMUP_MIN_TAPE_MINUTES: float = 30.0
+
 
 @dataclass(frozen=True, slots=True)
 class ShelfDescriptor:
@@ -106,6 +112,13 @@ class ZoneShelvesResult:
     atr_14_60m: float
     atr_cap: float
     atr_cap_source: str  # "computed" | "fallback_constant" | "fallback_prior_session"
+    # RA-112e step 5: Globex/RTH split. tape_minutes is how much wall-clock
+    # the live trade window covers (max_ts - min_ts) — a session that just
+    # opened has a small value here. is_warmup is true when tape_minutes is
+    # below the operator-locked warmup threshold; the shelves are still
+    # returned but the UI marks them as "warming up".
+    tape_minutes: float
+    is_warmup: bool
 
 
 def compute_zone_shelves(
@@ -135,6 +148,14 @@ def compute_zone_shelves(
     df = _load_tape_tail(capture_path, tail_bytes=tail_bytes)
     if df is None or len(df) < 2:
         return None
+
+    # RA-112e step 5: wall-clock span of the loaded window. After a session
+    # boundary (e.g. RTH open) this is small until enough trades accumulate.
+    tape_minutes = float(
+        (int(df["event_ts_ns"].iloc[-1]) - int(df["event_ts_ns"].iloc[0]))
+        / (60.0 * 1_000_000_000)
+    )
+    is_warmup = tape_minutes < WARMUP_MIN_TAPE_MINUTES
 
     # 60-min ATR(14) for the cap (RA-112b). Falls back to prior session's
     # value when this session is too young for 14h of bars, then to a tuned
@@ -193,6 +214,8 @@ def compute_zone_shelves(
         atr_14_60m=atr_60m,
         atr_cap=atr_cap,
         atr_cap_source=atr_source,
+        tape_minutes=tape_minutes,
+        is_warmup=is_warmup,
     )
 
 
@@ -501,6 +524,7 @@ __all__ = [
     "FAMILY_V2",
     "FAMILY_V3",
     "METHOD_VERSION_V3",
+    "WARMUP_MIN_TAPE_MINUTES",
     "ShelfDescriptor",
     "ZoneShelvesResult",
     "compute_zone_shelves",

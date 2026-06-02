@@ -90,6 +90,10 @@ function applyPayload(
       auctionDistanceTicks: p.auction_distance_ticks ?? null,
       // RA-112e step 4c: shelves from the v3 compute. Empty until v3 runs.
       shelves: p.shelves ?? [],
+      // RA-112e step 5: tactical status. null when older snapshot ships no
+      // field; UI treats null as "live" for back-compat.
+      tacticalStatus: p.tactical_status ?? null,
+      tacticalTapeMinutes: p.tactical_tape_minutes ?? null,
       zones: p.zones,
       scenarios: p.open_scenarios,
       feed: mergeFeedItems(next.feed, snapshotFeed, FEED_CAP),

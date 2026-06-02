@@ -289,6 +289,32 @@ class TestComputeZoneShelvesE2E:
         assert out.atr_cap_source == "fallback_prior_session"
         assert out.atr_14_60m == 66.0
 
+    def test_is_warmup_true_when_tape_span_under_threshold(self, tmp_path):
+        """RA-112e step 5: small tape span -> is_warmup=true."""
+        path = tmp_path / "tape.jsonl"
+        # 200 trades, 1s spacing → ~3.3 minutes of data. Well under 30 min.
+        _write_synthetic_tape(path, n_trades=200)
+        out = compute_zone_shelves(
+            capture_path=path, vah=30500.0, val=30400.0, vpoc=30450.0,
+            bin_size_ticks=8, prior_atr_60m=60.0, tail_bytes=10_000_000,
+        )
+        assert out is not None
+        assert out.tape_minutes < 30.0
+        assert out.is_warmup is True
+
+    def test_is_warmup_false_when_tape_span_exceeds_threshold(self, tmp_path):
+        """RA-112e step 5: large tape span -> is_warmup=false."""
+        path = tmp_path / "tape.jsonl"
+        # 2000 trades at 1s spacing = ~33 minutes -> mature.
+        _write_synthetic_tape(path)
+        out = compute_zone_shelves(
+            capture_path=path, vah=30500.0, val=30400.0, vpoc=30450.0,
+            bin_size_ticks=8, prior_atr_60m=60.0, tail_bytes=10_000_000,
+        )
+        assert out is not None
+        assert out.tape_minutes >= 30.0
+        assert out.is_warmup is False
+
     def test_cap_bind_flags_match_shelf_bound_sources(self, tmp_path):
         path = tmp_path / "tape.jsonl"
         _write_synthetic_tape(path)

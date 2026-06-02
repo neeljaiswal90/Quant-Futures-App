@@ -54,6 +54,10 @@ export const AUCTION_VS_VALUE_STATES = [
 ] as const;
 export type AuctionVsValueState = typeof AUCTION_VS_VALUE_STATES[number];
 
+// RA-112e step 5: Globex/RTH tactical split status.
+export const TACTICAL_STATUSES = ["live", "warmup", "no_data"] as const;
+export type TacticalStatus = typeof TACTICAL_STATUSES[number];
+
 export const ENVELOPE_FIELDS = [
   "type",
   "seq",
@@ -275,6 +279,10 @@ export interface SnapshotPayload {
   auction_distance_ticks?: number | null;
   cap_bind_flags?: Record<string, boolean>;
   shelves?: Shelf[];
+  // RA-112e step 5: tactical status. Older snapshots send no value → treat
+  // as "live" for back-compat.
+  tactical_status?: TacticalStatus | null;
+  tactical_tape_minutes?: number | null;
 }
 
 export interface AuctionStatePayload {
