@@ -36,10 +36,13 @@ describe("isDegraded", () => {
     expect(isDegraded(s, 1_500)).toBe(true);
   });
 
-  it("is degraded when no frame for >10s", () => {
+  it("is degraded when no frame within FRAME_STALE_MS (raised to 25s in 2026-06-02)", () => {
     const s = reducer(initialState(), msg(snapshotFrame(1), 1_000));
-    expect(isDegraded(s, 1_000 + 11_000)).toBe(true);
+    // Well past the window -> degraded.
+    expect(isDegraded(s, 1_000 + 30_000)).toBe(true);
+    // Still inside the window — a single missed heartbeat does NOT trip.
     expect(isDegraded(s, 1_000 + 5_000)).toBe(false);
+    expect(isDegraded(s, 1_000 + 20_000)).toBe(false);
   });
 });
 

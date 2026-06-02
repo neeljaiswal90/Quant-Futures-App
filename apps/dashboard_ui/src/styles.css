@@ -187,13 +187,38 @@ body {
 .main {
   display: grid;
   grid-template-columns: 1fr;
-  /* Row 1 (top-context) = compact auto height.
-     Row 2 (decision-surface = chart + dom ladder) = 2fr → dominant element.
-     Row 3 (bottom-row = feed + history + posture) = 1fr → support panels. */
-  grid-template-rows: auto minmax(440px, 2fr) minmax(220px, 1fr);
+  /* grid-template-rows is driven by Shell — auto / chartFraction fr / 6px /
+     remaining fr. Default ~78% chart, 22% bottom row, draggable via the
+     HorizontalSplitter (persisted to localStorage). */
   gap: 8px;
   min-height: 0;
   height: 100%;
+}
+
+/* RA-112e step 4d / layout v2 — drag handle between chart row and bottom row. */
+.splitter-h {
+  height: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  background: transparent;
+  transition: background 0.12s ease-out;
+}
+.splitter-h:hover,
+.splitter-h:active {
+  background: rgba(163, 113, 247, 0.15);  /* var(--accent) tint */
+}
+.splitter-h-grip {
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.12s ease-out;
+}
+.splitter-h:hover .splitter-h-grip,
+.splitter-h:active .splitter-h-grip {
+  background: #a371f7;
 }
 
 .top-context {
@@ -931,7 +956,13 @@ button.btn:disabled {
 
   .main {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
+    /* On narrow viewports the splitter is hidden and rows stack natural;
+       Shell still passes the inline gridTemplateRows but width:100% +
+       overflow:auto on .app lets everything scroll. */
+    grid-template-rows: auto auto auto auto !important;
+  }
+  .splitter-h {
+    display: none;
   }
 
   .decision-surface {

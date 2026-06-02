@@ -9,13 +9,20 @@ import type { DashboardState } from "./types";
 import { isBannerActive, rankScenarios } from "../contract/scenarios";
 import { sortFeed } from "../contract/render";
 
-/** No frame within this window => degraded (stale link). */
-export const FRAME_STALE_MS = 10_000;
+/**
+ * No frame within this window => degraded (stale link).
+ *
+ * Operator-tuned 2026-06-02: was 10s. The backend emits heartbeats every 5s,
+ * so 10s meant a single skipped beat (network jitter, GC pause, brief compute
+ * spike) painted the banner. 25s requires ~5 missed beats before raising
+ * the alarm — same coverage for a real outage, far fewer false alarms.
+ */
+export const FRAME_STALE_MS = 25_000;
 
 /**
  * Degraded when the server flagged heartbeat.stale OR no frame of any kind
- * has arrived in > 10s. Before the first frame we are "connecting", not
- * degraded.
+ * has arrived in > FRAME_STALE_MS. Before the first frame we are
+ * "connecting", not degraded.
  */
 export function isDegraded(state: DashboardState, nowMs: number): boolean {
   if (state.heartbeat.stale) return true;
