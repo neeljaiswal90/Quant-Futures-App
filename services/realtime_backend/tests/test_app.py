@@ -58,6 +58,10 @@ def _fixture_settings(tmp_path: Path) -> Settings:
         poll_fallback_interval_seconds=0.0,
         fast_price_poll_interval_seconds=0.0,
         heartbeat_interval_seconds=0.1,
+        # RA-112e: pin the zone-stream output paths to tmp_path so tests
+        # never write to a real repo `data/` dir under any CWD.
+        zone_snapshot_dir=tmp_path / "zone_snapshots",
+        zone_touch_root=tmp_path / "zone_touch_root",
     )
 
 

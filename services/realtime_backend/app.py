@@ -176,8 +176,12 @@ class RealtimeBackend:
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         # RA-112e: append-only as-of zone-snapshot stream.
+        # Resolve relative paths against the project root (two levels up from
+        # analytics_root) so the streams land in the repo's data/ dir regardless
+        # of where the backend was launched from. Absolute settings paths
+        # (e.g. tmp_path in tests) short-circuit the anchor.
         self._zone_snapshot_stream = ZoneSnapshotStream(
-            settings.zone_snapshot_dir,
+            self._resolve_data_path(settings.zone_snapshot_dir),
             symbol=settings.zone_snapshot_symbol,
         )
         # Reasonable step-1 defaults; the values that don't yet have a live
@@ -194,7 +198,7 @@ class RealtimeBackend:
         )
         # RA-112e step 2: zone-touch + outcome event logger.
         self._zone_touch_stream = ZoneTouchStream(
-            settings.zone_touch_root,
+            self._resolve_data_path(settings.zone_touch_root),
             symbol=settings.zone_snapshot_symbol,
         )
         self._touch_detector = TouchDetector()
@@ -206,6 +210,22 @@ class RealtimeBackend:
         # ticks. Dedupe by trade_ts_ns so the touch pipeline sees each tick
         # exactly once regardless of which producer ran first.
         self._last_touch_processed_ts_ns: int | None = None
+
+    def _resolve_data_path(self, configured: Any) -> Any:
+        """Anchor a relative data-dir setting on the project root.
+
+        Absolute paths are returned untouched (tests pass tmp_path; operators
+        can override with an absolute path in env). Relative paths are
+        resolved against ``analytics_root.parent.parent`` — for the standard
+        layout that's ``D:\\Quant-futures-app`` — so the streams land under
+        the repo's ``data/`` dir regardless of the backend's launch CWD.
+        """
+        from pathlib import Path
+        path = Path(configured)
+        if path.is_absolute():
+            return path
+        project_root = Path(self.settings.analytics_root).resolve().parent.parent
+        return project_root / path
 
     # ----- watcher → loop marshaling ------------------------------------
 
