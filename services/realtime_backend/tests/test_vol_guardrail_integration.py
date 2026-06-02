@@ -365,9 +365,74 @@ def test_compute_tail_cap_excludes_as_of_session(tmp_path):
         root, as_of=dt.date(2026, 6, 2),
         session_kind="rth", symbol="MNQ", lookback=10,
     )
-    dates = [d for d, _ in candidates]
-    # Only the prior session (2026-06-01) should be present; as_of and after are excluded.
+    # Tuple shape is (date, path, source_kind) since the --session-window-from-file
+    # change. Only the prior session should be present; as_of and after are excluded.
+    dates = [d for d, _, _ in candidates]
     assert dates == [dt.date(2026, 6, 1)]
+    # source_kind should equal session_kind for native files.
+    assert all(src == "rth" for _, _, src in candidates)
+
+
+def test_session_window_from_file_falls_back_to_globex_for_missing_rth(tmp_path):
+    """Continuous-capture compat: when rth file is missing but globex exists,
+    --session-window-from-file extracts the RTH ts_ns window from globex."""
+    import datetime as dt2
+    from realtime_backend.calibration.compute_tail_cap import _session_dates_for
+
+    root = tmp_path / "captures"
+    d = dt2.date(2026, 6, 1)
+    sub = root / d.isoformat()
+    sub.mkdir(parents=True)
+    # ONLY globex file exists (the continuous-capture scenario)
+    (sub / "MNQ_globex.obs01.jsonl").write_text("x", encoding="utf-8")
+
+    # Without the flag: no candidates (no MNQ_rth.obs01.jsonl)
+    no_flag = _session_dates_for(
+        root, as_of=dt2.date(2026, 6, 2),
+        session_kind="rth", symbol="MNQ", lookback=10,
+        session_window_from_file=False,
+    )
+    assert no_flag == []
+
+    # With the flag: 2026-06-01 globex file used as RTH source
+    with_flag = _session_dates_for(
+        root, as_of=dt2.date(2026, 6, 2),
+        session_kind="rth", symbol="MNQ", lookback=10,
+        session_window_from_file=True,
+    )
+    assert len(with_flag) == 1
+    date_, path, source_kind = with_flag[0]
+    assert date_ == d
+    assert path.name == "MNQ_globex.obs01.jsonl"
+    assert source_kind == "globex"
+
+
+def test_iter_trade_ticks_window_filter(tmp_path):
+    """Verify the ts_ns_window filter in _iter_trade_ticks accepts the
+    requested window and drops out-of-window TRADEs."""
+    import json
+    from realtime_backend.calibration.compute_tail_cap import _iter_trade_ticks
+
+    p = tmp_path / "ticks.jsonl"
+    SEC_NS = 1_000_000_000
+    lines = []
+    for ts_offset in (100, 500, 1000, 1500, 2000):
+        lines.append(json.dumps({
+            "type": "TRADE",
+            "ts_ns": str(ts_offset * SEC_NS),
+            "payload": {"price": 30500.0 + ts_offset * 0.01, "quantity": 1},
+        }))
+    p.write_text("\n".join(lines), encoding="utf-8")
+
+    # Unfiltered: all 5
+    all_ticks = list(_iter_trade_ticks(p))
+    assert len(all_ticks) == 5
+
+    # Window covers ts_offset 500-1500 (inclusive lower, exclusive upper)
+    win_ticks = list(_iter_trade_ticks(
+        p, ts_ns_window=(500 * SEC_NS, 1500 * SEC_NS),
+    ))
+    assert [ts // SEC_NS for ts, _ in win_ticks] == [500, 1000]
 
 
 # ---------------------------------------------------------------------------

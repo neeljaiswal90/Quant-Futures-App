@@ -43,14 +43,43 @@ import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import time as dtime
 from pathlib import Path
 from typing import Iterable
+from zoneinfo import ZoneInfo
 
 from realtime_backend.volatility_estimators import (
     RealizedRangeWindow,
     overlapping_realized_ranges,
     percentile,
 )
+
+# Per-session ts_ns windows used by --session-window-from-file fallback.
+# RTH is 06:30-13:05 PT; globex is prior-day 15:00 PT through current-day 06:30 PT.
+_PT = ZoneInfo("America/Los_Angeles")
+_RTH_OPEN_PT = dtime(6, 30)
+_RTH_CLOSE_PT = dtime(13, 5)
+_GLOBEX_OPEN_PT = dtime(15, 0)
+
+
+def _session_ts_ns_window(d: dt.date, session_kind: str) -> tuple[int, int]:
+    """ts_ns half-open window [start, end) for the named session on date ``d``.
+
+    Mirrors the helper in ``scripts/post_session_envelope.py`` so the two
+    tools agree on RTH/globex boundaries when extracting from a continuous
+    capture file. Handles DST transitions via zoneinfo.
+    """
+    if session_kind == "rth":
+        start = dt.datetime.combine(d, _RTH_OPEN_PT, tzinfo=_PT)
+        end = dt.datetime.combine(d, _RTH_CLOSE_PT, tzinfo=_PT)
+    elif session_kind == "globex":
+        prev = d - dt.timedelta(days=1)
+        start = dt.datetime.combine(prev, _GLOBEX_OPEN_PT, tzinfo=_PT)
+        end = dt.datetime.combine(d, _RTH_OPEN_PT, tzinfo=_PT)
+    else:
+        raise ValueError(f"unknown session_kind: {session_kind!r}")
+    return (int(start.timestamp() * 1_000_000_000),
+            int(end.timestamp() * 1_000_000_000))
 
 SCHEMA_VERSION = "tail_cap_calibration.v1"
 GENERATOR_VERSION = "compute_tail_cap.v1"
@@ -147,7 +176,11 @@ class CalibrationArtifact:
     tail_concentration: TailConcentration | None = None
 
 
-def _iter_trade_ticks(obs01_path: Path) -> Iterable[tuple[int, float]]:
+def _iter_trade_ticks(
+    obs01_path: Path,
+    *,
+    ts_ns_window: tuple[int, int] | None = None,
+) -> Iterable[tuple[int, float]]:
     """Yield (ts_ns, price) for each TRADE event in the obs01 stream.
 
     Skips malformed lines silently — these capture files are append-only and
@@ -156,7 +189,13 @@ def _iter_trade_ticks(obs01_path: Path) -> Iterable[tuple[int, float]]:
     Note: the capture format stores ``ts_ns`` and other large integer fields
     as strings (to survive JS Number precision loss when downstream consumers
     parse via JSON.parse — int54 doesn't fit a JS Number). We parse to int.
+
+    ``ts_ns_window`` is a half-open ``[start, end)`` filter applied to each
+    TRADE before yielding. Used by --session-window-from-file to extract
+    e.g. the RTH portion of a continuous globex capture.
     """
+    win_start: int | None = ts_ns_window[0] if ts_ns_window else None
+    win_end: int | None = ts_ns_window[1] if ts_ns_window else None
     with obs01_path.open("r", encoding="utf-8") as f:
         for line in f:
             if not line.strip():
@@ -174,8 +213,13 @@ def _iter_trade_ticks(obs01_path: Path) -> Iterable[tuple[int, float]]:
                 ts_ns = int(ts_ns_raw) if ts_ns_raw is not None else None
             except (ValueError, TypeError):
                 ts_ns = None
-            if ts_ns is not None and isinstance(price, (int, float)):
-                yield (ts_ns, float(price))
+            if ts_ns is None or not isinstance(price, (int, float)):
+                continue
+            if win_start is not None and ts_ns < win_start:
+                continue
+            if win_end is not None and ts_ns >= win_end:
+                continue
+            yield (ts_ns, float(price))
 
 
 @dataclass(slots=True)
@@ -190,15 +234,27 @@ class ScanResult:
     source_files: dict[str, Path] = field(default_factory=dict)
 
 
-def _session_dates_for(captures_root: Path, as_of: dt.date, session_kind: str,
-                       symbol: str, lookback: int) -> list[tuple[dt.date, Path]]:
+def _session_dates_for(
+    captures_root: Path, as_of: dt.date, session_kind: str,
+    symbol: str, lookback: int,
+    *,
+    session_window_from_file: bool = False,
+) -> list[tuple[dt.date, Path, str]]:
     """Find up to ``lookback`` prior completed sessions whose obs01 file exists.
+
+    Returns ``(date, path, source_kind)`` tuples where ``source_kind`` is the
+    session kind of the FILE itself — usually equal to ``session_kind``, but
+    when ``session_window_from_file`` is True and a per-session file is
+    missing, falls back to the globex continuous-capture file. The
+    ts_ns-window filter is applied later in ``_iter_trade_ticks``.
 
     The current session (``as_of`` and later) is excluded — we never train
     tomorrow's cap on today's data.
     """
-    target_file = f"{symbol}_{session_kind}.obs01.jsonl"
-    candidates: list[tuple[dt.date, Path]] = []
+    primary = f"{symbol}_{session_kind}.obs01.jsonl"
+    fallback_kind = "globex"
+    fallback = f"{symbol}_{fallback_kind}.obs01.jsonl"
+    candidates: list[tuple[dt.date, Path, str]] = []
     for entry in sorted(captures_root.iterdir(), reverse=True):
         if not entry.is_dir():
             continue
@@ -208,10 +264,16 @@ def _session_dates_for(captures_root: Path, as_of: dt.date, session_kind: str,
             continue
         if d >= as_of:
             continue
-        obs = entry / target_file
-        if not obs.is_file():
-            continue
-        candidates.append((d, obs))
+        primary_path = entry / primary
+        if primary_path.is_file():
+            candidates.append((d, primary_path, session_kind))
+        elif (
+            session_window_from_file
+            and session_kind != fallback_kind
+            and (entry / fallback).is_file()
+        ):
+            candidates.append((d, entry / fallback, fallback_kind))
+        # else: no usable file for this date — skip silently
         if len(candidates) >= lookback:
             break
     return candidates
@@ -226,29 +288,52 @@ def scan_captures(
     as_of: dt.date,
     range_horizon_minutes: int = 60,
     range_step_minutes: int = 1,
+    session_window_from_file: bool = False,
 ) -> ScanResult:
     """Walk the captures, compute overlapping windows per session, pool them,
     and record skip reasons. The result is enough to both write the artifact
-    and dump top-N diagnostics."""
+    and dump top-N diagnostics.
+
+    When ``session_window_from_file`` is True, sessions whose per-kind file is
+    missing fall back to the globex continuous-capture file with a ts_ns
+    window filter restricting trades to the requested ``session_kind``'s PT
+    boundaries. This is the continuous-capture compatibility path.
+    """
     if not captures_root.is_dir():
         raise FileNotFoundError(f"captures_root does not exist: {captures_root}")
 
     result = ScanResult()
-    candidates = _session_dates_for(captures_root, as_of, session_kind, symbol, lookback)
+    candidates = _session_dates_for(
+        captures_root, as_of, session_kind, symbol, lookback,
+        session_window_from_file=session_window_from_file,
+    )
     if not candidates:
         raise FileNotFoundError(
             f"no prior {symbol}_{session_kind} obs01 files under {captures_root} "
             f"strictly before {as_of}"
         )
 
-    for d, obs in candidates:
+    for d, obs, source_kind in candidates:
         date_str = d.isoformat()
         if obs.stat().st_size == 0:
             result.sessions_skipped.append(SessionSkipReason(date_str, "empty_obs01_file"))
             continue
-        ticks = list(_iter_trade_ticks(obs))
+        # Apply the requested-session ts_ns window only when reading from a
+        # FOREIGN session kind (e.g. extracting RTH from a globex continuous
+        # file). When reading the native file, take all trades.
+        ts_window = (
+            _session_ts_ns_window(d, session_kind)
+            if source_kind != session_kind
+            else None
+        )
+        ticks = list(_iter_trade_ticks(obs, ts_ns_window=ts_window))
         if not ticks:
-            result.sessions_skipped.append(SessionSkipReason(date_str, "no_TRADE_events"))
+            reason = (
+                f"no_TRADE_events_in_{session_kind}_window"
+                if ts_window is not None
+                else "no_TRADE_events"
+            )
+            result.sessions_skipped.append(SessionSkipReason(date_str, reason))
             continue
         windows = overlapping_realized_ranges(
             ticks,
@@ -277,11 +362,16 @@ def compute_calibration(
     as_of: dt.date,
     range_horizon_minutes: int = 60,
     range_step_minutes: int = 1,
+    session_window_from_file: bool = False,
 ) -> tuple[CalibrationArtifact, ScanResult]:
     """Build a CalibrationArtifact from the last ``lookback`` prior sessions.
 
     Returns the artifact AND the full ScanResult so callers can dump
     top-windows diagnostics without re-scanning the captures.
+
+    When ``session_window_from_file`` is True, sessions whose per-kind file
+    is missing fall back to the globex continuous-capture file with a ts_ns
+    window restricting trades to the requested session's PT boundaries.
     """
     scan = scan_captures(
         captures_root=captures_root,
@@ -291,6 +381,7 @@ def compute_calibration(
         as_of=as_of,
         range_horizon_minutes=range_horizon_minutes,
         range_step_minutes=range_step_minutes,
+        session_window_from_file=session_window_from_file,
     )
     if not scan.pooled:
         raise RuntimeError(
@@ -505,6 +596,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "low/high, n_trades) to stdout for bad-tick audit. Combine with "
              "--print-only to inspect without writing. Default 0 = no dump.",
     )
+    p.add_argument(
+        "--session-window-from-file",
+        action="store_true",
+        help="When --session-kind rth and a per-date MNQ_rth.obs01.jsonl is "
+             "missing, fall back to MNQ_globex.obs01.jsonl and extract the "
+             "RTH ts_ns window. Required for sessions captured via the "
+             "continuous-capture automation (single globex file covering both "
+             "globex + RTH).",
+    )
     return p.parse_args(argv)
 
 
@@ -523,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
             as_of=args.as_of,
             range_horizon_minutes=args.horizon_minutes,
             range_step_minutes=args.step_minutes,
+            session_window_from_file=args.session_window_from_file,
         )
     except Exception as e:
         logger.error("calibration failed: %s", e)
