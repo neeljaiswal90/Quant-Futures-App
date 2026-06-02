@@ -8,6 +8,7 @@ import { Banners } from "./components/Banners";
 import { Scenarios } from "./components/Scenarios";
 import { LiveFeed } from "./components/LiveFeed";
 import { PriceContext } from "./components/PriceContext";
+import { TradePosture } from "./components/TradePosture";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { DomLadder } from "./components/DomLadder";
@@ -43,6 +44,7 @@ function Shell() {
       <div className="main">
         <div className="top-context">
           <PriceContext />
+          <TradePosture />
           <Scenarios />
         </div>
         <div className="decision-surface">

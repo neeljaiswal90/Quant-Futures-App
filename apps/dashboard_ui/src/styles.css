@@ -93,6 +93,72 @@ body {
 .auction-below_value { color: #7dd3fc; border-color: #7dd3fc; }   /* sky-300 — demand side */
 .auction-unknown { color: var(--muted); border-color: var(--muted); opacity: 0.6; }
 
+/* RA-112e step 4d — Trade Posture panel */
+.posture-panel { display: flex; flex-direction: column; gap: 10px; }
+.posture-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.posture-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.posture-dir-short    { color: var(--red);   border-color: var(--red);   }
+.posture-dir-long     { color: var(--green); border-color: var(--green); }
+.posture-dir-neutral  { color: var(--muted); border-color: var(--muted); }
+.posture-dir-warn     { color: var(--yellow); border-color: var(--yellow); }
+.posture-conv-good    { color: var(--green); border-color: var(--green); }
+.posture-conv-neutral { color: var(--muted); border-color: var(--muted); }
+.posture-conv-warn    { color: var(--yellow); border-color: var(--yellow); }
+.posture-conf-strong  { color: var(--yellow); border-color: var(--yellow); }
+.posture-conf-weak    { color: var(--muted);  border-color: var(--muted);  }
+.posture-reasoning {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.4;
+}
+.posture-section { display: flex; flex-direction: column; gap: 4px; }
+.posture-section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+.posture-kv-grid,
+.posture-mbp-grid,
+.posture-location-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 12px;
+}
+.posture-bound {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-left: 4px;
+  padding: 1px 4px;
+  border: 1px solid var(--yellow);
+  color: var(--yellow);
+  border-radius: 3px;
+}
+.posture-levels { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.posture-level-row {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed rgba(139, 148, 158, 0.18);
+  padding: 2px 0;
+}
+.posture-level-label  { color: var(--muted); }
+.posture-level-value  { font-family: var(--mono, monospace); }
+.posture-stop         { color: var(--red);    }
+.posture-target       { color: var(--green);  }
+.posture-pending      { opacity: 0.55; }
+
 .banner {
   border-radius: 6px;
   padding: 10px 14px;
