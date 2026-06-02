@@ -264,3 +264,135 @@ def test_default_window_is_ten_minutes():
     assert DEFAULT_WINDOW_SECONDS == 600
     acc = MethodologyHealthAccumulator()
     assert acc.window_seconds == 600
+
+
+# ---------------------------------------------------------------------------
+# RA-112e step 10 / Move 3 — cap-binding state counters
+# ---------------------------------------------------------------------------
+
+
+def _shadow_boundary(*, tier: int, raw: float, active_cap_n: float,
+                      shadow_cap_n: float, name_prefix: str = "SUP",
+                      anchor: float = 30500.0) -> dict:
+    """Build one shadow_boundaries row with the per-tier widths the
+    cap-state counters classify on. Final widths follow the cap formula:
+    final = min(raw_per_tier, cap_per_tier_width)."""
+    # active per-tier width = active_cap_n - prev_active_cap_n; for simplicity
+    # treat each tier as cumulative-equal-spaced so cap_per_tier = cap_n / tier.
+    active_per_tier = active_cap_n / tier
+    shadow_per_tier = shadow_cap_n / tier
+    final_w = min(raw, active_per_tier)
+    shadow_w = min(raw, shadow_per_tier)
+    return {
+        "family": "sigma_v3_vwap_anchor",
+        "name": f"{name_prefix}_{tier}",
+        "tier": tier,
+        "low": anchor,
+        "high": anchor + raw,
+        "raw_estimator_width_points": raw,
+        "active_cap_n_points": active_cap_n,
+        "final_width_points": final_w,
+        "shadow_vol_guardrail_cap_n_points": shadow_cap_n,
+        "shadow_vol_guardrail_width_points": shadow_w,
+    }
+
+
+def test_cap_state_estimator_limited_when_neither_cap_binds():
+    """When raw width is small (well under both caps), the estimator is
+    limiting and BOTH cap rates should be zero."""
+    acc = MethodologyHealthAccumulator()
+    boundaries = [
+        _shadow_boundary(tier=t, raw=10.0, active_cap_n=100.0 * t,
+                          shadow_cap_n=500.0 * t)
+        for t in (1, 2, 3)
+    ]
+    acc.observe(
+        ts_ns=SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0, shadow_boundaries=boundaries,
+    )
+    m = acc.metrics(now_ts_ns=2 * SECOND_NS)
+    assert m["legacy_cap_bind_rate"] == 0.0
+    assert m["shadow_cap_bind_rate"] == 0.0
+    assert m["estimator_limited_rate"] == 1.0
+    assert m["cap_state_tier_count"] == 3
+
+
+def test_cap_state_legacy_binding_when_active_cap_too_tight():
+    """When raw exceeds the legacy per-tier cap but stays under shadow,
+    legacy_cap binds and shadow does not."""
+    acc = MethodologyHealthAccumulator()
+    # raw=50 per tier; active_cap_n=tier*30 → per-tier active cap = 30 (raw > active)
+    # shadow_cap_n=tier*200 → per-tier shadow = 200 (raw < shadow)
+    boundaries = [
+        _shadow_boundary(tier=t, raw=50.0, active_cap_n=t * 30.0,
+                          shadow_cap_n=t * 200.0)
+        for t in (1, 2, 3)
+    ]
+    acc.observe(
+        ts_ns=SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0, shadow_boundaries=boundaries,
+    )
+    m = acc.metrics(now_ts_ns=2 * SECOND_NS)
+    assert m["legacy_cap_bind_rate"] == 1.0
+    assert m["shadow_cap_bind_rate"] == 0.0
+    assert m["estimator_limited_rate"] == 0.0
+
+
+def test_cap_state_rates_mix_across_window():
+    """Two observations: one estimator-limited, one legacy-binding. Pooled
+    rates should reflect the share."""
+    acc = MethodologyHealthAccumulator()
+    # Observation 1: estimator limited (3 tiers)
+    acc.observe(
+        ts_ns=SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0,
+        shadow_boundaries=[
+            _shadow_boundary(tier=t, raw=10.0, active_cap_n=100.0 * t,
+                              shadow_cap_n=500.0 * t)
+            for t in (1, 2, 3)
+        ],
+    )
+    # Observation 2: legacy binding (3 tiers)
+    acc.observe(
+        ts_ns=2 * SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0,
+        shadow_boundaries=[
+            _shadow_boundary(tier=t, raw=50.0, active_cap_n=t * 30.0,
+                              shadow_cap_n=t * 200.0)
+            for t in (1, 2, 3)
+        ],
+    )
+    m = acc.metrics(now_ts_ns=3 * SECOND_NS)
+    # 6 tier observations total, 3 estimator-limited + 3 legacy-binding.
+    assert m["cap_state_tier_count"] == 6
+    assert m["legacy_cap_bind_rate"] == pytest.approx(0.5)
+    assert m["estimator_limited_rate"] == pytest.approx(0.5)
+    assert m["shadow_cap_bind_rate"] == 0.0
+
+
+def test_cap_state_rates_none_when_no_observations():
+    acc = MethodologyHealthAccumulator()
+    m = acc.metrics(now_ts_ns=SECOND_NS)
+    assert m["legacy_cap_bind_rate"] is None
+    assert m["shadow_cap_bind_rate"] is None
+    assert m["estimator_limited_rate"] is None
+    assert m["cap_state_tier_count"] == 0
+
+
+def test_cap_state_ignores_observations_without_shadow_boundaries():
+    """When shadow_boundaries is omitted (shadow disabled), the counters
+    stay at zero rather than fabricating data."""
+    acc = MethodologyHealthAccumulator()
+    acc.observe(
+        ts_ns=SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0,
+        # no shadow_boundaries
+    )
+    m = acc.metrics(now_ts_ns=2 * SECOND_NS)
+    assert m["cap_state_tier_count"] == 0
+    assert m["legacy_cap_bind_rate"] is None

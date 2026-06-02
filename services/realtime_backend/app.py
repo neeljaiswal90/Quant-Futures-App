@@ -764,6 +764,7 @@ class RealtimeBackend:
                 anchor=anchor_value,
                 active_cap=candidate.active_cap,
                 shadow_vol_guardrail=candidate.shadow_vol_guardrail,
+                shadow_boundaries=candidate.shadow_boundaries,
             )
         except Exception as exc:  # noqa: BLE001 — diagnostics never fail compute
             logger.warning("methodology health observe failed: %s", exc)

@@ -355,6 +355,14 @@ export interface MethodologyHealthPayload {
   shadow_cap_health_share: Record<string, number>;
   shadow_yz_mean_ladder_span_pts: number | null;
   shadow_p99_mean_ladder_span_pts: number | null;
+  // RA-112e step 10 / Move 3 — cap-binding state classification.
+  // legacy_cap_bind_rate = fraction of tier-observations where the legacy
+  //   ATR cap binds. shadow_cap_bind_rate = same for the YZ/p99 cap.
+  // estimator_limited_rate = neither binds; raw estimator is binding.
+  legacy_cap_bind_rate: number | null;
+  shadow_cap_bind_rate: number | null;
+  estimator_limited_rate: number | null;
+  cap_state_tier_count: number;
 }
 
 export interface AuctionStatePayload {

@@ -161,8 +161,52 @@ function CapBlock({ m }: { m: import("@contracts/realtime/events").MethodologyHe
           <b>{healthFlags.join(" · ")}</b>
         </span>
       ) : null}
+      <WidthStateChip m={m} />
     </>
   );
+}
+
+function WidthStateChip({ m }: { m: import("@contracts/realtime/events").MethodologyHealthPayload }) {
+  const legacy = m.legacy_cap_bind_rate;
+  const shadow = m.shadow_cap_bind_rate;
+  const estLimited = m.estimator_limited_rate;
+  if (legacy == null && shadow == null && estLimited == null) return null;
+
+  // Dominant state determines the chip label. Per the operator's spec,
+  // "today's finding is not 'wrong cap'; it is 'cap irrelevant right now'"
+  // — so the chip says ESTIMATOR-LIMITED when neither cap binds.
+  let label: string;
+  let cls: string;
+  if (legacy != null && legacy > 0.5) {
+    label = `LEGACY CAP BINDING ${pct(legacy)}`;
+    cls = "health-warn";
+  } else if (shadow != null && shadow > 0.5) {
+    label = `SHADOW CAP BINDING ${pct(shadow)}`;
+    cls = "health-info";
+  } else if (estLimited != null && estLimited > 0.5) {
+    label = `ESTIMATOR-LIMITED ${pct(estLimited)}`;
+    cls = "health-info";
+  } else {
+    // Mixed regime — show all three. Helpful during transitions.
+    const parts: string[] = [];
+    if (legacy != null) parts.push(`L ${pct(legacy)}`);
+    if (shadow != null) parts.push(`S ${pct(shadow)}`);
+    if (estLimited != null) parts.push(`E ${pct(estLimited)}`);
+    label = `WIDTH ${parts.join(" / ")}`;
+    cls = "health-info";
+  }
+  return (
+    <span
+      className={`health-chip ${cls}`}
+      title="WIDTH STATE: classifies what bounds the v3 RMS shelf widths. legacy_cap_binding = ATR cap truncated the estimator; shadow_cap_binding = new YZ/p99 cap would too; estimator_limited = raw σ itself is the binding constraint (neither cap matters)."
+    >
+      <b>{label}</b>
+    </span>
+  );
+}
+
+function pct(v: number): string {
+  return `${(v * 100).toFixed(0)}%`;
 }
 
 function fmtCapBasis(b: string | null): string {

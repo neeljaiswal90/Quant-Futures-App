@@ -489,6 +489,18 @@ class MethodologyHealthPayload(RealtimePayload):
     shadow_cap_health_share: dict[str, float] = Field(default_factory=dict)
     shadow_yz_mean_ladder_span_pts: float | None = None
     shadow_p99_mean_ladder_span_pts: float | None = None
+    # RA-112e step 10 / Move 3 — cap-binding state classification.
+    # ``legacy_cap_bind_rate`` = fraction of tier-observations where the
+    #     legacy ATR cap binds (raw estimator wants more than the cap allows).
+    # ``shadow_cap_bind_rate`` = same for the new YZ/p99 cap.
+    # ``estimator_limited_rate`` = neither cap binds; the raw estimator IS
+    #     the binding constraint. High value = today's failure mode is
+    #     "estimator undersized", NOT "cap too tight".
+    # All are None when no tier observations have landed yet.
+    legacy_cap_bind_rate: float | None = None
+    shadow_cap_bind_rate: float | None = None
+    estimator_limited_rate: float | None = None
+    cap_state_tier_count: int = 0
 
 
 class AuctionStatePayload(RealtimePayload):

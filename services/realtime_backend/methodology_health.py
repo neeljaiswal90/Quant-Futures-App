@@ -55,6 +55,19 @@ class _Observation:
     shadow_yz_span_pts: float | None = None
     shadow_p99_span_pts: float | None = None
     shadow_cap_span_pts: float | None = None
+    # RA-112e step 10 / Move 3 — cap-binding state per observation.
+    # Each tuple holds counts across the 6 v3 RMS tiers (3 SUP + 3 DEM):
+    #   - tier_count            : number of tiers observed (typically 6)
+    #   - legacy_cap_binding    : tiers where raw_width > legacy_cap_n
+    #   - shadow_cap_binding    : tiers where raw_width > shadow_cap_n
+    #   - estimator_limited     : tiers where raw_width < BOTH caps
+    # The rates in metrics() are computed as
+    #   share = sum(counter) / sum(tier_count)
+    # so a partial observation (e.g. shadow disabled) doesn't skew totals.
+    cap_state_tier_count: int = 0
+    cap_state_legacy_binding: int = 0
+    cap_state_shadow_binding: int = 0
+    cap_state_estimator_limited: int = 0
 
 
 class MethodologyHealthAccumulator:
@@ -91,6 +104,7 @@ class MethodologyHealthAccumulator:
         anchor: float | None,
         active_cap: dict[str, Any] | None = None,
         shadow_vol_guardrail: dict[str, Any] | None = None,
+        shadow_boundaries: Iterable[dict[str, Any]] | None = None,
     ) -> None:
         cap_bind: dict[str, bool] = dict(cap_bind_flags or {})
         lows: dict[str, float] = {}
@@ -123,6 +137,65 @@ class MethodologyHealthAccumulator:
             shadow_yz_span_pts = shadow_vol_guardrail.get("yz_ladder_span_points")
             shadow_p99_span_pts = shadow_vol_guardrail.get("p99_ladder_span_points")
             shadow_cap_span_pts = shadow_vol_guardrail.get("cap_ladder_span_points")
+
+        # Per-tier cap-binding state from shadow_boundaries. Each boundary
+        # carries raw_estimator_width_points, active_cap_n_points, and
+        # shadow_vol_guardrail_cap_n_points — enough to classify the tier.
+        tier_count = 0
+        legacy_binding = 0
+        shadow_binding = 0
+        est_limited = 0
+        if shadow_boundaries:
+            for b in shadow_boundaries:
+                if not isinstance(b, dict):
+                    continue
+                raw = b.get("raw_estimator_width_points")
+                ac = b.get("active_cap_n_points")
+                sc = b.get("shadow_vol_guardrail_cap_n_points")
+                if not all(isinstance(v, (int, float)) for v in (raw, ac, sc)):
+                    continue
+                tier_count += 1
+                # Convention: cap "binding" means the raw estimator would
+                # produce a width LARGER than the cap allows. raw_width is
+                # cumulative-displacement style (matches cap_n_points), so
+                # they're comparable directly per-tier as the v3 _v3_shelves
+                # math: cap_top - prev_top vs raw_top - prev_top → cap binds
+                # when raw_top > cap_top, which at the cumulative level is
+                # n*sigma vs (n/k)*cap_span. The per-tier raw_estimator_width
+                # in ShadowZoneBoundary IS the width of that tier alone,
+                # NOT cumulative, so a fair comparison uses the per-tier
+                # active and shadow cap WIDTHS, not the cumulative cap_n.
+                # Reconstruct per-tier cap widths from cumulative cap_n:
+                # tier-1 width = cap_n_1, tier-2 width = cap_n_2 - cap_n_1, etc.
+                tier_n = b.get("tier")
+                if not isinstance(tier_n, int) or tier_n < 1:
+                    continue
+                # The cap_n points fields ARE cumulative displacements.
+                # For a per-tier comparison we use cumulative raw vs
+                # cumulative cap (both at tier n): if cumulative_raw > cap_n
+                # then the cap binds at this tier. Simplest: the ShadowZB
+                # already exposed final_width = min(raw, cap), so cap binds
+                # iff raw_width > final_width (with tolerance for fp).
+                final_w = b.get("final_width_points")
+                shadow_w = b.get("shadow_vol_guardrail_width_points")
+                if not isinstance(final_w, (int, float)):
+                    continue
+                # Classification convention:
+                #   final_width = min(raw, active_cap_per_tier)
+                #   shadow_width = min(raw, shadow_cap_per_tier)
+                # so cap "binds" iff final < raw (the cap truncated).
+                legacy_binds = raw > final_w + 1e-6
+                shadow_binds = (
+                    isinstance(shadow_w, (int, float)) and raw > shadow_w + 1e-6
+                )
+                # estimator-limited: neither cap binds — the raw estimator
+                # is the binding constraint, not the cap.
+                if legacy_binds:
+                    legacy_binding += 1
+                if shadow_binds:
+                    shadow_binding += 1
+                if not legacy_binds and not shadow_binds:
+                    est_limited += 1
         self._obs.append(
             _Observation(
                 ts_ns=ts_ns,
@@ -139,6 +212,10 @@ class MethodologyHealthAccumulator:
                 shadow_yz_span_pts=shadow_yz_span_pts,
                 shadow_p99_span_pts=shadow_p99_span_pts,
                 shadow_cap_span_pts=shadow_cap_span_pts,
+                cap_state_tier_count=tier_count,
+                cap_state_legacy_binding=legacy_binding,
+                cap_state_shadow_binding=shadow_binding,
+                cap_state_estimator_limited=est_limited,
             )
         )
         self._prune(ts_ns)
@@ -167,6 +244,10 @@ class MethodologyHealthAccumulator:
                 "shadow_cap_basis_dominant": None,
                 "shadow_cap_health_share": {},
                 "shadow_yz_p99_mean_pts": None,
+                "legacy_cap_bind_rate": None,
+                "shadow_cap_bind_rate": None,
+                "estimator_limited_rate": None,
+                "cap_state_tier_count": 0,
             }
         emit_count = sum(1 for o in self._obs if o.emitted)
         elapsed_min = max(self._window_ns, 1) / 1e9 / 60.0
@@ -203,6 +284,29 @@ class MethodologyHealthAccumulator:
             "shadow_cap_health_share": health_share,
             "shadow_yz_mean_ladder_span_pts": yz_mean,
             "shadow_p99_mean_ladder_span_pts": p99_mean,
+            # RA-112e step 10 / Move 3 — cap-binding state classification.
+            # All rates are over tier-observations (typically 6 v3 tiers per
+            # snapshot pass) so a partial window doesn't skew them.
+            **self._cap_state_rates(),
+        }
+
+    def _cap_state_rates(self) -> dict[str, Any]:
+        total = sum(o.cap_state_tier_count for o in self._obs)
+        if total == 0:
+            return {
+                "legacy_cap_bind_rate": None,
+                "shadow_cap_bind_rate": None,
+                "estimator_limited_rate": None,
+                "cap_state_tier_count": 0,
+            }
+        legacy = sum(o.cap_state_legacy_binding for o in self._obs)
+        shadow = sum(o.cap_state_shadow_binding for o in self._obs)
+        est = sum(o.cap_state_estimator_limited for o in self._obs)
+        return {
+            "legacy_cap_bind_rate": legacy / total,
+            "shadow_cap_bind_rate": shadow / total,
+            "estimator_limited_rate": est / total,
+            "cap_state_tier_count": total,
         }
 
     def _share_of(self, values: Iterable[str | None]) -> dict[str, float]:
