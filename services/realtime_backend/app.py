@@ -251,6 +251,8 @@ class RealtimeBackend:
         self.config_store = AlertConfigStore()
         self.watcher: CaptureWatcher | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
+        # RA-112e step 7: live MBP1 pulse broadcaster.
+        self._mbp_pulse_task: asyncio.Task[None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         # RA-112e: append-only as-of zone-snapshot stream.
         # Resolve relative paths against the project root (two levels up from
@@ -587,6 +589,26 @@ class RealtimeBackend:
         except asyncio.CancelledError:
             raise
 
+    async def _mbp_pulse_loop(self) -> None:
+        """RA-112e step 7: ~1Hz live MBP1 pulse from the feature accumulator.
+
+        Cadence is independent of the compute cycle. Failures are swallowed
+        so a transient pulse hiccup never wedges the loop.
+        """
+        interval = self.settings.mbp_pulse_interval_seconds
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    pulse = self._feature_accumulator.current_pulse(
+                        time.time_ns()
+                    )
+                    await self.feed.emit_mbp_pulse(pulse.to_dict())
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("mbp pulse emit failed: %s", exc)
+        except asyncio.CancelledError:
+            raise
+
     # ----- lifespan ------------------------------------------------------
 
     async def start(self) -> None:
@@ -632,6 +654,7 @@ class RealtimeBackend:
             logger.warning("initial seed compute failed: %s", exc)
         self.watcher.start()
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        self._mbp_pulse_task = asyncio.create_task(self._mbp_pulse_loop())
 
     async def stop(self) -> None:
         if self._heartbeat_task is not None:
@@ -639,6 +662,11 @@ class RealtimeBackend:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._heartbeat_task
             self._heartbeat_task = None
+        if self._mbp_pulse_task is not None:
+            self._mbp_pulse_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._mbp_pulse_task
+            self._mbp_pulse_task = None
         if self.watcher is not None:
             await asyncio.to_thread(self.watcher.stop)
             self.watcher = None

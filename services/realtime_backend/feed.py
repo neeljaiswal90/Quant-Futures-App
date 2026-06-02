@@ -32,6 +32,7 @@ from contracts.realtime.events import (
     DepthPayload,
     HeartbeatPayload,
     IcebergPayload,
+    MbpPulsePayload,
     OrderflowStats,
     PriceTickPayload,
     RealtimeMessage,
@@ -404,6 +405,36 @@ class FeedState:
         await self._broadcast_and_account(message)
         self._last_depth_key = key
         self._last_depth_message = message
+        return message
+
+    async def emit_mbp_pulse(
+        self, pulse_dict: dict[str, Any]
+    ) -> RealtimeMessage | None:
+        """RA-112e step 7: broadcast a live MBP1 readout (OFI/spread/imbalance
+        /microprice/approach-speed) so the dashboard renders the same numbers
+        the touch logger uses, at ~1Hz cadence.
+
+        ``pulse_dict`` is the wire-shape dict produced by
+        ``MbpPulse.to_dict()`` (or equivalent). Returns None if the payload
+        is empty (no depth seen yet) so the caller can suppress the emit.
+        """
+        # Skip emit when no windowed value is populated yet (cold start —
+        # the dashboard would just see a placeholder row anyway).
+        non_null = sum(
+            1 for k, v in pulse_dict.items() if k != "ts_ns" and v is not None
+        )
+        if non_null == 0:
+            return None
+        try:
+            payload = MbpPulsePayload(**pulse_dict)
+        except Exception:
+            return None
+        async with self._lock:
+            seq = await self._next_seq()
+        message = make_message(
+            type="event", payload=payload, seq=seq, tier=None
+        )
+        await self._broadcast_and_account(message)
         return message
 
     async def emit_heartbeat(self) -> RealtimeMessage:

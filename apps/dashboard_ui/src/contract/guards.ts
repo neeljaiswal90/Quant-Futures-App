@@ -15,6 +15,7 @@ import type {
   ErrorPayload,
   HeartbeatPayload,
   IcebergPayload,
+  MbpPulsePayload,
   PersistentLevelPayload,
   PriceTickPayload,
   RealtimePayload,
@@ -64,6 +65,9 @@ export function isPersistentLevel(p: RealtimePayload): p is PersistentLevelPaylo
 export function isAuctionState(p: RealtimePayload): p is AuctionStatePayload {
   return p.family === "auction_state";
 }
+export function isMbpPulse(p: RealtimePayload): p is MbpPulsePayload {
+  return p.family === "mbp_pulse";
+}
 
 const KNOWN = new Set<string>([
   "signal",
@@ -78,6 +82,7 @@ const KNOWN = new Set<string>([
   "heartbeat",
   "persistent_level",
   "auction_state",
+  "mbp_pulse",
   "error",
 ]);
 

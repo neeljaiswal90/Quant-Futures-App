@@ -49,6 +49,7 @@ function input(over: Partial<Parameters<typeof deriveTradePosture>[0]>) {
     auctionState: "inside_value",
     auctionDistanceTicks: 0,
     regime: "LOW",
+    mbpPulse: null,
     ...over,
   });
 }
@@ -207,8 +208,60 @@ describe("tradePosture — MBP1 readouts", () => {
     expect(p.mbp.micropriceOffsetTicks!).toBeGreaterThan(0);
   });
 
-  it("OFI is null until the wire surfaces it", () => {
-    expect(input({}).mbp.ofi30s).toBeNull();
+  it("OFI is null when no pulse has landed yet", () => {
+    expect(input({ mbpPulse: null }).mbp.ofi30s).toBeNull();
+  });
+
+  it("when MBP pulse is present, posture reads ALL readouts from it (step 7)", () => {
+    const p = input({
+      mbpPulse: {
+        family: "mbp_pulse",
+        ts_ns: 1_000_000_000,
+        ofi_5s: 12, ofi_15s: 25, ofi_30s: 42, ofi_60s: 78,
+        trade_imbalance_5s: 0.6, trade_imbalance_15s: 0.45,
+        trade_imbalance_30s: 0.3, trade_imbalance_60s: 0.2,
+        approach_speed_1s: null, approach_speed_5s: 2.1, approach_speed_15s: 1.4,
+        depth_imbalance_touch: 0.34, depth_imbalance_mean_5s: 0.3,
+        microprice_offset_touch: 0.42, microprice_offset_mean_5s: 0.4,
+        spread_touch: 1, spread_max_5s: 1,
+      },
+    });
+    expect(p.mbp.ofi30s).toBe(42);
+    expect(p.mbp.spreadTicks).toBe(1);
+    expect(p.mbp.depthImbalance).toBe(0.34);
+    expect(p.mbp.micropriceOffsetTicks).toBe(0.42);
+    // bidShare derived from imbalance: (imbalance + 1) / 2
+    expect(p.mbp.bidShare).toBeCloseTo(0.67, 2);
+  });
+
+  it("pulse takes precedence over client-side depth math", () => {
+    // Provide BOTH pulse + depth — pulse wins.
+    const p = input({
+      depth: {
+        family: "depth",
+        ts_ns: 0,
+        mid: 30468.625,
+        n_ticks: 100,
+        quality: "live",
+        bid_levels: [{ price: 30468.50, size: 999 }],  // misleading
+        ask_levels: [{ price: 30468.75, size: 1 }],
+      },
+      mbpPulse: {
+        family: "mbp_pulse",
+        ts_ns: 1_000_000_000,
+        ofi_5s: null, ofi_15s: null, ofi_30s: null, ofi_60s: null,
+        trade_imbalance_5s: null, trade_imbalance_15s: null,
+        trade_imbalance_30s: null, trade_imbalance_60s: null,
+        approach_speed_1s: null, approach_speed_5s: null, approach_speed_15s: null,
+        depth_imbalance_touch: 0,   // pulse says BALANCED
+        depth_imbalance_mean_5s: 0,
+        microprice_offset_touch: 0,
+        microprice_offset_mean_5s: 0,
+        spread_touch: 1, spread_max_5s: 2,
+      },
+    });
+    expect(p.mbp.depthImbalance).toBe(0);  // pulse, not derived from depth
+    expect(p.mbp.spreadTicks).toBe(1);     // pulse, not bid/ask
   });
 });
 

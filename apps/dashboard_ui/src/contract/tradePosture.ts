@@ -17,6 +17,7 @@
 import type {
   AuctionVsValueState,
   DepthPayload,
+  MbpPulsePayload,
   Regime,
   Shelf,
   ZoneState,
@@ -72,9 +73,10 @@ export interface MbpReadouts {
   /** Size-weighted top-of-book ratio for visualization (0..1 bid share). */
   bidShare: number | null;
   /**
-   * Order-flow imbalance (rolling MBP1 quote-update flux). Not yet on the
-   * WS contract; null in the dashboard today. Logged to disk by the touch
-   * pipeline. A future ticket will surface it live.
+   * Order-flow imbalance (rolling MBP1 quote-update flux). RA-112e step 7
+   * surfaces this live via MbpPulsePayload at ~1Hz — null only when the
+   * pulse hasn't landed yet (cold start) or there have been no depth
+   * updates to derive deltas from.
    */
   ofi30s: number | null;
 }
@@ -130,6 +132,11 @@ export interface DerivePostureInput {
   auctionState: AuctionVsValueState | null;
   auctionDistanceTicks: number | null;
   regime: Regime | null;
+  /** RA-112e step 7: live MBP1 pulse from the backend accumulator. When
+   * present, the posture's MBP readouts come from here (matching what the
+   * touch logger records at touch time). Falls back to client-side compute
+   * from depth+price on cold start. */
+  mbpPulse: MbpPulsePayload | null;
   tickSize?: number;
 }
 
@@ -193,6 +200,7 @@ export function deriveTradePosture(input: DerivePostureInput): TradePosture {
     bid: input.bid,
     ask: input.ask,
     depth: input.depth,
+    pulse: input.mbpPulse,
     tick,
   });
 
@@ -367,9 +375,31 @@ function deriveMbpReadouts(args: {
   bid: number | null;
   ask: number | null;
   depth: DepthPayload | null;
+  pulse: MbpPulsePayload | null;
   tick: number;
 }): MbpReadouts {
-  const { bid, ask, depth, tick } = args;
+  const { bid, ask, depth, pulse, tick } = args;
+
+  // RA-112e step 7: pulse is the source of truth when present — its numbers
+  // come from the same RollingFeatureAccumulator the touch logger uses, so
+  // what you see in Trade Posture is what gets written into the touch log
+  // at the next touch. Fall back to client-side compute on cold start.
+  if (pulse != null) {
+    return {
+      spreadTicks: pulse.spread_touch,
+      depthImbalance: pulse.depth_imbalance_touch,
+      micropriceOffsetTicks: pulse.microprice_offset_touch,
+      // bidShare is a UI-only derivation from depthImbalance; recover it
+      // when the pulse provides imbalance: bidShare = (imbalance+1)/2.
+      bidShare:
+        pulse.depth_imbalance_touch != null
+          ? (pulse.depth_imbalance_touch + 1) / 2
+          : null,
+      ofi30s: pulse.ofi_30s,
+    };
+  }
+
+  // Cold-start client-side path (no pulse yet).
   const spreadTicks =
     bid != null && ask != null && Number.isFinite(ask - bid)
       ? (ask - bid) / tick

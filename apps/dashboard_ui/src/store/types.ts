@@ -9,6 +9,7 @@
 import type {
   AuctionVsValueState,
   DepthPayload,
+  MbpPulsePayload,
   PersistentLevelPayload,
   Regime,
   OrderflowStats,
@@ -104,6 +105,15 @@ export interface DashboardState {
   tacticalStatus: TacticalStatus | null;
   /** Trailing-window span in minutes used by the latest compute. */
   tacticalTapeMinutes: number | null;
+
+  /**
+   * RA-112e step 7: live MBP1 pulse. Same fields as the touch logger's
+   * pre-touch features; the realtime backend snapshots its rolling
+   * accumulator at ~1Hz and broadcasts via MbpPulsePayload. Trade Posture
+   * reads OFI/spread/imbalance/microprice from here instead of computing
+   * client-side. ``null`` until the first pulse lands.
+   */
+  mbpPulse: MbpPulsePayload | null;
   scenarios: ScenarioState[];
 
   /** Rolling event feed, newest-appended (capped at FEED_CAP). */
@@ -151,6 +161,7 @@ export function initialState(): DashboardState {
     shelves: [],
     tacticalStatus: null,
     tacticalTapeMinutes: null,
+    mbpPulse: null,
     zones: [],
     scenarios: [],
     feed: [],

@@ -43,6 +43,7 @@ export const KNOWN_FAMILIES = [
   "error",
   "persistent_level",
   "auction_state",
+  "mbp_pulse",
 ] as const;
 
 // RA-112e step 3: rolling tactical-anchor position vs full-session value area.
@@ -285,6 +286,35 @@ export interface SnapshotPayload {
   tactical_tape_minutes?: number | null;
 }
 
+/**
+ * RA-112e step 7: live MBP1 readout broadcast at ~1 Hz so the dashboard
+ * can render OFI / depth-imbalance / microprice / spread / approach-speed
+ * without doing its own rolling math. Field naming mirrors the touch
+ * logger's PreTouchFeatures so the live readout and the touch-event row
+ * use the same wire shape.
+ */
+export interface MbpPulsePayload {
+  family: "mbp_pulse";
+  ts_ns: number;
+  ofi_5s: number | null;
+  ofi_15s: number | null;
+  ofi_30s: number | null;
+  ofi_60s: number | null;
+  trade_imbalance_5s: number | null;
+  trade_imbalance_15s: number | null;
+  trade_imbalance_30s: number | null;
+  trade_imbalance_60s: number | null;
+  approach_speed_1s: number | null;
+  approach_speed_5s: number | null;
+  approach_speed_15s: number | null;
+  depth_imbalance_touch: number | null;
+  depth_imbalance_mean_5s: number | null;
+  microprice_offset_touch: number | null;
+  microprice_offset_mean_5s: number | null;
+  spread_touch: number | null;
+  spread_max_5s: number | null;
+}
+
 export interface AuctionStatePayload {
   family: "auction_state";
   state: AuctionVsValueState;
@@ -361,6 +391,7 @@ export type RealtimePayload =
   | ErrorPayload
   | PersistentLevelPayload
   | AuctionStatePayload
+  | MbpPulsePayload
   | GenericPayload;
 
 // --- Envelope --------------------------------------------------------------

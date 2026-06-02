@@ -312,13 +312,71 @@ class TestRollingFeatureAccumulator:
         # Only one sample in the window -> approach_speed needs >=2 -> None.
         assert f.approach_speed_15s is None
 
-    def test_ofi_fields_remain_none_stub(self):
-        """RA-112e step 2 ships OFI as None; full MBP1 quote feed comes later."""
+    def test_ofi_first_depth_yields_none(self):
+        """RA-112e step 7: a single depth needs no prior to compare against."""
         acc = RollingFeatureAccumulator()
-        acc.on_trade(ts_ns=0, price=30550.0, volume=10, aggressor_side="buy")
+        acc.on_depth(ts_ns=0, bid_price=30000.0, ask_price=30000.25, bid_size=10, ask_size=10)
         f = acc.features_at(1_000_000_000)
         assert f.ofi_5s is None
-        assert f.ofi_60s is None
+
+    def test_ofi_bid_size_increase_at_same_price_is_positive(self):
+        acc = RollingFeatureAccumulator()
+        acc.on_depth(ts_ns=0, bid_price=30000.0, ask_price=30000.25, bid_size=10, ask_size=10)
+        # Same prices, bid size grew 10 -> 25 (buyers stacking).
+        acc.on_depth(ts_ns=1_000_000_000, bid_price=30000.0, ask_price=30000.25, bid_size=25, ask_size=10)
+        f = acc.features_at(2_000_000_000)
+        assert f.ofi_5s == 15.0  # net = +15 bid, 0 ask
+
+    def test_ofi_ask_aggressive_down_is_negative(self):
+        acc = RollingFeatureAccumulator()
+        acc.on_depth(ts_ns=0, bid_price=30000.0, ask_price=30000.25, bid_size=10, ask_size=20)
+        # Ask moved DOWN — sellers aggressive. new_ask_size=12.
+        acc.on_depth(ts_ns=1_000_000_000, bid_price=30000.0, ask_price=30000.00, bid_size=10, ask_size=12)
+        # bid same/same -> 0; ask down -> -12. Net = -12.
+        f = acc.features_at(2_000_000_000)
+        assert f.ofi_5s == -12.0
+
+    def test_ofi_bid_up_is_positive(self):
+        acc = RollingFeatureAccumulator()
+        acc.on_depth(ts_ns=0, bid_price=30000.0, ask_price=30000.50, bid_size=15, ask_size=20)
+        # Bid moved up — buyers aggressive. new_bid_size=8.
+        acc.on_depth(ts_ns=1_000_000_000, bid_price=30000.25, ask_price=30000.50, bid_size=8, ask_size=20)
+        # bid up -> +8; ask same/same -> 0. Net = +8.
+        f = acc.features_at(2_000_000_000)
+        assert f.ofi_5s == 8.0
+
+    def test_ofi_windows_isolate_correct_segment(self):
+        acc = RollingFeatureAccumulator()
+        # Three depth updates at 0/10/50s with distinct OFI contributions.
+        acc.on_depth(ts_ns=0, bid_price=30000.0, ask_price=30000.25, bid_size=10, ask_size=10)
+        # +20 (bid size +20).
+        acc.on_depth(ts_ns=10_000_000_000, bid_price=30000.0, ask_price=30000.25, bid_size=30, ask_size=10)
+        # -5  (bid size -5).
+        acc.on_depth(ts_ns=50_000_000_000, bid_price=30000.0, ask_price=30000.25, bid_size=25, ask_size=10)
+        # Query at 55s:
+        #   ofi_5s  window 50-55s -> only the second contrib (-5)
+        #   ofi_15s window 40-55s -> only the second contrib (-5)
+        #   ofi_60s window -5..55s -> both contribs (20 + -5 = 15)
+        f = acc.features_at(55_000_000_000)
+        assert f.ofi_5s == -5.0
+        assert f.ofi_15s == -5.0
+        assert f.ofi_60s == 15.0
+
+    def test_current_pulse_returns_features_at_ts(self):
+        """RA-112e step 7: current_pulse(ts) wraps features_at(ts) for broadcast."""
+        from realtime_backend.zone_touches import MbpPulse
+        acc = RollingFeatureAccumulator()
+        acc.on_depth(ts_ns=0, bid_price=30000.0, ask_price=30000.25, bid_size=10, ask_size=10)
+        acc.on_depth(ts_ns=1_000_000_000, bid_price=30000.0, ask_price=30000.25, bid_size=20, ask_size=10)
+        pulse = acc.current_pulse(2_000_000_000)
+        assert isinstance(pulse, MbpPulse)
+        assert pulse.ts_ns == 2_000_000_000
+        assert pulse.features.ofi_5s == 10.0
+        # Pulse's to_dict() merges ts_ns + feature fields for wire emit.
+        d = pulse.to_dict()
+        assert d["ts_ns"] == 2_000_000_000
+        assert d["ofi_5s"] == 10.0
+        assert "spread_touch" in d
 
 
 # ---------------------------------------------------------------------------

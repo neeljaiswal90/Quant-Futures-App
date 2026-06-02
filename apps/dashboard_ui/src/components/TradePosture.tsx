@@ -86,6 +86,10 @@ export function TradePosture() {
   // "warmup" — render a banner so the operator doesn't trust the shelves.
   const tacticalStatus = useDashboardSelector((s) => s.tacticalStatus);
   const tacticalTapeMinutes = useDashboardSelector((s) => s.tacticalTapeMinutes);
+  // RA-112e step 7: live MBP1 pulse from the realtime backend's rolling
+  // feature accumulator. Same wire shape as PreTouchFeatures on the touch
+  // log so the live readouts and the touch-time recordings match.
+  const mbpPulse = useDashboardSelector((s) => s.mbpPulse);
 
   const posture: TradePosture = useMemo(
     () =>
@@ -99,10 +103,11 @@ export function TradePosture() {
         auctionState,
         auctionDistanceTicks,
         regime,
+        mbpPulse,
       }),
     [
       price, shelves, zones, depth, bid, ask,
-      auctionState, auctionDistanceTicks, regime,
+      auctionState, auctionDistanceTicks, regime, mbpPulse,
     ],
   );
 
@@ -251,11 +256,22 @@ export function TradePosture() {
             μ-price{" "}
             <b>{fmtSignedTicks(posture.mbp.micropriceOffsetTicks, 2)}</b>
           </span>
-          <span className="kv posture-pending" title="Not yet on WS — surfaces later">
-            OFI 30s <b>—</b>
+          <span
+            className={`kv${posture.mbp.ofi30s == null ? " posture-pending" : ""}`}
+            title="Rolling 30s L1 OFI (positive = buyer pressure)"
+          >
+            OFI 30s{" "}
+            <b>{fmtSignedQuantity(posture.mbp.ofi30s)}</b>
           </span>
         </div>
       </div>
     </div>
   );
+}
+
+function fmtSignedQuantity(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const sign = value > 0 ? "+" : "";
+  const rounded = Math.abs(value) >= 100 ? Math.round(value) : value.toFixed(0);
+  return `${sign}${rounded}`;
 }

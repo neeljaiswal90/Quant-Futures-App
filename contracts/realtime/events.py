@@ -82,6 +82,7 @@ KNOWN_FAMILIES: tuple[str, ...] = (
     "error",
     "persistent_level",
     "auction_state",
+    "mbp_pulse",
 )
 
 # RA-112e step 3: rolling tactical-anchor position vs full-session value area.
@@ -405,6 +406,39 @@ class SnapshotPayload(RealtimePayload):
     tactical_tape_minutes: float | None = None
 
 
+class MbpPulsePayload(RealtimePayload):
+    """RA-112e step 7: periodic MBP1 readout for the live dashboard.
+
+    Snapshotted from the RollingFeatureAccumulator at a ~1 Hz cadence so the
+    Trade Posture panel can render OFI, depth imbalance, microprice offset,
+    spread, and approach speed without doing rolling math client-side.
+
+    Field naming mirrors zone_touches.PreTouchFeatures so a touch event row
+    and the live pulse use the same wire shape — the operator sees the
+    same number at touch time that gets recorded into the touch log.
+    """
+
+    family: Literal["mbp_pulse"] = "mbp_pulse"
+    ts_ns: int
+    ofi_5s: float | None = None
+    ofi_15s: float | None = None
+    ofi_30s: float | None = None
+    ofi_60s: float | None = None
+    trade_imbalance_5s: float | None = None
+    trade_imbalance_15s: float | None = None
+    trade_imbalance_30s: float | None = None
+    trade_imbalance_60s: float | None = None
+    approach_speed_1s: float | None = None
+    approach_speed_5s: float | None = None
+    approach_speed_15s: float | None = None
+    depth_imbalance_touch: float | None = None
+    depth_imbalance_mean_5s: float | None = None
+    microprice_offset_touch: float | None = None
+    microprice_offset_mean_5s: float | None = None
+    spread_touch: float | None = None
+    spread_max_5s: float | None = None
+
+
 class AuctionStatePayload(RealtimePayload):
     """RA-112e step 3: standalone auction-vs-value chip event.
 
@@ -517,6 +551,7 @@ _PAYLOAD_REGISTRY: dict[str, type[RealtimePayload]] = {
     "error": ErrorPayload,
     "persistent_level": PersistentLevelPayload,
     "auction_state": AuctionStatePayload,
+    "mbp_pulse": MbpPulsePayload,
 }
 
 
@@ -637,6 +672,7 @@ __all__ = [
     "PersistentLevelEvidence",
     "PersistentLevelPayload",
     "AuctionStatePayload",
+    "MbpPulsePayload",
     "GenericPayload",
     "parse_payload",
     "RealtimeMessage",

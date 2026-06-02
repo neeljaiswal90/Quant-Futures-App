@@ -203,6 +203,24 @@ class _DepthSnapshot:
     ask_size: float | None
 
 
+@dataclass(slots=True)
+class _OfiSample:
+    """One signed OFI contribution at the moment of a top-of-book update.
+
+    Sign convention (Cont/Kukanov L1 OFI, positive = buyer pressure):
+      bid contribution:
+        bid_price ↑     -> +new bid_size   (new aggressive bid)
+        bid_price same  -> ±(new - prev) bid_size  (level grew/shrank)
+        bid_price ↓     -> -prev bid_size  (bid retreated)
+      ask contribution:
+        ask_price ↑     -> +prev ask_size  (asks retreated upward)
+        ask_price same  -> -(new - prev) ask_size  (level grew = more sellers)
+        ask_price ↓     -> -new ask_size   (asks aggressive — seller pressure)
+    """
+    ts_ns: int
+    signed_ofi: float
+
+
 class RollingFeatureAccumulator:
     """Maintains sliding windows of trades + L1 depth for pre-touch features.
 
@@ -223,6 +241,10 @@ class RollingFeatureAccumulator:
         self._max_window_ns = max_window_sec * 1_000_000_000
         self._trades: deque[_TradeSample] = deque()
         self._depths: deque[_DepthSnapshot] = deque()
+        # RA-112e step 7: L1 OFI samples + previous depth for delta. OFI is
+        # the rolling sum of these signed contributions.
+        self._ofi_samples: deque[_OfiSample] = deque()
+        self._prev_depth: _DepthSnapshot | None = None
 
     # ----- ingestion -----------------------------------------------------
 
@@ -253,16 +275,22 @@ class RollingFeatureAccumulator:
         bid_size: float | None,
         ask_size: float | None,
     ) -> None:
-        self._depths.append(
-            _DepthSnapshot(
-                ts_ns=ts_ns,
-                bid_price=bid_price,
-                ask_price=ask_price,
-                bid_size=bid_size,
-                ask_size=ask_size,
-            )
+        new_snap = _DepthSnapshot(
+            ts_ns=ts_ns,
+            bid_price=bid_price,
+            ask_price=ask_price,
+            bid_size=bid_size,
+            ask_size=ask_size,
         )
+        # RA-112e step 7: compute signed L1 OFI contribution vs the previous
+        # depth snapshot. Skips on any None side (top-of-book missing).
+        ofi_contrib = _compute_l1_ofi(self._prev_depth, new_snap)
+        if ofi_contrib is not None:
+            self._ofi_samples.append(_OfiSample(ts_ns=ts_ns, signed_ofi=ofi_contrib))
+            self._prune(self._ofi_samples, ts_ns)
+        self._depths.append(new_snap)
         self._prune(self._depths, ts_ns)
+        self._prev_depth = new_snap
 
     # ----- query at touch_ts_ns -----------------------------------------
 
@@ -285,7 +313,11 @@ class RollingFeatureAccumulator:
             ),
             spread_touch=self._spread_instant(ts_ns),
             spread_max_5s=self._spread_max(ts_ns, SPREAD_MAX_WINDOW_SEC),
-            # OFI fields ship as None (default) — see module docstring.
+            # RA-112e step 7: live L1 OFI from successive depth snapshots.
+            ofi_5s=self._ofi(ts_ns, 5),
+            ofi_15s=self._ofi(ts_ns, 15),
+            ofi_30s=self._ofi(ts_ns, 30),
+            ofi_60s=self._ofi(ts_ns, 60),
         )
 
     # ----- internals -----------------------------------------------------
@@ -391,6 +423,84 @@ class RollingFeatureAccumulator:
         if not spreads:
             return None
         return max(spreads)
+
+    def _ofi(self, ts_ns: int, window_sec: int) -> float | None:
+        """Rolling-window sum of signed L1 OFI contributions ending at ts_ns.
+
+        Returns None when no OFI samples landed in the window — that happens
+        on cold start (need at least 2 depth snapshots) and during long
+        no-update gaps. Positive = net buyer pressure, negative = seller.
+        """
+        samples = self._window(self._ofi_samples, ts_ns, window_sec)
+        if not samples:
+            return None
+        return sum(s.signed_ofi for s in samples)
+
+    # ----- live broadcast snapshot (RA-112e step 7) ---------------------
+
+    def current_pulse(self, ts_ns: int) -> "MbpPulse":
+        """Snapshot the current windowed metrics, ready to broadcast.
+
+        Same source as ``features_at(ts_ns)`` — the dashboard's live MBP1
+        readouts and the touch logger's pre-touch features both come from
+        this accumulator, so the operator sees the same number at touch time
+        that gets recorded into the touch log.
+        """
+        return MbpPulse(
+            ts_ns=ts_ns,
+            features=self.features_at(ts_ns),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MbpPulse:
+    """A periodic snapshot of the accumulator's windowed metrics, broadcast
+    as an ``MbpPulsePayload`` so the dashboard can render live OFI / spread
+    / depth-imbalance / microprice / approach-speed without doing its own
+    rolling math client-side."""
+    ts_ns: int
+    features: PreTouchFeatures
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"ts_ns": self.ts_ns, **dataclasses.asdict(self.features)}
+
+
+def _compute_l1_ofi(
+    prev: _DepthSnapshot | None,
+    cur: _DepthSnapshot,
+) -> float | None:
+    """Cont/Kukanov L1 OFI contribution between two top-of-book snapshots.
+
+    Returns None if any side is missing on either snapshot (can't compute
+    a meaningful contribution). See _OfiSample for the sign convention.
+    """
+    if prev is None:
+        return None
+    if (
+        cur.bid_price is None or cur.ask_price is None
+        or cur.bid_size is None or cur.ask_size is None
+        or prev.bid_price is None or prev.ask_price is None
+        or prev.bid_size is None or prev.ask_size is None
+    ):
+        return None
+
+    # Bid-side contribution.
+    if cur.bid_price > prev.bid_price:
+        bid_ofi = float(cur.bid_size)        # new aggressive bid
+    elif cur.bid_price == prev.bid_price:
+        bid_ofi = float(cur.bid_size - prev.bid_size)
+    else:
+        bid_ofi = -float(prev.bid_size)      # bid retreated; prior bid gone
+
+    # Ask-side contribution.
+    if cur.ask_price < prev.ask_price:
+        ask_ofi = -float(cur.ask_size)       # asks aggressive — seller pressure
+    elif cur.ask_price == prev.ask_price:
+        ask_ofi = -float(cur.ask_size - prev.ask_size)
+    else:
+        ask_ofi = float(prev.ask_size)       # asks retreated; buyer-supportive
+
+    return bid_ofi + ask_ofi
 
 
 def _microprice_offset_ticks(
@@ -842,6 +952,7 @@ __all__ = [
     "MAX_FEATURE_WINDOW_SEC",
     "MonitoredLevel",
     "OFI_HORIZONS_SEC",
+    "MbpPulse",
     "OUTCOME_HORIZONS_SEC",
     "OutcomeLabel",
     "OutcomeRow",

@@ -129,6 +129,12 @@ class Settings:
     heartbeat_interval_seconds: float = 5.0
     staleness_threshold_seconds: float = 30.0
 
+    # RA-112e step 7: cadence of the live MBP1 pulse broadcast. 1Hz is enough
+    # for the dashboard to render OFI / spread / imbalance / microprice
+    # without burning bandwidth; the touch logger still queries the same
+    # accumulator per-tick at touch_ts so accuracy is unaffected.
+    mbp_pulse_interval_seconds: float = 1.0
+
     # RA-112e: directory for the append-only zone-snapshot stream.
     # See services/realtime_backend/zone_snapshots.py for schema details.
     zone_snapshot_dir: Path = field(

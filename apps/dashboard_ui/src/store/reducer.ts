@@ -18,6 +18,7 @@ import {
   isError,
   isHeartbeat,
   isIceberg,
+  isMbpPulse,
   isPersistentLevel,
   isPriceTick,
   isSignal,
@@ -159,6 +160,13 @@ function applyPayload(
       auctionVsValue: p.state,
       auctionDistanceTicks: p.distance_ticks,
     };
+    return next;
+  }
+
+  // RA-112e step 7: live MBP1 pulse — replace the slice wholesale so a
+  // stale pulse never lingers if a field went from non-null to null.
+  if (isMbpPulse(p)) {
+    next = { ...next, mbpPulse: p };
     return next;
   }
 
