@@ -226,9 +226,32 @@ export interface ZoneState {
   label: string | null;
 }
 
+/**
+ * RA-112e step 4: a σ supply/demand shelf rendered as a filled band on the
+ * chart. ``family`` is one of
+ *   - ``sigma_v3_vwap_anchor`` (production v3, VWAP-anchored)
+ *   - ``sigma_v2_session_value_anchor`` (legacy v2, anchored at VAH/VAL —
+ *     subordinate visual per shadow-mode spec)
+ */
+export interface Shelf {
+  family: string;
+  name: string;
+  low: number;
+  high: number;
+  tier: number;
+  bound_source: string;       // "estimator" | "atr_cap"
+  cap_bound: boolean;
+  overlaps_vah?: boolean;
+  overlaps_val?: boolean;
+  nearest_structural_level?: string | null;
+  distance_to_structural_level_ticks?: number | null;
+}
+
 export interface ZoneUpdatePayload {
   family: "zone_update";
   zones: ZoneState[];
+  // RA-112e step 4: empty list = no shelf change in this update.
+  shelves?: Shelf[];
 }
 
 export interface ScenarioState {
@@ -251,6 +274,7 @@ export interface SnapshotPayload {
   auction_vs_value?: AuctionVsValueState | null;
   auction_distance_ticks?: number | null;
   cap_bind_flags?: Record<string, boolean>;
+  shelves?: Shelf[];
 }
 
 export interface AuctionStatePayload {

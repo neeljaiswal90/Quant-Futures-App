@@ -494,8 +494,16 @@ def build_snapshot_payload(
     envelope: dict[str, Any] | None,
     recent_signals: list[RecentSignal],
     current_price: float | None = None,
+    shelves: list[dict[str, Any]] | None = None,
+    cap_bind_flags: dict[str, bool] | None = None,
 ) -> SnapshotPayload:
-    """Assemble the full SnapshotPayload for initial load / resync."""
+    """Assemble the full SnapshotPayload for initial load / resync.
+
+    ``shelves`` + ``cap_bind_flags`` (RA-112e step 4) are passed in as wire-
+    shape dicts from FeedState's cache, populated by the realtime backend
+    after each v3 compute. Both default to None to preserve the snapshot's
+    shape when v3 hasn't run yet (cold start).
+    """
     price: float | None = None
     sigma: float | None = None
     regime: Regime | None = None
@@ -528,6 +536,10 @@ def build_snapshot_payload(
     # so cold-start clients render correctly without waiting for a transition.
     auction_state, auction_distance = _auction_state_for_snapshot(signals, envelope)
 
+    # RA-112e step 4: shelves carry to the dashboard via the SnapshotPayload
+    # so cold-start clients render the v3 ladder + v2 legacy shadow without
+    # waiting for a zone_update transition. Pydantic parses the dicts into
+    # Shelf models via the discriminator.
     return SnapshotPayload(
         price=price,
         sigma=sigma,
@@ -537,7 +549,8 @@ def build_snapshot_payload(
         open_scenarios=[],
         auction_vs_value=auction_state,
         auction_distance_ticks=auction_distance,
-        cap_bind_flags={},  # populated when RA-112f step 4 lands live shelves.
+        cap_bind_flags=cap_bind_flags or {},
+        shelves=shelves or [],
     )
 
 

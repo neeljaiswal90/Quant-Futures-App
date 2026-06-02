@@ -197,6 +197,37 @@ def test_backend_seed_populates_v3_shelves_on_snapshot(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_ws_snapshot_payload_carries_v3_shelves(tmp_path: Path) -> None:
+    """RA-112e step 4c: a /snapshot or WS snapshot frame must include the
+    live v3 shelves so cold-start clients have the band overlay immediately."""
+    async def scenario() -> None:
+        settings = replace(
+            _fixture_settings(tmp_path),
+            zone_snapshot_dir=tmp_path / "zone_snapshots",
+        )
+        backend = RealtimeBackend(settings)
+        await backend.start()
+        try:
+            await asyncio.sleep(0.2)
+            # Drive a snapshot build through the same path /snapshot uses.
+            msg = backend.feed.build_snapshot_message()
+            payload = msg.payload  # type: ignore[union-attr]
+        finally:
+            await backend.stop()
+
+        assert payload.family == "snapshot"  # type: ignore[attr-defined]
+        shelves = payload.shelves  # type: ignore[attr-defined]
+        assert len(shelves) > 0, "expected populated shelves on WS snapshot"
+        families = {s.family for s in shelves}
+        assert "sigma_v3_vwap_anchor" in families
+        # Cap-bind flags cover every shelf id ("<family>:<name>").
+        cap_flags = payload.cap_bind_flags  # type: ignore[attr-defined]
+        shelf_keys = {f"{s.family}:{s.name}" for s in shelves}
+        assert set(cap_flags.keys()) == shelf_keys
+
+    asyncio.run(scenario())
+
+
 def test_touch_logger_writes_touch_and_outcome(tmp_path: Path) -> None:
     """RA-112e step 2: drive a synthetic crossing through the live wiring and
     verify a touch row + at least one outcome row land on disk."""

@@ -13,6 +13,7 @@ import type {
   Regime,
   OrderflowStats,
   ScenarioState,
+  Shelf,
   Tier,
   ZoneState,
 } from "@contracts/realtime/events";
@@ -85,6 +86,13 @@ export interface DashboardState {
   persistentLevels: Record<string, PersistentLevelPayload>;
 
   zones: ZoneState[];
+  /**
+   * RA-112e step 4: σ supply/demand shelves rendered as filled bands on the
+   * chart. Carries both ``sigma_v3_vwap_anchor`` (production) and
+   * ``sigma_v2_session_value_anchor`` (legacy shadow) families. Refreshed on
+   * snapshot + zone_update; empty until the first v3 compute lands.
+   */
+  shelves: Shelf[];
   scenarios: ScenarioState[];
 
   /** Rolling event feed, newest-appended (capped at FEED_CAP). */
@@ -129,6 +137,7 @@ export function initialState(): DashboardState {
     regime: null,
     auctionVsValue: null,
     auctionDistanceTicks: null,
+    shelves: [],
     zones: [],
     scenarios: [],
     feed: [],

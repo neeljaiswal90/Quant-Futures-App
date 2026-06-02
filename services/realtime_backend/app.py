@@ -192,6 +192,25 @@ def _build_zone_snapshot_candidate(
     )
 
 
+def _shelf_to_dict(s: Any) -> dict[str, Any]:
+    """Convert a ShelfDescriptor to the wire-shape dict the contract Shelf
+    model accepts. Stays small + explicit rather than dataclasses.asdict so we
+    don't accidentally leak internal fields if ShelfDescriptor grows later."""
+    return {
+        "family": s.family,
+        "name": s.name,
+        "low": s.low,
+        "high": s.high,
+        "tier": s.tier,
+        "bound_source": s.bound_source,
+        "cap_bound": s.cap_bound,
+        "overlaps_vah": s.overlaps_vah,
+        "overlaps_val": s.overlaps_val,
+        "nearest_structural_level": s.nearest_structural_level,
+        "distance_to_structural_level_ticks": s.distance_to_structural_level_ticks,
+    }
+
+
 def _as_float(value: object) -> float | None:
     if value is None:
         return None
@@ -325,6 +344,10 @@ class RealtimeBackend:
                 current_price=result.current_price,
             )
         finally:
+            # RA-112e: as-of snapshot + v3 shelf compute. Done BEFORE
+            # update_snapshot_inputs so the latest shelves land in the WS
+            # snapshot cache.
+            shelves_result = await self._record_zone_snapshot(result)
             self.feed.update_snapshot_inputs(
                 signals=result.signals,
                 envelope=result.envelope,
@@ -332,10 +355,15 @@ class RealtimeBackend:
                 last_append_ts_ns=result.last_append_ts_ns,
                 current_price=result.current_price,
                 price_tick=result.price_tick,
+                shelves=(
+                    [_shelf_to_dict(s) for s in shelves_result.shelves]
+                    if shelves_result is not None else None
+                ),
+                cap_bind_flags=(
+                    dict(shelves_result.cap_bind_flags)
+                    if shelves_result is not None else None
+                ),
             )
-            # RA-112e: append-only as-of snapshot of the zone state. Sync I/O
-            # is offloaded so the event loop never blocks on disk flush.
-            await self._record_zone_snapshot(result)
             # RA-112e step 2: also feed the compute-rate price tick into the
             # touch logger. Idempotent: a higher-rate fast-poller call with
             # the same trade_ts_ns is swallowed by the dedupe guard.
@@ -344,14 +372,20 @@ class RealtimeBackend:
                     self._ingest_price_tick_for_touches, result.price_tick
                 )
 
-    async def _record_zone_snapshot(self, result: ComputeResult) -> None:
+    async def _record_zone_snapshot(
+        self, result: ComputeResult
+    ) -> ZoneShelvesResult | None:
         """Project the compute result into a ZoneSnapshot and emit-if-material.
 
         Safe to call after every compute pass; the stream's policy debounces.
         Failures are logged and swallowed so a write hiccup never blanks the feed.
         Also refreshes the touch detector's monitored level set when the
         snapshot is the latest one — the detector reads zone state from here.
+
+        Returns the v3 shelf compute result (or None on failure) so the caller
+        can cache it on FeedState for the WS SnapshotPayload (RA-112e step 4c).
         """
+        shelves_result: ZoneShelvesResult | None = None
         try:
             # RA-112e step 4: compute v3 + v2 shelves from the live tape.
             # The compute is sync + I/O-heavy (tape tail read + ATR + σ);
@@ -380,6 +414,7 @@ class RealtimeBackend:
             )
         except Exception as exc:  # noqa: BLE001 — isolate persistence failures
             logger.warning("zone snapshot emit failed: %s", exc)
+        return shelves_result
 
     async def _compute_shelves(
         self, result: ComputeResult
@@ -531,6 +566,11 @@ class RealtimeBackend:
         # state immediately. Tolerate failure — heartbeat will report stale.
         try:
             seed = await asyncio.to_thread(self.watcher.seed)
+            # RA-112e: seed the zone-snapshot stream with the boot state so
+            # the JSONL file always opens with a session_open record. Run
+            # BEFORE update_snapshot_inputs so the seed shelves land in the
+            # WS SnapshotPayload cache from the very first frame.
+            seed_shelves = await self._record_zone_snapshot(seed)
             self.feed.update_snapshot_inputs(
                 signals=seed.signals,
                 envelope=seed.envelope,
@@ -538,10 +578,15 @@ class RealtimeBackend:
                 last_append_ts_ns=seed.last_append_ts_ns,
                 current_price=seed.current_price,
                 price_tick=seed.price_tick,
+                shelves=(
+                    [_shelf_to_dict(s) for s in seed_shelves.shelves]
+                    if seed_shelves is not None else None
+                ),
+                cap_bind_flags=(
+                    dict(seed_shelves.cap_bind_flags)
+                    if seed_shelves is not None else None
+                ),
             )
-            # RA-112e: seed the zone-snapshot stream with the boot state so
-            # the JSONL file always opens with a session_open record.
-            await self._record_zone_snapshot(seed)
         except Exception as exc:  # noqa: BLE001
             logger.warning("initial seed compute failed: %s", exc)
         self.watcher.start()

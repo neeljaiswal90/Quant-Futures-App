@@ -88,6 +88,8 @@ function applyPayload(
       // snapshots without the field leave it null (renders no chip).
       auctionVsValue: p.auction_vs_value ?? null,
       auctionDistanceTicks: p.auction_distance_ticks ?? null,
+      // RA-112e step 4c: shelves from the v3 compute. Empty until v3 runs.
+      shelves: p.shelves ?? [],
       zones: p.zones,
       scenarios: p.open_scenarios,
       feed: mergeFeedItems(next.feed, snapshotFeed, FEED_CAP),
@@ -124,7 +126,13 @@ function applyPayload(
   }
 
   if (isZoneUpdate(p)) {
-    next = { ...next, zones: mergeZones(next.zones, p.zones) };
+    // RA-112e step 4c: a zone_update may also carry refreshed shelves. An
+    // empty / omitted shelves array means "no shelf change in this update"
+    // — keep what we have. A non-empty list fully replaces the in-memory
+    // set (snapshot-style, since v3 always produces the full 10 shelves).
+    const shelves =
+      p.shelves != null && p.shelves.length > 0 ? p.shelves : next.shelves;
+    next = { ...next, zones: mergeZones(next.zones, p.zones), shelves };
     return next;
   }
 

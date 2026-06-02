@@ -87,6 +87,12 @@ class FeedState:
     # RA-112e step 3: track the auction-vs-value state across diffs so we only
     # broadcast an AuctionStatePayload on real transitions (not every cycle).
     _last_auction_state: str | None = field(default=None, init=False)
+    # RA-112e step 4: cached v3 + v2-legacy shelves from the latest compute
+    # pass. build_snapshot_payload reads from here so cold-start clients see
+    # populated shelves on the first WS frame; the realtime backend keeps
+    # this in sync via update_snapshot_inputs.
+    _last_shelves: list[dict[str, Any]] = field(default_factory=list, init=False)
+    _last_cap_bind_flags: dict[str, bool] = field(default_factory=dict, init=False)
 
     # ----- seq -----------------------------------------------------------
 
@@ -109,8 +115,16 @@ class FeedState:
         last_append_ts_ns: int | None,
         current_price: float | None = None,
         price_tick: LatestPriceTick | None = None,
+        shelves: list[dict[str, Any]] | None = None,
+        cap_bind_flags: dict[str, bool] | None = None,
     ) -> None:
-        """Refresh the cached state used to build snapshots + heartbeats."""
+        """Refresh the cached state used to build snapshots + heartbeats.
+
+        ``shelves`` + ``cap_bind_flags`` (RA-112e step 4) are passed as plain
+        dict shapes (the wire shape) so this module stays free of the v3
+        compute's dataclass types. ``None`` leaves the existing cache intact —
+        the orchestrator only updates these when a v3 compute succeeded.
+        """
         self._last_signals = signals
         self._last_envelope = envelope
         self._last_recent_signals = recent_signals
@@ -119,6 +133,10 @@ class FeedState:
             self._last_append_ts_ns = last_append_ts_ns
         if self._last_price_tick_key is None and price_tick is not None:
             self._last_price_tick_key = price_tick.dedupe_key
+        if shelves is not None:
+            self._last_shelves = shelves
+        if cap_bind_flags is not None:
+            self._last_cap_bind_flags = cap_bind_flags
 
     def build_snapshot_message(self, seq: int | None = None) -> RealtimeMessage:
         """Build a snapshot envelope at ``seq`` (defaults to current seq)."""
@@ -127,6 +145,8 @@ class FeedState:
             envelope=self._last_envelope,
             recent_signals=self._last_recent_signals,
             current_price=self._last_current_price,
+            shelves=self._last_shelves,
+            cap_bind_flags=self._last_cap_bind_flags,
         )
         return make_message(
             type="snapshot",

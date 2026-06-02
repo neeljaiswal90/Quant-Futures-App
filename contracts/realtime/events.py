@@ -318,11 +318,42 @@ class ZoneState(BaseModel):
     label: str | None = None
 
 
+class Shelf(BaseModel):
+    """RA-112e step 4: a σ supply/demand shelf rendered as a filled band.
+
+    Mirrors the on-disk schema in
+    ``services/realtime_backend/zone_snapshots.py`` so a record can move
+    losslessly between the WS frame and the JSONL stream.
+
+    ``family`` distinguishes the production v3 (VWAP-anchored) shelves from
+    the v2-legacy shadow shelves the operator wants drawn side-by-side until
+    v3 is validated.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    family: str
+    name: str
+    low: float
+    high: float
+    tier: int
+    bound_source: str  # "estimator" | "atr_cap"
+    cap_bound: bool
+    overlaps_vah: bool = False
+    overlaps_val: bool = False
+    nearest_structural_level: str | None = None
+    distance_to_structural_level_ticks: float | None = None
+
+
 class ZoneUpdatePayload(RealtimePayload):
     """Full or incremental set of active zones (drives price-line layer)."""
 
     family: Literal["zone_update"] = "zone_update"
     zones: list[ZoneState] = Field(default_factory=list)
+    # RA-112e step 4: v3 + v2-legacy shelves. Broadcast on material change so
+    # the chart can refresh the band overlay between snapshots. Empty list →
+    # no shelf change in this update; consumers keep their last-known shelves.
+    shelves: list[Shelf] = Field(default_factory=list)
 
 
 class ScenarioState(BaseModel):
@@ -351,9 +382,11 @@ class SnapshotPayload(RealtimePayload):
     # still parse; absent / None → renders as "unknown" / no chip.
     auction_vs_value: AuctionVsValueState | None = None
     auction_distance_ticks: float | None = None
-    # Cap-bind flags per σ tier (RA-112f step 4 will populate when shelves
-    # are computed live). Empty dict today.
+    # RA-112e step 4: cap-bind flags per shelf id (``"<family>:<name>"``) plus
+    # the live shelves themselves. shelves is empty when v3 compute hasn't run
+    # yet (cold start) or no envelope was available.
     cap_bind_flags: dict[str, bool] = Field(default_factory=dict)
+    shelves: list[Shelf] = Field(default_factory=list)
 
 
 class AuctionStatePayload(RealtimePayload):
@@ -578,6 +611,7 @@ __all__ = [
     "DepthLevel",
     "DepthPayload",
     "ZoneState",
+    "Shelf",
     "ZoneUpdatePayload",
     "ScenarioState",
     "SnapshotPayload",

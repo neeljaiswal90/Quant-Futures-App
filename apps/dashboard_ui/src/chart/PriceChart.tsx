@@ -36,6 +36,7 @@ import {
 } from "./candles";
 import { MNQ_TICK, formatMnqPrice } from "../contract/render";
 import { useZonePriceLines } from "./useZonePriceLines";
+import { useSigmaShelves } from "./useSigmaShelves";
 import { eventBubbleTooltip, useEventMarkers } from "./useEventMarkers";
 import { EVENT_LEGEND_ITEMS, type EventBubbleShape } from "./eventBubbles";
 import { isPriceTick } from "../contract/guards";
@@ -493,6 +494,9 @@ export function PriceChart() {
   }, [showExecutions]);
 
   useZonePriceLines(priceLineRef);
+  // RA-112e step 4c: render the v3 + v2-legacy σ supply/demand shelves
+  // as filled bands beneath the price line.
+  useSigmaShelves(priceLineRef);
   const hoveredDepth = useDepthHeatmap(chartRef, priceLineRef);
   const hoveredEvent = useEventMarkers(chartRef, priceLineRef, eventAnchorRef, {
     showIcebergCoverage,
