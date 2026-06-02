@@ -1,0 +1,34 @@
+{
+  "bad_tick_filter": {
+    "enabled": false,
+    "method": "trade_price_vs_l1_sanity",
+    "params": {
+      "note": "v1: filter disabled; planned for v2 with L1 sync"
+    }
+  },
+  "computed_at_ts_ns": 1780426385540203400,
+  "effective_sample_note": "overlapping_windows",
+  "lookback_sessions": 20,
+  "max_range_points": 228.5,
+  "n_windows": 7048,
+  "p95_range_points": 140.75,
+  "p98_range_points": 174.02999999999975,
+  "p99_range_points": 187.5,
+  "range_horizon_minutes": 60,
+  "range_step_minutes": 1,
+  "schema_version": "tail_cap_calibration.v1",
+  "session": "globex",
+  "sessions_used": [
+    "2026-06-01",
+    "2026-05-29",
+    "2026-05-28",
+    "2026-05-27",
+    "2026-05-26",
+    "2026-05-25",
+    "2026-05-22",
+    "2026-05-21",
+    "2026-05-20"
+  ],
+  "symbol": "MNQ",
+  "valid_for_date": "2026-06-02"
+}
