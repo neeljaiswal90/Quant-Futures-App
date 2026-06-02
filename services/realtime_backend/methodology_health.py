@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 
 DEFAULT_WINDOW_SECONDS: int = 600  # rolling 10-minute window
@@ -56,18 +56,28 @@ class _Observation:
     shadow_p99_span_pts: float | None = None
     shadow_cap_span_pts: float | None = None
     # RA-112e step 10 / Move 3 — cap-binding state per observation.
-    # Each tuple holds counts across the 6 v3 RMS tiers (3 SUP + 3 DEM):
-    #   - tier_count            : number of tiers observed (typically 6)
-    #   - legacy_cap_binding    : tiers where raw_width > legacy_cap_n
-    #   - shadow_cap_binding    : tiers where raw_width > shadow_cap_n
-    #   - estimator_limited     : tiers where raw_width < BOTH caps
-    # The rates in metrics() are computed as
-    #   share = sum(counter) / sum(tier_count)
-    # so a partial observation (e.g. shadow disabled) doesn't skew totals.
+    # Comparison is CUMULATIVE (raw_cumulative vs cap_n, both anchor-relative
+    # displacements) so a non-linear cap or non-constant sigma per tier would
+    # be classified correctly. Per-tier segment widths are NOT used here.
     cap_state_tier_count: int = 0
     cap_state_legacy_binding: int = 0
     cap_state_shadow_binding: int = 0
     cap_state_estimator_limited: int = 0
+    # Side + tier breakdown for the same per-observation pass.
+    # Keys: "supply" / "demand"; "1" / "2" / "3". Counts of binding tiers
+    # per side / per tier so the rolling rates can be split apart.
+    cap_state_legacy_binding_by_side: dict[str, int] = field(default_factory=dict)
+    cap_state_legacy_binding_by_tier: dict[str, int] = field(default_factory=dict)
+    cap_state_shadow_binding_by_side: dict[str, int] = field(default_factory=dict)
+    cap_state_shadow_binding_by_tier: dict[str, int] = field(default_factory=dict)
+    cap_state_tier_count_by_side: dict[str, int] = field(default_factory=dict)
+    cap_state_tier_count_by_tier: dict[str, int] = field(default_factory=dict)
+    # Snapshot-level summary fields for the chip denominator + readouts.
+    cap_state_snapshot: bool = False  # True if this _Observation contributed any
+                                       # cap-state tier counts at all
+    raw_rms_ladder_span_pts: float | None = None  # SUP_3.raw_cumulative (= 3 sigma_above)
+    active_cap_ladder_span_pts: float | None = None
+    shadow_cap_ladder_span_pts: float | None = None
 
 
 class MethodologyHealthAccumulator:
@@ -139,63 +149,76 @@ class MethodologyHealthAccumulator:
             shadow_cap_span_pts = shadow_vol_guardrail.get("cap_ladder_span_points")
 
         # Per-tier cap-binding state from shadow_boundaries. Each boundary
-        # carries raw_estimator_width_points, active_cap_n_points, and
-        # shadow_vol_guardrail_cap_n_points — enough to classify the tier.
+        # carries raw_cumulative_width_points (anchor → tier-n top), plus
+        # active and shadow cap_n cumulative displacements. The binding
+        # test is CUMULATIVE: cap binds at tier n iff raw_cumulative > cap_n.
+        # We do NOT use per-tier segment widths for this — the semantics
+        # are cumulative because cap_n itself is cumulative.
         tier_count = 0
         legacy_binding = 0
         shadow_binding = 0
         est_limited = 0
+        legacy_by_side: dict[str, int] = {}
+        legacy_by_tier: dict[str, int] = {}
+        shadow_by_side: dict[str, int] = {}
+        shadow_by_tier: dict[str, int] = {}
+        tier_count_by_side: dict[str, int] = {}
+        tier_count_by_tier: dict[str, int] = {}
+        raw_rms_ladder_span_pts: float | None = None
+        active_cap_ladder_span_pts: float | None = None
+        shadow_cap_ladder_span_pts: float | None = None
         if shadow_boundaries:
             for b in shadow_boundaries:
                 if not isinstance(b, dict):
                     continue
-                raw = b.get("raw_estimator_width_points")
-                ac = b.get("active_cap_n_points")
-                sc = b.get("shadow_vol_guardrail_cap_n_points")
-                if not all(isinstance(v, (int, float)) for v in (raw, ac, sc)):
-                    continue
-                tier_count += 1
-                # Convention: cap "binding" means the raw estimator would
-                # produce a width LARGER than the cap allows. raw_width is
-                # cumulative-displacement style (matches cap_n_points), so
-                # they're comparable directly per-tier as the v3 _v3_shelves
-                # math: cap_top - prev_top vs raw_top - prev_top → cap binds
-                # when raw_top > cap_top, which at the cumulative level is
-                # n*sigma vs (n/k)*cap_span. The per-tier raw_estimator_width
-                # in ShadowZoneBoundary IS the width of that tier alone,
-                # NOT cumulative, so a fair comparison uses the per-tier
-                # active and shadow cap WIDTHS, not the cumulative cap_n.
-                # Reconstruct per-tier cap widths from cumulative cap_n:
-                # tier-1 width = cap_n_1, tier-2 width = cap_n_2 - cap_n_1, etc.
+                name = b.get("name", "")
                 tier_n = b.get("tier")
                 if not isinstance(tier_n, int) or tier_n < 1:
                     continue
-                # The cap_n points fields ARE cumulative displacements.
-                # For a per-tier comparison we use cumulative raw vs
-                # cumulative cap (both at tier n): if cumulative_raw > cap_n
-                # then the cap binds at this tier. Simplest: the ShadowZB
-                # already exposed final_width = min(raw, cap), so cap binds
-                # iff raw_width > final_width (with tolerance for fp).
-                final_w = b.get("final_width_points")
-                shadow_w = b.get("shadow_vol_guardrail_width_points")
-                if not isinstance(final_w, (int, float)):
+                raw_cum = b.get("raw_cumulative_width_points")
+                ac_n = b.get("active_cap_n_points")
+                sc_n = b.get("shadow_vol_guardrail_cap_n_points")
+                if not all(
+                    isinstance(v, (int, float)) for v in (raw_cum, ac_n, sc_n)
+                ):
                     continue
-                # Classification convention:
-                #   final_width = min(raw, active_cap_per_tier)
-                #   shadow_width = min(raw, shadow_cap_per_tier)
-                # so cap "binds" iff final < raw (the cap truncated).
-                legacy_binds = raw > final_w + 1e-6
-                shadow_binds = (
-                    isinstance(shadow_w, (int, float)) and raw > shadow_w + 1e-6
+                tier_count += 1
+                side = (
+                    "supply" if name.startswith("SUP_")
+                    else "demand" if name.startswith("DEM_")
+                    else "other"
                 )
-                # estimator-limited: neither cap binds — the raw estimator
-                # is the binding constraint, not the cap.
+                tier_count_by_side[side] = tier_count_by_side.get(side, 0) + 1
+                tier_count_by_tier[str(tier_n)] = (
+                    tier_count_by_tier.get(str(tier_n), 0) + 1
+                )
+
+                # CUMULATIVE comparison (operator-locked semantics):
+                legacy_binds = raw_cum > ac_n + 1e-6
+                shadow_binds = raw_cum > sc_n + 1e-6
                 if legacy_binds:
                     legacy_binding += 1
+                    legacy_by_side[side] = legacy_by_side.get(side, 0) + 1
+                    legacy_by_tier[str(tier_n)] = (
+                        legacy_by_tier.get(str(tier_n), 0) + 1
+                    )
                 if shadow_binds:
                     shadow_binding += 1
+                    shadow_by_side[side] = shadow_by_side.get(side, 0) + 1
+                    shadow_by_tier[str(tier_n)] = (
+                        shadow_by_tier.get(str(tier_n), 0) + 1
+                    )
                 if not legacy_binds and not shadow_binds:
                     est_limited += 1
+
+                # Ladder-span readouts at tier 3 (= full ±3σ span / cap span).
+                # Only stamp once per side; record SUP side as canonical because
+                # σ_above is what the operator's RTH analysis tracks. DEM is
+                # symmetric in the v3 build (sigma_below is reported alongside).
+                if tier_n == 3 and side == "supply":
+                    raw_rms_ladder_span_pts = float(raw_cum)
+                    active_cap_ladder_span_pts = float(ac_n)
+                    shadow_cap_ladder_span_pts = float(sc_n)
         self._obs.append(
             _Observation(
                 ts_ns=ts_ns,
@@ -216,6 +239,16 @@ class MethodologyHealthAccumulator:
                 cap_state_legacy_binding=legacy_binding,
                 cap_state_shadow_binding=shadow_binding,
                 cap_state_estimator_limited=est_limited,
+                cap_state_legacy_binding_by_side=legacy_by_side,
+                cap_state_legacy_binding_by_tier=legacy_by_tier,
+                cap_state_shadow_binding_by_side=shadow_by_side,
+                cap_state_shadow_binding_by_tier=shadow_by_tier,
+                cap_state_tier_count_by_side=tier_count_by_side,
+                cap_state_tier_count_by_tier=tier_count_by_tier,
+                cap_state_snapshot=tier_count > 0,
+                raw_rms_ladder_span_pts=raw_rms_ladder_span_pts,
+                active_cap_ladder_span_pts=active_cap_ladder_span_pts,
+                shadow_cap_ladder_span_pts=shadow_cap_ladder_span_pts,
             )
         )
         self._prune(ts_ns)
@@ -248,6 +281,18 @@ class MethodologyHealthAccumulator:
                 "shadow_cap_bind_rate": None,
                 "estimator_limited_rate": None,
                 "cap_state_tier_count": 0,
+                "cap_state_snapshot_count": 0,
+                "cap_state_window_start_ts_ns": None,
+                "cap_state_window_end_ts_ns": None,
+                "legacy_cap_bind_rate_by_side": {},
+                "legacy_cap_bind_rate_by_tier": {},
+                "shadow_cap_bind_rate_by_side": {},
+                "shadow_cap_bind_rate_by_tier": {},
+                "raw_rms_ladder_span_mean_pts": None,
+                "raw_rms_ladder_span_p50_pts": None,
+                "raw_rms_ladder_span_p95_pts": None,
+                "active_cap_ladder_span_mean_pts": None,
+                "shadow_cap_ladder_span_mean_pts": None,
             }
         emit_count = sum(1 for o in self._obs if o.emitted)
         elapsed_min = max(self._window_ns, 1) / 1e9 / 60.0
@@ -292,21 +337,88 @@ class MethodologyHealthAccumulator:
 
     def _cap_state_rates(self) -> dict[str, Any]:
         total = sum(o.cap_state_tier_count for o in self._obs)
+        snapshot_count = sum(1 for o in self._obs if o.cap_state_snapshot)
         if total == 0:
             return {
                 "legacy_cap_bind_rate": None,
                 "shadow_cap_bind_rate": None,
                 "estimator_limited_rate": None,
                 "cap_state_tier_count": 0,
+                "cap_state_snapshot_count": snapshot_count,
+                "cap_state_window_start_ts_ns": None,
+                "cap_state_window_end_ts_ns": None,
+                "legacy_cap_bind_rate_by_side": {},
+                "legacy_cap_bind_rate_by_tier": {},
+                "shadow_cap_bind_rate_by_side": {},
+                "shadow_cap_bind_rate_by_tier": {},
+                "raw_rms_ladder_span_mean_pts": None,
+                "raw_rms_ladder_span_p50_pts": None,
+                "raw_rms_ladder_span_p95_pts": None,
+                "active_cap_ladder_span_mean_pts": None,
+                "shadow_cap_ladder_span_mean_pts": None,
             }
         legacy = sum(o.cap_state_legacy_binding for o in self._obs)
         shadow = sum(o.cap_state_shadow_binding for o in self._obs)
         est = sum(o.cap_state_estimator_limited for o in self._obs)
+
+        # Per-side / per-tier rates
+        def _ratio_dict(num_field: str, den_field: str) -> dict[str, float]:
+            num: dict[str, int] = {}
+            den: dict[str, int] = {}
+            for o in self._obs:
+                n_map = getattr(o, num_field)
+                d_map = getattr(o, den_field)
+                for k, v in n_map.items():
+                    num[k] = num.get(k, 0) + v
+                for k, v in d_map.items():
+                    den[k] = den.get(k, 0) + v
+            return {
+                k: (num.get(k, 0) / d) for k, d in den.items() if d > 0
+            }
+
+        # Window timestamps from contributing observations only.
+        ts_starts: list[int] = []
+        ts_ends: list[int] = []
+        for o in self._obs:
+            if o.cap_state_snapshot:
+                ts_starts.append(o.ts_ns)
+                ts_ends.append(o.ts_ns)
+        ws_start = min(ts_starts) if ts_starts else None
+        ws_end = max(ts_ends) if ts_ends else None
+
+        # Ladder-span summary across the cap_state_snapshot observations.
+        raw_spans = [o.raw_rms_ladder_span_pts for o in self._obs
+                     if o.raw_rms_ladder_span_pts is not None]
+        ac_spans = [o.active_cap_ladder_span_pts for o in self._obs
+                    if o.active_cap_ladder_span_pts is not None]
+        sc_spans = [o.shadow_cap_ladder_span_pts for o in self._obs
+                    if o.shadow_cap_ladder_span_pts is not None]
+
         return {
             "legacy_cap_bind_rate": legacy / total,
             "shadow_cap_bind_rate": shadow / total,
             "estimator_limited_rate": est / total,
             "cap_state_tier_count": total,
+            "cap_state_snapshot_count": snapshot_count,
+            "cap_state_window_start_ts_ns": ws_start,
+            "cap_state_window_end_ts_ns": ws_end,
+            "legacy_cap_bind_rate_by_side": _ratio_dict(
+                "cap_state_legacy_binding_by_side", "cap_state_tier_count_by_side"
+            ),
+            "legacy_cap_bind_rate_by_tier": _ratio_dict(
+                "cap_state_legacy_binding_by_tier", "cap_state_tier_count_by_tier"
+            ),
+            "shadow_cap_bind_rate_by_side": _ratio_dict(
+                "cap_state_shadow_binding_by_side", "cap_state_tier_count_by_side"
+            ),
+            "shadow_cap_bind_rate_by_tier": _ratio_dict(
+                "cap_state_shadow_binding_by_tier", "cap_state_tier_count_by_tier"
+            ),
+            "raw_rms_ladder_span_mean_pts": _safe_mean(raw_spans),
+            "raw_rms_ladder_span_p50_pts": _safe_quantile(raw_spans, 0.5),
+            "raw_rms_ladder_span_p95_pts": _safe_quantile(raw_spans, 0.95),
+            "active_cap_ladder_span_mean_pts": _safe_mean(ac_spans),
+            "shadow_cap_ladder_span_mean_pts": _safe_mean(sc_spans),
         }
 
     def _share_of(self, values: Iterable[str | None]) -> dict[str, float]:
@@ -436,6 +548,27 @@ def _argmax_or_none(share: dict[str, float]) -> str | None:
     if not share:
         return None
     return max(share.items(), key=lambda kv: kv[1])[0]
+
+
+def _safe_mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _safe_quantile(values: list[float], q: float) -> float | None:
+    if not values:
+        return None
+    s = sorted(values)
+    if q <= 0:
+        return s[0]
+    if q >= 1:
+        return s[-1]
+    rank = q * (len(s) - 1)
+    lo = int(rank)
+    hi = min(lo + 1, len(s) - 1)
+    frac = rank - lo
+    return s[lo] * (1.0 - frac) + s[hi] * frac
 
 
 __all__ = ["DEFAULT_WINDOW_SECONDS", "MethodologyHealthAccumulator"]

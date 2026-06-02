@@ -199,6 +199,7 @@ def _build_zone_snapshot_candidate(
                     "low": b.low,
                     "high": b.high,
                     "raw_estimator_width_points": b.raw_estimator_width_points,
+                    "raw_cumulative_width_points": b.raw_cumulative_width_points,
                     "active_cap_n_points": b.active_cap_n_points,
                     "final_width_points": b.final_width_points,
                     "shadow_vol_guardrail_cap_n_points": b.shadow_vol_guardrail_cap_n_points,

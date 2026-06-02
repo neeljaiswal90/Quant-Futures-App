@@ -501,6 +501,21 @@ class MethodologyHealthPayload(RealtimePayload):
     shadow_cap_bind_rate: float | None = None
     estimator_limited_rate: float | None = None
     cap_state_tier_count: int = 0
+    # RA-112e step 10 / Move 3 — metric-hardening (separates tier vs snapshot
+    # denominators; exposes window bounds; surfaces side+tier breakdowns and
+    # raw RMS ladder span readouts).
+    cap_state_snapshot_count: int = 0
+    cap_state_window_start_ts_ns: int | None = None
+    cap_state_window_end_ts_ns: int | None = None
+    legacy_cap_bind_rate_by_side: dict[str, float] = Field(default_factory=dict)
+    legacy_cap_bind_rate_by_tier: dict[str, float] = Field(default_factory=dict)
+    shadow_cap_bind_rate_by_side: dict[str, float] = Field(default_factory=dict)
+    shadow_cap_bind_rate_by_tier: dict[str, float] = Field(default_factory=dict)
+    raw_rms_ladder_span_mean_pts: float | None = None
+    raw_rms_ladder_span_p50_pts: float | None = None
+    raw_rms_ladder_span_p95_pts: float | None = None
+    active_cap_ladder_span_mean_pts: float | None = None
+    shadow_cap_ladder_span_mean_pts: float | None = None
 
 
 class AuctionStatePayload(RealtimePayload):

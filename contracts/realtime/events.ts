@@ -363,6 +363,19 @@ export interface MethodologyHealthPayload {
   shadow_cap_bind_rate: number | null;
   estimator_limited_rate: number | null;
   cap_state_tier_count: number;
+  // RA-112e step 10 / Move 3 — metric hardening (denominator + breakdowns).
+  cap_state_snapshot_count: number;
+  cap_state_window_start_ts_ns: number | null;
+  cap_state_window_end_ts_ns: number | null;
+  legacy_cap_bind_rate_by_side: Record<string, number>;
+  legacy_cap_bind_rate_by_tier: Record<string, number>;
+  shadow_cap_bind_rate_by_side: Record<string, number>;
+  shadow_cap_bind_rate_by_tier: Record<string, number>;
+  raw_rms_ladder_span_mean_pts: number | null;
+  raw_rms_ladder_span_p50_pts: number | null;
+  raw_rms_ladder_span_p95_pts: number | null;
+  active_cap_ladder_span_mean_pts: number | null;
+  shadow_cap_ladder_span_mean_pts: number | null;
 }
 
 export interface AuctionStatePayload {

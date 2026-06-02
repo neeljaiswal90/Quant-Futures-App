@@ -173,6 +173,23 @@ class ShadowZoneBoundary:
     """Per-tier shadow shelf boundary, paired by name with the active shelf.
     The boundary IS the candidate the new cap would produce, but it does NOT
     drive the chart in this commit — see ``VolGuardrailConfig.enabled``.
+
+    Width semantics (operator-locked):
+      ``raw_estimator_width_points``      — per-tier *segment* (= sigma_n).
+      ``raw_cumulative_width_points``     — cumulative *displacement from anchor*
+                                            at this tier (= n * sigma). This is
+                                            the value that must be compared
+                                            against ``active_cap_n_points`` and
+                                            ``shadow_vol_guardrail_cap_n_points``
+                                            to determine cap-binding state —
+                                            cap_n is also cumulative.
+      ``active_cap_n_points``             — cumulative active-cap displacement.
+      ``final_width_points``              — per-tier *segment* after capping.
+      ``shadow_vol_guardrail_cap_n_points``— cumulative shadow-cap displacement.
+      ``shadow_vol_guardrail_width_points``— per-tier shadow segment.
+
+    Carrying both segment and cumulative widths removes any ambiguity for
+    downstream binding tests and visual rendering.
     """
     family: str
     name: str
@@ -180,6 +197,7 @@ class ShadowZoneBoundary:
     low: float
     high: float
     raw_estimator_width_points: float
+    raw_cumulative_width_points: float
     active_cap_n_points: float
     final_width_points: float
     shadow_vol_guardrail_cap_n_points: float
@@ -854,6 +872,7 @@ def _build_shadow_boundaries(
                 low=shadow_low,
                 high=shadow_high,
                 raw_estimator_width_points=raw_width,
+                raw_cumulative_width_points=raw_disp,
                 active_cap_n_points=active_disp,
                 final_width_points=active_width,
                 shadow_vol_guardrail_cap_n_points=shadow_disp,

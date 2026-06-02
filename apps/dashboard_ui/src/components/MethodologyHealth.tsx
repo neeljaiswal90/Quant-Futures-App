@@ -170,11 +170,11 @@ function WidthStateChip({ m }: { m: import("@contracts/realtime/events").Methodo
   const legacy = m.legacy_cap_bind_rate;
   const shadow = m.shadow_cap_bind_rate;
   const estLimited = m.estimator_limited_rate;
+  const tierN = m.cap_state_tier_count ?? 0;
+  const snapN = m.cap_state_snapshot_count ?? 0;
   if (legacy == null && shadow == null && estLimited == null) return null;
 
-  // Dominant state determines the chip label. Per the operator's spec,
-  // "today's finding is not 'wrong cap'; it is 'cap irrelevant right now'"
-  // — so the chip says ESTIMATOR-LIMITED when neither cap binds.
+  // Dominant state determines the chip label.
   let label: string;
   let cls: string;
   if (legacy != null && legacy > 0.5) {
@@ -187,7 +187,6 @@ function WidthStateChip({ m }: { m: import("@contracts/realtime/events").Methodo
     label = `ESTIMATOR-LIMITED ${pct(estLimited)}`;
     cls = "health-info";
   } else {
-    // Mixed regime — show all three. Helpful during transitions.
     const parts: string[] = [];
     if (legacy != null) parts.push(`L ${pct(legacy)}`);
     if (shadow != null) parts.push(`S ${pct(shadow)}`);
@@ -195,14 +194,61 @@ function WidthStateChip({ m }: { m: import("@contracts/realtime/events").Methodo
     label = `WIDTH ${parts.join(" / ")}`;
     cls = "health-info";
   }
+  // Append the denominator so the operator can tell whether 100% is over
+  // n=6 (one first-emit snapshot) or n=240 (40 snapshots × 6 tiers). Low
+  // denominator → de-emphasize the certainty.
+  const denominator = `n=${tierN} · snapshots=${snapN}`;
+  // Build the tooltip with extra context (per-side, per-tier, raw spans).
+  const tooltip = buildWidthTooltip(m);
   return (
     <span
       className={`health-chip ${cls}`}
-      title="WIDTH STATE: classifies what bounds the v3 RMS shelf widths. legacy_cap_binding = ATR cap truncated the estimator; shadow_cap_binding = new YZ/p99 cap would too; estimator_limited = raw σ itself is the binding constraint (neither cap matters)."
+      title={tooltip}
     >
       <b>{label}</b>
+      <span style={{ marginLeft: 6, opacity: 0.7 }}>{denominator}</span>
     </span>
   );
+}
+
+function buildWidthTooltip(
+  m: import("@contracts/realtime/events").MethodologyHealthPayload,
+): string {
+  const lines: string[] = [];
+  lines.push(
+    "WIDTH STATE classifies what bounds the v3 RMS shelf widths.",
+    "  legacy_cap_binding = ATR cap truncated the estimator",
+    "  shadow_cap_binding = new YZ/p99 cap would truncate",
+    "  estimator_limited  = raw σ itself is the binding constraint",
+  );
+  if (m.raw_rms_ladder_span_mean_pts != null) {
+    lines.push(
+      "",
+      `raw RMS ladder span: mean=${m.raw_rms_ladder_span_mean_pts.toFixed(1)}pt p50=${(m.raw_rms_ladder_span_p50_pts ?? 0).toFixed(1)}pt p95=${(m.raw_rms_ladder_span_p95_pts ?? 0).toFixed(1)}pt`,
+      `active cap ladder span (mean): ${(m.active_cap_ladder_span_mean_pts ?? 0).toFixed(1)}pt`,
+      `shadow cap ladder span (mean): ${(m.shadow_cap_ladder_span_mean_pts ?? 0).toFixed(1)}pt`,
+    );
+  }
+  const bySideLegacy = m.legacy_cap_bind_rate_by_side;
+  if (bySideLegacy && Object.keys(bySideLegacy).length > 0) {
+    lines.push(
+      "",
+      "legacy by side: " + Object.entries(bySideLegacy)
+        .map(([k, v]) => `${k}=${pct(v)}`).join(" "),
+    );
+  }
+  const byTierLegacy = m.legacy_cap_bind_rate_by_tier;
+  if (byTierLegacy && Object.keys(byTierLegacy).length > 0) {
+    lines.push(
+      "legacy by tier: " + Object.entries(byTierLegacy)
+        .map(([k, v]) => `${k}=${pct(v)}`).join(" "),
+    );
+  }
+  if (m.cap_state_window_start_ts_ns != null && m.cap_state_window_end_ts_ns != null) {
+    const spanSec = (m.cap_state_window_end_ts_ns - m.cap_state_window_start_ts_ns) / 1e9;
+    lines.push("", `window: ${Math.round(spanSec)}s`);
+  }
+  return lines.join("\n");
 }
 
 function pct(v: number): string {

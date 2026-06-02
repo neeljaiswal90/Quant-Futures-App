@@ -274,11 +274,11 @@ def test_default_window_is_ten_minutes():
 def _shadow_boundary(*, tier: int, raw: float, active_cap_n: float,
                       shadow_cap_n: float, name_prefix: str = "SUP",
                       anchor: float = 30500.0) -> dict:
-    """Build one shadow_boundaries row with the per-tier widths the
-    cap-state counters classify on. Final widths follow the cap formula:
-    final = min(raw_per_tier, cap_per_tier_width)."""
-    # active per-tier width = active_cap_n - prev_active_cap_n; for simplicity
-    # treat each tier as cumulative-equal-spaced so cap_per_tier = cap_n / tier.
+    """Build one shadow_boundaries row. ``raw`` is the per-tier segment width
+    (sigma_n in the v3 build); cumulative width is ``tier * raw``. The
+    cap_n values are cumulative anchor-relative displacements per the
+    operator-locked semantics.
+    """
     active_per_tier = active_cap_n / tier
     shadow_per_tier = shadow_cap_n / tier
     final_w = min(raw, active_per_tier)
@@ -290,6 +290,7 @@ def _shadow_boundary(*, tier: int, raw: float, active_cap_n: float,
         "low": anchor,
         "high": anchor + raw,
         "raw_estimator_width_points": raw,
+        "raw_cumulative_width_points": tier * raw,
         "active_cap_n_points": active_cap_n,
         "final_width_points": final_w,
         "shadow_vol_guardrail_cap_n_points": shadow_cap_n,
@@ -396,3 +397,175 @@ def test_cap_state_ignores_observations_without_shadow_boundaries():
     m = acc.metrics(now_ts_ns=2 * SECOND_NS)
     assert m["cap_state_tier_count"] == 0
     assert m["legacy_cap_bind_rate"] is None
+    assert m["cap_state_snapshot_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Metric-hardening tests (denominator + cumulative-vs-segment semantics)
+# ---------------------------------------------------------------------------
+
+
+def test_one_snapshot_six_tiers_yields_snapshot_count_1_tier_count_6():
+    """Single snapshot pass with 6 v3 tiers (3 SUP + 3 DEM): the chip
+    denominator should report snapshots=1, tiers=6."""
+    acc = MethodologyHealthAccumulator()
+    boundaries: list[dict] = []
+    for side in ("SUP", "DEM"):
+        for t in (1, 2, 3):
+            boundaries.append(_shadow_boundary(
+                tier=t, raw=10.0,
+                active_cap_n=100.0 * t, shadow_cap_n=500.0 * t,
+                name_prefix=side,
+            ))
+    acc.observe(
+        ts_ns=SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0, shadow_boundaries=boundaries,
+    )
+    m = acc.metrics(now_ts_ns=2 * SECOND_NS)
+    assert m["cap_state_snapshot_count"] == 1
+    assert m["cap_state_tier_count"] == 6
+
+
+def test_ten_snapshots_six_tiers_yields_snapshot_count_10_tier_count_60():
+    """Ten snapshot passes accumulate to snapshots=10, tiers=60."""
+    acc = MethodologyHealthAccumulator()
+    for i in range(10):
+        boundaries: list[dict] = []
+        for side in ("SUP", "DEM"):
+            for t in (1, 2, 3):
+                boundaries.append(_shadow_boundary(
+                    tier=t, raw=10.0,
+                    active_cap_n=100.0 * t, shadow_cap_n=500.0 * t,
+                    name_prefix=side,
+                ))
+        acc.observe(
+            ts_ns=(i + 1) * SECOND_NS, emitted=True,
+            auction_state="inside_value", tactical_status="live",
+            shelves=[], cap_bind_flags={}, anchor=30500.0,
+            shadow_boundaries=boundaries,
+        )
+    m = acc.metrics(now_ts_ns=11 * SECOND_NS)
+    assert m["cap_state_snapshot_count"] == 10
+    assert m["cap_state_tier_count"] == 60
+
+
+def test_binding_uses_cumulative_width_not_segment():
+    """A boundary where the per-tier segment width LOOKS smaller than the
+    per-tier cap, but the CUMULATIVE width exceeds the cumulative cap_n,
+    must be classified as binding. This is the semantic distinction the
+    operator's review required."""
+    acc = MethodologyHealthAccumulator()
+    # Construct boundary: tier=3, raw_per_tier=20, raw_cumulative=60.
+    # active_cap_n=40 (cumulative). Segment-only test would compare
+    # raw=20 vs final_width=20 → wrong (not binding). Cumulative test:
+    # raw_cumulative=60 > cap_n=40 → binding (correct).
+    b = {
+        "family": "sigma_v3_vwap_anchor",
+        "name": "SUP_3", "tier": 3,
+        "low": 30500.0, "high": 30560.0,
+        "raw_estimator_width_points": 20.0,    # per-tier segment
+        "raw_cumulative_width_points": 60.0,   # cumulative — the canonical comparator
+        "active_cap_n_points": 40.0,           # cumulative cap (< raw_cumulative)
+        "final_width_points": 20.0,            # segment after cap (deliberately misleading)
+        "shadow_vol_guardrail_cap_n_points": 200.0,
+        "shadow_vol_guardrail_width_points": 20.0,
+    }
+    acc.observe(
+        ts_ns=SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0, shadow_boundaries=[b],
+    )
+    m = acc.metrics(now_ts_ns=2 * SECOND_NS)
+    assert m["legacy_cap_bind_rate"] == 1.0
+    assert m["shadow_cap_bind_rate"] == 0.0  # 60 < 200
+
+
+def test_binding_breakdown_by_side_and_tier_sums_to_total():
+    """Per-side / per-tier rates must be consistent with the pooled total:
+    sum of (rate * denominator) across sides equals the pooled numerator."""
+    acc = MethodologyHealthAccumulator()
+    boundaries: list[dict] = []
+    # Supply binds at all tiers; demand binds at none.
+    for t in (1, 2, 3):
+        boundaries.append(_shadow_boundary(
+            tier=t, raw=50.0,
+            active_cap_n=t * 30.0, shadow_cap_n=t * 200.0,
+            name_prefix="SUP",
+        ))
+    for t in (1, 2, 3):
+        boundaries.append(_shadow_boundary(
+            tier=t, raw=10.0,
+            active_cap_n=t * 100.0, shadow_cap_n=t * 500.0,
+            name_prefix="DEM",
+        ))
+    acc.observe(
+        ts_ns=SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0, shadow_boundaries=boundaries,
+    )
+    m = acc.metrics(now_ts_ns=2 * SECOND_NS)
+    assert m["cap_state_tier_count"] == 6
+    # Pooled rate: 3 of 6 tiers bind = 0.5
+    assert m["legacy_cap_bind_rate"] == pytest.approx(0.5)
+    # By side: supply binds 100%, demand 0%.
+    bs = m["legacy_cap_bind_rate_by_side"]
+    assert bs["supply"] == pytest.approx(1.0)
+    assert bs["demand"] == pytest.approx(0.0)
+    # By tier: all three tiers bind 50% (3 supply tiers bind, 3 demand don't).
+    bt = m["legacy_cap_bind_rate_by_tier"]
+    for t in ("1", "2", "3"):
+        assert bt[t] == pytest.approx(0.5)
+
+
+def test_raw_rms_ladder_span_readouts_populated():
+    """Raw RMS ladder span (= raw_cumulative at tier 3) and the active/shadow
+    cap spans should be averaged across snapshots and reported. This is
+    what the operator needs to answer 'is the cap actually tighter than the
+    raw estimator wants right now?'."""
+    acc = MethodologyHealthAccumulator()
+    # Three snapshots. tier=3 raw_cumulative = 3 * 15 = 45pt.
+    # active_cap_n_3 = 48pt, shadow_cap_n_3 = 240pt.
+    for i in range(3):
+        boundaries: list[dict] = []
+        for t in (1, 2, 3):
+            boundaries.append(_shadow_boundary(
+                tier=t, raw=15.0,
+                active_cap_n=t * 16.0, shadow_cap_n=t * 80.0,
+                name_prefix="SUP",
+            ))
+        acc.observe(
+            ts_ns=(i + 1) * SECOND_NS, emitted=True,
+            auction_state="inside_value", tactical_status="live",
+            shelves=[], cap_bind_flags={}, anchor=30500.0,
+            shadow_boundaries=boundaries,
+        )
+    m = acc.metrics(now_ts_ns=4 * SECOND_NS)
+    assert m["raw_rms_ladder_span_mean_pts"] == pytest.approx(45.0)
+    assert m["active_cap_ladder_span_mean_pts"] == pytest.approx(48.0)
+    assert m["shadow_cap_ladder_span_mean_pts"] == pytest.approx(240.0)
+
+
+def test_window_timestamps_track_contributing_observations():
+    """cap_state_window_{start,end}_ts_ns should reflect the timestamps of
+    observations that actually contributed cap-state data."""
+    acc = MethodologyHealthAccumulator()
+    boundaries = [
+        _shadow_boundary(
+            tier=t, raw=10.0, active_cap_n=100.0 * t, shadow_cap_n=500.0 * t,
+        )
+        for t in (1, 2, 3)
+    ]
+    acc.observe(
+        ts_ns=5 * SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0, shadow_boundaries=boundaries,
+    )
+    acc.observe(
+        ts_ns=15 * SECOND_NS, emitted=True, auction_state="inside_value",
+        tactical_status="live", shelves=[], cap_bind_flags={},
+        anchor=30500.0, shadow_boundaries=boundaries,
+    )
+    m = acc.metrics(now_ts_ns=20 * SECOND_NS)
+    assert m["cap_state_window_start_ts_ns"] == 5 * SECOND_NS
+    assert m["cap_state_window_end_ts_ns"] == 15 * SECOND_NS
