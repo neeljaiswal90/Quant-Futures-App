@@ -1,23 +1,35 @@
 {
+  "as_of_date": "2026-06-02",
   "bad_tick_filter": {
     "enabled": false,
     "method": "trade_price_vs_l1_sanity",
     "params": {
-      "note": "v1: filter disabled; planned for v2 with L1 sync"
+      "note": "v1 disabled; planned for v2 with L1 sync"
     }
   },
-  "computed_at_ts_ns": 1780426385540203400,
-  "effective_sample_note": "overlapping_windows",
-  "lookback_sessions": 20,
-  "max_range_points": 228.5,
+  "computed_at_ts_ns": 1780428175013823700,
+  "effective_sample_note": "overlapping windows; effective independent sample is lower than n_windows",
+  "generator_version": "compute_tail_cap.v1",
+  "lookback_sessions_requested": 20,
+  "lookback_sessions_used": 9,
   "n_windows": 7048,
-  "p95_range_points": 140.75,
-  "p98_range_points": 174.02999999999975,
-  "p99_range_points": 187.5,
+  "overlapping_windows": true,
+  "price_source": "raw_trade_prints",
+  "quantile_method": "linear",
   "range_horizon_minutes": 60,
+  "range_stats_points": {
+    "max": 228.5,
+    "p50": 65.0,
+    "p75": 85.75,
+    "p90": 114.75,
+    "p95": 140.75,
+    "p98": 174.02999999999975,
+    "p99": 187.5
+  },
   "range_step_minutes": 1,
   "schema_version": "tail_cap_calibration.v1",
-  "session": "globex",
+  "session_kind": "globex",
+  "sessions_skipped": [],
   "sessions_used": [
     "2026-06-01",
     "2026-05-29",
@@ -30,5 +42,8 @@
     "2026-05-20"
   ],
   "symbol": "MNQ",
-  "valid_for_date": "2026-06-02"
+  "tick_size": 0.25,
+  "unit": "points",
+  "uses_sessions_strictly_before": "2026-06-02",
+  "valid_from_session_date": "2026-06-02"
 }

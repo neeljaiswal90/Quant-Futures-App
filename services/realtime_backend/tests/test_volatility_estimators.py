@@ -32,11 +32,14 @@ def test_constant_price_series_yields_zero_yz():
     """If every bar is flat (O=H=L=C and unchanged across bars), variance
     must be exactly zero in log-return space."""
     bars = [_bar(30500.0, 30500.0, 30500.0, 30500.0) for _ in range(12)]
-    r = yang_zhang_variance(bars)
-    assert r.variance == 0.0
-    assert r.sigma == 0.0
+    r = yang_zhang_variance(bars, window_minutes=60)
+    assert r.variance_log == 0.0
+    assert r.sigma_log == 0.0
     assert r.sigma_rs_sq == 0.0
     assert r.sigma_open_close_sq == 0.0
+    assert r.window_minutes == 60
+    assert r.sigma_points(30500.0) == 0.0
+    assert r.ladder_span_points(30500.0) == 0.0
 
 
 def test_monotonic_intrabar_trend_does_not_collapse_to_close_to_close():
@@ -55,7 +58,7 @@ def test_monotonic_intrabar_trend_does_not_collapse_to_close_to_close():
         c = base + 0.1          # close-to-close drifts 0.1 each bar
         bars.append(_bar(o, h, l, c))
         base = c
-    r = yang_zhang_variance(bars)
+    r = yang_zhang_variance(bars, window_minutes=60)
     # OC component alone is tiny (drift of 0.1pt / 30500 ≈ 3.3e-6 per bar):
     assert r.sigma_open_close_sq < 1e-9
     # The point of this test: RS captures intrabar high/low expansion that
@@ -63,13 +66,12 @@ def test_monotonic_intrabar_trend_does_not_collapse_to_close_to_close():
     # for the YZ result to materially differ from a close-to-close estimator.
     assert r.sigma_rs_sq > 100.0 * r.sigma_open_close_sq
     # Net YZ inherits the RS magnitude — does NOT collapse to OC-only.
-    assert r.variance > 0.0
-    assert r.variance > 10.0 * r.sigma_open_close_sq
-    # Sanity: sigma in log-return space converts back to a meaningful
-    # number of MNQ points (anchor * sigma should be sub-1pt for this
-    # tiny synthetic series).
-    points = 30500.0 * r.sigma
-    assert points > 0.0
+    assert r.variance_log > 0.0
+    assert r.variance_log > 10.0 * r.sigma_open_close_sq
+    # Sanity: sigma_points() (unit-safe API, not manual multiply) is positive.
+    assert r.sigma_points(30500.0) > 0.0
+    # ladder_span_points at default sigma_multiplier=3.0 is 3x sigma_points.
+    assert r.ladder_span_points(30500.0) == pytest.approx(3.0 * r.sigma_points(30500.0))
 
 
 def test_yz_drops_bad_data_silently():
@@ -79,32 +81,41 @@ def test_yz_drops_bad_data_silently():
         _bar(0.0, 0.0, 0.0, 0.0),  # corrupt
         _bar(30500.0, 30501.0, 30499.0, 30500.5),
     ]
-    r = yang_zhang_variance(bars)
+    r = yang_zhang_variance(bars, window_minutes=60)
     # Did not crash; at least one valid bar pair contributed.
-    assert math.isfinite(r.variance)
+    assert math.isfinite(r.variance_log)
 
 
-def test_yz_log_to_points_conversion_is_explicit():
-    """Caller must apply ``yz_sigma_points = anchor * sqrt(variance)`` — this
-    test pins the contract so future refactors don't move the conversion
-    inside the estimator."""
+def test_yz_unit_safe_conversion_via_methods():
+    """The conversion from log-return σ to MNQ points goes through the
+    unit-safe methods on YangZhangEstimate — call sites should never multiply
+    by anchor manually. This test pins the API contract."""
     bars = []
     base = 30000.0
     # 0.5pt close-to-close drift over 12 bars, no intrabar expansion.
     for i in range(12):
         bars.append(_bar(base, base, base, base + 0.5))
         base += 0.5
-    r = yang_zhang_variance(bars)
-    # Estimator output is in log-return space.
-    assert r.sigma > 0.0
-    # Conversion to MNQ points uses the anchor:
-    anchor = 30500.0
-    yz_sigma_points_a = anchor * r.sigma
-    yz_sigma_points_b = (anchor + 100.0) * r.sigma
+    r = yang_zhang_variance(bars, window_minutes=60)
+    # Estimator output is in log-return space (private field).
+    assert r.sigma_log > 0.0
+    # Method-based conversion to MNQ points:
+    yz_sigma_points_a = r.sigma_points(30500.0)
+    yz_sigma_points_b = r.sigma_points(30600.0)
     # Same log-σ → different point σ at different anchors. That's the
     # behavior we WANT to preserve.
     assert yz_sigma_points_b > yz_sigma_points_a
     assert yz_sigma_points_a > 0.0
+    # ladder_span_points at default 3.0 = 3 * sigma_points
+    assert r.ladder_span_points(30500.0) == pytest.approx(3.0 * yz_sigma_points_a)
+    # Custom multiplier
+    assert r.ladder_span_points(30500.0, sigma_multiplier=2.0) == pytest.approx(
+        2.0 * yz_sigma_points_a
+    )
+    # Boundary: nonsense anchor should not crash, yields 0.
+    assert r.sigma_points(0.0) == 0.0
+    assert r.sigma_points(-100.0) == 0.0
+    assert r.sigma_points(float("nan")) == 0.0
 
 
 def test_yz_excludes_overnight_by_default():
@@ -118,8 +129,8 @@ def test_yz_excludes_overnight_by_default():
         _bar(30500.5, 30501.5, 30499.5, 30501.0),
         _bar(30501.0, 30502.0, 30500.0, 30501.5),
     ]
-    r_off = yang_zhang_variance(bars, include_overnight=False)
-    r_on = yang_zhang_variance(bars, include_overnight=True)
+    r_off = yang_zhang_variance(bars, window_minutes=60, include_overnight=False)
+    r_on = yang_zhang_variance(bars, window_minutes=60, include_overnight=True)
     assert r_off.has_overnight is False
     assert r_on.has_overnight is True
     # Both components have to be present in the result struct regardless.
@@ -132,12 +143,12 @@ def test_yz_excludes_overnight_by_default():
         _bar(30510.0, 30511.0, 30509.0, 30510.5),  # 9.5pt gap from prev close
         _bar(30510.5, 30511.5, 30509.5, 30511.0),
     ]
-    r_off2 = yang_zhang_variance(bars_with_gap, include_overnight=False)
-    r_on2 = yang_zhang_variance(bars_with_gap, include_overnight=True)
+    r_off2 = yang_zhang_variance(bars_with_gap, window_minutes=60, include_overnight=False)
+    r_on2 = yang_zhang_variance(bars_with_gap, window_minutes=60, include_overnight=True)
     assert r_off2.sigma_overnight_sq == 0.0
     assert r_on2.sigma_overnight_sq > 0.0
     # Variance reflects the gap only when overnight is included:
-    assert r_on2.variance > r_off2.variance
+    assert r_on2.variance_log > r_off2.variance_log
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +271,32 @@ def test_realized_ranges_handles_out_of_order_input():
 
 def test_realized_ranges_empty_input():
     assert overlapping_realized_ranges([], horizon_minutes=60) == []
+
+
+def test_realized_ranges_carries_low_high_n_trades_for_diagnostics():
+    """top-window diagnostics need low/high/n_trades on each window so the
+    operator can audit whether a high p99 is from a real move or a bad
+    tick. Pin the new fields here."""
+    # 90 min of ticks; one obvious 60-min window has a 50pt spike.
+    prices: list[tuple[int, float]] = []
+    for i in range(20):
+        prices.append((i * MIN_NS, 30500.0))
+    prices.append((25 * MIN_NS, 30550.0))  # spike
+    for i in range(30, 90):
+        prices.append((i * MIN_NS, 30500.0))
+    windows = overlapping_realized_ranges(
+        prices, horizon_minutes=60, step_minutes=1
+    )
+    # All windows have low/high/n_trades populated
+    for w in windows:
+        assert w.high_price >= w.low_price
+        assert w.high_price - w.low_price == pytest.approx(w.range_points)
+        assert w.n_trades >= 1
+    # The window containing the spike has high=30550, low=30500, range=50.
+    big = max(windows, key=lambda w: w.range_points)
+    assert big.high_price == 30550.0
+    assert big.low_price == 30500.0
+    assert big.range_points == 50.0
 
 
 # ---------------------------------------------------------------------------

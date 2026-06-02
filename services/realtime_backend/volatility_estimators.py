@@ -50,41 +50,81 @@ class OhlcBar:
 
 
 @dataclass(frozen=True, slots=True)
-class YangZhangResult:
-    """Decomposed YZ output so callers can audit each component."""
-    variance: float          # σ² in log-return space
-    sigma: float             # √variance, log-return space
-    n_subbars: int
+class YangZhangEstimate:
+    """Unit-safe Yang-Zhang result. ``variance_log`` and ``sigma_log`` are in
+    *log-return space*; converting to MNQ points requires an anchor price.
+    The class methods enforce that boundary so call sites cannot accidentally
+    treat a log-space number as price-points.
+
+    Carries the decomposed components (overnight, open-close, Rogers-Satchell)
+    for audit. ``window_minutes`` is metadata passed by the caller so a result
+    object self-documents its computation horizon.
+    """
+    variance_log: float
+    sigma_log: float
+    n_bars: int
+    window_minutes: int
     k_weight: float
+    has_overnight: bool
+    # decomposition components, all in log-return space
     sigma_overnight_sq: float
     sigma_open_close_sq: float
     sigma_rs_sq: float       # Rogers-Satchell component
-    has_overnight: bool      # False when bars are session-internal only
+
+    def sigma_points(self, anchor_price: float) -> float:
+        """Convert log-return σ to MNQ points using the anchor.
+
+        For small log returns r, ``price * r ≈ price * (e^r - 1)`` — adequate
+        for the magnitudes seen in intraday MNQ vol (r << 1).
+        """
+        if not math.isfinite(anchor_price) or anchor_price <= 0.0:
+            return 0.0
+        return anchor_price * self.sigma_log
+
+    def ladder_span_points(
+        self, anchor_price: float, sigma_multiplier: float = 3.0
+    ) -> float:
+        """Ladder-span-equivalent number of MNQ points.
+
+        Default ``sigma_multiplier = 3.0`` gives a 3σ-equivalent span, used
+        as the YZ contribution to the volatility-guardrail cap in
+        sigma_zones_v3.
+        """
+        return sigma_multiplier * self.sigma_points(anchor_price)
 
 
 def yang_zhang_variance(
     bars: Sequence[OhlcBar],
     *,
+    window_minutes: int,
     alpha: float = 1.34,
     include_overnight: bool = False,
-) -> YangZhangResult:
+) -> YangZhangEstimate:
     """Estimate Yang-Zhang volatility from a sequence of OHLC sub-bars.
 
-    Returns σ² in **log-return space**. The caller MUST convert to price
-    units before comparing against MNQ-point quantities:
+    Returns σ² in **log-return space** as a unit-safe :class:`YangZhangEstimate`.
+    Convert to MNQ points via ``result.sigma_points(anchor)`` or
+    ``result.ladder_span_points(anchor, sigma_multiplier=3.0)`` — call sites
+    should never multiply by ``anchor_price`` manually.
 
-        yz_sigma_points = anchor_price * sqrt(result.variance)
+    ``window_minutes`` is the caller-supplied horizon (e.g. 60 for a trailing
+    60-min YZ) — stored on the result so it self-documents.
 
     ``include_overnight`` controls whether close[i-1] -> open[i] gaps
     contribute to the overnight component. For an intraday-only horizon
     (e.g. the trailing 60 minutes of RTH tape), set False — close-to-open
     "gaps" within a continuous session are zero by definition.
 
-    Returns a zero result if fewer than 2 bars are supplied.
+    Returns a zero-variance estimate if fewer than 2 bars are supplied.
     """
     n = len(bars)
     if n < 2:
-        return YangZhangResult(0.0, 0.0, n, 0.0, 0.0, 0.0, 0.0, include_overnight)
+        return YangZhangEstimate(
+            variance_log=0.0, sigma_log=0.0, n_bars=n,
+            window_minutes=window_minutes, k_weight=0.0,
+            has_overnight=include_overnight,
+            sigma_overnight_sq=0.0, sigma_open_close_sq=0.0, sigma_rs_sq=0.0,
+        )
 
     k = _yz_k(n, alpha=alpha)
 
@@ -100,7 +140,6 @@ def yang_zhang_variance(
                cur.open, cur.high, cur.low, cur.close) <= 0:
             # Bad data: log-domain math would diverge. Skip the bar.
             continue
-        # All in log space.
         log_o = math.log(cur.open)
         log_h = math.log(cur.high)
         log_l = math.log(cur.low)
@@ -120,7 +159,12 @@ def yang_zhang_variance(
         valid += 1
 
     if valid == 0:
-        return YangZhangResult(0.0, 0.0, n, k, 0.0, 0.0, 0.0, include_overnight)
+        return YangZhangEstimate(
+            variance_log=0.0, sigma_log=0.0, n_bars=n,
+            window_minutes=window_minutes, k_weight=k,
+            has_overnight=include_overnight,
+            sigma_overnight_sq=0.0, sigma_open_close_sq=0.0, sigma_rs_sq=0.0,
+        )
 
     sigma_overnight_sq = overnight_sq_sum / valid if include_overnight else 0.0
     sigma_open_close_sq = open_close_sq_sum / valid
@@ -128,15 +172,16 @@ def yang_zhang_variance(
     variance = sigma_overnight_sq + k * sigma_open_close_sq + (1.0 - k) * sigma_rs_sq
     if variance < 0.0:
         variance = 0.0
-    return YangZhangResult(
-        variance=variance,
-        sigma=math.sqrt(variance),
-        n_subbars=n,
+    return YangZhangEstimate(
+        variance_log=variance,
+        sigma_log=math.sqrt(variance),
+        n_bars=n,
+        window_minutes=window_minutes,
         k_weight=k,
+        has_overnight=include_overnight,
         sigma_overnight_sq=sigma_overnight_sq,
         sigma_open_close_sq=sigma_open_close_sq,
         sigma_rs_sq=sigma_rs_sq,
-        has_overnight=include_overnight,
     )
 
 
@@ -166,11 +211,17 @@ def bipower_variation(log_returns: Sequence[float]) -> float:
 class RealizedRangeWindow:
     """One overlapping-window range observation. Kept as a dataclass so the
     calibration job can write the full sample set if desired (not just the
-    p99) for later audit."""
+    p99) for later audit. Carries enough metadata to do top-window
+    diagnostics ("is this large p99 actually from a bad tick?") without
+    re-reading the source captures.
+    """
     start_ts_ns: int
     end_ts_ns: int
     horizon_minutes: int
     range_points: float
+    low_price: float
+    high_price: float
+    n_trades: int
 
 
 def overlapping_realized_ranges(
@@ -218,7 +269,7 @@ def overlapping_realized_ranges(
         # compute high/low between win_start and win_end
         hi = -math.inf
         lo = math.inf
-        any_sample = False
+        n_in = 0
         for k in range(j_lo, n):
             ts, px = ordered[k]
             if ts >= win_end:
@@ -227,13 +278,16 @@ def overlapping_realized_ranges(
                 hi = px
             if px < lo:
                 lo = px
-            any_sample = True
-        if any_sample and math.isfinite(hi) and math.isfinite(lo):
+            n_in += 1
+        if n_in > 0 and math.isfinite(hi) and math.isfinite(lo):
             windows.append(RealizedRangeWindow(
                 start_ts_ns=win_start,
                 end_ts_ns=win_end,
                 horizon_minutes=horizon_minutes,
                 range_points=hi - lo,
+                low_price=lo,
+                high_price=hi,
+                n_trades=n_in,
             ))
         win_start += step_ns
     return windows
@@ -266,7 +320,7 @@ def percentile(values: Sequence[float], q: float) -> float:
 
 __all__ = [
     "OhlcBar",
-    "YangZhangResult",
+    "YangZhangEstimate",
     "RealizedRangeWindow",
     "yang_zhang_variance",
     "bipower_variation",

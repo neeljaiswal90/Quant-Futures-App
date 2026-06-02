@@ -1,23 +1,35 @@
 {
+  "as_of_date": "2026-06-02",
   "bad_tick_filter": {
     "enabled": false,
     "method": "trade_price_vs_l1_sanity",
     "params": {
-      "note": "v1: filter disabled; planned for v2 with L1 sync"
+      "note": "v1 disabled; planned for v2 with L1 sync"
     }
   },
-  "computed_at_ts_ns": 1780426355383572500,
-  "effective_sample_note": "overlapping_windows",
-  "lookback_sessions": 20,
-  "max_range_points": 314.75,
+  "computed_at_ts_ns": 1780428141120278700,
+  "effective_sample_note": "overlapping windows; effective independent sample is lower than n_windows",
+  "generator_version": "compute_tail_cap.v1",
+  "lookback_sessions_requested": 20,
+  "lookback_sessions_used": 8,
   "n_windows": 2112,
-  "p95_range_points": 241.9749999999999,
-  "p98_range_points": 269.75,
-  "p99_range_points": 284.44749999999965,
+  "overlapping_windows": true,
+  "price_source": "raw_trade_prints",
+  "quantile_method": "linear",
   "range_horizon_minutes": 60,
+  "range_stats_points": {
+    "max": 314.75,
+    "p50": 103.5,
+    "p75": 148.0,
+    "p90": 189.75,
+    "p95": 241.9749999999999,
+    "p98": 269.75,
+    "p99": 284.44749999999965
+  },
   "range_step_minutes": 1,
   "schema_version": "tail_cap_calibration.v1",
-  "session": "rth",
+  "session_kind": "rth",
+  "sessions_skipped": [],
   "sessions_used": [
     "2026-06-01",
     "2026-05-29",
@@ -29,5 +41,8 @@
     "2026-05-20"
   ],
   "symbol": "MNQ",
-  "valid_for_date": "2026-06-02"
+  "tick_size": 0.25,
+  "unit": "points",
+  "uses_sessions_strictly_before": "2026-06-02",
+  "valid_from_session_date": "2026-06-02"
 }
