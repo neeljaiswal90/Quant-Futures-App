@@ -55,6 +55,34 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional cap on input rows scored (for quick smoke runs).",
     )
 
+    # RA-094: offline performance evaluator. Joins setups+labels via the same
+    # logic the trainer uses, scores each eligible example, computes AUC /
+    # Brier / log_loss / calibration / hit-rate-at-threshold per cell.
+    evaluate = subparsers.add_parser(
+        "evaluate",
+        help="Evaluate trained models against a fresh session's setups + labels.",
+    )
+    evaluate.add_argument(
+        "--setups", required=True, type=Path,
+        help="RA-092 setup-firing JSONL path (the input to score).",
+    )
+    evaluate.add_argument(
+        "--labels", required=True, type=Path,
+        help="RA-091 forward-return label JSONL path (realized outcomes).",
+    )
+    evaluate.add_argument(
+        "--models", required=True, type=Path,
+        help="Trained run dir, e.g. .../model_runs/quiet-window-2026-05-31/.",
+    )
+    evaluate.add_argument(
+        "--out", required=True, type=Path,
+        help="Output markdown report path. A .json sidecar is written next to it.",
+    )
+    evaluate.add_argument(
+        "--target-ticks", type=float, default=4.0,
+        help="MFE threshold above which a label = 1. Must match training config.",
+    )
+
     pipeline = subparsers.add_parser(
         "pipeline",
         help="Run RA-093b replay -> labels -> train pipeline for capture sessions.",
@@ -151,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "score":
         return _run_score(args)
+    if args.command == "evaluate":
+        return _run_evaluate(args)
     if args.command == "pipeline":
         from scalp_models.pipeline import (
             DEFAULT_ANALYTICS_ROOT,
@@ -380,5 +410,48 @@ def _run_score(args: argparse.Namespace) -> int:
         f"skipped_no_model={counts['skipped_no_model']} "
         f"errors={counts['errors']} "
         f"input_rows_by_setup_type={breakdown}"
+    )
+    return 0
+
+
+def _run_evaluate(args: argparse.Namespace) -> int:
+    """RA-094 offline performance evaluator: joins setups+labels, scores
+    each eligible example with the trained bundle, computes per-cell metrics,
+    emits a markdown report + JSON sidecar.
+    """
+    import json
+    from dataclasses import asdict
+    from scalp_models.evaluate import evaluate, render_markdown_report, cell_to_dict
+
+    result = evaluate(
+        run_dir=args.models,
+        setups_path=args.setups,
+        labels_path=args.labels,
+        target_ticks=args.target_ticks,
+    )
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(render_markdown_report(result), encoding="utf-8")
+    sidecar = args.out.with_suffix(args.out.suffix + ".json")
+    sidecar_payload = {
+        "run_dir": result.run_dir,
+        "setups_path": result.setups_path,
+        "labels_path": result.labels_path,
+        "n_setup_rows": result.n_setup_rows,
+        "n_label_rows": result.n_label_rows,
+        "n_excluded_by_status": result.n_excluded_by_status,
+        "cells": [cell_to_dict(c) for c in result.cells],
+    }
+    sidecar.write_text(json.dumps(sidecar_payload, indent=2), encoding="utf-8")
+
+    n_cells = sum(1 for c in result.cells if c.n_total > 0)
+    n_skipped = sum(1 for c in result.cells if c.note and "no_model" in c.note)
+    print(
+        "scalp_models_evaluated: "
+        f"report={args.out} "
+        f"sidecar={sidecar} "
+        f"cells_with_data={n_cells} "
+        f"cells_skipped_no_model={n_skipped} "
+        f"setup_rows={result.n_setup_rows} "
+        f"label_rows={result.n_label_rows}"
     )
     return 0
