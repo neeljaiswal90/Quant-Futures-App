@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Fresh-repo migration: D:\Quant-futures-app → D:\mnq-orderflow
+  Fresh-repo migration: D:\Quant-futures-app -> D:\mnq-orderflow
 
 .DESCRIPTION
   Phase 1 (non-destructive prep): clone + filter-repo + path renames + manual
@@ -27,11 +27,11 @@
   Destination repo path. Default D:\mnq-orderflow.
 
 .EXAMPLE
-  # Phase 1 prep — safe, runs while live system is up
+  # Phase 1 prep -- safe, runs while live system is up
   .\migrate_to_mnq_orderflow.ps1 -Phase 1 -DryRun
   .\migrate_to_mnq_orderflow.ps1 -Phase 1
 
-  # Phase 2 cutover — destructive, run during market quiet window
+  # Phase 2 cutover -- destructive, run during market quiet window
   .\migrate_to_mnq_orderflow.ps1 -Phase 2
 
   # Phase 3 validation
@@ -55,26 +55,26 @@ function Write-Status {
     Write-Host ("{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message) -ForegroundColor $Color
 }
 
-# ───────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------
 # Path-include list for git filter-repo. Each path is a glob. Paths NOT
 # in this list get DROPPED from the new repo's history. Curated from the
 # A1 inventory CSV: docs/plan/repo-split-classification.csv.
-# ───────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------
 $PathsToKeep = @(
-    # Apps — dashboard side only
+    # Apps -- dashboard side only
     "apps/dashboard_ui/",
     "apps/dashboard_shell/",
-    # Services — dashboard side only
+    # Services -- dashboard side only
     "services/realtime_backend/",
     "services/notification_daemon/",
     # Detector code lives in services/replay/replay/ in old repo; we'll
     # filter the WHOLE services/replay/ in (it's small) and prune algo-
     # specific files in the manual-cleanup step.
     "services/replay/",
-    # Tools — dashboard side
+    # Tools -- dashboard side
     "tools/rithmic_analytics/",
     "tools/rithmic_dashboard/",
-    # Contracts — shared schemas (will need clean up after filter-repo:
+    # Contracts -- shared schemas (will need clean up after filter-repo:
     # mypy_cache, algo-only contracts)
     "contracts/",
     # Scripts
@@ -86,7 +86,7 @@ $PathsToKeep = @(
     "post_capture_rotate.ps1",
     "run_live_realtime_stack.ps1",
     "run_realtime_stack.ps1",
-    # Docs — dashboard-relevant subset
+    # Docs -- dashboard-relevant subset
     "docs/perf/",
     "docs/plan/repo-split-2026-06-03.md",
     "docs/plan/repo-split-coordinator-handoff.md",
@@ -118,9 +118,9 @@ $PathRenames = @(
     "services/replay/:services/detectors/"
 )
 
-# ───────────────────────────────────────────────────────────────────────
-# Phase 1 — non-destructive prep
-# ───────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------
+# Phase 1 -- non-destructive prep
+# -----------------------------------------------------------------------
 if ($Phase -eq 1) {
     Write-Status "=== PHASE 1: non-destructive prep ===" Cyan
 
@@ -216,9 +216,9 @@ if ($Phase -eq 1) {
     Write-Status "Next: hand-edit cleanups, then `npm install && npm run build`. If green, ready for Phase 2." Cyan
 }
 
-# ───────────────────────────────────────────────────────────────────────
-# Phase 2 — destructive cutover (run during market quiet window only)
-# ───────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------
+# Phase 2 -- destructive cutover (run during market quiet window only)
+# -----------------------------------------------------------------------
 if ($Phase -eq 2) {
     Write-Status "=== PHASE 2: destructive cutover ===" Red
     Write-Status "This phase stops the live system. Only run during market quiet (14:00-17:00 PT today)." Yellow
@@ -277,9 +277,9 @@ if ($Phase -eq 2) {
     Write-Status "Next: launch from $TargetRepo\Start-MNQ-Dashboard.cmd" Cyan
 }
 
-# ───────────────────────────────────────────────────────────────────────
-# Phase 3 — post-cutover validation
-# ───────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------
+# Phase 3 -- post-cutover validation
+# -----------------------------------------------------------------------
 if ($Phase -eq 3) {
     Write-Status "=== PHASE 3: validation ===" Cyan
 
@@ -299,7 +299,7 @@ if ($Phase -eq 3) {
         try {
             (Invoke-WebRequest -Uri 'http://127.0.0.1:8765/health' -TimeoutSec 5 -UseBasicParsing).Content
         } catch {
-            Write-Status "backend not running — launch via Start-MNQ-Dashboard.cmd first" Yellow
+            Write-Status "backend not running -- launch via Start-MNQ-Dashboard.cmd first" Yellow
         }
     } finally { Pop-Location }
 
