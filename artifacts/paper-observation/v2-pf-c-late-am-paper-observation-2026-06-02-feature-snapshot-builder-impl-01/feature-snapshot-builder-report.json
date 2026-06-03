@@ -1,0 +1,182 @@
+{
+  "artifact_size_guard_bytes": 99614720,
+  "bars_in_snapshot": 119,
+  "bounded_feature_snapshot_lf_sha256": "76f26186ee8952e05addcc94adcf751c1bc493d8e9e13ff9387d57f6d81d3216",
+  "consumer_compatibility_table": [
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "created_ts_ns",
+      "source_ready_anchor": "PR #303 latest finite mid quote timestamp / PR #307 target event",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "quote.mid_px",
+      "source_ready_anchor": "PR #303 latest finite mid quote",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "session.is_rth",
+      "source_ready_anchor": "PR #306 source recheck / 2026-06-02 RTH source window",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "session.is_halt",
+      "source_ready_anchor": "PR #307 MNQ session calendar",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "session.is_roll_block",
+      "source_ready_anchor": "PR #307 MNQ roll calendar and session policy",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "indicators.sigma_pts",
+      "source_ready_anchor": "Repo-faithful real-archive formula from bounded closed bars",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "context.regime_label",
+      "source_ready_anchor": "PR #305 scoped paper-observation regime label source",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "context.signed_shock_vwap.value",
+      "source_ready_anchor": "PR #303 signed_shock_vwap source readiness using atr_14 basis",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "config.config_hash / config.config_version",
+      "source_ready_anchor": "Variant-owned strategy config YAML",
+      "value_present": true
+    }
+  ],
+  "created_artifacts": [
+    "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-feature-snapshot-builder-impl-01/bounded-feature-snapshot.jsonl",
+    "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-feature-snapshot-builder-impl-01/feature-snapshot-builder-report.json",
+    "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-feature-snapshot-builder-impl-01/feature-snapshot-builder-report.md",
+    "docs/research/v2-pf-c-late-am-paper-observation-2026-06-02-feature-snapshot-builder-impl-01-memo.md",
+    "scripts/paper/run-v2-pf-c-late-am-2026-06-02-feature-snapshot-builder-impl.ts",
+    "docs/plan/new_app_v1_ticket_backlog_v6.csv"
+  ],
+  "determination": "FEATURE_SNAPSHOT_BUILDER_IMPL_EMITTED_SOURCE_BACKED_SNAPSHOT",
+  "expected_next_strat_eval_smoke_outcome": "STRAT_EVAL_MARKER_ALLOWED_BUT_CANDIDATE_SUPPRESSED_BY_VARIANT_GATE",
+  "feature_snapshot_builder_ready_for_strat_eval_scope": true,
+  "feature_snapshot_id": "feature-v2pf-20260602-1780423199835478000",
+  "global_regime_labels_mutated": false,
+  "guardrails": {
+    "active_roster_mutated": false,
+    "broker_live_authorized": false,
+    "candidate_count": 0,
+    "candidate_roster_mutated": false,
+    "global_regime_labels_mutated": false,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "order_intent_count": 0,
+    "paper_runtime_invoked": false,
+    "phase_6_authorized": false,
+    "qfa_410b_or_qfa_611_run": false,
+    "strat_eval_count": 0,
+    "strategy_feature_snapshot_emitted": 1
+  },
+  "json_transport_note": "StrategyFeatureSnapshot timestamp fields are serialized as decimal strings for JSONL transport; runtime in-memory branding remains bigint per contract.",
+  "next_scope_boundary": "STRAT_EVAL smoke is a separate ticket and must not award observation-day credit without explicit scoped validation.",
+  "recommended_next_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-STRAT-EVAL-SMOKE-01",
+  "recommended_next_ticket_purpose": "Verify STRAT_EVAL marker generation from the source-backed snapshot, while expecting CANDIDATE=0 / ORDER_INTENT=0 for this specific timestamp because the UTC 16-18 exclusion gate should suppress entries.",
+  "recommended_next_ticket_reason": "The causal feature snapshot input is now materialized; the next narrow step is to feed exactly this bounded snapshot into a mock/paper strategy-evaluation smoke path without candidate/order-intent/observation-day authority unless separately scoped and validated.",
+  "reconciliation": {
+    "atr14_matches_pr303": true,
+    "bars_match_pr303_count": true,
+    "expected_atr14_pts": 9.9665,
+    "expected_closed_1m_bars": 119,
+    "expected_session_vwap": 30645.9255,
+    "expected_signed_shock_vwap": -1.7986,
+    "observed_atr14_pts": 9.9665,
+    "observed_closed_1m_bars": 119,
+    "observed_session_vwap": 30645.9255,
+    "observed_signed_shock_vwap": -1.7986,
+    "session_vwap_matches_pr303": true,
+    "signed_shock_vwap_matches_pr303": true
+  },
+  "source_stack": {
+    "atr14_pts": 9.9665,
+    "latest_quote_mid_px": 30628,
+    "scoped_regime_label": "low",
+    "session_is_halt": false,
+    "session_is_roll_block": false,
+    "session_is_rth": true,
+    "session_vwap": 30645.9255,
+    "sigma_pts": 5.5567,
+    "signed_shock_vwap": -1.7986,
+    "vix_prior_close_percentile": 0.05,
+    "vixcls": 16.05,
+    "vxncls": 23.18
+  },
+  "source_surfaces_used": {
+    "pr303": {
+      "atr14_pts": 9.9665,
+      "bounded_source_readiness_lf_sha256": "3e79062c0c8cb490e05534ed67d8ccbf9e0f64529c01179bf61e3c6c785e14bf",
+      "closed_1m_bars": 119,
+      "latest_quote_ask_px": 30628.25,
+      "latest_quote_bid_px": 30627.75,
+      "latest_quote_mid_px": 30628,
+      "latest_quote_ts_ns": "1780423199835478000",
+      "session_vwap": 30645.9255,
+      "signed_shock_vwap": -1.7986,
+      "substrate_commit": "9c5a874374125574b2a93f55d84b9c9ad3d69466",
+      "vixcls": 16.05,
+      "vxncls": 23.18
+    },
+    "pr304": {
+      "bounded_source_inputs_lf_sha256": "f9e2ac81a5577b24a7b72fe884f88ec7323c12d2d9d7a74a358fb1291ac8fac8",
+      "primary_percentile_diagnostic_only": 0.05,
+      "raw_label_diagnostic_only": "low",
+      "substrate_commit": "5c9c0a234959693e4e6c9418467d10aed63811d4",
+      "target_prior_close_date": "2026-06-01",
+      "target_session_id": "2026-06-02-rth"
+    },
+    "pr305": {
+      "confirmed_label": "low",
+      "global_regime_labels_mutated": false,
+      "scoped_regime_label_source_lf_sha256": "152e7fbfdfca52494edbb11a7364cfbbaf33e9d03390bca1f17ee739e38d9662",
+      "substrate_commit": "7b13b559148fd33bd71d33910483d65e37de578f"
+    },
+    "pr306": {
+      "blocker_subclassification": "SESSION_STATE_SOURCE_BLOCKED_MISSING_EXPLICIT_HALT_ROLL_CALENDAR",
+      "bounded_feature_source_recheck_lf_sha256": "53289beb5e013c4031004bf5a3296ded7085d9c1db585e7152d8b3df1825aadc",
+      "substrate_commit": "25618ea5073aab32dc908713067139e0b64e6624"
+    },
+    "pr307": {
+      "bounded_halt_roll_calendar_source_lf_sha256": "ce65d57bfb323ad3d90e4cec682b58c0cb627b0f95ef0520451d2c41a68cbd25",
+      "halt_code_sha256": "4420ed9a6e167f2ea3c8c17dd1f5f2b6517ecdd1e7a1739902d3cf8cb19dac05",
+      "halt_config_sha256": "31fba43927801cd179e23f6997ba824928fdd0d984473f3c61ce05db1004f7b4",
+      "roll_code_sha256": "1ea59f1eb2c55955e66be7b3ab985923eb17e7a9b09534e465eabed7a657ebbc",
+      "roll_config_sha256": "06101663bb47d7798ec430be17801df0531469269e76a29c24eb080afd486207",
+      "roll_policy_sha256": "689b8030c058f56cbd65f13307bcd531361794e57cdb15a4d235982bf2e0e2f1",
+      "session_is_halt": false,
+      "session_is_roll_block": false,
+      "substrate_commit": "1f792abd7f6754fa2d40fc075732fb1886b67cc0"
+    }
+  },
+  "strategy_feature_snapshot_count": 1,
+  "strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+  "target_entry_hour_utc": 17,
+  "target_timestamp_variant_gate_status": "EXCLUDED_BY_UTC_16_18_GATE",
+  "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-FEATURE-SNAPSHOT-BUILDER-IMPL-01"
+}
