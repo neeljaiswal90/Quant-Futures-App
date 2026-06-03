@@ -688,6 +688,13 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   // ~1-2k-cell reprojection entirely.
   private columnsVersion = 0;
   private lastProjectionSignature: string | null = null;
+  /**
+   * RA-115 perf-revision: in GPU mode, skip the O(N) cell projection on every
+   * updateAllViews (pan/zoom would otherwise re-project 75k cells at 60Hz on
+   * the main thread). Hit-test path opts into a one-shot projection via
+   * forceProjection() — typically called from the crosshair-move handler.
+   */
+  private projectionRequested = false;
 
   attached(param: SeriesAttachedParameter<Time>): void {
     this.chart = param.chart;
@@ -725,10 +732,18 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
       this.lastProjectionSignature = null;
       return;
     }
-    // RA-115: in GPU mode the projection still runs so `view.cells` stays
-    // populated for hit-testing (cellAtPoint / itemById). The RENDERER skips
-    // the Canvas2D fillRect issuance via DepthHeatmapPaneView.setBackend(),
-    // which is the actual perf win — the projection itself is cheap O(N).
+    // RA-115 perf-revision: in GPU mode the projection is ONLY run on demand
+    // (when hover-hit-test is needed). Pan/zoom previously fired this O(N)
+    // projection at ~60Hz with 75k cells = the dominant pan/zoom cost on the
+    // main thread even though the actual DRAW had been moved to WebGPU.
+    // The new contract: GPU mode keeps view.cells empty by default; the
+    // crosshair-move handler in useDepthHeatmap calls forceProjection() to
+    // populate cells just-in-time before reading cellAtPoint.
+    if (this.backend === "gpu" && !this.projectionRequested) {
+      this.view.update([]);
+      this.lastProjectionSignature = null;
+      return;
+    }
     const series = this.series;
     const timeScale = this.chart.timeScale();
     const range = visibleTimeRangeSeconds(timeScale.getVisibleRange());
@@ -848,6 +863,24 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
    */
   getColumns(): readonly DepthHistoryColumn[] {
     return this.columns;
+  }
+
+  /**
+   * RA-115 perf-revision: opt-in one-shot projection for hit-testing in GPU
+   * mode. Call this RIGHT BEFORE cellAtPoint/itemById to populate view.cells
+   * for the upcoming hit-test query. After the query, the next pan/zoom or
+   * data update will clear the cells back to empty.
+   *
+   * In Canvas2D mode this is a no-op — the projection runs on every
+   * updateAllViews anyway.
+   */
+  forceProjection(): void {
+    if (this.backend !== "gpu") return;
+    this.projectionRequested = true;
+    this.updateAllViews();
+    // Reset the flag so subsequent pan/zoom updateAllViews calls go back to
+    // the fast-path (empty cells) until the next explicit forceProjection.
+    this.projectionRequested = false;
   }
 
   setHistory(payloads: readonly DepthPayload[]): void {

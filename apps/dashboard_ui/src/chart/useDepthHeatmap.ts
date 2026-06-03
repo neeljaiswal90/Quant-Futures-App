@@ -200,6 +200,10 @@ export function useDepthHeatmap(
     const chart = chartRef.current;
     if (!chart) return;
     const handleMove = (param: MouseEventParams<Time>) => {
+      // RA-115 perf: in GPU mode the primitive's projection is skipped during
+      // pan/zoom (huge win). Hit-test needs the projected cells available, so
+      // request one-shot projection just before querying.
+      primitiveRef.current?.forceProjection();
       const objectId = param.hoveredInfo?.objectId ?? param.hoveredObjectId;
       if (
         typeof objectId === "string" &&
