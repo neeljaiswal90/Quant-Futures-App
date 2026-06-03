@@ -69,10 +69,8 @@ export class DepthHeatmapGPULayer {
   private instances = new Float32Array(
     DEPTH_HEATMAP_MAX_INSTANCES * INSTANCE_STRIDE_FLOATS,
   );
-  /** Diagnostic: instance count emitted last frame. */
+  /** Instance count emitted last frame (used by diagnostics()). */
   private lastInstanceCount = 0;
-  /** Diagnostic: last debug log timestamp (ms). */
-  private lastDebugLogMs = 0;
 
   /**
    * Async factory. Returns null if WebGPU is unavailable (caller should
@@ -270,26 +268,6 @@ export class DepthHeatmapGPULayer {
     this.renderer.setInstances(buf.subarray(0, instCount * INSTANCE_STRIDE_FLOATS));
     void this.renderer.render();
     this.lastInstanceCount = instCount;
-    // Diagnostic log every 2s so we can verify data flow without flooding console.
-    const now = performance.now();
-    if (now - this.lastDebugLogMs > 2000) {
-      this.lastDebugLogMs = now;
-      // eslint-disable-next-line no-console
-      console.log(
-        "[gpu] depth tick:",
-        `columns=${columns.length}`,
-        `instances=${instCount}`,
-        `timeRange=[${visibleTime[0].toFixed(1)}, ${visibleTime[1].toFixed(1)}]`,
-        `priceRange=[${visiblePrice.top.toFixed(2)}, ${visiblePrice.bottom.toFixed(2)}]`,
-        `latestCol=${
-          columns.length > 0
-            ? `secs=${columns[columns.length - 1].seconds.toFixed(1)} levels=${
-                columns[columns.length - 1].levels.length
-              }`
-            : "(none)"
-        }`,
-      );
-    }
   }
 
   /**
