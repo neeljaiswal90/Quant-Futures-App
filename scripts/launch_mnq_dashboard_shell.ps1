@@ -107,6 +107,75 @@ function Wait-BackendHealth {
     return $false
 }
 
+function Get-NormalizeStatePath {
+    param([string]$CaptureSource)
+    if ([string]::IsNullOrWhiteSpace($CaptureSource)) {
+        return $null
+    }
+    $captureItem = Get-Item -LiteralPath $CaptureSource -ErrorAction SilentlyContinue
+    if ($null -eq $captureItem) {
+        return $null
+    }
+    $name = $captureItem.Name
+    if ($name.EndsWith(".obs01.jsonl")) {
+        $stateName = $name.Substring(0, $name.Length - ".obs01.jsonl".Length) + ".obs01.normalize_state.json"
+    } elseif ($name.EndsWith(".jsonl")) {
+        $stateName = $name.Substring(0, $name.Length - ".jsonl".Length) + ".obs01.normalize_state.json"
+    } else {
+        return $null
+    }
+    return Join-Path $captureItem.DirectoryName $stateName
+}
+
+function Get-NormalizeStateMarker {
+    param([string]$StatePath)
+    if ([string]::IsNullOrWhiteSpace($StatePath) -or -not (Test-Path -LiteralPath $StatePath)) {
+        return $null
+    }
+    try {
+        $item = Get-Item -LiteralPath $StatePath -ErrorAction Stop
+        $raw = Get-Content -LiteralPath $StatePath -Raw -ErrorAction Stop
+        $json = $raw | ConvertFrom-Json -ErrorAction Stop
+        return [pscustomobject]@{
+            LastNormalizedAt = [string]$json.last_normalized_at
+            LastByteOffset = [int64]$json.last_byte_offset
+            LastWriteTime = $item.LastWriteTimeUtc
+        }
+    } catch {
+        return $null
+    }
+}
+
+function Wait-NormalizeProgress {
+    param(
+        [string]$StatePath,
+        [object]$BaselineMarker,
+        [datetime]$BackendLaunchUtc,
+        [int]$TimeoutSeconds = 30
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $marker = Get-NormalizeStateMarker -StatePath $StatePath
+        if ($null -ne $marker) {
+            $advanced = $false
+            if ($null -eq $BaselineMarker) {
+                $advanced = $marker.LastWriteTime -ge $BackendLaunchUtc
+            } else {
+                $advanced = (
+                    $marker.LastByteOffset -gt $BaselineMarker.LastByteOffset -or
+                    $marker.LastNormalizedAt -ne $BaselineMarker.LastNormalizedAt -or
+                    $marker.LastWriteTime -gt $BaselineMarker.LastWriteTime
+                )
+            }
+            if ($advanced) {
+                return $marker
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    return $null
+}
+
 function Start-LoggedPowerShell {
     param(
         [string]$Title,
@@ -255,6 +324,7 @@ $CaptureContext = Resolve-CaptureContext -RequestedTradingDate $TradingDate -Req
 $ResolvedTradingDate = $CaptureContext.TradingDate
 $ResolvedSession = $CaptureContext.Session
 $PinBackendContext = $Session -ne "auto"
+$NormalizeStatePath = Get-NormalizeStatePath -CaptureSource $CaptureContext.Source
 
 Write-Status "MNQ dashboard shell launch requested" "Green"
 Write-Status "capture lifecycle: external Globex/RTH automations only; this launcher will not start/stop Rithmic capture" "Yellow"
@@ -271,6 +341,9 @@ if ($PinBackendContext) {
     Write-Status "backend capture context: pinned by explicit -Session" "Yellow"
 } else {
     Write-Status "backend capture context: auto-resolved continuously; not pinning session/date from latest file" "Yellow"
+}
+if (-not [string]::IsNullOrWhiteSpace($NormalizeStatePath)) {
+    Write-Status ("normalize state target: {0}" -f $NormalizeStatePath) "Yellow"
 }
 
 foreach ($path in @($ServicesRoot, $ShellRoot, $DashboardRoot, $AnalyticsRoot, $RefreshScript)) {
@@ -319,10 +392,16 @@ if (-not $NoRefresh) {
     Write-Status "SKIP refresh upkeep loop (-NoRefresh)" "Yellow"
 }
 
+$backendLaunchUtc = $null
+$normalizeBaseline = $null
+$startedFreshBackend = $false
 if (Test-BackendHealth -BackendPort $Port) {
     Write-Status "backend already healthy on port $Port; not starting duplicate" "Yellow"
     Write-Status "note: depth/self-normalize env changes only apply when this launcher starts a fresh backend" "Yellow"
 } else {
+    $backendLaunchUtc = (Get-Date).ToUniversalTime()
+    $normalizeBaseline = Get-NormalizeStateMarker -StatePath $NormalizeStatePath
+    $startedFreshBackend = $true
     $backendStatements = @(
         (Set-EnvStatement -Name "PYTHONPATH" -Value $CommonPythonPath),
         (Set-EnvStatement -Name "RA60_ANALYTICS_ROOT" -Value $AnalyticsRoot),
@@ -354,6 +433,23 @@ if (Test-BackendHealth -BackendPort $Port) {
 if (-not $DryRun) {
     if (Wait-BackendHealth -BackendPort $Port -TimeoutSeconds 30) {
         Write-Status "backend healthy at http://127.0.0.1:$Port/health" "Green"
+        if (-not $startedFreshBackend) {
+            # Backend was already running — its normalize-progress was verified when
+            # the OWNER launcher started it. Re-verifying here would crash on the
+            # uninitialized $backendLaunchUtc and is redundant anyway.
+            Write-Status "normalize-state verification skipped (backend was already running before this launcher invocation)" "Yellow"
+        } elseif ([string]::IsNullOrWhiteSpace($NormalizeStatePath)) {
+            if ($PinBackendContext) {
+                throw "backend is healthy, but no normalize_state target could be resolved for the pinned capture context."
+            }
+            Write-Status "normalize-state verification skipped because no capture path could be resolved" "Yellow"
+        } else {
+            $normalizeMarker = Wait-NormalizeProgress -StatePath $NormalizeStatePath -BaselineMarker $normalizeBaseline -BackendLaunchUtc $backendLaunchUtc -TimeoutSeconds 30
+            if ($null -eq $normalizeMarker) {
+                throw "backend is healthy, but normalize_state did not advance within 30s: $NormalizeStatePath"
+            }
+            Write-Status ("normalize-state advanced: byte_offset={0} last_normalized_at={1}" -f $normalizeMarker.LastByteOffset, $normalizeMarker.LastNormalizedAt) "Green"
+        }
     } else {
         Write-Status "backend health not confirmed within 30s; shell will reconnect when backend comes up" "Yellow"
     }
