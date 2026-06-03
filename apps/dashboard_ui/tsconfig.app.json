@@ -27,7 +27,7 @@
     "paths": {
       "@contracts/realtime/*": ["../../contracts/realtime/*"]
     },
-    "types": []
+    "types": ["@webgpu/types"]
   },
   "include": ["src", "vitest.setup.ts"]
 }

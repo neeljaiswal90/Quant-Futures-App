@@ -96,11 +96,13 @@ async function doAcquire(): Promise<GpuContext> {
   }
 
   // Inspect adapter capabilities to know which optional features we can request.
-  const availableFeatures = new Set<GPUFeatureName>();
-  adapter.features.forEach((f) => availableFeatures.add(f));
+  // adapter.features.forEach exposes entries as `string` per @webgpu/types;
+  // we narrow to GPUFeatureName during the membership check below.
+  const availableFeatures = new Set<string>();
+  adapter.features.forEach((f: string) => availableFeatures.add(f));
 
   const requestedFeatures: GPUFeatureName[] = OPTIONAL_FEATURES.filter((f) =>
-    availableFeatures.has(f),
+    availableFeatures.has(f as string),
   );
 
   let device: GPUDevice;
@@ -125,17 +127,11 @@ async function doAcquire(): Promise<GpuContext> {
     cached = null;
   });
 
-  // adapter.info is the modern spec; older Chrome versions used requestAdapterInfo().
-  let adapterInfo: GPUAdapterInfo | null = null;
-  if (adapter.info) {
-    adapterInfo = adapter.info;
-  } else if (typeof adapter.requestAdapterInfo === "function") {
-    try {
-      adapterInfo = await adapter.requestAdapterInfo();
-    } catch {
-      adapterInfo = null;
-    }
-  }
+  // adapter.info is the modern spec; @webgpu/types only exposes this accessor
+  // (legacy requestAdapterInfo() was removed). Older Chromium versions that
+  // still need the legacy call are below Edge 122 — well below the WebView2
+  // baseline Tauri 2.x bundles, so we don't need the fallback.
+  const adapterInfo: GPUAdapterInfo | null = adapter.info ?? null;
 
   return {
     status: "ok",
@@ -189,18 +185,6 @@ export function resizeCanvas(canvas: HTMLCanvasElement, dpr = window.devicePixel
   return true;
 }
 
-// Type augmentation for adapter.info access — TypeScript's lib.dom.d.ts in some
-// versions still has this as experimental; the runtime behavior is stable on
-// Chrome 113+ which matches the WebView2 the Tauri shell ships with.
-declare global {
-  interface GPUAdapter {
-    info?: GPUAdapterInfo;
-    requestAdapterInfo?(): Promise<GPUAdapterInfo>;
-  }
-  interface GPUAdapterInfo {
-    vendor?: string;
-    architecture?: string;
-    device?: string;
-    description?: string;
-  }
-}
+// WebGPU types come from @webgpu/types (dev dependency, referenced via
+// tsconfig.app.json "types"). The `adapter.info` accessor + the legacy
+// `requestAdapterInfo()` fallback are both included in that package.
