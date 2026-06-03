@@ -1,0 +1,50 @@
+file,line,tier,current_snippet,proposed_replacement,which_side
+D:\Quant-futures-app\post_capture_rotate.ps1,34,1,AnalyticsRoot = D:\Quant-futures-app\tools\rithmic_analytics,env:ANALYTICS_ROOT,algo
+D:\Quant-futures-app\post_capture_rotate.ps1,35,1,DashboardRoot = D:\Quant-futures-app\tools\rithmic_dashboard,env:DASHBOARD_ROOT,dashboard
+D:\Quant-futures-app\post_capture_rotate.ps1,36,1,CalibrationOutDir = D:\Quant-futures-app\data\calibration,env:CALIB_ROOT,algo
+D:\Quant-futures-app\run_live_realtime_stack.ps1,56,1,AnalyticsRoot = D:\Quant-futures-app\tools\rithmic_analytics,env:ANALYTICS_ROOT,algo
+D:\Quant-futures-app\run_live_realtime_stack.ps1,57,1,DashboardRoot = D:\Quant-futures-app\tools\rithmic_dashboard,env:DASHBOARD_ROOT,dashboard
+D:\Quant-futures-app\end_of_session_pipeline.ps1,55,1,AnalyticsRoot = D:\Quant-futures-app\tools\rithmic_analytics,env:ANALYTICS_ROOT,algo
+D:\Quant-futures-app\end_of_session_pipeline.ps1,56,1,DashboardRoot = D:\Quant-futures-app\tools\rithmic_dashboard,env:DASHBOARD_ROOT,dashboard
+D:\Quant-futures-app\end_of_session_pipeline.ps1,57,1,ShadowRoot = D:\Quant-futures-app\data\shadow_runs,env:SHADOW_ROOT,algo
+D:\Quant-futures-app\end_of_session_pipeline.ps1,58,1,PredictionsRoot = D:\Quant-futures-app\data\predictions,env:PRED_ROOT,algo
+D:\Quant-futures-app\end_of_session_pipeline.ps1,59,1,PerformanceRoot = D:\Quant-futures-app\data\performance,env:PERF_ROOT,algo
+D:\Quant-futures-app\services\realtime_backend\calibration\compute_tail_cap.py,24,1,--captures-root D:/Quant-futures-app/tools/rithmic_analytics/...,--captures-root ${ANALYTICS_ROOT}/data/captures,algo
+D:\Quant-futures-app\services\realtime_backend\calibration\compute_tail_cap.py,558,1,default=Path(D:/Quant-futures-app/tools/..captures),Path(getenv('ANALYTICS_ROOT',...)),algo
+D:\Quant-futures-app\services\realtime_backend\calibration\compute_tail_cap.py,583,1,default=Path(D:/Quant-futures-app/data/calibration),Path(getenv('CALIB_ROOT',...)),algo
+D:\Quant-futures-app\services\replay\tests\test_replay_dataset.py,172,1,root = Path(D:\Quant-futures-app\tools\rithmic_analytics),Path(getenv('ANALYTICS_ROOT')),algo
+D:\Quant-futures-app\services\replay\tests\test_replay_dataset.py,180,1,dashboard_root=Path(D:\Quant-futures-app\tools\rithmic_dashboard),Path(getenv('DASHBOARD_ROOT')),dashboard
+D:\Quant-futures-app\scripts\maintenance\repair_mbp1_at_eos.ps1,51,1,$RepoRoot = D:\Quant-futures-app,$RepoRoot = Split-Path $PSScriptRoot,?
+D:\Quant-futures-app\tools\rithmic_dashboard\tests\test_cli_generate.py,19,1,D:/Quant-futures-app/tools/rithmic_analytics,getenv('ANALYTICS_ROOT'),algo
+D:\Quant-futures-app\scripts\launch_mnq_dashboard_shell.ps1,30,1,AnalyticsRoot = D:\Quant-futures-app\tools\rithmic_analytics,env:ANALYTICS_ROOT,algo
+D:\Quant-futures-app\scripts\launch_mnq_dashboard_shell.ps1,31,1,DashboardRoot = D:\Quant-futures-app\tools\rithmic_dashboard,env:DASHBOARD_ROOT,dashboard
+D:\Quant-futures-app\tools\rithmic_dashboard\scripts\run_local_probe_refresh.ps1,7,1,AnalyticsRoot = D:\Quant-futures-app\tools\rithmic_analytics,env:ANALYTICS_ROOT,algo
+D:\Quant-futures-app\tools\rithmic_dashboard\scripts\run_local_probe_refresh.ps1,8,1,DashboardRoot = D:\Quant-futures-app\tools\rithmic_dashboard,env:DASHBOARD_ROOT,dashboard
+D:\Quant-futures-app\tools\rithmic_dashboard\scripts\run_eod_full_analytics.ps1,7,1,AnalyticsRoot = D:\Quant-futures-app\tools\rithmic_analytics,env:ANALYTICS_ROOT,algo
+D:\Quant-futures-app\tools\rithmic_dashboard\scripts\run_eod_full_analytics.ps1,8,1,DashboardRoot = D:\Quant-futures-app\tools\rithmic_dashboard,env:DASHBOARD_ROOT,dashboard
+D:\Quant-futures-app\tools\rithmic_analytics\rithmic_analytics\data_loader\databento_loader.py,18,1,Path(D:\Quant-futures-app\data\databento\sim03_corpus),Path(getenv('CORPUS_ROOT',...)),algo
+D:\Quant-futures-app\tools\rithmic_analytics\scripts\loop_normalize_incremental.ps1,35,1,AnalyticsRoot = D:\Quant-futures-app\tools\rithmic_analytics,env:ANALYTICS_ROOT,algo
+D:\Quant-futures-app\tools\rithmic_analytics\scripts\post_session_envelope.py,22,1,--captures-root D:/Quant-futures-app/tools/rithmic_analytics/...,--captures-root ${ANALYTICS_ROOT}/data/captures,algo
+D:\Quant-futures-app\tools\rithmic_analytics\scripts\post_session_envelope.py,23,1,--zones-root D:/Quant-futures-app/tools/rithmic_analytics/data/zones,--zones-root ${ANALYTICS_ROOT}/data/zones,algo
+D:\Quant-futures-app\tools\rithmic_dashboard\scripts\run_dashboard_generator.ps1,3,1,$Root = D:\Quant-futures-app\tools\rithmic_dashboard,env:DASHBOARD_ROOT,dashboard
+D:\Quant-futures-app\score_and_evaluate.ps1,46,1,PredictionsRoot = D:\Quant-futures-app\data\predictions,env:PRED_ROOT,algo
+D:\Quant-futures-app\score_and_evaluate.ps1,47,1,PerformanceRoot = D:\Quant-futures-app\data\performance,env:PERF_ROOT,algo
+D:\Quant-futures-app\score_and_evaluate.ps1,56,1,ServicesRoot = D:\Quant-futures-app\services\scalp_models,env:SERVICES_ROOT,algo
+D:\Quant-futures-app\services\realtime_backend\settings.py,34,2,"# (D:\Quant-futures-app\tools\rithmic_analytics). determine_session_state",# (env:ANALYTICS_ROOT). Update doc,algo
+D:\Quant-futures-app\services\notification_daemon\README.md,49,2,cd D:\Quant-futures-app\services,cd $REPO_ROOT/services,?
+D:\Quant-futures-app\services\notification_daemon\README.md,80,2,cd D:\Quant-futures-app\services\notification_daemon,cd $REPO_ROOT/services/notification_daemon,?
+D:\Quant-futures-app\docs\scalp_strategy_for_review.md,467,2,Run dir: D:\Quant-futures-app\scratch\ra093b-run1\...,Run dir: {TRADER_ROOT}/scratch/ra093b-run1/...,algo
+D:\Quant-futures-app\data\performance\2026-05-28_rth.md,3,2,run_dir: D:\Quant-futures-app\scratch\ra093b-run1\...,run_dir: {TRADER_ROOT}/scratch/...,algo
+D:\Quant-futures-app\tools\rithmic_dashboard\scripts\run_local_probe_refresh.ps1,257,2,WARN: start v2 with D:\Quant-futures-app\run_realtime_stack.ps1,WARN: start v2 with {REPO_ROOT}/run_realtime_stack.ps1,?
+D:\Quant-futures-app\tools\rithmic_dashboard\scripts\run_dashboard_generator.ps1,13,2,V1 retired; use D:\Quant-futures-app\run_realtime_stack.ps1 for v2,V1 retired; use {REPO_ROOT}/run_realtime_stack.ps1 for v2,?
+D:\Quant-futures-app\tools\rithmic_dashboard\README.md,8,2,D:\Quant-futures-app\run_realtime_stack.ps1,{REPO_ROOT}/run_realtime_stack.ps1,?
+D:\Quant-futures-app\tools\rithmic_dashboard\README.md,19,2,D:\Quant-futures-app\run_live_realtime_stack.ps1 -TradingDate...,{REPO_ROOT}/run_live_realtime_stack.ps1 -TradingDate...,?
+D:\Quant-futures-app\tools\rithmic_dashboard\README.md,28,2,cd D:\Quant-futures-app\tools\rithmic_dashboard,cd {DASHBOARD_ROOT},dashboard
+D:\Quant-futures-app\tools\rithmic_dashboard\docs\operations.md,13,2,D:\Quant-futures-app\run_realtime_stack.ps1,{REPO_ROOT}/run_realtime_stack.ps1,?
+D:\Quant-futures-app\tools\rithmic_dashboard\docs\operations.md,19,2,D:\Quant-futures-app\run_live_realtime_stack.ps1...,{REPO_ROOT}/run_live_realtime_stack.ps1...,?
+D:\Quant-futures-app\tools\rithmic_dashboard\docs\operations.md,36,2,cd D:\Quant-futures-app\tools\rithmic_dashboard,cd {DASHBOARD_ROOT},dashboard
+D:\Quant-futures-app\tools\rithmic_dashboard\docs\feature_reference.md,215,2,cd D:\Quant-futures-app\tools\rithmic_dashboard,cd {DASHBOARD_ROOT},dashboard
+D:\Quant-futures-app\tools\rithmic_analytics\docs\operations.md,72,2,"D:\Quant-futures-app\data\databento\sim03_corpus, streams trades.dbn.zst",{TRADER_ROOT}/data/databento/sim03_corpus,algo
+D:\Quant-futures-app\tools\rithmic_analytics\docs\operations.md,155,2,cd D:\Quant-futures-app\tools\rithmic_analytics,cd {ANALYTICS_ROOT},algo
+D:\Quant-futures-app\tools\rithmic_analytics\docs\jsonl-inspection-report.md,5,2,"All schemas verified against test fixtures at D:\Quant-futures-app\data\probes\...",verified against test fixtures at {TRADER_ROOT}/data/probes/...,algo
+D:\Quant-futures-app\tools\rithmic_analytics\docs\engineer_onboarding_v2_dashboard.md,226,2,rithmic_analytics | D:\Quant-futures-app\tools\rithmic_analytics\,rithmic_analytics | {ANALYTICS_ROOT},algo
