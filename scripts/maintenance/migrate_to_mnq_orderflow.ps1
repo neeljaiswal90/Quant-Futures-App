@@ -127,7 +127,8 @@ if ($Phase -eq 1) {
     Write-Status "Step 1: snapshot source repo (tag)" Yellow
     Push-Location $SourceRepo
     try {
-        $sourceBranch = (git symbolic-ref --short HEAD 2>$null) ?? "(detached)"
+        $sourceBranch = git symbolic-ref --short HEAD 2>$null
+        if (-not $sourceBranch) { $sourceBranch = "(detached)" }
         $sourceTip = git rev-parse HEAD
         Write-Status "  source branch: $sourceBranch tip: $sourceTip" Gray
         $tag = "archive/pre-mnq-orderflow-2026-06-03"
