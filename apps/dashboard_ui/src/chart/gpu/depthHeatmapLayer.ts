@@ -72,20 +72,27 @@ export class DepthHeatmapGPULayer {
     if (!chartEl) return null;
 
     const canvas = document.createElement("canvas");
-    // Absolute over the chart; pointer-events: none so LC keeps owning the
-    // mouse (hit-testing, crosshair, scroll/zoom).
+    // Absolute over the MAIN PRICE PANE only (NOT the full chart container —
+    // the container also holds the volume pane + time axis + price-axis
+    // column, and the shader projects NDC across the entire canvas. Stretching
+    // it across the container made cells render outside the price pane area.)
+    // Position + size are updated to match chart.paneSize() each frame.
     canvas.style.position = "absolute";
     canvas.style.left = "0";
     canvas.style.top = "0";
-    canvas.style.width = "100%";
-    canvas.style.height = "100%";
     canvas.style.pointerEvents = "none";
-    // Above the LC canvases but below DOM markers like the legend chips.
+    // z=1 is the same level as LC's background canvas (z=1). Because mine is
+    // appended last in DOM order, it paints AFTER LC's z=1 — so my depth
+    // cells overlay the dark background. LC's z=2 canvases (candles, bubbles,
+    // signal markers) paint OVER me — so candles stay on top of the heatmap.
     canvas.style.zIndex = "1";
     // Ensure the chart container is positioned so absolute children land here.
     if (getComputedStyle(chartEl).position === "static") {
       (chartEl as HTMLElement).style.position = "relative";
     }
+    // Initial size — will be corrected to actual paneSize on first render.
+    canvas.style.width = "100px";
+    canvas.style.height = "100px";
     chartEl.appendChild(canvas);
 
     let renderer: DepthHeatmapGPU;
@@ -145,6 +152,11 @@ export class DepthHeatmapGPULayer {
   }
 
   private renderFrame(): void {
+    // Match the overlay's CSS size to the main price pane. Done every frame
+    // because LC doesn't expose a pane-resize event and the resize handling
+    // is cheap (string comparison + occasional style write).
+    this.syncOverlaySize();
+
     const columns = this.primitive.getColumns();
     const visibleTime = this.getVisibleTimeRange();
     const visiblePrice = this.getVisiblePriceRange();
@@ -223,6 +235,27 @@ export class DepthHeatmapGPULayer {
     });
     this.renderer.setInstances(buf.subarray(0, instCount * INSTANCE_STRIDE_FLOATS));
     void this.renderer.render();
+  }
+
+  /**
+   * Update the overlay canvas's CSS size to match the main price pane
+   * (paneIndex 0). Without this, the canvas covers the FULL chart container
+   * — including the volume pane below + the price-axis column to the right
+   * — and the shader's NDC mapping stretches cells outside the price pane.
+   */
+  private syncOverlaySize(): void {
+    let pane: { width: number; height: number };
+    try {
+      pane = this.chart.paneSize();
+    } catch {
+      return;
+    }
+    if (!Number.isFinite(pane.width) || !Number.isFinite(pane.height)) return;
+    if (pane.width <= 0 || pane.height <= 0) return;
+    const w = `${Math.floor(pane.width)}px`;
+    const h = `${Math.floor(pane.height)}px`;
+    if (this.canvas.style.width !== w) this.canvas.style.width = w;
+    if (this.canvas.style.height !== h) this.canvas.style.height = h;
   }
 
   private getVisibleTimeRange(): [number, number] | null {
