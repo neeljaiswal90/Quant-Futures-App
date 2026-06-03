@@ -9,6 +9,9 @@ edition = "2021"
 tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.2", features = [] }
+# RA-115 Phase 1: 'devtools' feature enables F12 / right-click Inspect in
+# release builds so we can verify WebGPU init from the running shell.
+# (Default Tauri 2 release strips devtools entirely.)
+tauri = { version = "2.11.2", features = ["devtools"] }
 tauri-plugin-notification = "2.3.3"
 
