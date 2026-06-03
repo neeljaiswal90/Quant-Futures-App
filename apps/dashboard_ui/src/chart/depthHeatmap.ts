@@ -560,9 +560,17 @@ export function depthHeatmapTooltip(cell: Pick<DepthHeatmapCell, "price" | "size
 }
 
 class DepthHeatmapRenderer implements IPrimitivePaneRenderer {
-  constructor(private readonly cells: readonly DepthHeatmapCell[]) {}
+  constructor(
+    private readonly cells: readonly DepthHeatmapCell[],
+    private readonly backend: DepthHeatmapBackend,
+  ) {}
 
   draw(target: CanvasRenderingTarget2D): void {
+    // RA-115: WebGPU overlay layer handles painting in gpu mode. The cells
+    // array is still populated so hit-testing (cellAtPoint / itemById) keeps
+    // working — but skipping the Canvas2D fillRect issuance is the whole
+    // point of switching to GPU rendering.
+    if (this.backend === "gpu") return;
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
       // RA-112 (Tier 1 perf): batch by fill color. The previous loop did
       // save()/fillStyle=/fillRect()/restore() PER CELL — at up to
@@ -597,9 +605,14 @@ class DepthHeatmapRenderer implements IPrimitivePaneRenderer {
 
 class DepthHeatmapPaneView implements IPrimitivePaneView {
   private cells: readonly DepthHeatmapCell[] = [];
+  private backend: DepthHeatmapBackend = "canvas2d";
 
   update(cells: readonly DepthHeatmapCell[]): void {
     this.cells = cells;
+  }
+
+  setBackend(backend: DepthHeatmapBackend): void {
+    this.backend = backend;
   }
 
   zOrder(): "bottom" {
@@ -607,7 +620,7 @@ class DepthHeatmapPaneView implements IPrimitivePaneView {
   }
 
   renderer(): IPrimitivePaneRenderer {
-    return new DepthHeatmapRenderer(this.cells);
+    return new DepthHeatmapRenderer(this.cells, this.backend);
   }
 
   hitTest(x: number, y: number): PrimitiveHoveredItem | null {
@@ -712,16 +725,10 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
       this.lastProjectionSignature = null;
       return;
     }
-    // RA-115: GPU backend renders to its own canvas overlay. Skip the Canvas2D
-    // projection + cells handoff entirely — view stays empty so the LC renderer
-    // draws nothing for this primitive. Persistent levels, wall markers, and
-    // hit-testing still work because they read from this.columns / this.view
-    // helpers independently of the paint path.
-    if (this.backend === "gpu") {
-      this.view.update([]);
-      this.lastProjectionSignature = null;
-      return;
-    }
+    // RA-115: in GPU mode the projection still runs so `view.cells` stays
+    // populated for hit-testing (cellAtPoint / itemById). The RENDERER skips
+    // the Canvas2D fillRect issuance via DepthHeatmapPaneView.setBackend(),
+    // which is the actual perf win — the projection itself is cheap O(N).
     const series = this.series;
     const timeScale = this.chart.timeScale();
     const range = visibleTimeRangeSeconds(timeScale.getVisibleRange());
@@ -828,6 +835,7 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   setBackend(backend: DepthHeatmapBackend): void {
     if (this.backend === backend) return;
     this.backend = backend;
+    this.view.setBackend(backend);
     this.lastProjectionSignature = null;
     this.updateAllViews();
     this.requestUpdate?.();
