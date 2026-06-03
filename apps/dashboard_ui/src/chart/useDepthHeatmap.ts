@@ -13,10 +13,19 @@ import {
   HYDRATION_DEPTH_CHUNK_SIZE,
   type HoveredDepthCell,
 } from "./depthHeatmap";
+import { DepthHeatmapGPULayer } from "./gpu/depthHeatmapLayer";
 import { PersistentLevelManager } from "./persistentLevels";
 import { WallMarkerManager } from "./wallMarkers";
 
 const DEPTH_BACKFILL_POLL_INTERVAL_MS = 100;
+
+/**
+ * RA-115 (Option D, Phase 1): rendering-backend feature flag. Default Canvas2D.
+ * Set VITE_DEPTH_RENDERER=webgpu (in .env.local or the build env) to enable
+ * the WebGPU overlay. If WebGPU init fails at runtime, this falls back to
+ * Canvas2D automatically — no behavior change vs. flag-off.
+ */
+const USE_WEBGPU_DEPTH = import.meta.env.VITE_DEPTH_RENDERER === "webgpu";
 
 export function useDepthHeatmap(
   chartRef: RefObject<IChartApi | null>,
@@ -49,7 +58,48 @@ export function useDepthHeatmap(
     // vs RA-107a's dashed). Anchored even when price moves far from level.
     const persistentLevelManager = new PersistentLevelManager(series);
     persistentLevelManagerRef.current = persistentLevelManager;
+
+    // RA-115 (Option D, Phase 1): when the WebGPU flag is set, attach the
+    // overlay layer asynchronously. If init succeeds, swap the primitive's
+    // backend to "gpu" so its Canvas2D paint becomes a no-op. If init fails
+    // (no navigator.gpu, adapter rejected, etc.), the primitive stays on
+    // Canvas2D and no behavior changes vs. flag-off.
+    let gpuLayer: DepthHeatmapGPULayer | null = null;
+    let cancelled = false;
+    if (USE_WEBGPU_DEPTH) {
+      const chart = chartRef.current;
+      if (chart) {
+        DepthHeatmapGPULayer.attach(chart, series, primitive)
+          .then((layer) => {
+            if (cancelled) {
+              layer?.detach();
+              return;
+            }
+            if (layer) {
+              primitive.setBackend("gpu");
+              gpuLayer = layer;
+              // eslint-disable-next-line no-console
+              console.info(
+                "[gpu] depth heatmap → WebGPU overlay attached",
+                layer.diagnostics(),
+              );
+            } else {
+              // eslint-disable-next-line no-console
+              console.warn(
+                "[gpu] depth heatmap WebGPU init returned null; staying on Canvas2D",
+              );
+            }
+          })
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn("[gpu] depth heatmap WebGPU attach failed; staying on Canvas2D", err);
+          });
+      }
+    }
+
     return () => {
+      cancelled = true;
+      gpuLayer?.detach();
       persistentLevelManager.clear();
       if (persistentLevelManagerRef.current === persistentLevelManager) {
         persistentLevelManagerRef.current = null;
@@ -59,7 +109,7 @@ export function useDepthHeatmap(
       series.detachPrimitive(primitive);
       if (primitiveRef.current === primitive) primitiveRef.current = null;
     };
-  }, [seriesRef]);
+  }, [seriesRef, chartRef]);
 
   useEffect(() => {
     if (!depth) return;

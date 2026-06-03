@@ -645,6 +645,20 @@ class DepthHeatmapPaneView implements IPrimitivePaneView {
   }
 }
 
+/**
+ * Rendering backend for the depth heatmap. Default is Canvas2D (per-cell
+ * batched fillRect). When set to "gpu", this primitive STOPS projecting and
+ * drawing — the WebGPU overlay layer (apps/dashboard_ui/src/chart/gpu/
+ * depthHeatmapLayer.ts) reads from `getColumns()` and renders to its own
+ * canvas above the LC pane. The primitive remains attached so the column
+ * buffer, persistence accumulator, hit-testing, and persistent-level/wall
+ * markers keep working unchanged — only the visual draw path is swapped.
+ *
+ * RA-115 (Option D, Phase 1): default stays "canvas2d" until WebGPU
+ * integration is verified on the live dashboard.
+ */
+export type DepthHeatmapBackend = "canvas2d" | "gpu";
+
 export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private readonly view = new DepthHeatmapPaneView();
   private readonly persistence = new DepthPersistenceAccumulator();
@@ -652,6 +666,7 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private series: ISeriesApi<SeriesType, Time> | null = null;
   private requestUpdate: (() => void) | null = null;
   private columns: DepthHistoryColumn[] = [];
+  private backend: DepthHeatmapBackend = "canvas2d";
   // RA-112 (Tier 1 perf): reprojection dirty-check. updateAllViews() fires on
   // every chart repaint (including crosshair-only moves). We bump
   // `columnsVersion` whenever the depth history mutates and compare a cheap
@@ -693,6 +708,16 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
 
   updateAllViews(): void {
     if (this.chart == null || this.series == null) {
+      this.view.update([]);
+      this.lastProjectionSignature = null;
+      return;
+    }
+    // RA-115: GPU backend renders to its own canvas overlay. Skip the Canvas2D
+    // projection + cells handoff entirely — view stays empty so the LC renderer
+    // draws nothing for this primitive. Persistent levels, wall markers, and
+    // hit-testing still work because they read from this.columns / this.view
+    // helpers independently of the paint path.
+    if (this.backend === "gpu") {
       this.view.update([]);
       this.lastProjectionSignature = null;
       return;
@@ -793,6 +818,28 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
 
   columnCount(): number {
     return this.columns.length;
+  }
+
+  /**
+   * RA-115 (Option D): swap rendering between Canvas2D and the WebGPU overlay
+   * layer. Data layer (columns + persistence + history retention) is unaffected.
+   * Calling this triggers a repaint so the empty/full view state takes effect.
+   */
+  setBackend(backend: DepthHeatmapBackend): void {
+    if (this.backend === backend) return;
+    this.backend = backend;
+    this.lastProjectionSignature = null;
+    this.updateAllViews();
+    this.requestUpdate?.();
+  }
+
+  /**
+   * RA-115: read-only view of the column buffer for the WebGPU overlay layer.
+   * The GPU layer reads this on each render frame; the primitive remains the
+   * canonical owner of depth history, persistence accumulation, and pruning.
+   */
+  getColumns(): readonly DepthHistoryColumn[] {
+    return this.columns;
   }
 
   setHistory(payloads: readonly DepthPayload[]): void {
