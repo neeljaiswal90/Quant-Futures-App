@@ -25,6 +25,36 @@ def main(argv: list[str] | None = None) -> int:
     train.add_argument("--min-positives", type=int, default=30)
     train.add_argument("--min-negatives", type=int, default=30)
     train.add_argument("--run-id", type=str, default=None)
+
+    # RA-094: offline scoring CLI. Takes a setups.jsonl + a trained run_dir,
+    # writes one prediction-per-(row, horizon) to a predictions.jsonl.
+    score = subparsers.add_parser(
+        "score",
+        help="Score a setups.jsonl with a trained run_dir, emit predictions.jsonl.",
+    )
+    score.add_argument(
+        "--setups", required=True, type=Path,
+        help="RA-092 setup-firing JSONL path (the input to score).",
+    )
+    score.add_argument(
+        "--models", required=True, type=Path,
+        help="Trained run dir, e.g. .../model_runs/quiet-window-2026-05-31/. "
+             "Must contain models/, config.json.",
+    )
+    score.add_argument(
+        "--out", required=True, type=Path,
+        help="Output JSONL path. One row per (input_row, horizon) scored.",
+    )
+    score.add_argument(
+        "--setup-type", default=None,
+        help="Restrict to one setup_type (e.g. 'zone_rejection'). "
+             "Default: score every row against every matching loaded model.",
+    )
+    score.add_argument(
+        "--max-rows", type=int, default=None,
+        help="Optional cap on input rows scored (for quick smoke runs).",
+    )
+
     pipeline = subparsers.add_parser(
         "pipeline",
         help="Run RA-093b replay -> labels -> train pipeline for capture sessions.",
@@ -119,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Override the active-capture guard. Use only in a quiet/test window.",
     )
     args = parser.parse_args(argv)
+    if args.command == "score":
+        return _run_score(args)
     if args.command == "pipeline":
         from scalp_models.pipeline import (
             DEFAULT_ANALYTICS_ROOT,
@@ -241,5 +273,112 @@ def main(argv: list[str] | None = None) -> int:
         f"run_dir={training_result.run_dir} "
         f"models={len(training_result.model_paths)} "
         f"report={training_result.report_path}"
+    )
+    return 0
+
+
+def _run_score(args: argparse.Namespace) -> int:
+    """RA-094 offline scoring CLI implementation. Loads the trained bundle,
+    streams rows from the input setups.jsonl, scores each (row, available
+    horizon) combo, writes one prediction line per scored pair.
+
+    Output schema (one JSON object per line):
+        {
+            "input_row_index": int,
+            "ts_ns": int | null,
+            "level_id": str | null,
+            "setup_type": str,
+            "horizon_seconds": int,
+            "p_raw": float,
+            "p_calibrated": float,
+        }
+
+    Failures on individual rows (bad schema, KeyError in feature builder)
+    are caught and emitted as ``"error"`` entries so a single malformed row
+    doesn't kill the whole run. Final stdout reports counts + skip reasons.
+    """
+    import json
+    from scalp_models.inference import ScalpModelInferenceBundle
+
+    bundle = ScalpModelInferenceBundle(args.models)
+    if not bundle.available_setups:
+        print(
+            f"scalp_models_score_failed: no models loaded from {args.models}/models/",
+            flush=True,
+        )
+        return 2
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    counts = {"scored": 0, "skipped_setup_filter": 0, "skipped_no_model": 0, "errors": 0}
+    setups_by_type: dict[str, list[int]] = {}
+
+    with args.setups.open("r", encoding="utf-8") as fin, args.out.open(
+        "w", encoding="utf-8"
+    ) as fout:
+        for row_index, line in enumerate(fin):
+            if args.max_rows is not None and row_index >= args.max_rows:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                counts["errors"] += 1
+                continue
+            setup_type = row.get("setup_type")
+            if not isinstance(setup_type, str):
+                counts["errors"] += 1
+                continue
+            if args.setup_type is not None and setup_type != args.setup_type:
+                counts["skipped_setup_filter"] += 1
+                continue
+            setups_by_type.setdefault(setup_type, []).append(row_index)
+            ts_ns = row.get("ts_ns")
+            level_id = row.get("level_id") if isinstance(row.get("level_id"), str) else None
+            matched = False
+            for (st, h) in bundle.available_setups:
+                if st != setup_type:
+                    continue
+                matched = True
+                try:
+                    result = bundle.score(
+                        row, setup_type=setup_type, horizon_seconds=h,
+                    )
+                except Exception as exc:  # noqa: BLE001 — isolate per-row scoring failures
+                    fout.write(json.dumps({
+                        "input_row_index": row_index,
+                        "ts_ns": ts_ns,
+                        "level_id": level_id,
+                        "setup_type": setup_type,
+                        "horizon_seconds": h,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }) + "\n")
+                    counts["errors"] += 1
+                    continue
+                if result is None:
+                    continue
+                fout.write(json.dumps({
+                    "input_row_index": row_index,
+                    "ts_ns": ts_ns,
+                    "level_id": level_id,
+                    "setup_type": setup_type,
+                    "horizon_seconds": h,
+                    "p_raw": result.p_raw,
+                    "p_calibrated": result.p_calibrated,
+                }) + "\n")
+                counts["scored"] += 1
+            if not matched:
+                counts["skipped_no_model"] += 1
+
+    breakdown = {st: len(idxs) for st, idxs in setups_by_type.items()}
+    print(
+        "scalp_models_scored: "
+        f"out={args.out} "
+        f"scored={counts['scored']} "
+        f"skipped_setup_filter={counts['skipped_setup_filter']} "
+        f"skipped_no_model={counts['skipped_no_model']} "
+        f"errors={counts['errors']} "
+        f"input_rows_by_setup_type={breakdown}"
     )
     return 0
