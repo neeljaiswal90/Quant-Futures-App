@@ -30,8 +30,17 @@ export const INSTANCE_STRIDE_BYTES = INSTANCE_STRIDE_FLOATS * 4;
 
 export const DEPTH_HEATMAP_MAX_INSTANCES = 100_000;
 
-/** Uniform layout matches the WGSL `Camera` struct. 80 bytes total. */
-const CAMERA_UBO_BYTES = 80;
+/**
+ * Uniform layout matches the WGSL `Camera` struct.
+ * RA-115 Phase 2: extended from 80 → 96 bytes for bloom params.
+ *   0..15   time_range (8) + price_range (8)
+ *   16..31  canvas_size (8) + pad (8)
+ *   32..47  bid_color (16, vec4 aligned)
+ *   48..63  ask_color (16)
+ *   64..79  intensity_power + alpha_floor + alpha_ceil + pad (4 × 4)
+ *   80..95  bloom_threshold + bloom_radius_px + pad (4 × 4)
+ */
+const CAMERA_UBO_BYTES = 96;
 
 export interface DepthCameraInputs {
   /** [start, end] in same units as instance time_start (typically seconds since epoch). */
@@ -44,6 +53,15 @@ export interface DepthCameraInputs {
   alphaCeil?: number;
   bidColor?: [number, number, number, number];
   askColor?: [number, number, number, number];
+  /**
+   * RA-115 Phase 2: bloom on bright walls. Cells with intensity above
+   * `bloomThreshold` (default 0.6) get a soft halo extending up to
+   * `bloomRadiusPx` pixels (default 6.0) in each direction. Set radius to 0
+   * to disable. The halo's intensity scales with how far above threshold
+   * the cell's intensity is (just-above = thin halo; saturated = full halo).
+   */
+  bloomThreshold?: number;
+  bloomRadiusPx?: number;
 }
 
 const DEFAULT_BID: [number, number, number, number] = [0.18, 0.56, 0.34, 1.0];
@@ -169,6 +187,11 @@ export class DepthHeatmapGPU {
     s[17] = c.alphaFloor ?? 0.06;
     s[18] = c.alphaCeil ?? 1.0;
     s[19] = 0; // pad
+    // RA-115 Phase 2: bloom params at offset 80
+    s[20] = c.bloomThreshold ?? 0.6;
+    s[21] = c.bloomRadiusPx ?? 6.0;
+    s[22] = 0; // pad
+    s[23] = 0; // pad
     this.gpu.device.queue.writeBuffer(this.cameraBuf, 0, s.buffer, s.byteOffset, CAMERA_UBO_BYTES);
   }
 
