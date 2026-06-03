@@ -31,10 +31,21 @@ import {
   DEPTH_CONTRAST_WINDOW_SECONDS,
   MAX_DEPTH_CELL_DURATION_SECONDS,
   MAX_DEPTH_CELLS,
+  MIN_DEPTH_CELL_WIDTH,
   depthContrastStats,
   depthIntensity,
   type DepthHeatmapPrimitive,
 } from "../depthHeatmap";
+
+/**
+ * RA-115: floor for cell HEIGHT in pixels. The Canvas2D primitive renders each
+ * price-tick cell at exactly MNQ_TICK (0.25) tall, which is ~1 px when the
+ * visible price range fits the pane height (typical case). WebGPU's rasterizer
+ * skips quads that don't cover a pixel CENTER, so sub-pixel quads light up
+ * inconsistently or not at all. Clamping to 1.5 px minimum in screen space
+ * matches the existing MIN_DEPTH_CELL_WIDTH semantics for width.
+ */
+const MIN_DEPTH_CELL_HEIGHT_PX = 1.5;
 import {
   DEPTH_HEATMAP_MAX_INSTANCES,
   DepthHeatmapGPU,
@@ -181,6 +192,19 @@ export class DepthHeatmapGPULayer {
     const nowSeconds = Date.now() / 1000;
     const stats = depthContrastStats(columns, nowSeconds, DEPTH_CONTRAST_WINDOW_SECONDS);
 
+    // Compute world-space minimums so sub-pixel quads still light up at least
+    // one fragment. Without this, narrow live columns (250ms wide ≈ 0.2 px at
+    // 30-min visible span) and short price-tick cells (0.25 pt ≈ 0.84 px at
+    // 163-pt visible range) miss the WebGPU rasterizer's pixel-center test.
+    const paneWidth = this.canvas.clientWidth || 1;
+    const paneHeight = this.canvas.clientHeight || 1;
+    const timeSpan = Math.max(visibleTime[1] - visibleTime[0], 1e-6);
+    const priceSpan = Math.max(visiblePrice.top - visiblePrice.bottom, 1e-6);
+    const secPerPx = timeSpan / paneWidth;
+    const pricePerPx = priceSpan / paneHeight;
+    const minTimeWidth = MIN_DEPTH_CELL_WIDTH * secPerPx;
+    const minPriceHeight = MIN_DEPTH_CELL_HEIGHT_PX * pricePerPx;
+
     let instCount = 0;
     const buf = this.instances;
     const cap = Math.min(DEPTH_HEATMAP_MAX_INSTANCES, MAX_DEPTH_CELLS);
@@ -208,6 +232,9 @@ export class DepthHeatmapGPULayer {
         timeWidth = 0.25;
       }
       if (timeWidth <= 0) continue;
+      // Clamp to at least MIN_DEPTH_CELL_WIDTH pixels so the rasterizer
+      // covers at least one pixel center even for the narrow live column.
+      timeWidth = Math.max(timeWidth, minTimeWidth);
 
       for (let li = 0; li < col.levels.length; li++) {
         if (instCount >= cap) break;
@@ -217,11 +244,14 @@ export class DepthHeatmapGPULayer {
         const intensity = depthIntensity(level.size, stats.rollingMaxSize, stats.floorSize);
         if (intensity <= 0) continue;
 
+        // Clamp price_height to the screen-space minimum for the same reason
+        // as time_width (rasterizer pixel-center test on sub-pixel quads).
+        const priceHeight = Math.max(MNQ_TICK, minPriceHeight);
         const off = instCount * INSTANCE_STRIDE_FLOATS;
         buf[off + 0] = col.seconds;
         buf[off + 1] = timeWidth;
         buf[off + 2] = level.price;
-        buf[off + 3] = MNQ_TICK;
+        buf[off + 3] = priceHeight;
         buf[off + 4] = intensity;
         buf[off + 5] = level.side === "bid" ? 0.0 : 1.0;
         instCount++;
