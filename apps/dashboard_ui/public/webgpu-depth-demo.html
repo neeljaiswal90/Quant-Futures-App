@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>WebGPU depth heatmap demo — MNQ Dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --muted: #8b949e;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+      --accent: #58a6ff;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.5 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; }
+    body { padding: 24px; }
+    h1 { margin: 0 0 4px 0; font-size: 18px; }
+    .sub { color: var(--muted); margin-bottom: 16px; font-size: 13px; }
+    .layout { display: grid; grid-template-columns: 1fr 320px; gap: 16px; max-width: 1600px; }
+    .stage { background: #000; border: 1px solid var(--border); border-radius: 6px; padding: 0; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 720px; background: #000; }
+    .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; height: max-content; }
+    .controls h2 { margin: 0 0 12px 0; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .stat { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
+    .stat:last-child { border-bottom: none; }
+    .stat .k { color: var(--muted); }
+    .stat .v { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+    .stat .v.ok { color: var(--ok); }
+    .stat .v.warn { color: var(--warn); }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px 0; }
+    input[type="range"] { width: 100%; }
+    input[type="number"] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 4px 8px; border-radius: 3px; font: inherit; }
+    button { background: var(--accent); border: none; color: #000; font: inherit; font-weight: 600; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 4px; }
+    button.alt { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    button:hover { opacity: 0.85; }
+    .verdict { margin-top: 16px; padding: 8px; border-radius: 4px; font-size: 12px; }
+    .verdict.ok { background: rgba(63, 185, 80, 0.15); border: 1px solid rgba(63, 185, 80, 0.4); color: var(--ok); }
+    .verdict.err { background: rgba(248, 81, 73, 0.15); border: 1px solid rgba(248, 81, 73, 0.4); color: var(--err); }
+  </style>
+</head>
+<body>
+  <h1>WebGPU depth heatmap demo</h1>
+  <div class="sub">
+    Stress-tests the Phase 1 renderer with N random cells per frame. Compare against the current Canvas2D path's ~10-30ms burst frame time.
+    This page is dev-server only — open via <code>http://127.0.0.1:5173/webgpu-depth-demo.html</code>.
+  </div>
+
+  <div id="init-msg" class="verdict err" hidden></div>
+
+  <div class="layout">
+    <div class="stage">
+      <canvas id="gpu-canvas"></canvas>
+    </div>
+
+    <div class="controls">
+      <h2>Live stats</h2>
+      <div class="stat"><span class="k">FPS</span><span class="v" id="stat-fps">—</span></div>
+      <div class="stat"><span class="k">Frame time (avg)</span><span class="v" id="stat-frametime">—</span></div>
+      <div class="stat"><span class="k">Frame time (p95)</span><span class="v" id="stat-frametime-p95">—</span></div>
+      <div class="stat"><span class="k">Render submit</span><span class="v" id="stat-submit">—</span></div>
+      <div class="stat"><span class="k">Instances / frame</span><span class="v" id="stat-instances">—</span></div>
+      <div class="stat"><span class="k">Adapter</span><span class="v" id="stat-adapter">—</span></div>
+      <div class="stat"><span class="k">Architecture</span><span class="v" id="stat-arch">—</span></div>
+
+      <label for="ctl-count">Cells per frame: <span id="ctl-count-v">50000</span></label>
+      <input id="ctl-count" type="range" min="1000" max="100000" step="1000" value="50000" />
+
+      <label for="ctl-power">Intensity power: <span id="ctl-power-v">2.0</span></label>
+      <input id="ctl-power" type="range" min="0.5" max="4.0" step="0.1" value="2.0" />
+
+      <label for="ctl-mode">Distribution</label>
+      <select id="ctl-mode" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--border); padding:4px 8px; border-radius:3px; font:inherit;">
+        <option value="random">Uniform random (worst case)</option>
+        <option value="walls" selected>Sparse walls (realistic)</option>
+        <option value="dense-band">Dense band around mid</option>
+      </select>
+
+      <div style="margin-top: 16px;">
+        <button id="btn-pause">Pause</button>
+        <button class="alt" id="btn-burst">Burst (rebuild now)</button>
+      </div>
+
+      <div id="verdict" class="verdict ok" hidden>—</div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Vite serves /src/ in dev mode with on-the-fly TS transforms.
+    import { DepthHeatmapGPU, INSTANCE_STRIDE_FLOATS } from "/src/chart/gpu/depthHeatmapGPU.ts";
+
+    const canvas = document.getElementById("gpu-canvas");
+    const initMsg = document.getElementById("init-msg");
+    const verdict = document.getElementById("verdict");
+
+    let renderer;
+    try {
+      renderer = await DepthHeatmapGPU.create(canvas);
+    } catch (err) {
+      initMsg.hidden = false;
+      initMsg.textContent = "WebGPU init failed: " + (err?.message ?? err);
+      console.error(err);
+      throw err;
+    }
+
+    const diag = renderer.diagnostics();
+    document.getElementById("stat-adapter").textContent = diag.vendor;
+    document.getElementById("stat-arch").textContent = diag.architecture;
+
+    // ── State ───────────────────────────────────────────────────────────
+    let cellCount = 50000;
+    let intensityPower = 2.0;
+    let distribution = "walls";
+    let paused = false;
+
+    // Time/price ranges — pretend we're showing 5 minutes × 100 ticks above + below 30570
+    const TIME_RANGE = [0, 300]; // 5 min in seconds
+    const PRICE_TOP = 30620;
+    const PRICE_BOTTOM = 30520;
+    const TICK = 0.25;
+
+    // Single reusable Float32Array — never re-allocated per frame.
+    const MAX = 100_000;
+    const cells = new Float32Array(MAX * INSTANCE_STRIDE_FLOATS);
+
+    function rand() { return Math.random(); }
+
+    function regenerateCells() {
+      const n = cellCount;
+      const mid = (PRICE_TOP + PRICE_BOTTOM) * 0.5;
+      const priceSpan = PRICE_TOP - PRICE_BOTTOM;
+      const cellTimeWidth = (TIME_RANGE[1] - TIME_RANGE[0]) / 420; // ~MAX_VISIBLE_DEPTH_COLUMNS
+
+      for (let i = 0; i < n; i++) {
+        const off = i * INSTANCE_STRIDE_FLOATS;
+
+        // Time: random column index 0..419
+        const colIdx = Math.floor(rand() * 420);
+        cells[off + 0] = TIME_RANGE[0] + colIdx * cellTimeWidth;
+        cells[off + 1] = cellTimeWidth * 0.95; // small gap between columns
+
+        // Price: depends on distribution mode
+        let price, intensity;
+        if (distribution === "random") {
+          // Uniform — worst case for visual readability but stress test for the pipeline
+          price = PRICE_BOTTOM + rand() * priceSpan;
+          intensity = rand();
+        } else if (distribution === "dense-band") {
+          // Gaussian-ish around mid — biased to middle of book
+          const u = rand() + rand() + rand() + rand() - 2.0; // ~normal, σ≈1
+          price = mid + u * 20;
+          intensity = 0.3 + rand() * 0.7;
+        } else {
+          // walls — most cells thin, a few isolated thick walls
+          price = PRICE_BOTTOM + rand() * priceSpan;
+          // 90% thin liquidity, 10% bright walls
+          intensity = rand() < 0.9 ? rand() * 0.3 : 0.7 + rand() * 0.3;
+        }
+        // Snap to MNQ tick
+        price = Math.round(price / TICK) * TICK;
+        cells[off + 2] = price;
+        cells[off + 3] = TICK;
+
+        cells[off + 4] = intensity;
+        // Side: bid below mid, ask above mid (typical for a book heatmap)
+        cells[off + 5] = price < mid ? 0.0 : 1.0;
+      }
+    }
+    regenerateCells();
+
+    renderer.setCamera({
+      timeRange: TIME_RANGE,
+      priceRange: [PRICE_TOP, PRICE_BOTTOM],
+      intensityPower: intensityPower,
+      alphaFloor: 0.06,
+      alphaCeil: 1.0,
+    });
+
+    // ── Perf measurement ────────────────────────────────────────────────
+    let lastFrameTs = performance.now();
+    let lastFpsUpdate = performance.now();
+    let framesSinceUpdate = 0;
+    const frameTimes = []; // ring buffer, last 120 frames
+    const RING = 120;
+
+    function pushFrameTime(ms) {
+      frameTimes.push(ms);
+      if (frameTimes.length > RING) frameTimes.shift();
+    }
+    function p95(arr) {
+      if (arr.length === 0) return 0;
+      const sorted = [...arr].sort((a, b) => a - b);
+      return sorted[Math.floor(sorted.length * 0.95)];
+    }
+    function avg(arr) {
+      if (arr.length === 0) return 0;
+      let s = 0;
+      for (const v of arr) s += v;
+      return s / arr.length;
+    }
+
+    // ── Render loop ─────────────────────────────────────────────────────
+    async function frame() {
+      const t0 = performance.now();
+      const dt = t0 - lastFrameTs;
+      lastFrameTs = t0;
+      pushFrameTime(dt);
+
+      if (!paused) {
+        // Regenerate every frame to maximally stress the upload + draw path
+        // (worst case for the architecture; in practice the dashboard only
+        //  updates depth cells when a new depth payload arrives ~4 Hz).
+        regenerateCells();
+        renderer.setInstances(cells.subarray(0, cellCount * INSTANCE_STRIDE_FLOATS));
+        renderer.setCamera({
+          timeRange: TIME_RANGE,
+          priceRange: [PRICE_TOP, PRICE_BOTTOM],
+          intensityPower,
+          alphaFloor: 0.06,
+          alphaCeil: 1.0,
+        });
+
+        const tSubmitStart = performance.now();
+        await renderer.render();
+        const tSubmitEnd = performance.now();
+        document.getElementById("stat-submit").textContent = (tSubmitEnd - tSubmitStart).toFixed(2) + " ms";
+      }
+
+      framesSinceUpdate++;
+      if (t0 - lastFpsUpdate > 250) {
+        const fps = (framesSinceUpdate * 1000) / (t0 - lastFpsUpdate);
+        framesSinceUpdate = 0;
+        lastFpsUpdate = t0;
+        const fpsEl = document.getElementById("stat-fps");
+        fpsEl.textContent = fps.toFixed(1);
+        fpsEl.className = "v " + (fps >= 58 ? "ok" : fps >= 30 ? "warn" : "err");
+
+        document.getElementById("stat-frametime").textContent = avg(frameTimes).toFixed(2) + " ms";
+        document.getElementById("stat-frametime-p95").textContent = p95(frameTimes).toFixed(2) + " ms";
+        document.getElementById("stat-instances").textContent = cellCount.toLocaleString();
+
+        // Surface verdict
+        if (fps >= 58) {
+          verdict.hidden = false;
+          verdict.className = "verdict ok";
+          verdict.textContent = `OK — sustained 60+ FPS at ${cellCount.toLocaleString()} cells. WebGPU pipeline performing as expected.`;
+        } else if (fps >= 30) {
+          verdict.hidden = false;
+          verdict.className = "verdict ok";
+          verdict.textContent = `Throttled — ${fps.toFixed(0)} FPS. Possibly hit by browser idle-frame-rate cap; lower if backgrounded.`;
+        } else {
+          verdict.hidden = false;
+          verdict.className = "verdict err";
+          verdict.textContent = `Underperforming — ${fps.toFixed(0)} FPS at ${cellCount.toLocaleString()} cells. Investigate.`;
+        }
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // ── Controls ────────────────────────────────────────────────────────
+    const ctlCount = document.getElementById("ctl-count");
+    const ctlCountV = document.getElementById("ctl-count-v");
+    ctlCount.addEventListener("input", () => {
+      cellCount = parseInt(ctlCount.value, 10);
+      ctlCountV.textContent = cellCount.toLocaleString();
+    });
+
+    const ctlPower = document.getElementById("ctl-power");
+    const ctlPowerV = document.getElementById("ctl-power-v");
+    ctlPower.addEventListener("input", () => {
+      intensityPower = parseFloat(ctlPower.value);
+      ctlPowerV.textContent = intensityPower.toFixed(1);
+    });
+
+    document.getElementById("ctl-mode").addEventListener("change", (e) => {
+      distribution = e.target.value;
+    });
+
+    document.getElementById("btn-pause").addEventListener("click", (e) => {
+      paused = !paused;
+      e.target.textContent = paused ? "Resume" : "Pause";
+    });
+    document.getElementById("btn-burst").addEventListener("click", () => {
+      regenerateCells();
+    });
+  </script>
+</body>
+</html>
