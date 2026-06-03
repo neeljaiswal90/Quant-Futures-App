@@ -26,7 +26,7 @@
  */
 
 import type { IChartApi, ISeriesApi, SeriesType, Time } from "lightweight-charts";
-import { MNQ_TICK } from "../contract/render";
+import { MNQ_TICK } from "../../contract/render";
 import {
   DEPTH_CONTRAST_WINDOW_SECONDS,
   MAX_DEPTH_CELL_DURATION_SECONDS,
@@ -34,7 +34,6 @@ import {
   depthContrastStats,
   depthIntensity,
   type DepthHeatmapPrimitive,
-  type DepthHistoryColumn,
 } from "../depthHeatmap";
 import {
   DEPTH_HEATMAP_MAX_INSTANCES,
