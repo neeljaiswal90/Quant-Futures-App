@@ -14,14 +14,58 @@ const TRADE_NS_KEYS = [
   'ts_recv_ns',
 ] as const;
 
+/**
+ * Read a JSONL file and split it into individual line strings WITHOUT ever
+ * materializing the file content as one giant UTF-8 string.
+ *
+ * V8 caps a single `string` at 0x1fffffe8 bytes (~512 MB). Files larger than
+ * that cause `readFileSync(path, 'utf8')` to throw "Cannot create a string
+ * longer than 0x1fffffe8 characters." Observed during RA-093b training on a
+ * 517 MB MNQ_rth.obs01.jsonl trade-tape file.
+ *
+ * Strategy: read as a Buffer (no string-length limit on Buffer; cap is ~4 GB),
+ * scan byte-wise for `\n`, decode each line individually. Each emitted line
+ * is a separate string well under the 512 MB ceiling.
+ *
+ * Edge cases handled:
+ * - CRLF line endings (strips trailing `\r` before emit)
+ * - Trailing partial line with no closing `\n`
+ * - Empty lines (filtered, matching the previous `nonEmptyLines` behavior)
+ */
+export function readJsonlLinesSync(path: string): readonly string[] {
+  const buf = readFileSync(path);
+  const lines: string[] = [];
+  let start = 0;
+  for (let i = 0; i < buf.length; i += 1) {
+    if (buf[i] === 0x0a /* '\n' */) {
+      // Strip an optional trailing \r before the \n.
+      const end = i > start && buf[i - 1] === 0x0d /* '\r' */ ? i - 1 : i;
+      if (end > start) {
+        const line = buf.toString('utf8', start, end);
+        if (line.trim().length > 0) {
+          lines.push(line);
+        }
+      }
+      start = i + 1;
+    }
+  }
+  if (start < buf.length) {
+    const tail = buf.toString('utf8', start, buf.length).trim();
+    if (tail.length > 0) {
+      lines.push(tail);
+    }
+  }
+  return Object.freeze(lines);
+}
+
 export function readReplayDatasetJsonl(path: string): readonly ReplaySignalRow[] {
-  const lines = nonEmptyLines(readFileSync(path, 'utf8'));
+  const lines = readJsonlLinesSync(path);
   return Object.freeze(lines.map((line, index) => parseReplaySignalLine(line, index + 1)));
 }
 
 export function readReplayTradeTapeJsonl(path: string): readonly ReplayTradeTick[] {
   const trades: ReplayTradeTick[] = [];
-  const lines = nonEmptyLines(readFileSync(path, 'utf8'));
+  const lines = readJsonlLinesSync(path);
   for (let index = 0; index < lines.length; index += 1) {
     const trade = parseReplayTradeLine(lines[index]!, index + 1);
     if (trade !== null) {

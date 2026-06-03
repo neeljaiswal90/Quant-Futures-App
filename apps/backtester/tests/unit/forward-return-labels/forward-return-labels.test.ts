@@ -119,7 +119,10 @@ describe('RA-091 forward-return labels', () => {
       const first = writeForwardReturnLabels({ datasetPath, outputJsonlPath: firstOutput });
       const second = writeForwardReturnLabels({ datasetPath, outputJsonlPath: secondOutput });
 
-      expect(first.jsonl).toBe(second.jsonl);
+      // The writer used to expose result.jsonl with the full output. That field
+      // was removed when the writer was switched to streaming to avoid the V8
+      // >512MB string cap; the equivalent determinism assertion is now done
+      // by comparing the on-disk files plus the manifest sha256.
       expect(readFileSync(firstOutput, 'utf8')).toBe(readFileSync(secondOutput, 'utf8'));
       expect(first.manifest.label_jsonl_sha256).toBe(second.manifest.label_jsonl_sha256);
     } finally {
