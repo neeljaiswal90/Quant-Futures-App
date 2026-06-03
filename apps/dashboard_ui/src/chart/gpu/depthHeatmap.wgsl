@@ -158,6 +158,15 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut 
   return out;
 }
 
+/**
+ * Width in pixels of the LEFT-edge fade-out region. Cells fully inside this
+ * zone (the leftmost EDGE_FADE_PX of the canvas) ramp from alpha 0 at the
+ * absolute left edge to full alpha at EDGE_FADE_PX in. Produces a soft
+ * "trailing" look on the oldest data so it recedes into the background
+ * instead of cutting hard at the chart's left edge. RA-115 Phase 2 slice 2.
+ */
+const EDGE_FADE_PX: f32 = 60.0;
+
 @fragment
 fn fs(in: VOut) -> @location(0) vec4f {
   // Apply the intensity power curve. The Canvas2D path uses pow(I, 2.0) by
@@ -185,6 +194,13 @@ fn fs(in: VOut) -> @location(0) vec4f {
     let halo = max(1.0 - dist / in.bloom_px, 0.0);
     alpha = inside_alpha * halo * halo;
   }
+
+  // RA-115 Phase 2 slice 2: left-edge fade-out. Cells with x < EDGE_FADE_PX
+  // are alpha-attenuated by a smoothstep ramp so old data trails off
+  // gracefully into the background instead of cutting at the chart edge.
+  // Smoothstep(0, EDGE_FADE_PX, x) returns 0 at x=0, 1 at x≥EDGE_FADE_PX.
+  let edge_fade = smoothstep(0.0, EDGE_FADE_PX, px.x);
+  alpha = alpha * edge_fade;
 
   // Premultiplied alpha output (matches alphaMode='premultiplied' on the
   // canvas context). color.a is treated as a tint that combines with the
