@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>WebGPU smoke test — MNQ Dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --muted: #8b949e;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+      --accent: #58a6ff;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.5 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; }
+    body { padding: 24px; min-height: 100vh; }
+    h1 { margin: 0 0 4px 0; font-size: 20px; letter-spacing: 0.5px; }
+    h1 .ok { color: var(--ok); }
+    h1 .err { color: var(--err); }
+    .sub { color: var(--muted); margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1200px; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+    .panel h2 { margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+    canvas { display: block; width: 100%; height: 320px; background: #000; border-radius: 4px; image-rendering: pixelated; }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.5; color: var(--text); }
+    .verdict { font-size: 18px; padding: 12px; border-radius: 4px; margin-bottom: 16px; font-weight: 600; }
+    .verdict.ok { background: rgba(63, 185, 80, 0.15); border: 1px solid rgba(63, 185, 80, 0.4); color: var(--ok); }
+    .verdict.warn { background: rgba(210, 153, 34, 0.15); border: 1px solid rgba(210, 153, 34, 0.4); color: var(--warn); }
+    .verdict.err { background: rgba(248, 81, 73, 0.15); border: 1px solid rgba(248, 81, 73, 0.4); color: var(--err); }
+    .kv { display: grid; grid-template-columns: 220px 1fr; gap: 4px 16px; font-size: 12px; }
+    .kv .k { color: var(--muted); }
+    .kv .v { color: var(--text); word-break: break-word; }
+    .kv .v.ok { color: var(--ok); }
+    .kv .v.err { color: var(--err); }
+    button { background: var(--accent); border: none; color: #000; font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 16px; }
+    button:hover { opacity: 0.9; }
+    code { background: rgba(110, 118, 129, 0.15); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+    .note { color: var(--muted); font-size: 12px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>WebGPU smoke test — MNQ Dashboard <span id="title-badge"></span></h1>
+  <div class="sub">Verifies <code>navigator.gpu</code> works inside this Tauri WebView2 + the RTX 4080 can serve a render pipeline. Required before Option D (WebGPU dashboard rewrite) proceeds.</div>
+
+  <div id="verdict" class="verdict warn">Running…</div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>1. Render — should show a triangle with RGB-blended corners</h2>
+      <canvas id="gpu-canvas"></canvas>
+      <div class="note">If you see a clean tri-color triangle on a black canvas, WebGPU rendered successfully on whichever GPU was selected. Empty/black canvas = pipeline init failed; check the status panel below.</div>
+    </div>
+
+    <div class="panel">
+      <h2>2. Status</h2>
+      <div id="status-kv" class="kv"></div>
+      <button id="copy-btn" type="button" hidden>Copy status as text</button>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top: 24px; max-width: 1200px;">
+    <h2>3. Full WebGPU report</h2>
+    <pre id="report">(running…)</pre>
+  </div>
+
+  <script type="module">
+    const report = [];
+    const kv = document.getElementById('status-kv');
+    const verdict = document.getElementById('verdict');
+    const titleBadge = document.getElementById('title-badge');
+    const reportEl = document.getElementById('report');
+
+    function addRow(key, value, klass = '') {
+      const k = document.createElement('div');
+      k.className = 'k';
+      k.textContent = key;
+      const v = document.createElement('div');
+      v.className = 'v ' + klass;
+      v.textContent = value;
+      kv.appendChild(k);
+      kv.appendChild(v);
+      report.push(`${key.padEnd(28)} ${value}`);
+    }
+
+    function setVerdict(text, klass) {
+      verdict.className = 'verdict ' + klass;
+      verdict.textContent = text;
+      titleBadge.innerHTML = klass === 'ok' ? '<span class="ok">[OK]</span>' : klass === 'err' ? '<span class="err">[FAIL]</span>' : '';
+    }
+
+    async function run() {
+      addRow('navigator.gpu', typeof navigator.gpu === 'object' && navigator.gpu !== null ? 'present' : 'MISSING',
+        typeof navigator.gpu === 'object' && navigator.gpu !== null ? 'ok' : 'err');
+
+      if (!navigator.gpu) {
+        setVerdict('FAIL — navigator.gpu is undefined. WebView2 too old or feature disabled.', 'err');
+        reportEl.textContent = report.join('\n');
+        return;
+      }
+
+      // User agent for cross-reference with WebView2 version
+      addRow('user agent', navigator.userAgent);
+
+      // Adapter — prefer high-performance for the 4080
+      let adapter;
+      try {
+        adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+      } catch (err) {
+        addRow('requestAdapter', 'threw: ' + err.message, 'err');
+        setVerdict('FAIL — adapter request threw. ' + err.message, 'err');
+        reportEl.textContent = report.join('\n');
+        return;
+      }
+
+      if (!adapter) {
+        addRow('adapter', 'null (no suitable adapter)', 'err');
+        setVerdict('FAIL — requestAdapter returned null. Driver/hardware unavailable to WebGPU.', 'err');
+        reportEl.textContent = report.join('\n');
+        return;
+      }
+
+      addRow('adapter', 'acquired', 'ok');
+
+      // adapter.info is the modern spec; older versions used adapter.requestAdapterInfo()
+      let info = adapter.info;
+      if (!info && typeof adapter.requestAdapterInfo === 'function') {
+        try { info = await adapter.requestAdapterInfo(); } catch { info = null; }
+      }
+      if (info) {
+        addRow('adapter.vendor', info.vendor || '(empty)');
+        addRow('adapter.architecture', info.architecture || '(empty)');
+        addRow('adapter.device', info.device || '(empty)');
+        addRow('adapter.description', info.description || '(empty)');
+      } else {
+        addRow('adapter.info', 'unavailable (older WebGPU)', 'warn');
+      }
+
+      // Limits — relevant ones for the dashboard's workload
+      const limits = adapter.limits;
+      const interestingLimits = [
+        'maxBindGroups',
+        'maxTextureDimension2D',
+        'maxStorageBufferBindingSize',
+        'maxStorageBuffersPerShaderStage',
+        'maxVertexBuffers',
+        'maxVertexAttributes',
+        'maxBufferSize',
+        'maxComputeWorkgroupSizeX',
+        'maxComputeInvocationsPerWorkgroup',
+      ];
+      for (const k of interestingLimits) {
+        if (k in limits) addRow('limits.' + k, String(limits[k]));
+      }
+
+      // Features list — these are GPU capabilities we may want
+      const featuresArr = [];
+      try { adapter.features.forEach(f => featuresArr.push(f)); } catch {}
+      addRow('features', featuresArr.length ? featuresArr.join(', ') : '(none)');
+
+      // Device
+      let device;
+      try {
+        device = await adapter.requestDevice();
+      } catch (err) {
+        addRow('requestDevice', 'threw: ' + err.message, 'err');
+        setVerdict('FAIL — device acquisition threw. ' + err.message, 'err');
+        reportEl.textContent = report.join('\n');
+        return;
+      }
+      addRow('device', 'acquired', 'ok');
+
+      device.lost.then(info => {
+        console.warn('WebGPU device lost', info);
+      });
+
+      // Set up canvas
+      const canvas = document.getElementById('gpu-canvas');
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(canvas.clientWidth * dpr);
+      canvas.height = Math.floor(canvas.clientHeight * dpr);
+      addRow('canvas', `${canvas.width}x${canvas.height} (DPR ${dpr})`);
+
+      const ctx = canvas.getContext('webgpu');
+      if (!ctx) {
+        addRow('canvas.getContext(webgpu)', 'null', 'err');
+        setVerdict('FAIL — canvas WebGPU context returned null.', 'err');
+        reportEl.textContent = report.join('\n');
+        return;
+      }
+
+      const format = navigator.gpu.getPreferredCanvasFormat();
+      addRow('preferred canvas format', format);
+      ctx.configure({ device, format, alphaMode: 'premultiplied' });
+
+      // Tiny shader: vertex emits a triangle with per-corner colors; fragment passes through
+      const shaderCode = `
+        struct VSOut {
+          @builtin(position) pos : vec4f,
+          @location(0) color : vec3f,
+        };
+
+        @vertex
+        fn vs(@builtin(vertex_index) vi : u32) -> VSOut {
+          var positions = array<vec2f, 3>(
+            vec2f( 0.0,  0.75),
+            vec2f(-0.75, -0.65),
+            vec2f( 0.75, -0.65),
+          );
+          var colors = array<vec3f, 3>(
+            vec3f(0.91, 0.32, 0.29),  // red-ish (matches dashboard signal color)
+            vec3f(0.34, 0.73, 0.31),  // green-ish (matches bid side)
+            vec3f(0.35, 0.65, 1.00),  // blue-ish (matches accent)
+          );
+          var out : VSOut;
+          out.pos = vec4f(positions[vi], 0.0, 1.0);
+          out.color = colors[vi];
+          return out;
+        }
+
+        @fragment
+        fn fs(in : VSOut) -> @location(0) vec4f {
+          return vec4f(in.color, 1.0);
+        }
+      `;
+
+      let shaderModule;
+      try {
+        shaderModule = device.createShaderModule({ code: shaderCode });
+      } catch (err) {
+        addRow('shader compile', 'threw: ' + err.message, 'err');
+        setVerdict('FAIL — shader module creation threw. ' + err.message, 'err');
+        reportEl.textContent = report.join('\n');
+        return;
+      }
+
+      // Surface any compilation errors from the WGSL
+      const compInfo = await shaderModule.getCompilationInfo?.();
+      if (compInfo && compInfo.messages.length) {
+        for (const m of compInfo.messages) {
+          addRow('shader ' + m.type, `L${m.lineNum}:${m.linePos} ${m.message}`, m.type === 'error' ? 'err' : 'warn');
+        }
+        if (compInfo.messages.some(m => m.type === 'error')) {
+          setVerdict('FAIL — shader compile errors.', 'err');
+          reportEl.textContent = report.join('\n');
+          return;
+        }
+      }
+      addRow('shader compile', 'ok', 'ok');
+
+      const pipeline = device.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module: shaderModule, entryPoint: 'vs' },
+        fragment: { module: shaderModule, entryPoint: 'fs', targets: [{ format }] },
+        primitive: { topology: 'triangle-list' },
+      });
+      addRow('pipeline', 'created', 'ok');
+
+      const t0 = performance.now();
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: ctx.getCurrentTexture().createView(),
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        }],
+      });
+      pass.setPipeline(pipeline);
+      pass.draw(3);
+      pass.end();
+      device.queue.submit([encoder.finish()]);
+      await device.queue.onSubmittedWorkDone();
+      const t1 = performance.now();
+      addRow('render submit + sync', `${(t1 - t0).toFixed(2)}ms`, 'ok');
+
+      // Inspect the triangle: read back one pixel from the center to confirm fragment shader ran
+      // (Skipped here — requires a different texture usage. Visual confirmation in the canvas is enough.)
+
+      setVerdict('PASS — WebGPU works. Option D plan can proceed.', 'ok');
+      reportEl.textContent = report.join('\n');
+
+      const btn = document.getElementById('copy-btn');
+      btn.hidden = false;
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(reportEl.textContent).catch(() => {});
+      });
+    }
+
+    run().catch(err => {
+      addRow('unexpected error', err.message + '\n' + (err.stack || ''), 'err');
+      setVerdict('FAIL — unexpected exception. See report below.', 'err');
+      reportEl.textContent = report.join('\n');
+      console.error(err);
+    });
+  </script>
+</body>
+</html>
