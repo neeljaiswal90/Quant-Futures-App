@@ -937,10 +937,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(content=message.model_dump())
 
     @app.get("/api/bookmap-backfill")
-    async def bookmap_backfill() -> JSONResponse:
-        """Bounded session-history backfill for Bookmap-style reconnect hydration."""
+    async def bookmap_backfill(
+        duration_minutes: int | None = None,
+    ) -> JSONResponse:
+        """Bounded session-history backfill for Bookmap-style reconnect hydration.
+
+        ``duration_minutes`` (R8 partial): optional UI-driven time window
+        (10 / 15 / 30 minutes). Filters in-memory cache by age. Capped at
+        the existing max-age ceiling; pre-startup historical data needs the
+        depth-synthesizer follow-up (algo-engineer work).
+        """
         backend: RealtimeBackend = app.state.backend
-        return JSONResponse(content=await backend.feed.bookmap_backfill_payload())
+        # Defensive: cap to a sane upper bound to prevent abuse.
+        clamped: int | None = None
+        if duration_minutes is not None:
+            try:
+                clamped = max(0, min(int(duration_minutes), 60))
+            except (TypeError, ValueError):
+                clamped = None
+        return JSONResponse(
+            content=await backend.feed.bookmap_backfill_payload(
+                duration_minutes=clamped,
+            )
+        )
 
     @app.post("/api/shutdown/end-day")
     def end_day_shutdown(background_tasks: BackgroundTasks) -> JSONResponse:

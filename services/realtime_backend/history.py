@@ -176,10 +176,25 @@ class BookmapHistory:
         through_seq: int,
         trading_date: str | None,
         session: str | None,
+        duration_minutes: int | None = None,
     ) -> dict[str, Any]:
-        """Return a deterministic compact JSON-serializable backfill payload."""
+        """Return a deterministic compact JSON-serializable backfill payload.
+
+        ``duration_minutes`` (R8 partial): when set, also caps rows by age so
+        the operator-facing UI dropdown ("load 10/15/30 min of history") gets
+        a deterministic time window from the cache. Caps at the existing
+        ``max_age_ns`` ceiling. Returns only rows newer than
+        ``generated_at_ns - duration_minutes * 60s``. NOTE: this only filters
+        the in-memory cache; true pre-startup historical hydration requires
+        the depth-synthesizer follow-up tracked as algo-engineer work.
+        """
 
         price_rows, depth_rows = self._rows_under_response_budget()
+        if duration_minutes is not None and duration_minutes > 0:
+            duration_ns = int(duration_minutes) * 60 * 1_000_000_000
+            cutoff_ns = generated_at_ns - duration_ns
+            price_rows = [r for r in price_rows if int(r.get("ts_ns", 0)) >= cutoff_ns]
+            depth_rows = [r for r in depth_rows if int(r.get("ts_ns", 0)) >= cutoff_ns]
         limits = {
             "price_ticks_max": self.max_price_ticks,
             "depth_columns_max": self.max_depth_columns,
@@ -188,6 +203,7 @@ class BookmapHistory:
             "max_age_seconds": self.max_age_ns // 1_000_000_000,
             "max_response_bytes": self.max_response_bytes,
             "estimated_response_bytes": 0,
+            "requested_duration_minutes": duration_minutes,
         }
         response = {
             "schema_version": 1,

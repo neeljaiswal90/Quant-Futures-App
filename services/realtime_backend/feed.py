@@ -176,8 +176,16 @@ class FeedState:
     def latest_depth_message(self) -> RealtimeMessage | None:
         return self._last_depth_message
 
-    async def bookmap_backfill_payload(self) -> dict[str, Any]:
-        """Return a compact REST hydration payload for browser reload/reconnect."""
+    async def bookmap_backfill_payload(
+        self,
+        *,
+        duration_minutes: int | None = None,
+    ) -> dict[str, Any]:
+        """Return a compact REST hydration payload for browser reload/reconnect.
+
+        ``duration_minutes`` (R8 partial): forwarded to BookmapHistory.to_response
+        which filters the in-memory cache by age. None = return whole cache.
+        """
 
         async with self._lock:
             generated_at_ns = time.time_ns()
@@ -194,6 +202,7 @@ class FeedState:
                 through_seq=self.current_seq,
                 trading_date=session_date,
                 session=session_name,
+                duration_minutes=duration_minutes,
             )
 
     # ----- emission ------------------------------------------------------
