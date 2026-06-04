@@ -1,0 +1,187 @@
+{
+  "authority_guardrails": {
+    "active_candidate_roster_mutated": false,
+    "broker_live_authorized": false,
+    "candidate_claimed_or_emitted": false,
+    "global_regime_labels_mutated": false,
+    "management_config_mutated": false,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "order_intent_claimed_or_emitted": false,
+    "paper_config_mutated": false,
+    "paper_runtime_invoked": false,
+    "phase_6_authorized": false,
+    "qfa_410b_or_qfa_611_run": false,
+    "strat_eval_claimed_or_emitted": false,
+    "strategy_config_mutated": false
+  },
+  "base_predicate_status": "READY_ON_NON_EXCLUDED_SOURCE_TIMESTAMP",
+  "bounded_diagnostic_lf_sha256": "bef6f28655b42d580d3d214747a38d539c5a4ec5d631f5e2c923f5f27afb1d08",
+  "candidate_eligible_non_excluded_snapshot_available": true,
+  "candidate_eligible_snapshot_available": true,
+  "candidate_entry_hour_utc_if_available": 19,
+  "candidate_feature_snapshot_id_if_available": "feature-v2pf-20260602-1780427100000000000",
+  "candidate_timestamp_ns_if_available": "1780427100000000000",
+  "candidate_timestamp_utc_if_available": "2026-06-02T19:05:00.000000000Z",
+  "determination": "CANDIDATE_ELIGIBLE_NON_EXCLUDED_SNAPSHOT_SOURCE_AVAILABLE",
+  "hygiene_checks": {
+    "checked_pattern": "550Z.550603543Z",
+    "checked_scope": "generated timestamp values",
+    "malformed_iso_timestamp_pattern_absent": true
+  },
+  "non_excluded_snapshot_available": true,
+  "pr308_anchor": {
+    "bounded_feature_snapshot_lf_sha256": "76f26186ee8952e05addcc94adcf751c1bc493d8e9e13ff9387d57f6d81d3216",
+    "feature_snapshot_id": "feature-v2pf-20260602-1780423199835478000",
+    "merge_commit": "0e2fcf5c51b41abf51d4e1b8cb4011ae66f675ab",
+    "pr": 308,
+    "target_entry_hour_utc": 17,
+    "target_timestamp_ns": "1780423199835478000",
+    "target_timestamp_utc": "2026-06-02T17:59:59.835478000Z",
+    "target_timestamp_variant_gate_status": "EXCLUDED_BY_UTC_16_18_GATE",
+    "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-FEATURE-SNAPSHOT-BUILDER-IMPL-01"
+  },
+  "pr309_anchor": {
+    "candidate_gate_proof_status": "BLOCKED_BY_BASE_REJECTION",
+    "comparison_result": "-1.7986 < 2.7",
+    "determination": "STRAT_EVAL_SMOKE_PARTIAL_PASS_BASE_REJECTION_PRECEDES_UTC_GATE",
+    "head_commit": "9f6c26e72adea04f0e85122c83e3af7bc3cd4ceb",
+    "inherited_v2_rejection_reason": "low_regime_shock_below_strict_pos_threshold",
+    "merge_commit": "9f562fa2e906af19de2a4eb043ba7c515d2bd6a3",
+    "pr": 309,
+    "snapshot_value_compared": -1.7986,
+    "strat_eval_plumbing_status": "PASSED",
+    "threshold_name": "parameters.low_shock_threshold_pos",
+    "threshold_value": 2.7,
+    "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-STRAT-EVAL-SMOKE-01"
+  },
+  "predicate_provenance": [
+    {
+      "consumer_status": "READY",
+      "field": "session.is_rth",
+      "placeholder_used": false,
+      "repo_path": "apps/strategy_runtime/src/session/mnq-session-calendar.ts",
+      "source_ready_anchor": "PR #303 source window begins before RTH open; PR #307 MNQ session calendar provenance",
+      "value_basis": "2026-06-02-rth"
+    },
+    {
+      "consumer_status": "READY",
+      "field": "session.is_halt",
+      "placeholder_used": false,
+      "repo_path": "apps/strategy_runtime/src/session/mnq-session-calendar.ts",
+      "source_ready_anchor": "PR #307 HALT_ROLL_CALENDAR_SOURCE_READY_FOR_FEATURE_BUILDER",
+      "value_basis": false
+    },
+    {
+      "consumer_status": "READY",
+      "field": "session.is_roll_block",
+      "placeholder_used": false,
+      "repo_path": "apps/strategy_runtime/src/session/mnq-roll-calendar.ts; apps/strategy_runtime/src/session/mnq-session-policy.ts",
+      "source_ready_anchor": "PR #307 HALT_ROLL_CALENDAR_SOURCE_READY_FOR_FEATURE_BUILDER",
+      "value_basis": false
+    },
+    {
+      "consumer_status": "READY",
+      "field": "context.regime_label",
+      "placeholder_used": false,
+      "repo_path": "scoped paper-observation source acquired by PR #305; global artifacts/regime/regime-labels.json read-only",
+      "source_ready_anchor": "PR #305 SCOPED_REGIME_LABEL_SOURCE_ACQUIRED_NOT_GLOBAL",
+      "value_basis": "low"
+    },
+    {
+      "consumer_status": "READY_IF_TIMESTAMP_HAS_FINITE_QUOTE",
+      "field": "quote.mid_px",
+      "placeholder_used": false,
+      "repo_path": "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-02/MNQ_rth.mbp1.jsonl",
+      "source_ready_anchor": "2026-06-02 MBP1 bid/ask source scan",
+      "value_basis": "latest finite bid/ask quote at or before candidate timestamp"
+    },
+    {
+      "consumer_status": "READY_IF_TIMESTAMP_HAS_AT_LEAST_14_CLOSED_BARS",
+      "field": "indicators.atr14_pts",
+      "placeholder_used": false,
+      "repo_path": "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-02/MNQ_rth.obs01.jsonl",
+      "source_ready_anchor": "PR #303 source-readiness formula carried forward; recomputed from closed 1m bars",
+      "value_basis": "Wilder ATR14 over source-backed closed 1m bars"
+    },
+    {
+      "consumer_status": "READY_IF_TIMESTAMP_HAS_CLOSED_BARS",
+      "field": "indicators.sigma_pts",
+      "placeholder_used": false,
+      "repo_path": "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-02/MNQ_rth.obs01.jsonl",
+      "source_ready_anchor": "PR #308 consumer compatibility proof; recomputed from source-backed closed bars",
+      "value_basis": "max(0.25, average closed-bar range / 2)"
+    },
+    {
+      "consumer_status": "READY_IF_TIMESTAMP_HAS_VWAP_ATR_QUOTE",
+      "field": "context.signed_shock_vwap.value",
+      "placeholder_used": false,
+      "repo_path": "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-02/MNQ_rth.obs01.jsonl; D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-02/MNQ_rth.mbp1.jsonl",
+      "source_ready_anchor": "PR #303/PR #308 signed_shock_vwap source semantics",
+      "value_basis": "(quote.mid_px - session_vwap) / atr14_pts"
+    },
+    {
+      "consumer_status": "READY",
+      "field": "config lineage",
+      "placeholder_used": false,
+      "repo_path": "config/strategies/regime_shock_reversion_short_v2_utc_16_18_exclusion.yaml",
+      "source_ready_anchor": "PR #286 variant-owned runtime config source; PR #308 feature snapshot config lineage compatibility",
+      "value_basis": "regime_shock_reversion_short_v2_utc_16_18_exclusion"
+    },
+    {
+      "consumer_status": "READY_IF_SIGNED_SHOCK_MEETS_THRESHOLD",
+      "field": "inherited v2 base predicate threshold",
+      "placeholder_used": false,
+      "repo_path": "apps/strategy_runtime/src/strategies/regime_shock_reversion_short_v2.ts",
+      "source_ready_anchor": "PR #309 rejection provenance",
+      "value_basis": "REGIME low requires signed_shock_vwap >= 2.7"
+    }
+  ],
+  "reason_if_unavailable": null,
+  "recommended_next_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-CANDIDATE-ELIGIBLE-SNAPSHOT-BUILDER-IMPL-01",
+  "selected_candidate_point": {
+    "base_predicates_pass": true,
+    "base_predicates_pass_before_utc_gate": true,
+    "context.regime_label": "low",
+    "context.session_vwap": 30642.6641,
+    "context.signed_shock_vwap.value": 2.7449,
+    "entry_hour_utc": 19,
+    "indicators.atr14_pts": 9.048,
+    "indicators.sigma_pts": 5.1814,
+    "quote.mid_px": 30667.5,
+    "session.is_halt": false,
+    "session.is_roll_block": false,
+    "session.is_rth": true,
+    "snapshot_value_compared": 2.7449,
+    "threshold_comparison_result": "2.7449 >= 2.7",
+    "threshold_name": "parameters.low_shock_threshold_pos",
+    "threshold_value": 2.7,
+    "timestamp_ns": "1780427100000000000",
+    "timestamp_utc": "2026-06-02T19:05:00.000000000Z",
+    "utc_exclusion_gate_status": "NON_EXCLUDED_BY_UTC_16_18_GATE"
+  },
+  "source_window_event_count": {
+    "bar_points_scanned": 245,
+    "candidate_eligible_excluded_points": 32,
+    "candidate_eligible_non_excluded_points": 53,
+    "candidate_eligible_points": 85,
+    "closed_1m_bars_constructed": 245,
+    "finite_quote_records": 300750,
+    "non_excluded_source_ready_points": 127,
+    "quote_records_with_null_mid": 0,
+    "source_quote_records": 372599,
+    "source_trade_records": 518356,
+    "used_trade_records": 508896
+  },
+  "source_window_span": {
+    "first_source_ts_ns": "1780407000000095000",
+    "first_source_ts_utc": "2026-06-02T13:30:00.000095000Z",
+    "last_source_ts_ns": "1780430700550603543",
+    "last_source_ts_utc": "2026-06-02T20:05:00.550603543Z",
+    "session_open_ts_ns": "1780407000000000000",
+    "session_open_ts_utc": "2026-06-02T13:30:00.000000000Z"
+  },
+  "strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+  "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-CANDIDATE-ELIGIBLE-NON-EXCLUDED-SNAPSHOT-SOURCE-SCOPE-01",
+  "utc_exclusion_gate_status": "NON_EXCLUDED_SOURCE_TIMESTAMP_AVAILABLE"
+}
