@@ -262,23 +262,42 @@ def load_trade_ticks_from_tail(
         return []
     size = capture_path.stat().st_size
     seek_pos = max(0, size - tail_bytes)
+    ticks: list[TradeTick] = []
+    skip_first = seek_pos > 0
+    # Hard byte ceiling: never read more than 2x tail_bytes regardless of
+    # how the seek + file iterator interact. Defensive against the
+    # MemoryError we hit on 18.2 GB RTH raw captures when the obs01
+    # sibling wasn't available in the replay's scratch path (2026-06-04).
+    bytes_ceiling = max(tail_bytes * 2, 4 * 1024 * 1024)
+    bytes_read = 0
     with capture_path.open("rb") as f:
         f.seek(seek_pos)
-        text = f.read().decode("utf-8", errors="ignore")
-    lines = text.splitlines()
-    if seek_pos > 0 and lines:
-        lines = lines[1:]
-    ticks: list[TradeTick] = []
-    for raw in lines:
-        try:
-            rec = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(rec, dict):
-            continue
-        tick = _trade_tick(rec)
-        if tick is not None:
-            ticks.append(tick)
+        # Iterate line-by-line so memory usage is bounded by the largest
+        # single line (typically <1 KB), not the entire remainder of the
+        # file (which can be many GB for raw mixed-stream captures).
+        for raw in f:
+            bytes_read += len(raw)
+            if bytes_read > bytes_ceiling:
+                break
+            if skip_first:
+                # When seek lands mid-line, the first line is partial.
+                skip_first = False
+                continue
+            try:
+                line = raw.decode("utf-8", errors="ignore").rstrip()
+            except UnicodeDecodeError:
+                continue
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            tick = _trade_tick(rec)
+            if tick is not None:
+                ticks.append(tick)
     return sorted(ticks, key=lambda tick: tick.timestamp_ns or 0)
 
 
