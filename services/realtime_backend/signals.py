@@ -498,6 +498,7 @@ def build_snapshot_payload(
     cap_bind_flags: dict[str, bool] | None = None,
     tactical_status: str | None = None,
     tactical_tape_minutes: float | None = None,
+    persistent_levels: list[Any] | None = None,
 ) -> SnapshotPayload:
     """Assemble the full SnapshotPayload for initial load / resync.
 
@@ -555,6 +556,7 @@ def build_snapshot_payload(
         shelves=shelves or [],
         tactical_status=tactical_status,  # type: ignore[arg-type]
         tactical_tape_minutes=tactical_tape_minutes,
+        persistent_levels=persistent_levels or [],  # type: ignore[arg-type]
     )
 
 

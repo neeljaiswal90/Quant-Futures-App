@@ -275,6 +275,44 @@ class PersistentLevelDetector:
     def levels_for_test(self) -> dict[str, LevelState]:
         return dict(self._levels)
 
+    # -- R12.1 snapshot exposure --------------------------------------------
+    def active_levels_for_snapshot(self, now_ts_ns: int) -> list[PersistentLevelPayload]:
+        """R12.1: emit all currently-active levels as PersistentLevelPayloads.
+
+        Used by the snapshot builder so cold-start clients see the composite
+        S/D zones immediately (vs waiting for the next emission window).
+        Skips levels that haven't reached promotion thresholds (no confidence
+        assigned yet) and "broken" levels per the existing lifecycle rules.
+        """
+        out: list[PersistentLevelPayload] = []
+        for level in self._levels.values():
+            confidence = self._classify_confidence(level)
+            if confidence is None:
+                continue
+            status = self._status_for(level, now_ts_ns)
+            if status == "broken":
+                continue
+            persistence = max(0.0, (now_ts_ns - level.first_seen_ts_ns) / 1_000_000_000)
+            out.append(
+                PersistentLevelPayload(
+                    level_id=level.level_id,
+                    price=level.price,
+                    side=level.side,
+                    persistence_seconds=persistence,
+                    confidence=confidence,
+                    evidence=level.evidence_payload(),
+                    last_active_ts_ns=level.last_active_ts_ns,
+                    status=status,
+                )
+            )
+        # Sort by composite "strength": confidence weight + observation count.
+        weight = {"high": 3, "medium": 2, "low": 1}
+        out.sort(
+            key=lambda p: (weight.get(p.confidence, 0), len(p.evidence)),
+            reverse=True,
+        )
+        return out
+
     # -- internals ------------------------------------------------------------
 
     def _ensure_level(

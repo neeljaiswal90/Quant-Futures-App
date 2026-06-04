@@ -405,6 +405,13 @@ class SnapshotPayload(RealtimePayload):
     # How much of the trailing window the compute used (minutes). Useful for
     # debugging + showing "warming up — 12/30 min" style chips.
     tactical_tape_minutes: float | None = None
+    # R12.1 (2026-06-04): composite-derived S/D zones (iceberg + absorption +
+    # sweep evidence aggregated by PersistentLevelDetector). These are the
+    # operator's primary "real" supply/demand levels — behavior-derived,
+    # NOT statistical like sigma shelves. Sorted by composite strength
+    # (confidence weight + evidence-source count, descending). Field is
+    # optional / defaults empty so older snapshots without it still parse.
+    persistent_levels: list["PersistentLevelPayload"] = Field(default_factory=list)
 
 
 class MbpPulsePayload(RealtimePayload):

@@ -152,6 +152,12 @@ class FeedState:
 
     def build_snapshot_message(self, seq: int | None = None) -> RealtimeMessage:
         """Build a snapshot envelope at ``seq`` (defaults to current seq)."""
+        # R12.1 (2026-06-04): include composite-derived persistent S/D levels
+        # so cold-start clients (and Tradesea hydration scripts) see the
+        # behavior-derived zones without waiting for emission events.
+        persistent_levels = self._persistent_level_detector.active_levels_for_snapshot(
+            time.time_ns(),
+        )
         payload: SnapshotPayload = build_snapshot_payload(
             self._last_signals,
             envelope=self._last_envelope,
@@ -161,6 +167,7 @@ class FeedState:
             cap_bind_flags=self._last_cap_bind_flags,
             tactical_status=self._last_tactical_status,
             tactical_tape_minutes=self._last_tactical_tape_minutes,
+            persistent_levels=persistent_levels,
         )
         return make_message(
             type="snapshot",
