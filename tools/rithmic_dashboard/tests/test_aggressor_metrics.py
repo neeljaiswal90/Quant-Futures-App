@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from rithmic_dashboard.features.aggressor_metrics import (
@@ -58,6 +59,139 @@ def test_v_delta_sign_flip_uses_ten_second_hysteresis(tmp_path: Path) -> None:
     assert second_event is not None
     assert second_event.event_type == "v_delta_sign_flip"
     assert second_event.direction == "short"
+
+
+def test_v_delta_zscore_suppresses_near_zero_noise(tmp_path: Path) -> None:
+    state_path = tmp_path / "aggressor_state.json"
+    ticks: list[TradeTick] = []
+    events = []
+
+    for idx, seconds in enumerate(range(30, 210, 15)):
+        side = "buy" if idx % 2 else "sell"
+        ticks.extend(
+            [
+                _tick(seconds - 10, 100.0, 3, side),
+                _tick(seconds, 100.0, 3, side),
+            ]
+        )
+        v_delta, event = compute_v_delta(ticks, state_path=state_path)
+        events.append(event)
+
+        assert v_delta.direction == "neutral"
+        assert v_delta.zscore is not None
+        assert abs(v_delta.zscore) < 1.5
+
+    assert all(event is None for event in events)
+
+
+def test_v_delta_zscore_emits_one_real_reversal(tmp_path: Path) -> None:
+    state_path = tmp_path / "aggressor_state.json"
+    bearish_ticks = [
+        _tick(20, 100.0, 50, "sell"),
+        _tick(30, 100.0, 50, "sell"),
+    ]
+    first, first_event = compute_v_delta(bearish_ticks, state_path=state_path)
+
+    assert first.direction == "bearish"
+    assert first_event is None
+
+    flipped_ticks = bearish_ticks + [
+        _tick(90, 100.0, 100, "buy"),
+        _tick(100, 100.0, 100, "buy"),
+    ]
+    second, second_event = compute_v_delta(flipped_ticks, state_path=state_path)
+
+    assert second.direction == "bullish"
+    assert second.sign_flip is True
+    assert second.zscore is not None
+    assert second.zscore > 1.5
+    assert second_event is not None
+    assert second_event.event_type == "v_delta_sign_flip"
+    assert second_event.direction == "long"
+    assert second_event.metadata["zscore"] == second.zscore
+    assert second_event.metadata["stddev"] == second.stddev
+
+
+def test_v_delta_zscore_enforces_flip_cooldown(tmp_path: Path) -> None:
+    state_path = tmp_path / "aggressor_state.json"
+    ticks = [
+        _tick(20, 100.0, 50, "sell"),
+        _tick(30, 100.0, 50, "sell"),
+    ]
+    compute_v_delta(ticks, state_path=state_path)
+
+    ticks.extend(
+        [
+            _tick(90, 100.0, 100, "buy"),
+            _tick(100, 100.0, 100, "buy"),
+        ]
+    )
+    bullish, bullish_event = compute_v_delta(ticks, state_path=state_path)
+
+    assert bullish.sign_flip is True
+    assert bullish_event is not None
+
+    ticks.extend(
+        [
+            _tick(105, 100.0, 300, "sell"),
+            _tick(115, 100.0, 300, "sell"),
+        ]
+    )
+    suppressed, suppressed_event = compute_v_delta(ticks, state_path=state_path)
+
+    assert suppressed.direction == "bearish"
+    assert suppressed.sign_flip is False
+    assert suppressed_event is None
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["last_direction"] == "bullish"
+    assert state["last_event_direction"] == "bullish"
+
+    ticks.extend(
+        [
+            _tick(125, 100.0, 300, "sell"),
+            _tick(135, 100.0, 300, "sell"),
+        ]
+    )
+    bearish, bearish_event = compute_v_delta(ticks, state_path=state_path)
+
+    assert bearish.direction == "bearish"
+    assert bearish.sign_flip is True
+    assert bearish_event is not None
+    assert bearish_event.direction == "short"
+
+
+def test_v_delta_zscore_adapts_to_high_volatility_samples(tmp_path: Path) -> None:
+    state_path = tmp_path / "aggressor_state.json"
+    samples = [
+        {"ts_ns": index * 8_000_000_000, "value": 200 if index % 2 else -200}
+        for index in range(20)
+    ]
+    state_path.write_text(
+        json.dumps(
+            {
+                "last_direction": "bearish",
+                "last_value": -200,
+                "samples": samples,
+                "updated_ts_ns": samples[-1]["ts_ns"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    ticks = [
+        _tick(190, 100.0, 90, "buy"),
+        _tick(200, 100.0, 90, "buy"),
+    ]
+
+    v_delta, event = compute_v_delta(ticks, state_path=state_path)
+
+    assert v_delta.value == 180
+    assert v_delta.stddev is not None
+    assert v_delta.stddev > 100
+    assert v_delta.zscore is not None
+    assert v_delta.zscore < 1.5
+    assert v_delta.direction == "neutral"
+    assert v_delta.sign_flip is False
+    assert event is None
 
 
 def test_footprint_bar_detects_stacked_buy_imbalance() -> None:

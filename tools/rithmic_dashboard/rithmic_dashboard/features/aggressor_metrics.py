@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import defaultdict
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
@@ -23,6 +24,11 @@ from rithmic_dashboard.state_store import load_json_state, save_json_state
 AGGRESSOR_WINDOWS_SECONDS = (60, 300, 900, 3600)
 VDELTA_WINDOW_SECONDS = 30
 VDELTA_HYSTERESIS_SECONDS = 10
+VDELTA_ZSCORE_THRESHOLD = 1.5
+VDELTA_STDDEV_WINDOW_SECONDS = 300
+VDELTA_MIN_FLIP_COOLDOWN_SECONDS = 30
+VDELTA_STDDEV_MIN_FLOOR = 5.0
+VDELTA_MAX_SAMPLES = 60
 FOOTPRINT_BAR_SECONDS = 300
 IMBALANCE_THRESHOLD = 0.30
 STACKED_LEVEL_COUNT = 3
@@ -58,16 +64,19 @@ def compute_v_delta(
     if latest_ns is None:
         return VDelta(window_seconds, None, "unknown", False, None, None), None
 
+    state = load_json_state(state_path, {}) if state_path is not None else {}
+    samples = _load_recent_vdelta_samples(state, latest_ns)
+    stddev, mean = _vdelta_distribution(samples)
     current_value = _signed_sum_ending_at(ticks, latest_ns, window_seconds)
-    current_direction = _direction(current_value)
+    current_zscore = _zscore(current_value, mean=mean, stddev=stddev)
+    current_direction = _direction_zscored(current_zscore)
     prior_value = _signed_sum_ending_at(
         ticks,
         latest_ns - hysteresis_seconds * 1_000_000_000,
         window_seconds,
     )
-    confirmed_direction = _direction(prior_value)
+    confirmed_direction = _direction_zscored(_zscore(prior_value, mean=mean, stddev=stddev))
 
-    state = load_json_state(state_path, {}) if state_path is not None else {}
     previous_direction = _state_direction(state.get("last_direction"))
     previous_event_direction = _state_direction(state.get("last_event_direction"))
     sign_flip = (
@@ -77,6 +86,16 @@ def compute_v_delta(
         and previous_direction != current_direction
         and previous_event_direction != current_direction
     )
+    cooldown_suppressed_flip = False
+    last_event_ts_ns = _optional_int(state.get("last_event_ts_ns")) or 0
+    if (
+        sign_flip
+        and last_event_ts_ns > 0
+        and latest_ns - last_event_ts_ns < VDELTA_MIN_FLIP_COOLDOWN_SECONDS * 1_000_000_000
+    ):
+        sign_flip = False
+        cooldown_suppressed_flip = True
+
     event: AggressorFlowEvent | None = None
     if sign_flip:
         event = _v_delta_event(
@@ -84,13 +103,26 @@ def compute_v_delta(
             value=current_value,
             direction=current_direction,
             confirmed_seconds=hysteresis_seconds,
+            stddev=stddev,
+            zscore=current_zscore,
         )
         state["last_event_direction"] = current_direction
         state["last_event_ts_ns"] = latest_ns
 
-    state["last_direction"] = current_direction
+    if (
+        current_direction in {"bullish", "bearish"} and not cooldown_suppressed_flip
+    ) or previous_direction is None:
+        state["last_direction"] = current_direction
     state["last_value"] = current_value
+    state["last_stddev"] = stddev
+    state["last_zscore"] = current_zscore
     state["updated_ts_ns"] = latest_ns
+    state["samples"] = _record_vdelta_sample(
+        samples,
+        latest_ns=latest_ns,
+        value=current_value,
+        window_seconds=window_seconds,
+    )
     if state_path is not None:
         save_json_state(state_path, state)
 
@@ -102,6 +134,8 @@ def compute_v_delta(
             sign_flip=sign_flip,
             prior_direction=previous_direction,
             confirmed_seconds=hysteresis_seconds if sign_flip else None,
+            stddev=stddev,
+            zscore=current_zscore,
         ),
         event,
     )
@@ -328,6 +362,51 @@ def _signed_qty(tick: TradeTick) -> int:
     return 0
 
 
+def _load_recent_vdelta_samples(state: dict[str, Any], latest_ns: int) -> list[dict[str, int]]:
+    raw_samples = state.get("samples")
+    if not isinstance(raw_samples, list):
+        return []
+    cutoff_ns = latest_ns - VDELTA_STDDEV_WINDOW_SECONDS * 1_000_000_000
+    samples: list[dict[str, int]] = []
+    for row in raw_samples:
+        if not isinstance(row, dict):
+            continue
+        ts_ns = _optional_int(row.get("ts_ns"))
+        value = _optional_int(row.get("value"))
+        if ts_ns is None or value is None:
+            continue
+        if cutoff_ns <= ts_ns <= latest_ns:
+            samples.append({"ts_ns": ts_ns, "value": value})
+    samples.sort(key=lambda item: item["ts_ns"])
+    return samples[-VDELTA_MAX_SAMPLES:]
+
+
+def _record_vdelta_sample(
+    samples: list[dict[str, int]],
+    *,
+    latest_ns: int,
+    value: int,
+    window_seconds: int,
+) -> list[dict[str, int]]:
+    sample_interval_ns = max(1, int(window_seconds * 1_000_000_000 / 4))
+    if samples and latest_ns - samples[-1]["ts_ns"] < sample_interval_ns:
+        return samples
+    return [*samples, {"ts_ns": latest_ns, "value": value}][-VDELTA_MAX_SAMPLES:]
+
+
+def _vdelta_distribution(samples: list[dict[str, int]]) -> tuple[float, float]:
+    if len(samples) < 8:
+        return VDELTA_STDDEV_MIN_FLOOR, 0.0
+    values = [sample["value"] for sample in samples]
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    return max(math.sqrt(variance), VDELTA_STDDEV_MIN_FLOOR), mean
+
+
+def _zscore(value: int, *, mean: float, stddev: float) -> float:
+    return (value - mean) / max(stddev, VDELTA_STDDEV_MIN_FLOOR)
+
+
 def _stacked_imbalance(
     levels: list[FootprintLevel],
     *,
@@ -458,6 +537,8 @@ def _v_delta_event(
     value: int,
     direction: Direction,
     confirmed_seconds: int,
+    stddev: float,
+    zscore: float,
 ) -> AggressorFlowEvent:
     long_short: Literal["long", "short"] = "long" if direction == "bullish" else "short"
     label = "bullish" if direction == "bullish" else "bearish"
@@ -479,6 +560,9 @@ def _v_delta_event(
             "v_delta": value,
             "window_seconds": VDELTA_WINDOW_SECONDS,
             "confirmed_seconds": confirmed_seconds,
+            "stddev": stddev,
+            "zscore": zscore,
+            "zscore_threshold": VDELTA_ZSCORE_THRESHOLD,
         },
     )
 
@@ -585,6 +669,14 @@ def _direction(value: int) -> Direction:
     if value > 0:
         return "bullish"
     if value < 0:
+        return "bearish"
+    return "neutral"
+
+
+def _direction_zscored(zscore: float) -> Direction:
+    if zscore > VDELTA_ZSCORE_THRESHOLD:
+        return "bullish"
+    if zscore < -VDELTA_ZSCORE_THRESHOLD:
         return "bearish"
     return "neutral"
 

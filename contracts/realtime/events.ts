@@ -163,6 +163,8 @@ export interface VDeltaStats {
   sign_flip: boolean;
   prior_direction: InferredDirection;
   confirmed_seconds: number;
+  stddev: number | null;
+  zscore: number | null;
 }
 
 /**

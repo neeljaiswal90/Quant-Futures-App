@@ -326,6 +326,8 @@ class VDelta:
     sign_flip: bool
     prior_direction: Literal["bullish", "bearish", "neutral", "unknown"] | None
     confirmed_seconds: int | None
+    stddev: float | None = None
+    zscore: float | None = None
 
 
 @dataclass(frozen=True)

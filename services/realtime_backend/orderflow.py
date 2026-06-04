@@ -157,6 +157,8 @@ def _v_delta(v_delta: Any) -> VDeltaStats | None:
         sign_flip=bool(getattr(v_delta, "sign_flip", False)),
         prior_direction=_inferred_direction(getattr(v_delta, "prior_direction", None)),
         confirmed_seconds=_int_attr(v_delta, "confirmed_seconds"),
+        stddev=_float_attr(v_delta, "stddev"),
+        zscore=_float_attr(v_delta, "zscore"),
     )
 
 

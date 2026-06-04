@@ -232,6 +232,8 @@ class VDeltaStats(BaseModel):
     sign_flip: bool
     prior_direction: InferredDirection
     confirmed_seconds: int
+    stddev: float | None = None
+    zscore: float | None = None
 
 
 class FootprintStats(BaseModel):
