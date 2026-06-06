@@ -1,0 +1,102 @@
+{
+  "CANDIDATE_count": 1,
+  "ORDER_INTENT_count": 0,
+  "STRAT_EVAL_count": 1,
+  "authority_locks": {
+    "active_candidate_roster_mutated": false,
+    "broker_adapter_invoked": false,
+    "broker_live_authorized": false,
+    "candidate_persisted": true,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "order_adapter_invoked": false,
+    "order_translation_invoked": false,
+    "paper_fill_created": false,
+    "paper_observation_stop_after_candidate": true,
+    "paper_runtime_invoked": true,
+    "paper_session_started": false,
+    "phase_6_authorized": false,
+    "qfa_410b_or_qfa_611_run": false
+  },
+  "bounded_artifact_size_bytes": 4331,
+  "candidate_summary": {
+    "candidate_emission_reason": "BASE_PREDICATES_PASS_AND_NON_EXCLUDED_BY_UTC_GATE",
+    "candidate_entry_hour_utc": 19,
+    "candidate_payload_candidate_id": "candidate-feature-v2pf-20260602-1780427100000000000-regime_shock_reversion_short_v2_utc_16_18_exclusion",
+    "candidate_payload_strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+    "candidate_regime_label": "low",
+    "candidate_signed_shock_vwap": 2.7449,
+    "candidate_strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+    "candidate_threshold_comparison": "2.7449 >= 2.7",
+    "candidate_threshold_name": "parameters.low_shock_threshold_pos",
+    "candidate_threshold_value": 2.7,
+    "candidate_timestamp_ns": "1780427100000000000",
+    "candidate_timestamp_utc": "2026-06-02T19:05:00.000000000Z",
+    "candidate_utc_gate_status": "NON_EXCLUDED_BY_UTC_16_18_GATE"
+  },
+  "counts": {
+    "CANDIDATE": 1,
+    "EXEC_REJECT": 0,
+    "ORDER_INTENT": 0,
+    "POSITION": 0,
+    "RANK": 0,
+    "RISK_GATE": 0,
+    "SIM_FILL": 0,
+    "SIZING": 0,
+    "STRAT_EVAL": 1
+  },
+  "determination": "PAPER_RUNTIME_CANDIDATE_SMOKE_IMPL_PASSED_CANDIDATE_EMITTED_ORDER_INTENT_SUPPRESSED",
+  "determinism": {
+    "command": "npx tsx scripts/backtester/check-determinism.mts",
+    "drift_classification": "NO_DETERMINISM_DRIFT",
+    "final_chain_hash": "2547e5a6f3534b77580111a40d66ae1c4ed081574db7ae29934d9ea581847738",
+    "final_phase2_hash": "dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b",
+    "final_phase4_hash": "ad8dad3c36a5b64fa3ddbd955abec819db31b2b4c160d0152074fc6bcbb40090",
+    "result": "pass"
+  },
+  "drift_classification": "NO_DETERMINISM_DRIFT",
+  "feature_snapshot_id": "feature-v2pf-20260602-1780427100000000000",
+  "final_phase2_hash": "dbb45cf891f862ab3bf6a6ec8e2c313f8822508c84f9a0cfd6e766267e4f832b",
+  "final_phase4_hash": "ad8dad3c36a5b64fa3ddbd955abec819db31b2b4c160d0152074fc6bcbb40090",
+  "guard_summary": {
+    "allowed_marker_before_stop": "CANDIDATE",
+    "default_enabled": false,
+    "disallowed_marker_after_stop": "ORDER_INTENT",
+    "guard_insertion_repo_path": "apps/strategy_runtime/src/orchestration/runner.ts",
+    "guard_insertion_symbol_or_function": "StrategyRuntimeRunner.processFeatureSnapshot(...) ranked candidate loop",
+    "paper_observation_stop_after_candidate": true,
+    "primary_boundary": "after CANDIDATE publish and before RANK/SIZING/RISK_GATE/ORDER_INTENT",
+    "requires_paper_observation_explicit_strategy_ids": true,
+    "requires_runtime_mode_paper": true,
+    "stop_before_symbol_or_function": "rankCandidates(...) and createEntryOrderIntent(...)"
+  },
+  "guardrail_proofs": {
+    "default_runtime_behavior_unchanged": true,
+    "non_paper_runtime_with_stop_after_candidate_rejected": true,
+    "normal_candidate_pipeline_without_guard_still_reaches_rank_or_order_boundary_in_test": true,
+    "stop_after_candidate_without_explicit_strategy_ids_rejected": true
+  },
+  "pr313_merge_sha": "ff56127fb68f0ca6f6abbc1c229578a0a63e730f",
+  "recommended_next_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-PAPER-RUNTIME-OBSERVATION-DAY-SCOPE-01",
+  "source_anchors": {
+    "pr311_bounded_snapshot_lf_sha256": "ecf32b6116263b3778819d29c2f2392153a123aec1daba91520323df353bce22",
+    "pr312_bounded_strat_eval_smoke_lf_sha256": "cc798091961a1bfe062f654198d2b74eb8648e975a93ad730676bc84bc0f0c19"
+  },
+  "strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+  "substrate_sha": "ff56127fb68f0ca6f6abbc1c229578a0a63e730f",
+  "suppression_boundary": {
+    "no_rank_sizing_risk_order_translation_side_effects_beyond_candidate_marker": true,
+    "order_intent_suppression_reason": "PAPER_OBSERVATION_STOP_AFTER_CANDIDATE_BEFORE_ORDER_TRANSLATION"
+  },
+  "target_entry_hour_utc": 19,
+  "target_timestamp_ns": "1780427100000000000",
+  "target_timestamp_utc": "2026-06-02T19:05:00.000000000Z",
+  "target_timestamp_variant_gate_status": "NON_EXCLUDED_BY_UTC_16_18_GATE",
+  "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-PAPER-RUNTIME-CANDIDATE-SMOKE-IMPL-01",
+  "typescript_caveat": {
+    "full_project_command": "npx tsc -b tsconfig.json",
+    "full_project_result": "not a clean signal in this worktree because full-project dependency resolution hits existing operator-console / repo-split diagnostics outside touched files",
+    "targeted_touched_file_script_typescript_check": "fail",
+    "targeted_touched_file_script_typescript_check_detail": "targeted command no longer reports touched-file/script errors; it still reaches existing shared config/transport strictness diagnostics outside touched files"
+  }
+}

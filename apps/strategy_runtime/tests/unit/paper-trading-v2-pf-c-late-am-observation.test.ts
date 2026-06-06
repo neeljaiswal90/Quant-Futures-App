@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -17,8 +17,9 @@ import { makeRunId, makeSessionId } from '../../src/contracts/index.js';
 import { loadAppConfig } from '../../src/config/index.js';
 import { createSimulatedExecutionAdapter } from '../../src/execution/simulated-execution.js';
 import { createStrategyRuntimeEngineContainer, StrategyRuntimeRunner } from '../../src/orchestration/index.js';
-import { resolvePaperTradingSessionConfig } from '../../src/paper-trading/index.js';
+import { resolvePaperTradingSessionConfig, sourceQuoteEventForSnapshot } from '../../src/paper-trading/index.js';
 import { loadVenueCostTable } from '../../src/risk/index.js';
+import type { StrategyFeatureSnapshot } from '../../src/strategies/index.js';
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 describe('V2 PF C late-AM paper observation entrypoint', () => {
@@ -96,6 +97,106 @@ describe('V2 PF C late-AM paper observation entrypoint', () => {
       execution_adapter: createSimulatedExecutionAdapter({ venue_costs: loadVenueCostTable() }),
       paper_observation_explicit_strategy_ids: [V2_PF_C_LATE_AM_PAPER_OBSERVATION_STRATEGY_ID],
     })).toThrow('paper_observation_explicit_strategy_ids may only be used with runtime_mode=paper');
+  });
+
+  it('rejects paper-observation stop-after-candidate outside paper runtime mode', () => {
+    const config = loadAppConfig({
+      configPath: 'config/app.example.json',
+      cwd: process.cwd(),
+      env: { QFA_JOURNAL_DIR: 'journals/test-v2-pf-c-late-am-paper-observation' },
+    });
+    const container = createStrategyRuntimeEngineContainer({ config });
+
+    expect(() => new StrategyRuntimeRunner({
+      container,
+      run_id: makeRunId('test-paper-observation-stop-guard'),
+      session_id: makeSessionId('test-paper-observation-stop-guard-session'),
+      execution_adapter: createSimulatedExecutionAdapter({ venue_costs: loadVenueCostTable() }),
+      paper_observation_stop_after_candidate: true,
+    })).toThrow('paper_observation_stop_after_candidate may only be used with runtime_mode=paper');
+  });
+
+  it('rejects paper-observation stop-after-candidate without explicit strategy ids', () => {
+    const config = loadAppConfig({
+      configPath: 'config/app.example.json',
+      cwd: process.cwd(),
+      env: { QFA_JOURNAL_DIR: 'journals/test-v2-pf-c-late-am-paper-observation' },
+    });
+    const container = createStrategyRuntimeEngineContainer({ config });
+
+    expect(() => new StrategyRuntimeRunner({
+      container,
+      run_id: makeRunId('test-paper-observation-stop-requires-strategy'),
+      session_id: makeSessionId('test-paper-observation-stop-requires-strategy-session'),
+      execution_adapter: createSimulatedExecutionAdapter({ venue_costs: loadVenueCostTable() }),
+      runtime_mode: 'paper',
+      paper_observation_stop_after_candidate: true,
+    })).toThrow('paper_observation_stop_after_candidate requires paper_observation_explicit_strategy_ids');
+  });
+
+  it('stops the paper-observation smoke after candidate and before rank/order translation', async () => {
+    const config = loadAppConfig({
+      configPath: 'config/app.example.json',
+      cwd: process.cwd(),
+      env: { QFA_JOURNAL_DIR: 'journals/test-v2-pf-c-late-am-paper-observation-stop' },
+    });
+    const container = createStrategyRuntimeEngineContainer({ config });
+    const runId = makeRunId('test-paper-observation-stop-after-candidate');
+    const sessionId = makeSessionId('test-paper-observation-stop-after-candidate-session');
+    const snapshot = loadCandidateEligibleSourceBackedSnapshot();
+    const runner = new StrategyRuntimeRunner({
+      container,
+      run_id: runId,
+      session_id: sessionId,
+      execution_adapter: createSimulatedExecutionAdapter({ venue_costs: loadVenueCostTable() }),
+      runtime_mode: 'paper',
+      paper_observation_explicit_strategy_ids: [V2_PF_C_LATE_AM_PAPER_OBSERVATION_STRATEGY_ID],
+      paper_observation_stop_after_candidate: true,
+    });
+
+    await runner.publishExternalEvent(sourceQuoteEventForSnapshot(snapshot, runId, sessionId));
+    const result = await runner.processFeatureSnapshot(snapshot);
+
+    expect(result.paper_observation_stopped_after_candidate).toBe(true);
+    expect(result.strategy_evaluation_events.map((event) => event.payload.strategy_id)).toEqual([
+      V2_PF_C_LATE_AM_PAPER_OBSERVATION_STRATEGY_ID,
+    ]);
+    expect(result.candidate_events).toHaveLength(1);
+    expect(result.rank_event).toBeUndefined();
+    expect(result.sizing_events).toHaveLength(0);
+    expect(result.risk_gate_events).toHaveLength(0);
+    expect(result.order_intent_events).toHaveLength(0);
+    expect(result.sim_fill_events).toHaveLength(0);
+    expect(result.exec_reject_events).toHaveLength(0);
+    expect(result.position_events).toHaveLength(0);
+  });
+
+  it('leaves the normal no-guard candidate pipeline able to reach the rank boundary', async () => {
+    const config = loadAppConfig({
+      configPath: 'config/app.example.json',
+      cwd: process.cwd(),
+      env: { QFA_JOURNAL_DIR: 'journals/test-v2-pf-c-late-am-paper-observation-no-guard' },
+    });
+    const container = createStrategyRuntimeEngineContainer({ config });
+    const runId = makeRunId('test-paper-observation-no-guard-candidate-pipeline');
+    const sessionId = makeSessionId('test-paper-observation-no-guard-candidate-pipeline-session');
+    const snapshot = loadCandidateEligibleSourceBackedSnapshot();
+    const runner = new StrategyRuntimeRunner({
+      container,
+      run_id: runId,
+      session_id: sessionId,
+      execution_adapter: createSimulatedExecutionAdapter({ venue_costs: loadVenueCostTable() }),
+      runtime_mode: 'paper',
+      paper_observation_explicit_strategy_ids: [V2_PF_C_LATE_AM_PAPER_OBSERVATION_STRATEGY_ID],
+    });
+
+    await runner.publishExternalEvent(sourceQuoteEventForSnapshot(snapshot, runId, sessionId));
+    const result = await runner.processFeatureSnapshot(snapshot);
+
+    expect(result.paper_observation_stopped_after_candidate).toBeUndefined();
+    expect(result.strategy_evaluation_events).toHaveLength(1);
+    expect(result.candidate_events).toHaveLength(1);
+    expect(result.rank_event).toBeDefined();
   });
 
   it('rejects paper session configs where explicit strategy ids diverge from strategy_id', () => {
@@ -185,6 +286,52 @@ function paperConfigYaml(
     ...executionYaml(),
     ...observabilityYaml(),
   ];
+}
+
+function loadCandidateEligibleSourceBackedSnapshot(): StrategyFeatureSnapshot {
+  const jsonlPath = join(
+    process.cwd(),
+    'artifacts',
+    'paper-observation',
+    'v2-pf-c-late-am-paper-observation-2026-06-02-candidate-eligible-snapshot-builder-impl-01',
+    'bounded-candidate-eligible-feature-snapshot.jsonl',
+  );
+  const record = readFileSync(jsonlPath, 'utf8')
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { readonly record_type?: string; readonly snapshot?: unknown })
+    .find((item) => item.record_type === 'STRATEGY_FEATURE_SNAPSHOT');
+
+  if (record?.snapshot === undefined) {
+    throw new Error(`Missing STRATEGY_FEATURE_SNAPSHOT record in ${jsonlPath}`);
+  }
+
+  const snapshot = reviveTimestampFields(record.snapshot) as StrategyFeatureSnapshot;
+  return {
+    ...snapshot,
+    source_event_id: snapshot.source_event_id ?? `source-quote-${snapshot.feature_snapshot_id}`,
+  } as StrategyFeatureSnapshot;
+}
+
+function reviveTimestampFields(value: unknown, key = ''): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => reviveTimestampFields(item));
+  }
+  if (value !== null && typeof value === 'object') {
+    const output: Record<string, unknown> = {};
+    for (const [childKey, childValue] of Object.entries(value)) {
+      output[childKey] = reviveTimestampFields(childValue, childKey);
+    }
+    return output;
+  }
+  if (
+    typeof value === 'string' &&
+    (key.endsWith('_ts_ns') || key === 'created_ts_ns') &&
+    /^\d+$/u.test(value)
+  ) {
+    return BigInt(value);
+  }
+  return value;
 }
 
 function executionYaml(): readonly string[] {
