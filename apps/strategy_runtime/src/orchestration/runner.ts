@@ -128,6 +128,7 @@ export interface StrategyRuntimeRunnerOptions {
   readonly strategy_config?: StrategyRuntimeConfig;
   readonly runtime_mode?: 'paper';
   readonly paper_observation_explicit_strategy_ids?: readonly StrategyId[];
+  readonly paper_observation_stop_after_candidate?: boolean;
   readonly latency_metrics_endpoint?: LatencyMetricsEndpointConfig;
 }
 
@@ -154,6 +155,7 @@ export interface StrategyEvaluationCycleResult {
   readonly position_events: readonly JournalEventEnvelope<'POSITION', JournalEventPayloadFor<'POSITION'>>[];
   readonly session_risk: SessionRiskState;
   readonly open_positions: readonly TargetPosition[];
+  readonly paper_observation_stopped_after_candidate?: boolean;
 }
 
 export interface RunnerManagementTickInput {
@@ -195,6 +197,7 @@ export class StrategyRuntimeRunner {
   private readonly appConfigRef: ConfigLineageRef;
   private readonly strategyConfig: StrategyRuntimeConfig;
   private readonly strategyConfigHash: string;
+  private readonly paperObservationStopAfterCandidate: boolean;
   private readonly latencySli = getDefaultLatencySliRegistry();
   private readonly ackLatencyObserver = new BoundedAckLatencyObserver({
     registry: this.latencySli,
@@ -240,6 +243,15 @@ export class StrategyRuntimeRunner {
         throw new Error('paper_observation_explicit_strategy_ids must contain at least one strategy id when provided');
       }
     }
+    if (options.paper_observation_stop_after_candidate === true) {
+      if (options.runtime_mode !== 'paper') {
+        throw new Error('paper_observation_stop_after_candidate may only be used with runtime_mode=paper');
+      }
+      if (paperObservationStrategyIds === undefined) {
+        throw new Error('paper_observation_stop_after_candidate requires paper_observation_explicit_strategy_ids');
+      }
+    }
+    this.paperObservationStopAfterCandidate = options.paper_observation_stop_after_candidate === true;
     this.strategyIds = paperObservationStrategyIds ?? listExecutableStrategyIds();
     this.sessionRisk = options.initial_session_risk_state;
     this.strategyConfig =
@@ -336,6 +348,28 @@ export class StrategyRuntimeRunner {
         candidateEvents.push(candidateEvent);
         candidates.push(result.candidate);
       }
+    }
+
+    if (this.paperObservationStopAfterCandidate) {
+      return {
+        feature_event: featureEvent,
+        session_phase_event: sessionPhaseEvent,
+        roll_advisory_event: rollAdvisoryEvent,
+        forced_flatten_action_events: forcedFlattenActionEvents,
+        mnq_eligibility: eligibility,
+        strategy_evaluation_events: evaluationEvents,
+        candidate_events: candidateEvents,
+        rank_event: undefined as unknown as JournalEventEnvelope<'RANK', JournalEventPayloadFor<'RANK'>>,
+        sizing_events: [],
+        risk_gate_events: [],
+        order_intent_events: forcedFlattenExecution.order_intent_events,
+        sim_fill_events: forcedFlattenExecution.sim_fill_events,
+        exec_reject_events: forcedFlattenExecution.exec_reject_events,
+        position_events: forcedFlattenExecution.position_events,
+        session_risk: sessionRisk,
+        open_positions: this.openPositions,
+        paper_observation_stopped_after_candidate: true,
+      };
     }
 
     const ranking = rankCandidates({
