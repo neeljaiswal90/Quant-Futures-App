@@ -1,0 +1,185 @@
+{
+  "bounded_artifact_size_bytes": 8641,
+  "determination": "FULL_SESSION_RUNTIME_SCOPE_READY_FOR_IMPL",
+  "guard_behavior": {
+    "explicit_strategy_ids_wire_path": "PaperTradingSession config explicit_strategy_ids -> StrategyRuntimeRunner paper_observation_explicit_strategy_ids",
+    "paper_session_entry_repo_path": "apps/strategy_runtime/src/paper-trading/paper-trading-runner.ts",
+    "paper_session_entry_symbol_or_function": "PaperTradingSession.processFeatureSnapshot(...)",
+    "primary_guard_repo_path": "apps/strategy_runtime/src/orchestration/runner.ts",
+    "primary_guard_symbol_or_function": "StrategyRuntimeRunner.processFeatureSnapshot(...)",
+    "stop_after_candidate_guard_required": true,
+    "stop_after_candidate_guard_source_anchor": "PR #314 paper_observation_stop_after_candidate=true; default_enabled=false; runtime_mode=paper required; explicit strategy ids required",
+    "stop_before": "rankCandidates(...), sizing/risk, createEntryOrderIntent(...), order adapter, broker adapter, fill handling"
+  },
+  "next_implementation_success_criteria": {
+    "CANDIDATE_count": "allowed and expected when predicates pass; report exact count",
+    "ORDER_INTENT_count": 0,
+    "POSITION_count": 0,
+    "RANK_count": 0,
+    "RISK_GATE_count": 0,
+    "SIM_FILL_count": 0,
+    "SIZING_count": 0,
+    "STRAT_EVAL_count_minimum": 1,
+    "exactly_one_runtime_manifest_for_declared_window": true,
+    "full_session_accounting_slots_required": 390,
+    "no_order_translation_adapter_broker_or_fill_side_effects": true,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "pr310_diagnostic_245_count_must_not_be_used_as_full_session_count": true,
+    "source_backed_snapshots_ingested": "equals source_backed_feature_snapshot_count_required unless explicitly justified skips are reported",
+    "warmup_exclusion_count_required_to_be_reported": true
+  },
+  "observation_accounting_locks": {
+    "ORDER_INTENT_authorized": false,
+    "active_candidate_roster_mutation_authorized": false,
+    "broker_adapter_authorized": false,
+    "broker_live_authorized": false,
+    "full_session_runtime_run_performed_by_this_ticket": false,
+    "implementation_authorized_by_this_ticket": false,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "order_adapter_authorized": false,
+    "order_translation_authorized": false,
+    "paper_fill_authorized": false,
+    "phase_6_authorized": false,
+    "qfa_410b_or_qfa_611_authorized": false
+  },
+  "prior_results": {
+    "pr314": {
+      "CANDIDATE": 1,
+      "ORDER_INTENT": 0,
+      "STRAT_EVAL": 1,
+      "determination": "PAPER_RUNTIME_CANDIDATE_SMOKE_IMPL_PASSED_CANDIDATE_EMITTED_ORDER_INTENT_SUPPRESSED",
+      "paper_observation_stop_after_candidate": true
+    },
+    "pr315": {
+      "candidate_only_smoke_sufficient_for_day_credit": false,
+      "determination": "OBSERVATION_DAY_SCOPE_BLOCKED_REQUIRES_FULL_SESSION_RUNTIME",
+      "full_session_runtime_manifest_required": true
+    }
+  },
+  "ready_for_impl_meaning": "Ready means the full-session/window evidence contract and runtime guard requirements are scoped. It does not mean the full-session run has occurred or that observation-day credit is authorized.",
+  "recommended_next_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-FULL-SESSION-RUNTIME-IMPL-01",
+  "runtime_marker_requirements": {
+    "CANDIDATE_markers_allowed": true,
+    "CANDIDATE_markers_expected_when_strategy_predicates_pass": true,
+    "FEATURE_SNAPSHOT_INGEST_or_equivalent_required": true,
+    "ORDER_INTENT_must_remain": 0,
+    "POSITION_must_remain": 0,
+    "RANK_must_remain": 0,
+    "RISK_GATE_must_remain": 0,
+    "SESSION_MANIFEST_required": true,
+    "SIM_FILL_must_remain": 0,
+    "SIZING_must_remain": 0,
+    "STRAT_EVAL_markers_required": true,
+    "marker_accounting_required_fields": [
+      "record_type",
+      "event_type",
+      "feature_snapshot_id",
+      "strategy_id",
+      "created_ts_ns",
+      "created_ts_utc",
+      "candidate_id_or_null",
+      "suppression_reason_or_null"
+    ]
+  },
+  "source_anchors": [
+    {
+      "label": "source_readiness_2026_06_02",
+      "lf_sha256": "446138e94cc66a96f83dab555bace5ec57e91f0461a8621f881f30f237ea5a39",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-source-readiness-01/source-readiness-report.json",
+      "pr": 303,
+      "size_bytes": 8841
+    },
+    {
+      "label": "scoped_regime_label_source_acquire",
+      "lf_sha256": "13d56192fc1155a9eb6dd7bd612c8336612136655534b16964fef20560e25f7a",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-regime-label-source-acquire-01/regime-label-source-acquire-report.json",
+      "pr": 305,
+      "size_bytes": 3445
+    },
+    {
+      "label": "halt_roll_calendar_source_extend",
+      "lf_sha256": "d21e93f80518da7215b6f066a9fbd41b45047f48b9b46b2addf106b8da97ab7f",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-halt-roll-calendar-source-extend-01/halt-roll-calendar-source-report.json",
+      "pr": 307,
+      "size_bytes": 8466
+    },
+    {
+      "label": "candidate_eligible_non_excluded_source_scope",
+      "lf_sha256": "4e5f8b98a1fe57e9a90410dffc22448007722c1dee803b940b18e05a3a154ed4",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-candidate-eligible-non-excluded-snapshot-source-scope-01/candidate-eligible-non-excluded-source-scope-report.json",
+      "pr": 310,
+      "size_bytes": 9015
+    },
+    {
+      "label": "candidate_eligible_snapshot_builder_impl",
+      "lf_sha256": "5984e170f795f5c96309407bd262c473d6e59f347145d8ef8284d82bf9350784",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-candidate-eligible-snapshot-builder-impl-01/candidate-eligible-snapshot-builder-report.json",
+      "pr": 311,
+      "size_bytes": 8640
+    },
+    {
+      "label": "paper_runtime_candidate_smoke_impl",
+      "lf_sha256": "c443e34f3c724e2b4ec962e4f05f77b5ed7ddc6f0591622d9ae888888801b52f",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-paper-runtime-candidate-smoke-impl-01/paper-runtime-candidate-smoke-impl-report.json",
+      "pr": 314,
+      "size_bytes": 5396
+    },
+    {
+      "label": "paper_runtime_observation_day_scope",
+      "lf_sha256": "bce140ece37f237d561f2d37289f85f703d91645250b44d3bdddf4e3fe33500d",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-paper-runtime-observation-day-scope-01/paper-runtime-observation-day-scope-report.json",
+      "pr": 315,
+      "size_bytes": 4563
+    }
+  ],
+  "source_stack": {
+    "atr14_ready": true,
+    "candidate_eligible_non_excluded_point_exists": true,
+    "candidate_eligible_non_excluded_points": 53,
+    "candidate_point_entry_hour_utc": 19,
+    "candidate_point_signed_shock_vwap": 2.7449,
+    "candidate_point_threshold_comparison": "2.7449 >= 2.7",
+    "candidate_point_timestamp_ns": "1780427100000000000",
+    "candidate_point_timestamp_utc": "2026-06-02T19:05:00.000000000Z",
+    "full_session_accounting_slot_count_required": 390,
+    "halt_roll_calendar_ready": true,
+    "scoped_regime_label_ready": true,
+    "session_vwap_ready": true,
+    "signed_shock_vwap_source_ready": true,
+    "source_backed_feature_snapshot_path_exists": true,
+    "source_window_bar_points_scanned": 245,
+    "source_window_bar_points_scanned_is_diagnostic_only": true
+  },
+  "substrate_sha": "8417b788f7725b95a9d08b21f1b0c9bca9aa24d3",
+  "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-FULL-SESSION-RUNTIME-SCOPE-01",
+  "window_contract": {
+    "actual_required_snapshot_count_basis": "full-session accounting slot contract, not PR #310 diagnostic bar_points_scanned",
+    "expected_snapshot_count_formula": "(20:00:00Z - 13:30:00Z) / 1 minute = 390 full-session accounting slots before any explicitly reported warmup/source-gap exclusions",
+    "full_session_accounting_slot_count_required": 390,
+    "full_session_claim_valid": true,
+    "full_session_claim_valid_reason": "The full-session claim is valid only because the contract requires 390 RTH accounting slots and explicit warmup/source-gap accounting; the earlier 245 diagnostic count is not treated as a full-session count.",
+    "implementation_must_not_run_order_path": true,
+    "observation_window_end_utc": "2026-06-02T20:00:00.000000000Z",
+    "observation_window_start_utc": "2026-06-02T13:30:00.000000000Z",
+    "observed_source_window_first_ts_utc": "2026-06-02T13:30:00.000095000Z",
+    "observed_source_window_last_ts_utc": "2026-06-02T20:05:00.550603543Z",
+    "observed_source_window_session_open_ts_utc": "2026-06-02T13:30:00.000000000Z",
+    "paper_observation_explicit_strategy_ids_required": true,
+    "paper_observation_stop_after_candidate_required": true,
+    "paper_runtime_entrypoint_or_harness": "PaperTradingSession.processFeatureSnapshot(...) loop over bounded source-backed snapshots, or a dedicated script harness that constructs StrategyRuntimeRunner with the same paper-only guard contract",
+    "pr310_diagnostic_bar_points_scanned": 245,
+    "pr310_diagnostic_count_is_full_session_requirement": false,
+    "rth_window_minutes": 390,
+    "runtime_manifest_required": true,
+    "snapshot_cadence_basis": "one closed 1m accounting slot from 13:30:00Z inclusive to 20:00:00Z exclusive",
+    "snapshot_spacing_or_event_basis": "closed_1m_bar_event_basis_with_finite_quote_session_vwap_atr14_sigma_regime_halt_roll_config_lineage",
+    "source_backed_feature_snapshot_count_basis": "one source-backed StrategyFeatureSnapshot or explicit warmup/source-gap accounting record per full-session 1m accounting slot; implementation must report produced, ingested, warmup-excluded, skipped, missing, and failed-closed counts and may not claim full RTH coverage from the PR #310 245-count diagnostic alone",
+    "source_backed_feature_snapshot_count_required": 390,
+    "strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+    "warmup_exclusion_count": "implementation_must_compute_and_report_explicitly",
+    "window_basis": "2026-06-02-rth",
+    "window_basis_note": "RTH calendar window is the accounting basis; the next implementation must declare exact source coverage and fail closed if source-backed snapshots do not cover the declared window."
+  }
+}
