@@ -1,0 +1,85 @@
+{
+  "authority_locks": {
+    "ORDER_INTENT_authorized": false,
+    "active_candidate_roster_mutation_authorized": false,
+    "broker_adapter_authorized": false,
+    "broker_live_authorized": false,
+    "implementation_authorized_by_this_ticket": false,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "order_adapter_authorized": false,
+    "order_translation_authorized": false,
+    "paper_fill_authorized": false,
+    "phase_6_authorized": false,
+    "qfa_410b_or_qfa_611_authorized": false
+  },
+  "bounded_artifact_size_bytes": 3697,
+  "candidate_only_evidence": {
+    "CANDIDATE_count": 1,
+    "ORDER_INTENT_count": 0,
+    "STRAT_EVAL_count": 1,
+    "candidate_only_day_credit_rejected": true,
+    "feature_snapshot_id": "feature-v2pf-20260602-1780427100000000000",
+    "paper_observation_stop_after_candidate": true,
+    "paper_runtime_invoked": true,
+    "source_backed_snapshot": true,
+    "strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+    "target_timestamp_ns": "1780427100000000000",
+    "target_timestamp_utc": "2026-06-02T19:05:00.000000000Z"
+  },
+  "decision_summary": "The bounded 2026-06-02 candidate smoke proves source-backed paper-runtime candidate plumbing, but it is a single-snapshot control proof and does not satisfy an observation-day unit. Observation-day increment remains 0 until a full-session/window paper-runtime accounting artifact is scoped and produced.",
+  "determination": "OBSERVATION_DAY_SCOPE_BLOCKED_REQUIRES_FULL_SESSION_RUNTIME",
+  "evidence_contract": {
+    "active_candidate_roster_mutation_allowed": false,
+    "adapter_or_broker_invocation_allowed": false,
+    "broker_live_phase6_authority_allowed": false,
+    "candidate_marker_allowed": true,
+    "candidate_only_smoke_sufficient_for_day_credit": false,
+    "explicit_observation_window_required": true,
+    "full_session_runtime_manifest_required": true,
+    "minimum_observation_window_basis": "configured paper observation session/window, not one source-backed snapshot",
+    "observation_day_increment_may_become_1_only_after": "FULL_SESSION_PAPER_RUNTIME_ACCOUNTING_EVIDENCE",
+    "order_intent_required_for_observation_day_credit": false,
+    "order_path_simulation_required_by_this_scope": false,
+    "order_translation_must_remain_suppressed_until_separately_authorized": true,
+    "paper_fill_allowed": false,
+    "qfa_410b_or_qfa_611_allowed": false,
+    "qfa_410b_or_qfa_611_required": false,
+    "required_marker_minimum": "STRAT_EVAL evidence across the declared observation window plus candidate/order suppression accounting",
+    "source_backed_feature_snapshots_required_for_window": true,
+    "strategy_runtime_markers_required": true
+  },
+  "recommended_next_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-FULL-SESSION-RUNTIME-SCOPE-01",
+  "source_anchors": [
+    {
+      "label": "candidate_eligible_source_backed_snapshot",
+      "lf_sha256": "5984e170f795f5c96309407bd262c473d6e59f347145d8ef8284d82bf9350784",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-candidate-eligible-snapshot-builder-impl-01/candidate-eligible-snapshot-builder-report.json",
+      "pr": 311,
+      "size_bytes": 8640
+    },
+    {
+      "label": "candidate_strat_eval_smoke",
+      "lf_sha256": "765ba5a666cc0f3712d55add72dc899836d2bfbd7be5a146b61f8823a0f72a7b",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-candidate-strat-eval-smoke-01/candidate-strat-eval-smoke-report.json",
+      "pr": 312,
+      "size_bytes": 3593
+    },
+    {
+      "label": "paper_runtime_candidate_smoke_scope",
+      "lf_sha256": "ddb8195b26df162b5f0c45173edb59e8afd5e80c9e679355f4551e2b38d48a59",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-paper-runtime-candidate-smoke-scope-01/paper-runtime-candidate-smoke-scope-report.json",
+      "pr": 313,
+      "size_bytes": 13602
+    },
+    {
+      "label": "paper_runtime_candidate_smoke_impl",
+      "lf_sha256": "c443e34f3c724e2b4ec962e4f05f77b5ed7ddc6f0591622d9ae888888801b52f",
+      "path": "artifacts/paper-observation/v2-pf-c-late-am-paper-observation-2026-06-02-paper-runtime-candidate-smoke-impl-01/paper-runtime-candidate-smoke-impl-report.json",
+      "pr": 314,
+      "size_bytes": 5396
+    }
+  ],
+  "substrate_sha": "e443b29dace9c8195334d885a17d5d5a70a8f824",
+  "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-PAPER-RUNTIME-OBSERVATION-DAY-SCOPE-01"
+}
