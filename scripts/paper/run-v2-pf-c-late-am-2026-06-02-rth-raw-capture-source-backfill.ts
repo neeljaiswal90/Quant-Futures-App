@@ -222,7 +222,7 @@ function directoryInventory(): Json[] {
     'D:/Quant-futures-app/tools/rithmic_dashboard/data/captures/2026-06-02',
   ];
   return dirs.map((dir) => {
-    if (!existsSync(dir)) return { directory: dir, present: false };
+    if (!existsSync(dir)) return { directory: dir, present: false, entries: [] };
     const entries = readdirSync(dir, { withFileTypes: true }).map((entry) => {
       const fullPath = path.join(dir, entry.name);
       const stat = statSync(fullPath);

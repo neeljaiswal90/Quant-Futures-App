@@ -1,6 +1,6 @@
 {
   "artifact_size_guard": {
-    "artifact_size_bytes": 8289,
+    "artifact_size_bytes": 8328,
     "artifact_size_limit_bytes": 99614720,
     "artifact_size_within_limit": true
   },
@@ -81,9 +81,9 @@
     "trade_bar_source_present": false
   },
   "output_hashes": {
-    "bounded_rth_raw_capture_source_backfill_jsonl": "ffaae47f013421887eb1af256dcf82412dd3473af0d80501dbedfe93a6b62be5",
-    "rth_raw_capture_source_backfill_report_json": "0e8f1ba667b95e535f956f30bbfb58f6ede26746cbefce368809cf844e438ec6",
-    "rth_raw_capture_source_backfill_report_md": "bf8d1ef39bd2676551c554705f72057d9bd9fc2a5efabea042782ce3fd3f83f2"
+    "bounded_rth_raw_capture_source_backfill_jsonl": "556cd5d06825208d8cee60f9a684be3ab37f9d043a893e9aba604159977b8a6d",
+    "rth_raw_capture_source_backfill_report_json": "c4321c393fa2005d6b9112dfadb5465c1edc5317c64eef788ea223fb02a224b7",
+    "rth_raw_capture_source_backfill_report_md": "9feb5c98c45f2a44ac82b318de8722d456e6b717748c02a76a4f50d373b8f15c"
   },
   "pr318_anchor": {
     "accounting_slots_expected": 390,
