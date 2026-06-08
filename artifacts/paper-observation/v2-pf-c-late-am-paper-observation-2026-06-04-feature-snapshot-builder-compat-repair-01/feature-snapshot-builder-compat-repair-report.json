@@ -1,0 +1,143 @@
+{
+  "authority_locks": {
+    "CANDIDATE": 0,
+    "ORDER_INTENT": 0,
+    "STRAT_EVAL": 0,
+    "active_candidate_roster_mutated": false,
+    "broker_live_authorized": false,
+    "global_regime_labels_mutated": false,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "paper_runtime_invoked": false,
+    "phase_6_authorized": false,
+    "qfa_410b_or_qfa_611_run": false
+  },
+  "consumer_compatibility": [
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "created_ts_ns",
+      "source_ready_anchor": "PR #321 source-backed snapshot timestamp",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "quote.mid_px",
+      "source_ready_anchor": "PR #321 source-backed quote mid",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "session.is_rth",
+      "source_ready_anchor": "PR #321 session readiness",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "session.is_halt",
+      "source_ready_anchor": "PR #321 halt readiness",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "session.is_roll_block",
+      "source_ready_anchor": "PR #321 roll readiness",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "indicators.sigma_pts",
+      "source_ready_anchor": "PR #321 sigma source readiness",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "context.regime_label",
+      "source_ready_anchor": "PR #321 scoped regime label",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "context.signed_shock_vwap.value",
+      "source_ready_anchor": "PR #321 signed-shock source value",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "config.config_hash",
+      "source_ready_anchor": "PR #321 variant config hash",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "config.config_version",
+      "source_ready_anchor": "PR #321 variant config version",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "instrument.tick_size",
+      "source_ready_anchor": "MNQ instrument lineage mirrored from prior source-backed builder artifacts",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "instrument.point_value",
+      "source_ready_anchor": "MNQ instrument lineage mirrored from prior source-backed builder artifacts",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "instrument.price_decimals",
+      "source_ready_anchor": "MNQ instrument lineage mirrored from prior source-backed builder artifacts",
+      "value_present": true
+    },
+    {
+      "consumer_status": "READY",
+      "placeholder_used": false,
+      "snapshot_field_path": "instrument.symbol",
+      "source_ready_anchor": "MNQM6 source/capture contract identity",
+      "value_present": true
+    }
+  ],
+  "determination": "FEATURE_SNAPSHOT_BUILDER_COMPAT_REPAIR_EMITTED_INSTRUMENT_READY_SNAPSHOT",
+  "feature_snapshot_id": "feature-v2pf-20260604-1780585080000000000",
+  "instrument": {
+    "contract_month": "2026-06",
+    "currency": "USD",
+    "exchange": "CME",
+    "point_value": 2,
+    "price_decimals": 2,
+    "root": "MNQ",
+    "symbol": "MNQM6",
+    "tick_size": 0.25
+  },
+  "output_hashes": {
+    "bounded_feature_snapshot_compat_repair_jsonl": "c46114b016569dbd42019137153b9544a8e68cf3d07a604c59e51760b2871baa",
+    "feature_snapshot_builder_compat_repair_report_json": "a866d60163d179ba195da5b321e58798079af60b5f6e35c286a49838b356ba4e",
+    "feature_snapshot_builder_compat_repair_report_md": "d248ada448015e6cc1e3e25235ec42c62da26144cc8a76c4b5a9f00ff215af84"
+  },
+  "ready_for_candidate_strat_eval_smoke_rerun": true,
+  "recommended_next_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-04-CANDIDATE-STRAT-EVAL-SMOKE-RERUN-01",
+  "repaired_field_family": "instrument",
+  "source_anchor": {
+    "source_feature_snapshot_builder_jsonl_lf_sha256": "501624e2dad8a3dea37cd935b6a77d91ec50f7bcccf1ccc4efb01fc2ceae1f10",
+    "source_feature_snapshot_builder_report_lf_sha256": "1a2e10f6334e9b84f2b76b04fa809312cd1ba14cb2aa40c3146539b1d507a275",
+    "source_feature_snapshot_builder_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-04-FEATURE-SNAPSHOT-BUILDER-IMPL-01"
+  },
+  "strategy_feature_snapshot_count": 1,
+  "strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+  "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-04-FEATURE-SNAPSHOT-BUILDER-COMPAT-REPAIR-01"
+}
