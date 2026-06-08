@@ -1,0 +1,114 @@
+{
+  "artifact_size_guard": {
+    "artifact_size_bytes": 8289,
+    "artifact_size_limit_bytes": 99614720,
+    "artifact_size_within_limit": true
+  },
+  "authority_locks": {
+    "CANDIDATE": 0,
+    "ORDER_INTENT": 0,
+    "STRAT_EVAL": 0,
+    "active_candidate_roster_mutated": false,
+    "broker_live_authorized": false,
+    "canonical_backtest_or_regime_artifacts_mutated": false,
+    "fabricated_market_data": false,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "paper_runtime_invoked": false,
+    "phase_6_authorized": false,
+    "qfa_410b_or_qfa_611_run": false
+  },
+  "backfill_summary": {
+    "exact_blocker_family": "provider credentials absent after local source absence reproduced",
+    "full_session_source_snapshot_window_repair_ready_for_rerun": false,
+    "missing_raw_capture_slots_repaired": 0,
+    "target_missing_slots": 151,
+    "target_missing_window_covered": false,
+    "target_missing_window_end_utc": "2026-06-02T16:02:00.000000000Z",
+    "target_missing_window_exclusive_end_utc": "2026-06-02T16:03:00.000000000Z",
+    "target_missing_window_start_utc": "2026-06-02T13:32:00.000000000Z",
+    "target_window_end_basis": "target_missing_window_end_utc is the last missing 1m slot start; exclusive_end is used for coverage scanning"
+  },
+  "determination": "RTH_RAW_CAPTURE_SOURCE_BACKFILL_BLOCKED_PROVIDER_CREDENTIALS_ABSENT",
+  "local_source_inventory": {
+    "normalized_obs_file_present": true,
+    "normalized_obs_scan": {
+      "file_path": "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-02/MNQ_rth.obs01.jsonl",
+      "file_present": true,
+      "file_size_bytes": 198006402,
+      "records_in_target_window": 0,
+      "records_total": 518356,
+      "slots_covered_in_target_window": 0,
+      "source_time_max_utc": "2026-06-02T20:05:00.550603543Z",
+      "source_time_min_utc": "2026-06-02T13:26:24.377891117Z",
+      "target_missing_window_covered": false
+    },
+    "normalized_trade_records_in_target_window": 0,
+    "normalized_trade_slots_covered_in_target_window": 0,
+    "quote_lane_is_not_current_blocker": true,
+    "quote_mid_ready_slots_from_pr318_carry_forward_accounting": 390,
+    "quote_records_in_target_window": 0,
+    "quote_scan": {
+      "file_path": "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-02/MNQ_rth.mbp1.jsonl",
+      "file_present": true,
+      "file_size_bytes": 63751059,
+      "records_in_target_window": 0,
+      "records_total": 372599,
+      "slots_covered_in_target_window": 0,
+      "source_time_max_utc": "2026-06-02T20:05:00.390407000Z",
+      "source_time_min_utc": "2026-06-02T13:26:24.281100000Z",
+      "target_missing_window_covered": false
+    },
+    "quote_slots_covered_in_target_window": 0,
+    "quote_source_present": true,
+    "raw_capture_file_present": true,
+    "raw_capture_records_in_target_window": 0,
+    "raw_capture_scan": {
+      "file_path": "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-02/MNQ_rth.jsonl",
+      "file_present": true,
+      "file_size_bytes": 6004036818,
+      "records_in_target_window": 0,
+      "records_total": 9757140,
+      "slots_covered_in_target_window": 0,
+      "source_time_max_utc": "2026-06-02T20:05:00.550999717Z",
+      "source_time_min_utc": "2026-06-02T13:26:24.026331100Z",
+      "target_missing_window_covered": false
+    },
+    "raw_capture_slots_covered_in_target_window": 0,
+    "source_time_max_utc": "2026-06-02T20:05:00.550999717Z",
+    "source_time_min_utc": "2026-06-02T13:26:24.026331100Z",
+    "target_missing_window_covered": false,
+    "trade_bar_source_present": false
+  },
+  "output_hashes": {
+    "bounded_rth_raw_capture_source_backfill_jsonl": "ffaae47f013421887eb1af256dcf82412dd3473af0d80501dbedfe93a6b62be5",
+    "rth_raw_capture_source_backfill_report_json": "0e8f1ba667b95e535f956f30bbfb58f6ede26746cbefce368809cf844e438ec6",
+    "rth_raw_capture_source_backfill_report_md": "bf8d1ef39bd2676551c554705f72057d9bd9fc2a5efabea042782ce3fd3f83f2"
+  },
+  "pr318_anchor": {
+    "accounting_slots_expected": 390,
+    "determination": "FULL_SESSION_SOURCE_SNAPSHOT_WINDOW_BLOCKED_RAW_CAPTURE_ABSENCE",
+    "first_missing_source_slot_utc": "2026-06-02T13:32:00.000000000Z",
+    "last_missing_source_slot_utc": "2026-06-02T16:02:00.000000000Z",
+    "merge_commit": "6e3fdb68272d084ffd813a34f5fe5fdcbac3e15c",
+    "missing_reason": "RAW_CAPTURE_ABSENCE",
+    "normalized_trade_bar_slots_absent": 151,
+    "pr": 318,
+    "quote_mid_ready_slots": 390,
+    "raw_capture_slots_absent": 151,
+    "slots_missing_source": 151,
+    "source_backed_feature_snapshot_slots_ready": 226,
+    "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-FULL-SESSION-SOURCE-SNAPSHOT-WINDOW-REPAIR-01"
+  },
+  "provider_backfill_status": {
+    "provider_backfill_attempted": false,
+    "provider_credentials_available": false,
+    "provider_data_committable": false,
+    "provider_fetch_result": "not_attempted_credentials_absent",
+    "provider_name": "Databento"
+  },
+  "recommended_next_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-RTH-RAW-CAPTURE-PROVIDER-CREDENTIALS-01",
+  "strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+  "substrate_sha": "6e3fdb68272d084ffd813a34f5fe5fdcbac3e15c",
+  "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-02-RTH-RAW-CAPTURE-SOURCE-BACKFILL-01"
+}
