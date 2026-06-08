@@ -449,14 +449,14 @@ describe('QFA-614 paper trading harness', () => {
     }
   });
 
-  it('fails closed when selecting the future real Rithmic adapter before QFA-612-PAPER-01b', async () => {
-    const session = new PaperTradingSession({
+  it('requires manual flat-at-start confirmation when selecting the Rithmic adapter', () => {
+    expect(() => new PaperTradingSession({
       config: {
         ...BASE_OPTIONS.config,
         adapter_kind: 'rithmic',
+        live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
       },
-    });
-    await expect(session.start()).rejects.toThrow('QFA-612-PAPER-01b not yet merged');
+    })).toThrow('QFA-612-BROKER-03 requires manual operator confirmation');
   });
 
   it('parses live Rithmic ticker source from env override', () => {
@@ -575,7 +575,7 @@ describe('QFA-614 paper trading harness', () => {
     })).toThrow('requires a non-empty live_account_allowlist');
   });
 
-  it('rejects real adapter construction in live ticker shadow mode', () => {
+  it('requires manual flat-at-start confirmation before live ticker can use the Rithmic adapter', () => {
     expect(() => new PaperTradingSession({
       config: {
         ...BASE_OPTIONS.config,
@@ -583,7 +583,7 @@ describe('QFA-614 paper trading harness', () => {
         adapter_kind: 'rithmic',
         live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
       },
-    })).toThrow('shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+    })).toThrow('QFA-612-BROKER-03 requires manual operator confirmation');
   });
   it('parses local OBS replay source from env override', () => {
     const fixturePath = join(process.cwd(), 'apps/strategy_runtime/tests/fixtures/obs-replay-sample.jsonl');
@@ -644,15 +644,16 @@ describe('QFA-614 paper trading harness', () => {
     })).toThrow('QFA_PAPER_LOCAL_OBS_PATH is required');
   });
 
-  it('rejects real adapter construction in local OBS replay shadow mode', () => {
+  it('requires manual flat-at-start confirmation before local OBS replay can use the Rithmic adapter', () => {
     expect(() => new PaperTradingSession({
       config: {
         ...BASE_OPTIONS.config,
         market_data_source: 'local_obs_replay',
         local_obs_replay_path: join(process.cwd(), 'apps/strategy_runtime/tests/fixtures/obs-replay-sample.jsonl'),
         adapter_kind: 'rithmic',
+        live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
       },
-    })).toThrow('local_obs_replay shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+    })).toThrow('QFA-612-BROKER-03 requires manual operator confirmation');
   });
 
   it('materializes local OBS replay JSONL with round-trip-valid events in fast pace mode', async () => {

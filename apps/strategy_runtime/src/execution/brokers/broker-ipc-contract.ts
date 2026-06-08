@@ -44,6 +44,7 @@ export const BROKER_IPC_EVENT_MESSAGE_TYPES = [
   'account_list_snapshot',
   'heartbeat_pong',
   'shutdown_complete',
+  'qfa_broker_sidecar_ipc_ms',
 ] as const;
 
 export type BrokerIpcEventMessageType = (typeof BROKER_IPC_EVENT_MESSAGE_TYPES)[number];
@@ -75,6 +76,9 @@ export type BrokerIpcProtocolEnvironment = (typeof BROKER_IPC_PROTOCOL_ENVIRONME
 export const BROKER_IPC_SDK_NAMES = ['pyrithmic', 'async-rithmic'] as const;
 export type BrokerIpcSdkName = (typeof BROKER_IPC_SDK_NAMES)[number];
 
+export const BROKER_IPC_AUTHENTICATED_PLANTS = ['TICKER_PLANT', 'ORDER_PLANT'] as const;
+export type BrokerIpcAuthenticatedPlant = (typeof BROKER_IPC_AUTHENTICATED_PLANTS)[number];
+
 export interface BrokerIpcEnvelope<TPayload = unknown> {
   readonly schema_version: typeof BROKER_IPC_SCHEMA_VERSION;
   readonly message_type: BrokerIpcMessageType;
@@ -98,6 +102,7 @@ export interface BrokerIpcBootIdentityPayload {
   readonly boot_ts_ns: bigint | number | string;
   readonly process_id: number;
   readonly schema_version: typeof BROKER_IPC_SCHEMA_VERSION;
+  readonly authenticated_plants?: readonly BrokerIpcAuthenticatedPlant[];
 }
 
 export interface BrokerIpcFailurePayload {
@@ -172,6 +177,7 @@ export interface BrokerIpcContractExport {
   readonly failure_payload_fields: readonly string[];
   readonly account_list_payload_fields: readonly string[];
   readonly account_payload_fields: readonly string[];
+  readonly authenticated_plants: readonly BrokerIpcAuthenticatedPlant[];
   readonly optional_telemetry_fields: readonly string[];
 }
 
@@ -223,6 +229,7 @@ export function buildBrokerIpcContractExport(): BrokerIpcContractExport {
       'boot_ts_ns',
       'process_id',
       'schema_version',
+      'authenticated_plants',
     ],
     failure_payload_fields: [
       'failure_state',
@@ -242,6 +249,7 @@ export function buildBrokerIpcContractExport(): BrokerIpcContractExport {
       'account_currency',
       'account_auto_liquidate',
     ],
+    authenticated_plants: BROKER_IPC_AUTHENTICATED_PLANTS,
     optional_telemetry_fields: ['qfa_broker_sidecar_ipc_ms'],
   };
 }
@@ -388,6 +396,7 @@ function validateBootIdentityPayload(
       `must be ${BROKER_IPC_SCHEMA_VERSION}`,
     );
   }
+  optionalAuthenticatedPlants(payload.authenticated_plants, '$.payload.authenticated_plants', issues);
 }
 
 function validateFailurePayload(
@@ -525,6 +534,30 @@ function optionalBoolean(
   if (value !== undefined && typeof value !== 'boolean') {
     addIssue(issues, path, 'invalid_field_type', 'must be a boolean when present');
   }
+}
+
+function optionalAuthenticatedPlants(
+  value: unknown,
+  path: string,
+  issues: BrokerIpcValidationIssue[],
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    addIssue(issues, path, 'invalid_field_type', 'must be an array when present');
+    return;
+  }
+  value.forEach((plant, index) => {
+    if (!BROKER_IPC_AUTHENTICATED_PLANTS.includes(plant as never)) {
+      addIssue(
+        issues,
+        `${path}[${index}]`,
+        'invalid_field_value',
+        `must be one of: ${BROKER_IPC_AUTHENTICATED_PLANTS.join(', ')}`,
+      );
+    }
+  });
 }
 
 function requireTimestamp(

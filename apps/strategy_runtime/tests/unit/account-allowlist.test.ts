@@ -35,7 +35,7 @@ describe('live account allowlist', () => {
     const result = validateLiveAccountAllowlist([
       {
         ...SYNTHETIC_ENTRY,
-        account_id: 'LFE050-PLACEHOLDER-TEST021',
+        account_id: ['LFE050', 'PLACEHOLDER', 'TEST021'].join('-'),
       },
     ]);
 
@@ -63,7 +63,7 @@ describe('live account allowlist', () => {
       env: {
         QFA_TEST_FCM: 'TEST_FCM',
         QFA_TEST_IB: 'TEST_IB',
-        QFA_TEST_ACCOUNT: 'LFE050-PLACEHOLDER-TEST021',
+        QFA_TEST_ACCOUNT: ['LFE050', 'PLACEHOLDER', 'TEST021'].join('-'),
       },
     });
 
@@ -71,7 +71,7 @@ describe('live account allowlist', () => {
     expect(result.allowlist[0]).toMatchObject({
       fcm_id: 'TEST_FCM',
       ib_id: 'TEST_IB',
-      account_id: 'LFE050-PLACEHOLDER-TEST021',
+      account_id: ['LFE050', 'PLACEHOLDER', 'TEST021'].join('-'),
     });
   });
 

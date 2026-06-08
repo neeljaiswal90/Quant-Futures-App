@@ -102,6 +102,119 @@ describe('PythonBrokerAdapter', () => {
     });
   });
 
+  it('accepts valid allowlisted account intent and preserves broker_account_id lineage', async () => {
+    const { adapter, acks } = adapterFor('clean_shutdown', {
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+    });
+    await adapter.start();
+
+    const result = await adapter.submitIntent(orderIntent('intent-allowlisted', 'TEST_ACCT_001'));
+    await adapter.stop();
+
+    expect(result).toMatchObject({ accepted: true });
+    expect(acks.find((event) => event.type === 'ORDER_ACK_SUBMISSION')).toMatchObject({
+      payload: { broker_account_id: 'TEST_ACCT_001' },
+    });
+  });
+
+  it('rejects non-allowlisted account intents before sending to the sidecar', async () => {
+    const { adapter, sessions } = adapterFor('clean_shutdown', {
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+    });
+    await adapter.start();
+
+    const result = await adapter.submitIntent(orderIntent('intent-non-allowlisted', 'OTHER_ACCT'));
+    await adapter.stop();
+
+    expect(result).toMatchObject({ accepted: false });
+    expect(sessions.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+      payload: {
+        validator_id: 'EXEC-VALIDATOR-09',
+        code: 'account_id_not_in_allowlist',
+        severity: 'fatal',
+      },
+    });
+  });
+
+  it('uses the MNQ session calendar for RTH-only account restrictions', async () => {
+    const { adapter, sessions } = adapterFor('clean_shutdown', {
+      live_account_allowlist: [
+        {
+          ...LIVE_ACCOUNT_ALLOWLIST[0],
+          time_of_day_restriction: 'rth_only',
+        },
+      ],
+      now_ns: () => ns(1_780_585_080_000_000_000n),
+    });
+    await adapter.start();
+
+    const result = await adapter.submitIntent(orderIntent('intent-rth-allowlisted', 'TEST_ACCT_001'));
+    await adapter.stop();
+
+    expect(result).toMatchObject({ accepted: true });
+    expect(sessions.filter((event) => event.type === 'VALIDATOR_ISSUE')).toEqual([]);
+  });
+
+  it('rejects account cap breaches before sending to the sidecar', async () => {
+    const { adapter, sessions } = adapterFor('clean_shutdown', {
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+    });
+    await adapter.start();
+
+    const oversized = {
+      ...orderIntent('intent-cap-breach', 'TEST_ACCT_001'),
+      payload: {
+        ...orderIntent('intent-cap-breach', 'TEST_ACCT_001').payload,
+        quantity: 3,
+      },
+    } as OrderIntentEventEnvelope;
+    const result = await adapter.submitIntent(oversized);
+    await adapter.stop();
+
+    expect(result).toMatchObject({ accepted: false });
+    expect(sessions.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+      payload: {
+        validator_id: 'EXEC-VALIDATOR-09',
+        code: 'max_position_contracts_exceeded',
+        severity: 'fatal',
+      },
+    });
+  });
+
+  it('engages kill switch on cross-account contamination', async () => {
+    const gate = new SubmissionGate();
+    const { adapter, sessions } = adapterFor('cross_account_mismatch', {
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+      submission_gate: gate,
+    });
+    await adapter.start();
+
+    await adapter.submitIntent(orderIntent('intent-cross-account', 'TEST_ACCT_001'));
+    await adapter.stop();
+
+    expect(sessions.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+      payload: {
+        validator_id: 'EXEC-VALIDATOR-09',
+        code: 'cross_account_contamination',
+        severity: 'fatal',
+      },
+    });
+    expect(gate.acquire()).toMatchObject({ allowed: false });
+  });
+
+  it('does not auto-submit flatten orders on adapter stop after a fill', async () => {
+    const { adapter, sessions } = adapterFor('fill_then_shutdown', {
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+    });
+    await adapter.start();
+
+    const result = await adapter.submitIntent(orderIntent('intent-filled', 'TEST_ACCT_001'));
+    await adapter.stop();
+
+    expect(result).toMatchObject({ accepted: true });
+    expect(sessions.find((event) => event.type === 'VALIDATOR_ISSUE')).toBeUndefined();
+  });
+
   it('verifies account_list_snapshot against the configured allowlist during boot when enabled', async () => {
     const { adapter } = adapterFor('account_snapshot_pass', {
       live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
@@ -329,6 +442,14 @@ function handle(command) {
     return;
   }
   if (command.message_type !== "submit_order") return;
+  if (scenario === "fill_then_shutdown" && String(command.idempotency_key || "").includes("auto-flatten")) {
+    send(envelope("broker_error", command.correlation_id, {
+      failure_state: "auto_flatten_unexpected",
+      reason: "auto-flatten submit_order is not authorized by QFA-612-BROKER-03",
+      recoverable: false
+    }));
+    return;
+  }
   if (scenario === "order_not_implemented") {
     send(envelope("broker_error", command.correlation_id, {
       failure_state: "order_path_not_yet_implemented",
@@ -342,13 +463,28 @@ function handle(command) {
   if (scenario === "malformed_then_ack") {
     process.stdout.write("{not-json}\n");
   }
+  const brokerAccountId = scenario === "cross_account_mismatch"
+    ? "OTHER_ACCT"
+    : (command.payload.intent.payload.account_id || "paper-account");
   send(envelope("order_accepted", command.correlation_id, {
     intent_id: command.payload.intent.event_id,
     submission_ack_id: "submission-ack-1",
     broker_order_id: "PY-1",
-    broker_account_id: "paper-account",
+    broker_account_id: brokerAccountId,
     instrument_symbol: "MNQM6"
   }));
+  if (scenario === "fill_then_shutdown") {
+    send(envelope("order_filled", command.correlation_id, {
+      intent_id: command.payload.intent.event_id,
+      submission_ack_id: "submission-ack-1",
+      fill_ack_id: "fill-ack-1",
+      broker_order_id: "PY-1",
+      broker_account_id: brokerAccountId,
+      instrument_symbol: "MNQM6",
+      fill_qty: 1,
+      fill_price: 19750.25
+    }));
+  }
 }
 `;
 }

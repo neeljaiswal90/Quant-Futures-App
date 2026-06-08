@@ -5,15 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 FORBIDDEN_REFERENCES = [
-    "ORDER_PLANT",
     "PNL_PLANT",
     "HISTORY_PLANT",
-    "submit_order",
-    "cancel_order",
-    "replace_order",
-    "order_plant",
     "pnl_plant",
     "history_plant",
+    "replace_order",
+    "list_positions",
 ]
 
 

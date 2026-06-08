@@ -87,6 +87,6 @@ describe('QFA-633 local OBS replay paper harness wiring', () => {
         local_obs_replay_path: FIXTURE_PATH,
         adapter_kind: 'rithmic',
       },
-    })).toThrow('local_obs_replay shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
+    })).toThrow('QFA-612-BROKER-03 requires exactly one live_account_allowlist entry');
   });
 });
