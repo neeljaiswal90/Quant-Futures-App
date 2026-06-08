@@ -1,0 +1,118 @@
+{
+  "authority_locks": {
+    "CANDIDATE": 0,
+    "Databento_fetch_attempted": false,
+    "ORDER_INTENT": 0,
+    "STRAT_EVAL": 0,
+    "StrategyFeatureSnapshot_materialized": false,
+    "active_candidate_roster_mutated": false,
+    "broker_live_authorized": false,
+    "global_regime_labels_mutated": false,
+    "observation_day_eligible": false,
+    "observation_day_increment": 0,
+    "paper_runtime_invoked": false,
+    "phase_6_authorized": false,
+    "qfa_410b_or_qfa_611_run": false
+  },
+  "candidate_feasibility": {
+    "base_predicates_pass_before_utc_gate": false,
+    "best_or_first_candidate_eligible_non_excluded_timestamp_utc": null,
+    "candidate_eligible_excluded_points": 0,
+    "candidate_eligible_non_excluded_points": 0,
+    "candidate_eligible_points": 0,
+    "entry_hour_utc": null,
+    "regime_label": "high",
+    "signed_shock_vwap": null,
+    "threshold_comparison_result": null,
+    "threshold_name": "parameters.low_shock_threshold_pos",
+    "threshold_value": 2.7,
+    "timestamp_ns": null,
+    "utc_exclusion_gate_status": null
+  },
+  "determination": "LOCAL_CAPTURE_SOURCE_READINESS_BLOCKED_NO_CANDIDATE_ELIGIBLE_NON_EXCLUDED_POINT",
+  "output_hashes": {
+    "bounded_local_capture_source_readiness_jsonl": "0a16b7907e46f999ccbb09905e18f64a7956d90cbe46ff40898408888e978d3a",
+    "local_capture_source_readiness_report_json": "69db00935b2bbba379269ec2c42fdea89194e0483d656126a88f3d591caaf289",
+    "local_capture_source_readiness_report_md": "00180a73b1094a2ee3f9d33f49c0bd2508fd6e285c3fbb8a3ae6a484599b90ee"
+  },
+  "recommended_next_ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-08-NO-CANDIDATE-ELIGIBLE-DISPOSITION-01",
+  "source_readiness": {
+    "VIXCLS_prior_close_ready": true,
+    "VXNCLS_prior_close_ready": true,
+    "accounting_slots_expected": 390,
+    "atr14_ready": true,
+    "atr14_ready_slots": 377,
+    "closed_1m_bar_ready": true,
+    "feature_computable_slots": 377,
+    "finite_quote_records_scanned_in_window": 25351110,
+    "first_rth_record_utc": "2026-06-08T13:30:00.001092437Z",
+    "last_rth_record_utc": "2026-06-08T19:59:59.997824545Z",
+    "observation_window_end_utc": "2026-06-08T20:00:00.000000000Z",
+    "observation_window_start_utc": "2026-06-08T13:30:00.000000000Z",
+    "quote_mid_ready": true,
+    "quote_source_records_scanned_in_window": 25351110,
+    "raw_or_normalized_trade_source_ready": true,
+    "ready_for_feature_snapshot_builder": false,
+    "rth_trade_records": 1713081,
+    "rth_trade_slots_missing": 0,
+    "rth_trade_slots_present": 390,
+    "scoped_regime_label": {
+      "confirmed_label": "high",
+      "fred_csv_rows_returned": 0,
+      "fred_http_status": 504,
+      "fred_page_fallback_source_urls": [
+        "https://fred.stlouisfed.org/series/VIXCLS",
+        "https://fred.stlouisfed.org/series/VXNCLS"
+      ],
+      "fred_page_fallback_used": true,
+      "fred_page_fallback_values": [
+        {
+          "VIXCLS": 15.77,
+          "VXNCLS": 23.27,
+          "date": "2026-06-02"
+        },
+        {
+          "VIXCLS": 16.06,
+          "VXNCLS": 23.84,
+          "date": "2026-06-03"
+        },
+        {
+          "VIXCLS": 21.51,
+          "VXNCLS": 30.47,
+          "date": "2026-06-05"
+        }
+      ],
+      "fred_response_lf_sha256": "d7b7efe1cc73c55f39463a208c3b0b95ec1b3501ee43aaefdfaf19016ebc10d5",
+      "fred_source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS,VXNCLS&cosd=2026-03-01&coed=2026-06-05",
+      "global_regime_labels_mutated": false,
+      "materialization_scope": "scoped_paper_observation_source_only",
+      "primary_percentile_diagnostic_only": 0.7,
+      "raw_label_diagnostic_only": "high",
+      "scoped_regime_label_ready": true,
+      "target_prior_close_date": "2026-06-05",
+      "target_session_id": "2026-06-08-rth",
+      "target_vixcls": 21.51,
+      "target_vxncls": 30.47,
+      "trailing_60_vix_available": true,
+      "trailing_60_vix_count": 60
+    },
+    "scoped_regime_label_ready": true,
+    "session_is_halt_ready": true,
+    "session_is_roll_block_ready": true,
+    "session_is_rth_ready": true,
+    "session_vwap_ready": true,
+    "sigma_pts_ready": true,
+    "signed_shock_vwap_ready": true,
+    "signed_shock_vwap_ready_slots": 377,
+    "snapshot_cadence_basis": "one closed 1m accounting slot",
+    "source_file": "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-08/MNQ_globex.obs01.jsonl",
+    "source_file_role": "continuous_globex_capture_containing_2026-06-08_rth",
+    "source_ready_slots": 390,
+    "target_session_id": "2026-06-08-rth",
+    "warmup_excluded_slots": 13,
+    "window_basis": "RTH"
+  },
+  "strategy_id": "regime_shock_reversion_short_v2_utc_16_18_exclusion",
+  "substrate_sha": "a5ff6fd70787f3df01f358ec91f61f471463008c",
+  "ticket": "V2-PF-C-LATE-AM-PAPER-OBSERVATION-2026-06-08-LOCAL-CAPTURE-SOURCE-READINESS-01"
+}
