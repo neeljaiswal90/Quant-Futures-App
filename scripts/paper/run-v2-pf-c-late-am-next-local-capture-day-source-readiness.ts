@@ -58,7 +58,7 @@ async function scan(file: string): Promise<JsonRecord> {
 
 const continuationReport = JSON.parse(readFileSync(continuationReportPath, 'utf8')) as JsonRecord;
 const scans = await Promise.all(sourceFiles.map(scan));
-const allCoverage = scans.flatMap((scan) => (scan.rth_trade_slot_coverage as Json[]).map((entry) => ({ ...(entry as JsonRecord), source_file: String(scan.file) })));
+const allCoverage: JsonRecord[] = scans.flatMap((scan) => (scan.rth_trade_slot_coverage as Json[]).map((entry) => ({ ...(entry as JsonRecord), source_file: String(scan.file) })));
 const candidatesAfterPrior = allCoverage.filter((entry) => String(entry.session_date) > '2026-06-04') as JsonRecord[];
 const fullReady = candidatesAfterPrior.filter((entry) => Number(entry.rth_trade_slots_present) === 390);
 const bestCandidate = candidatesAfterPrior.sort((a, b) => String(a.session_date).localeCompare(String(b.session_date)))[0] ?? null;

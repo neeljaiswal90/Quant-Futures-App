@@ -21,7 +21,7 @@ No new observation-day credit is awarded by this source-readiness scan.
 | Session date | RTH trade slots present | Missing | Source file |
 |---|---:|---:|---|
 | 2026-06-05 | 239 | 151 | D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-03/MNQ_globex.obs01.jsonl |
-| 2026-06-08 | 226 | 164 | D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-07/MNQ_globex.obs01.jsonl |
+| 2026-06-08 | 228 | 162 | D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-07/MNQ_globex.obs01.jsonl |
 
 ## Blocker
 
@@ -45,5 +45,5 @@ V2-PF-C-LATE-AM-PAPER-OBSERVATION-WAIT-FOR-NEXT-FULL-LOCAL-CAPTURE-DAY-01
 
 | Output | LF SHA256 |
 |---|---|
-| bounded JSONL | 5880825b50a828d59c0c6a544582d557219654daa7944deb3bbdd92b9c00aa19 |
-| report JSON | 88fec557c2c9234fafbe37f6e15010544d4f8ab642fa0f66ee9f6006961c9180 |
+| bounded JSONL | 87ec5ad42fb8e7bc83a9ce2c25034d275e6db83e2c946e9e72ffbaae8ecd7c0e |
+| report JSON | dd3bc2974a937542418e3962bbbca5bac902fa294fd9b751e4ef87567e4b3777 |
