@@ -747,7 +747,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     if (!isBrokerOrderEvent(event.type)) {
       return;
     }
-    const payload = event.payload as Readonly<Record<string, unknown>>;
+    const payload = event.payload as unknown as Readonly<Record<string, unknown>>;
     const intentId = stringRecordField(payload, 'intent_id');
     const brokerAccountId = stringRecordField(payload, 'broker_account_id');
     if (intentId === undefined || brokerAccountId === undefined) {
@@ -775,7 +775,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     if (event.type !== 'ORDER_ACK_FILL') {
       return;
     }
-    const payload = event.payload as Readonly<Record<string, unknown>>;
+    const payload = event.payload as unknown as Readonly<Record<string, unknown>>;
     const intentId = stringRecordField(payload, 'intent_id');
     if (intentId === undefined) {
       return;
