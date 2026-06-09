@@ -91,9 +91,9 @@ def test_auth_denied_emits_structured_broker_error_and_nonzero_exit() -> None:
     assert payload["rp_code"] == "13"
 
 
-def test_order_command_still_returns_not_yet_implemented() -> None:
+def test_reconciliation_command_still_returns_not_yet_implemented() -> None:
     stdout = io.StringIO()
-    commands = [_command("submit_order", "submit-1", idempotency_key="intent-1")]
+    commands = [_command("request_reconciliation_snapshot", "reconcile-1", idempotency_key="reconcile-1")]
     stdin = io.StringIO("\n".join(json.dumps(command) for command in commands) + "\n")
     with patch.dict(os.environ, _env(), clear=True), patch.dict(sys.modules, {"async_rithmic": _success_module()}):
         code = asyncio.run(run(SidecarConfig(config_path=None, log_level="info", mode="test"), stdin, stdout))

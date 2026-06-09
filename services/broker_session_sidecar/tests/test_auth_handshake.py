@@ -103,3 +103,39 @@ def test_authenticate_connects_ticker_plant_only_with_client_factory() -> None:
 
     assert result.broker_session_id == "client-session-123"
     assert captured["connect"] == {"plants": [ticker_marker]}
+
+
+def test_authenticate_connects_ticker_and_order_plants_for_rithmic_adapter() -> None:
+    captured: dict[str, object] = {}
+    module = ModuleType("async_rithmic")
+    module.__version__ = "1.6.1"
+    ticker_marker = object()
+    order_marker = object()
+
+    class FakeSysInfraType:
+        TICKER_PLANT = ticker_marker
+        ORDER_PLANT = order_marker
+
+    class FakeClient:
+        session_id = "client-session-123"
+
+        def __init__(self, **kwargs: object) -> None:
+            captured["init"] = kwargs
+
+        async def connect(self, **kwargs: object) -> None:
+            captured["connect"] = kwargs
+
+        async def disconnect(self) -> None:
+            captured["disconnect"] = True
+
+    module.SysInfraType = FakeSysInfraType  # type: ignore[attr-defined]
+    module.RithmicClient = FakeClient  # type: ignore[attr-defined]
+
+    with patch.dict(os.environ, {**_env(), "QFA_BROKER_ADAPTER_KIND": "rithmic"}, clear=True):
+        credentials = resolve_credentials(os.environ)
+        with patch.dict(sys.modules, {"async_rithmic": module}):
+            result = asyncio.run(authenticate(credentials))
+
+    assert result.broker_session_id == "client-session-123"
+    assert captured["connect"] == {"plants": [ticker_marker, order_marker]}
+    assert result.authenticated_plants == ("TICKER_PLANT", "ORDER_PLANT")

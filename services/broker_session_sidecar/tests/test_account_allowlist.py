@@ -108,14 +108,10 @@ def test_sidecar_rejects_command_account_id_outside_allowlist() -> None:
         if (event.get("message_type") or event.get("type")) == "broker_error"
     ]
     assert broker_errors[0]["failure_state"] == "account_id_not_in_allowlist"
-    assert [
-        event.get("account_id_redacted")
-        for event in _events(stdout.getvalue())
-        if (event.get("message_type") or event.get("type")) == "broker_error"
-    ][0] == "OT...ER"
+    assert broker_errors[0]["account_id_redacted"] == "OT...ER"
 
 
-def test_sidecar_query_account_list_stays_deferred() -> None:
+def test_sidecar_query_account_list_emits_snapshot() -> None:
     stdout = io.StringIO()
     command = {
         "schema_version": 1,
@@ -130,13 +126,40 @@ def test_sidecar_query_account_list_stays_deferred() -> None:
         "payload": {},
     }
     stdin = io.StringIO(json.dumps(command) + "\n")
-    with patch.dict(os.environ, _env(), clear=True), patch.dict(sys.modules, {"async_rithmic": _success_module()}):
+    module = ModuleType("async_rithmic")
+    module.__version__ = "1.6.1"
+
+    class FakeSysInfraType:
+        TICKER_PLANT = "ticker"
+        ORDER_PLANT = "order"
+
+    class FakeClient:
+        session_id = "mock-session-123"
+        fcm_id = "TEST_FCM"
+        ib_id = "TEST_IB"
+
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def connect(self, **kwargs: object) -> None:
+            pass
+
+        async def list_accounts(self) -> list[dict[str, object]]:
+            return _allowlist()
+
+        async def disconnect(self) -> None:
+            pass
+
+    module.SysInfraType = FakeSysInfraType  # type: ignore[attr-defined]
+    module.RithmicClient = FakeClient  # type: ignore[attr-defined]
+    env = {**_env(), "QFA_BROKER_ADAPTER_KIND": "rithmic", "QFA_BROKER_ALLOWLIST_JSON": json.dumps(_allowlist())}
+    with patch.dict(os.environ, env, clear=True), patch.dict(sys.modules, {"async_rithmic": module}):
         code = asyncio.run(run(SidecarConfig(config_path=None, log_level="info", mode="test"), stdin, stdout))
 
     assert code == 0
-    states = [
-        _payload(event).get("failure_state")
+    snapshots = [
+        _payload(event)
         for event in _events(stdout.getvalue())
-        if (event.get("message_type") or event.get("type")) == "broker_error"
+        if (event.get("message_type") or event.get("type")) == "account_list_snapshot"
     ]
-    assert "order_path_not_yet_implemented" in states
+    assert snapshots[0]["accounts"][0]["account_id"] == "TEST_ACCT_001"

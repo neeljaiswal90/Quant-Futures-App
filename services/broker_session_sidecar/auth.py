@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import os
 from dataclasses import dataclass
 from importlib import metadata
 from typing import Any
@@ -16,6 +17,8 @@ ASYNC_RITHMIC_DISTRIBUTION = "async-rithmic"
 ASYNC_RITHMIC_IMPORT_NAME = "async_rithmic"
 ASYNC_RITHMIC_SDK_NAME = "async-rithmic"
 ASYNC_RITHMIC_PINNED_VERSION = "1.6.1"
+TICKER_PLANT_NAME = "TICKER_PLANT"
+ORDER_PLANT_NAME = "ORDER_PLANT"
 
 
 @dataclass(frozen=True)
@@ -24,6 +27,8 @@ class AuthResult:
     account_ref_redacted: str | None = None
     sdk_version: str = ASYNC_RITHMIC_PINNED_VERSION
     client: Any | None = None
+    authenticated_plants: tuple[str, ...] = (TICKER_PLANT_NAME,)
+    gateway_url_redacted: str = "[REDACTED:credential]"
 
 
 class AuthDeniedError(RuntimeError):
@@ -35,7 +40,7 @@ class AuthDeniedError(RuntimeError):
 
 async def authenticate(credentials: RithmicCredentials, mode: str = "test") -> AuthResult:
     if mode != "test":
-        raise AuthDeniedError("live mode is out of scope for QFA-612-BROKER-01")
+        raise AuthDeniedError("live mode is out of scope for QFA-612-BROKER-03")
     try:
         async_rithmic = importlib.import_module(ASYNC_RITHMIC_IMPORT_NAME)
     except Exception as exc:  # noqa: BLE001 - import boundary intentionally normalized.
@@ -43,13 +48,18 @@ async def authenticate(credentials: RithmicCredentials, mode: str = "test") -> A
 
     sdk_version = sdk_version_for(async_rithmic)
     try:
-        response = await _call_gateway(async_rithmic, credentials)
+        response, authenticated_plants = await _call_gateway(async_rithmic, credentials)
     except AuthDeniedError:
         raise
     except Exception as exc:  # noqa: BLE001 - broker library errors may be arbitrary.
         raise AuthDeniedError(str(exc), _error_code(exc)) from exc
 
-    return _auth_result_from_response(response, sdk_version)
+    return _auth_result_from_response(
+        response,
+        sdk_version,
+        authenticated_plants,
+        gateway_url_redacted=redact_text(credentials.ws_url),
+    )
 
 
 async def disconnect_auth_result(auth_result: AuthResult) -> None:
@@ -75,15 +85,17 @@ def sdk_version_for(async_rithmic_module: Any | None = None) -> str:
         return ASYNC_RITHMIC_PINNED_VERSION
 
 
-async def _call_gateway(async_rithmic: Any, credentials: RithmicCredentials) -> Any:
+async def _call_gateway(async_rithmic: Any, credentials: RithmicCredentials) -> tuple[Any, tuple[str, ...]]:
+    authenticated_plants = _authenticated_plant_names()
     authenticate_fn = getattr(async_rithmic, "authenticate", None)
     if callable(authenticate_fn):
-        return await _maybe_await(authenticate_fn(
+        response = await _maybe_await(authenticate_fn(
             user=credentials.user,
             password=credentials.password,
             url=_normalize_gateway_url(credentials.ws_url),
             system_name=credentials.system,
         ))
+        return response, authenticated_plants
 
     client_factory = getattr(async_rithmic, "RithmicClient", None)
     if client_factory is None:
@@ -92,8 +104,8 @@ async def _call_gateway(async_rithmic: Any, credentials: RithmicCredentials) -> 
     connect = getattr(client, "connect", None)
     if not callable(connect):
         raise AuthDeniedError("async-rithmic client has no supported connect method")
-    result = await _maybe_await(connect(**_ticker_only_connect_kwargs(async_rithmic)))
-    return client if result is None else result
+    result = await _maybe_await(connect(**_connect_kwargs_for_env(async_rithmic)))
+    return (client if result is None else result), authenticated_plants
 
 
 def _make_client(client_factory: Any, credentials: RithmicCredentials) -> Any:
@@ -125,15 +137,44 @@ def _make_client(client_factory: Any, credentials: RithmicCredentials) -> Any:
     raise AuthDeniedError(f"async-rithmic client construction failed: {last_error}")
 
 
-def _ticker_only_connect_kwargs(async_rithmic: Any) -> dict[str, Any]:
+def _connect_kwargs_for_env(async_rithmic: Any) -> dict[str, Any]:
+    markers = _plant_markers(async_rithmic)
+    names = _authenticated_plant_names()
+    plants = [markers[name] for name in names if name in markers]
+    if len(plants) != len(names):
+        missing = sorted(set(names).difference(markers))
+        raise AuthDeniedError(f"async-rithmic SysInfraType missing required plant constants: {', '.join(missing)}")
+    return {"plants": plants}
+
+
+def _plant_markers(async_rithmic: Any) -> dict[str, Any]:
     sys_infra = getattr(async_rithmic, "SysInfraType", None)
-    ticker = getattr(sys_infra, "TICKER_PLANT", None)
-    if ticker is None:
-        return {}
-    return {"plants": [ticker]}
+    if sys_infra is None:
+        protocol_buffers = getattr(async_rithmic, "protocol_buffers", None)
+        sys_infra = getattr(protocol_buffers, "SysInfraType", None)
+    markers: dict[str, Any] = {}
+    for name in (TICKER_PLANT_NAME, ORDER_PLANT_NAME):
+        marker = getattr(sys_infra, name, None) if sys_infra is not None else None
+        if marker is not None:
+            markers[name] = marker
+    return markers
 
 
-def _auth_result_from_response(response: Any, sdk_version: str) -> AuthResult:
+def _authenticated_plant_names() -> tuple[str, ...]:
+    return (
+        (TICKER_PLANT_NAME, ORDER_PLANT_NAME)
+        if os.environ.get("QFA_BROKER_ADAPTER_KIND") == "rithmic"
+        else (TICKER_PLANT_NAME,)
+    )
+
+
+def _auth_result_from_response(
+    response: Any,
+    sdk_version: str,
+    authenticated_plants: tuple[str, ...],
+    *,
+    gateway_url_redacted: str,
+) -> AuthResult:
     if isinstance(response, dict):
         ok = response.get("ok", response.get("authenticated", True))
         if ok is False:
@@ -146,6 +187,8 @@ def _auth_result_from_response(response: Any, sdk_version: str) -> AuthResult:
             account_ref_redacted=response.get("account_ref_redacted") if isinstance(response.get("account_ref_redacted"), str) else None,
             sdk_version=sdk_version,
             client=response.get("client"),
+            authenticated_plants=authenticated_plants,
+            gateway_url_redacted=gateway_url_redacted,
         )
 
     session_id = getattr(response, "session_id", None) or getattr(response, "broker_session_id", None) or "rithmic-test-session"
@@ -155,6 +198,8 @@ def _auth_result_from_response(response: Any, sdk_version: str) -> AuthResult:
         account_ref_redacted=account_ref if isinstance(account_ref, str) else None,
         sdk_version=sdk_version,
         client=response,
+        authenticated_plants=authenticated_plants,
+        gateway_url_redacted=gateway_url_redacted,
     )
 
 

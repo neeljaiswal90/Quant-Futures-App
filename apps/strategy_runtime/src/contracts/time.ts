@@ -28,6 +28,7 @@ export const TIMESTAMP_NS_FIELD_NAMES = [
   'closed_ts_ns',
   'boot_ts_ns',
   'snapshot_ts_ns',
+  'confirmed_at_ts_ns',
   'start_ts_ns',
   'end_ts_ns',
   'ts_ns',

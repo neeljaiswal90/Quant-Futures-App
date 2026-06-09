@@ -145,6 +145,10 @@ export interface SessionManifestEventPayload {
     readonly max_position_contracts: number;
     readonly daily_loss_cap_usd: number;
   }[];
+  readonly operator_flat_confirmation?: {
+    readonly confirmed: boolean;
+    readonly confirmed_at_ts_ns: UnixNs;
+  };
   readonly session_phase?: 'starting' | 'closing' | 'reconnect_success' | 'reconnect_exhausted';
   readonly session_duration_ms?: number;
   readonly final_quarantine_count?: number;

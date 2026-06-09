@@ -16,7 +16,8 @@ execution:
     retry_budget_ms: 10000
     jitter: seeded
   live_account_allowlist: []
-  live_account_verification_enabled: false
+  live_account_verification_enabled: true
+  operator_confirmed_account_flat_at_session_start: false
   shutdown_quarantine_timeout_ms: 30000
 
 observability:

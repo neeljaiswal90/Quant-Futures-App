@@ -44,9 +44,12 @@ import {
 } from '../execution/index.js';
 import {
   resolveLiveAccountAllowlist,
+  liveAccountAllowlistToJsonValue,
+  redactAccountId,
   summarizeLiveAccountAllowlist,
   type LiveAccountAllowlist,
 } from '../execution/brokers/account-allowlist.js';
+import { PythonBrokerAdapter } from '../execution/brokers/python-broker-adapter.js';
 import {
   PROVISIONAL_CANCEL_ACK_SLO,
   type OrderLifecycleStateMachine,
@@ -103,6 +106,7 @@ export interface PaperTradingSessionConfig {
   readonly local_obs_replay_pace_mode: LocalObsReplayPaceMode;
   readonly live_account_allowlist: LiveAccountAllowlist;
   readonly live_account_verification_enabled: boolean;
+  readonly operator_confirmed_account_flat_at_session_start: boolean;
   readonly capability_mask_id: string;
   readonly capability_mask_version: number;
   readonly reconnect_policy: PaperReconnectPolicyConfig;
@@ -164,6 +168,7 @@ export const DEFAULT_PAPER_SHUTDOWN_QUARANTINE_TIMEOUT_MS = 30_000;
 export const DEFAULT_PAPER_STRATEGY_ID = 'regime_shock_reversion_short_v2' as const;
 export const DEFAULT_PAPER_MARKET_DATA_SOURCE = 'simulation' as const satisfies PaperMarketDataSource;
 export const DEFAULT_LOCAL_OBS_REPLAY_PACE_MODE = 'realtime' as const satisfies LocalObsReplayPaceMode;
+export const DEFAULT_LIVE_ACCOUNT_VERIFICATION_ENABLED = true;
 export const DEFAULT_PAPER_RECONNECT_POLICY: PaperReconnectPolicyConfig = {
   max_attempts: 3,
   initial_delay_ms: 250,
@@ -304,8 +309,15 @@ export function resolvePaperTradingSessionConfig(
     live_account_allowlist: liveAccountAllowlist,
     live_account_verification_enabled:
       input.overrides?.live_account_verification_enabled ??
-      parseOptionalBoolean(env.QFA_PAPER_LIVE_ACCOUNT_VERIFICATION_ENABLED) ??
-      booleanAt(yamlExecution, 'live_account_verification_enabled') ??
+      (parseOptionalBoolean(env.QFA_PAPER_LIVE_ACCOUNT_VERIFICATION_DISABLE) === true
+        ? false
+        : parseOptionalBoolean(env.QFA_PAPER_LIVE_ACCOUNT_VERIFICATION_ENABLED) ??
+          booleanAt(yamlExecution, 'live_account_verification_enabled') ??
+          DEFAULT_LIVE_ACCOUNT_VERIFICATION_ENABLED),
+    operator_confirmed_account_flat_at_session_start:
+      input.overrides?.operator_confirmed_account_flat_at_session_start ??
+      parseOptionalBoolean(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT) ??
+      booleanAt(yamlExecution, 'operator_confirmed_account_flat_at_session_start') ??
       false,
     capability_mask_id:
       input.overrides?.capability_mask_id ??
@@ -471,24 +483,31 @@ export class PaperTradingSession {
       env: this.env,
       overrides: options.config,
     });
-    if (this.config.market_data_source === 'live_rithmic_ticker_plant' && this.config.adapter_kind !== 'mock') {
-      throw new Error('live_rithmic_ticker_plant shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
-    }
     if (
       this.config.market_data_source === 'live_rithmic_ticker_plant' &&
+      this.config.adapter_kind === 'mock' &&
       this.config.live_account_allowlist.length === 0
     ) {
       throw new Error('live_rithmic_ticker_plant shadow mode requires a non-empty live_account_allowlist');
     }
-    if (this.config.market_data_source === 'local_obs_replay' && this.config.adapter_kind !== 'mock') {
-      throw new Error('local_obs_replay shadow mode requires QFA_BROKER_ADAPTER_KIND=mock');
-    }
     if (this.config.market_data_source === 'local_obs_replay' && this.config.local_obs_replay_path === undefined) {
       throw new Error('QFA_PAPER_LOCAL_OBS_PATH is required when QFA_PAPER_MARKET_DATA_SOURCE=local_obs_replay');
     }
+    if (this.config.adapter_kind === 'rithmic' && this.config.live_account_allowlist.length !== 1) {
+      throw new Error('QFA-612-BROKER-03 requires exactly one live_account_allowlist entry when QFA_BROKER_ADAPTER_KIND=rithmic');
+    }
+    if (this.config.adapter_kind === 'rithmic' && !this.config.operator_confirmed_account_flat_at_session_start) {
+      const account = this.config.live_account_allowlist[0];
+      const redacted = account === undefined ? '<unconfigured>' : redactAccountId(account.account_id);
+      throw new Error(
+        `QFA-612-BROKER-03 requires manual operator confirmation that LUCIDFLEX account is flat at session start. ` +
+          `Verify in Lucid portal that all positions in account ${redacted} are zero, then set ` +
+          'QFA_PAPER_OPERATOR_CONFIRMS_FLAT=true to proceed. Programmatic position reconciliation lands in QFA-612-BROKER-04.',
+      );
+    }
     this.container = options.container ?? this.createDefaultContainer();
-    this.adapter = options.broker_adapter ?? this.createBrokerAdapter();
     this.submissionGate = options.submission_gate ?? new SubmissionGate();
+    this.adapter = options.broker_adapter ?? this.createBrokerAdapter();
     this.latencyRegistry = options.latency_registry ?? new LatencySliRegistry();
     this.ackObserver = new BoundedAckLatencyObserver({ registry: this.latencyRegistry });
     this.sloDefinitions = options.slo_definitions ?? [
@@ -541,9 +560,6 @@ export class PaperTradingSession {
   async start(): Promise<void> {
     if (this.started) {
       return;
-    }
-    if (this.config.adapter_kind === 'rithmic') {
-      throw new Error('QFA-612-PAPER-01b not yet merged: real Rithmic adapter is unavailable');
     }
     this.sessionStartedAtMs = Date.now();
     this.journalWriter = new FilePaperSessionJournalWriter({
@@ -781,7 +797,7 @@ export class PaperTradingSession {
         mode: PAPER_RUNTIME_MODE,
         timestamp_anchor: 'dual',
         broker_session_id: String(this.config.session_id),
-        adapter_kind: 'MOCK_ORDER_PLANT',
+        adapter_kind: this.config.adapter_kind === 'rithmic' ? 'PYTHON_RITHMIC_ORDER_PLANT' : 'MOCK_ORDER_PLANT',
       }),
       session_phase: 'closing',
       session_duration_ms: this.sessionDurationMs(),
@@ -839,7 +855,21 @@ export class PaperTradingSession {
 
   private createBrokerAdapter(): BrokerAdapter {
     if (this.config.adapter_kind === 'rithmic') {
-      throw new Error('QFA-612-PAPER-01b not yet merged: real Rithmic adapter is unavailable');
+      return new PythonBrokerAdapter({
+        mode: PAPER_RUNTIME_MODE,
+        credentials_env: {
+          RITHMIC_LUCID_USER: this.env.RITHMIC_LUCID_USER ?? this.env.RITHMIC_USER,
+          RITHMIC_LUCID_PASSWORD: this.env.RITHMIC_LUCID_PASSWORD ?? this.env.RITHMIC_PASSWORD,
+          RITHMIC_LUCID_GATEWAY: this.env.RITHMIC_LUCID_GATEWAY ?? this.env.RITHMIC_CONNECT_POINT,
+          RITHMIC_LUCID_SYSTEM_NAME: this.env.RITHMIC_LUCID_SYSTEM_NAME ?? this.env.RITHMIC_SYSTEM_NAME,
+          QFA_BROKER_ADAPTER_KIND: 'rithmic',
+          QFA_BROKER_ALLOWLIST_JSON: JSON.stringify(liveAccountAllowlistToJsonValue(this.config.live_account_allowlist)),
+        },
+        live_account_allowlist: this.config.live_account_allowlist,
+        account_list_verification_enabled: this.config.live_account_verification_enabled,
+        submission_gate: this.submissionGate,
+        now_ns: () => this.nowNs(),
+      });
     }
     return new MockOrderPlantAdapter({
       seed: 'qfa-614-paper-harness',
@@ -917,11 +947,28 @@ export class PaperTradingSession {
   }
 
   private publishHarnessEvent(event: AnyJournalEventEnvelope): void {
-    const enrichedEvent = this.withMarketDataSource(event);
+    const enrichedEvent = this.withMarketDataSource(this.withOrderIntentAccount(event));
     this.journalEvents.push(enrichedEvent);
     this.journalWriter?.write(enrichedEvent);
     this.pendingPublishes.push(this.container.publish(enrichedEvent));
     this.anomalyDetector.observeEvent(enrichedEvent);
+  }
+
+  private withOrderIntentAccount(event: AnyJournalEventEnvelope): AnyJournalEventEnvelope {
+    if (event.type !== 'ORDER_INTENT' || this.config.adapter_kind !== 'rithmic') {
+      return event;
+    }
+    const account = this.config.live_account_allowlist[0];
+    if (account === undefined || event.payload.account_id !== undefined) {
+      return event;
+    }
+    return {
+      ...event,
+      payload: {
+        ...event.payload,
+        account_id: account.account_id,
+      },
+    } as AnyJournalEventEnvelope;
   }
 
   private withMarketDataSource(event: AnyJournalEventEnvelope): AnyJournalEventEnvelope {
@@ -936,6 +983,9 @@ export class PaperTradingSession {
         ...(this.config.live_account_allowlist.length === 0
           ? {}
           : { live_account_allowlist_summary: summarizeLiveAccountAllowlist(this.config.live_account_allowlist) }),
+        ...(this.config.operator_confirmed_account_flat_at_session_start
+          ? { operator_flat_confirmation: { confirmed: true, confirmed_at_ts_ns: event.ts_ns } }
+          : {}),
       },
     } as AnyJournalEventEnvelope;
   }
@@ -1005,10 +1055,13 @@ export class PaperTradingSession {
       mode: PAPER_RUNTIME_MODE,
       timestamp_anchor: 'dual',
       broker_session_id: String(this.config.session_id),
-      adapter_kind: 'MOCK_ORDER_PLANT',
+      adapter_kind: this.config.adapter_kind === 'rithmic' ? 'PYTHON_RITHMIC_ORDER_PLANT' : 'MOCK_ORDER_PLANT',
       ...(this.config.live_account_allowlist.length === 0
         ? {}
         : { live_account_allowlist_summary: summarizeLiveAccountAllowlist(this.config.live_account_allowlist) }),
+      ...(this.config.operator_confirmed_account_flat_at_session_start
+        ? { operator_flat_confirmation: { confirmed: true, confirmed_at_ts_ns: this.nowNs() } }
+        : {}),
     };
   }
 

@@ -61,6 +61,7 @@ BrokerIpcEventMessageType = Literal[
     "account_list_snapshot",
     "heartbeat_pong",
     "shutdown_complete",
+    "qfa_broker_sidecar_ipc_ms",
 ]
 
 BROKER_IPC_EVENT_MESSAGE_TYPES: list[str] = [
@@ -81,6 +82,7 @@ BROKER_IPC_EVENT_MESSAGE_TYPES: list[str] = [
     "account_list_snapshot",
     "heartbeat_pong",
     "shutdown_complete",
+    "qfa_broker_sidecar_ipc_ms",
 ]
 
 BrokerIpcFailureState = Literal[
@@ -126,6 +128,11 @@ BrokerIpcSdkName = Literal["pyrithmic", "async-rithmic"]
 BROKER_IPC_SDK_NAMES: list[str] = [
     "pyrithmic",
     "async-rithmic",
+]
+
+BROKER_IPC_AUTHENTICATED_PLANTS: list[str] = [
+    "TICKER_PLANT",
+    "ORDER_PLANT",
 ]
 
 
@@ -183,6 +190,7 @@ def build_broker_ipc_contract_export() -> dict[str, Any]:
             "boot_ts_ns",
             "process_id",
             "schema_version",
+            "authenticated_plants",
         ],
         "failure_payload_fields": [
             "failure_state",
@@ -202,6 +210,7 @@ def build_broker_ipc_contract_export() -> dict[str, Any]:
             "account_currency",
             "account_auto_liquidate",
         ],
+        "authenticated_plants": BROKER_IPC_AUTHENTICATED_PLANTS,
         "optional_telemetry_fields": ["qfa_broker_sidecar_ipc_ms"],
     }
 
@@ -360,7 +369,28 @@ def _validate_boot_identity_payload(
             "unsupported_schema_version",
             f"must be {BROKER_IPC_SCHEMA_VERSION}",
         )
+    _optional_authenticated_plants(payload.get("authenticated_plants"), "$.payload.authenticated_plants", issues)
 
+
+
+def _optional_authenticated_plants(
+    value: Any,
+    path: str,
+    issues: list[BrokerIpcValidationIssue],
+) -> None:
+    if value is None:
+        return
+    if not isinstance(value, list):
+        _add_issue(issues, path, "invalid_field_type", "must be an array when present")
+        return
+    for index, plant in enumerate(value):
+        if plant not in BROKER_IPC_AUTHENTICATED_PLANTS:
+            _add_issue(
+                issues,
+                f"{path}[{index}]",
+                "invalid_field_value",
+                "must be one of: " + ", ".join(BROKER_IPC_AUTHENTICATED_PLANTS),
+            )
 
 def _validate_failure_payload(
     payload: dict[str, Any],

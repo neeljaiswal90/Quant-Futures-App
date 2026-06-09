@@ -12,6 +12,8 @@ import { captureValidatorIssueEmittedTsNs } from './validator-time.js';
 const VALIDATOR_ID = 'EXEC-VALIDATOR-09' as const;
 
 export class AccountAllowlistValidator implements ValidatorRunner {
+  private readonly intentLineage = new Map<string, string>();
+
   runOnEvent(
     event: AnyJournalEventEnvelope,
     context: ValidatorRuntimeContext = {},
@@ -50,6 +52,16 @@ export class AccountAllowlistValidator implements ValidatorRunner {
           }),
         ];
       }
+      const keys = [
+        stringField(event as unknown as Readonly<Record<string, unknown>>, 'event_id'),
+        stringField(payload, 'order_intent_id'),
+        stringField(payload, 'intent_id'),
+      ];
+      for (const key of keys) {
+        if (key !== undefined) {
+          this.intentLineage.set(key, accountId);
+        }
+      }
     }
 
     if (
@@ -68,6 +80,22 @@ export class AccountAllowlistValidator implements ValidatorRunner {
             context,
             event,
             details: { account_id_redacted: redactAccountId(accountId) },
+          }),
+        ];
+      }
+      const intentId = stringField(payload, 'intent_id');
+      const expectedAccountId = intentId === undefined ? undefined : this.intentLineage.get(intentId);
+      if (accountId !== undefined && expectedAccountId !== undefined && expectedAccountId !== accountId) {
+        return [
+          issue({
+            code: 'cross_account_contamination',
+            message: 'broker event account_id does not match the originating ORDER_INTENT account_id',
+            context,
+            event,
+            details: {
+              expected_account_id_redacted: redactAccountId(expectedAccountId),
+              broker_account_id_redacted: redactAccountId(accountId),
+            },
           }),
         ];
       }

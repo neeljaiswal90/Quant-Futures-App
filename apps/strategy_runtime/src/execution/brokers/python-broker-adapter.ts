@@ -35,6 +35,10 @@ import {
   type BrokerAccountSnapshotEntry,
   type LiveAccountAllowlist,
 } from './account-allowlist.js';
+import {
+  isRth,
+  loadMnqSessionCalendarConfig,
+} from '../../session/mnq-session-calendar.js';
 
 const DEFAULT_BOOT_TIMEOUT_MS = 10_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -60,6 +64,19 @@ export interface PythonBrokerAdapterOptions {
 
 type PendingCommandKind = 'submit' | 'cancel';
 
+interface IntentLineage {
+  readonly account_id: string;
+  readonly side: 'buy' | 'sell';
+  readonly quantity: number;
+  readonly instrument_symbol: string;
+}
+
+interface SessionPosition {
+  readonly account_id: string;
+  readonly instrument_symbol: string;
+  readonly net_quantity: number;
+}
+
 interface PendingCommand {
   readonly kind: PendingCommandKind;
   readonly idempotency_key: string;
@@ -82,6 +99,8 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   private readonly nowNs: () => UnixNs;
   private readonly liveAccountAllowlist: LiveAccountAllowlist;
   private readonly accountListVerificationEnabled: boolean;
+  private readonly intentLineage = new Map<string, IntentLineage>();
+  private readonly sessionPositions = new Map<string, SessionPosition>();
   private readonly ackHandlers = new Set<(event: BrokerAckEnvelope) => void>();
   private readonly sessionHandlers = new Set<(event: BrokerSessionEvent) => void>();
   private readonly pendingCommands = new Map<string, PendingCommand>();
@@ -200,6 +219,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
       };
     }
     const idempotencyKey = String(intent.event_id);
+    this.recordIntentLineage(intent);
     this.writeCommand(this.commandEnvelope('submit_order', correlationId, { intent }, idempotencyKey));
     const result = await this.awaitCommandResult(correlationId, 'submit', idempotencyKey);
     return {
@@ -548,7 +568,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   }
 
   private commandEnvelope(
-    messageType: 'submit_order' | 'cancel_order' | 'query_account_list' | 'shutdown',
+    messageType: 'submit_order' | 'cancel_order' | 'query_order' | 'query_account_list' | 'shutdown',
     correlationId: string,
     payload: Readonly<Record<string, unknown>>,
     idempotencyKey: string | undefined,
@@ -573,6 +593,8 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   }
 
   private emitAck(event: BrokerAckEnvelope): void {
+    this.enforceCrossIntentLineage(event);
+    this.updateSessionPosition(event);
     for (const handler of this.ackHandlers) {
       handler(event);
     }
@@ -638,8 +660,8 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     if (this.liveAccountAllowlist.length === 0) {
       return { ok: true };
     }
-    const accountId = intent.payload.account_id;
-    if (accountId === undefined || accountId.trim() === '') {
+    const accountId = stringRecordField(intent.payload, 'account_id');
+    if (accountId === undefined) {
       return {
         ok: false,
         code: 'order_intent_missing_account_id',
@@ -658,8 +680,179 @@ export class PythonBrokerAdapter implements BrokerAdapter {
         },
       };
     }
+    const allowlistEntry = this.liveAccountAllowlist.find((entry) => entry.account_id === accountId);
+    if (allowlistEntry === undefined) {
+      return {
+        ok: false,
+        code: 'account_id_not_in_allowlist',
+        message: 'account_id is not in the live account allowlist',
+        details: {
+          account_id_redacted: redactAccountId(accountId),
+        },
+      };
+    }
+    if (allowlistEntry.time_of_day_restriction === 'rth_only' && !isMnqRth(this.nowNs())) {
+      return {
+        ok: false,
+        code: 'time_of_day_restriction_violation',
+        message: 'order intent is outside the account allowlist RTH-only trading window',
+        details: {
+          account_id_redacted: redactAccountId(accountId),
+          time_of_day_restriction: 'rth_only',
+        },
+      };
+    }
+    const side = normalizeOrderSide(stringRecordField(intent.payload, 'side') ?? stringRecordField(intent.payload, 'transaction_type'));
+    const quantity = numberRecordField(intent.payload, 'quantity') ?? numberRecordField(intent.payload, 'qty') ?? 0;
+    if (side !== undefined && quantity > 0) {
+      const projected = this.accountNetPosition(accountId) + (side === 'sell' ? -quantity : quantity);
+      if (Math.abs(projected) > allowlistEntry.max_position_contracts) {
+        return {
+          ok: false,
+          code: 'max_position_contracts_exceeded',
+          message: 'order intent would exceed the account allowlist max_position_contracts cap',
+          details: {
+            account_id_redacted: redactAccountId(accountId),
+            max_position_contracts: allowlistEntry.max_position_contracts,
+            projected_net_position: projected,
+          },
+        };
+      }
+    }
     return { ok: true };
   }
+
+  private recordIntentLineage(intent: OrderIntentEventEnvelope): void {
+    const accountId = stringRecordField(intent.payload, 'account_id');
+    if (accountId === undefined) {
+      return;
+    }
+    const side = normalizeOrderSide(stringRecordField(intent.payload, 'side') ?? stringRecordField(intent.payload, 'transaction_type')) ?? 'buy';
+    const quantity = numberRecordField(intent.payload, 'quantity') ?? numberRecordField(intent.payload, 'qty') ?? 0;
+    const instrumentSymbol =
+      stringRecordField(intent.payload, 'instrument_symbol') ??
+      stringRecordField(intent.payload, 'security_code') ??
+      stringRecordField(intent.payload, 'symbol') ??
+      'UNKNOWN';
+    const lineage: IntentLineage = { account_id: accountId, side, quantity, instrument_symbol: instrumentSymbol };
+    const keys = [String(intent.event_id), stringRecordField(intent.payload, 'order_intent_id'), stringRecordField(intent.payload, 'intent_id')];
+    for (const key of keys) {
+      if (key !== undefined) {
+        this.intentLineage.set(key, lineage);
+      }
+    }
+  }
+
+  private enforceCrossIntentLineage(event: BrokerAckEnvelope): void {
+    if (!isBrokerOrderEvent(event.type)) {
+      return;
+    }
+    const payload = event.payload as unknown as Readonly<Record<string, unknown>>;
+    const intentId = stringRecordField(payload, 'intent_id');
+    const brokerAccountId = stringRecordField(payload, 'broker_account_id');
+    if (intentId === undefined || brokerAccountId === undefined) {
+      return;
+    }
+    const lineage = this.intentLineage.get(intentId);
+    if (lineage === undefined || lineage.account_id === brokerAccountId) {
+      return;
+    }
+    this.submissionGate?.requestBlock('kill_switch');
+    this.emitValidatorIssue(
+      'cross_account_contamination',
+      'broker event reported a broker_account_id that does not match the originating ORDER_INTENT account_id',
+      {
+        intent_id: intentId,
+        expected_account_id_redacted: redactAccountId(lineage.account_id),
+        broker_account_id_redacted: redactAccountId(brokerAccountId),
+      },
+      'EXEC-VALIDATOR-09',
+      'fatal',
+    );
+  }
+
+  private updateSessionPosition(event: BrokerAckEnvelope): void {
+    if (event.type !== 'ORDER_ACK_FILL') {
+      return;
+    }
+    const payload = event.payload as unknown as Readonly<Record<string, unknown>>;
+    const intentId = stringRecordField(payload, 'intent_id');
+    if (intentId === undefined) {
+      return;
+    }
+    const lineage = this.intentLineage.get(intentId);
+    if (lineage === undefined) {
+      return;
+    }
+    const brokerAccountId = stringRecordField(payload, 'broker_account_id') ?? lineage.account_id;
+    const filledQuantity =
+      numberRecordField(payload, 'fill_qty') ??
+      numberRecordField(payload, 'filled_qty') ??
+      numberRecordField(payload, 'quantity') ??
+      lineage.quantity;
+    if (filledQuantity <= 0) {
+      return;
+    }
+    const key = `${brokerAccountId}|${lineage.instrument_symbol}`;
+    const existing = this.sessionPositions.get(key) ?? {
+      account_id: brokerAccountId,
+      instrument_symbol: lineage.instrument_symbol,
+      net_quantity: 0,
+    };
+    this.sessionPositions.set(key, {
+      ...existing,
+      net_quantity: existing.net_quantity + (lineage.side === 'sell' ? -filledQuantity : filledQuantity),
+    });
+  }
+
+  private accountNetPosition(accountId: string): number {
+    let net = 0;
+    for (const position of this.sessionPositions.values()) {
+      if (position.account_id === accountId) {
+        net += position.net_quantity;
+      }
+    }
+    return net;
+  }
+}
+
+
+function isBrokerOrderEvent(type: BrokerAckEnvelope['type']): boolean {
+  return type === 'ORDER_ACK_SUBMISSION' || type === 'ORDER_ACK_FILL' || type === 'ORDER_ACK_CANCEL' || type === 'ORDER_BROKER_REJECT';
+}
+
+function stringRecordField(record: unknown, key: string): string | undefined {
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+    return undefined;
+  }
+  const value = (record as Readonly<Record<string, unknown>>)[key];
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+}
+
+function numberRecordField(record: unknown, key: string): number | undefined {
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+    return undefined;
+  }
+  const value = (record as Readonly<Record<string, unknown>>)[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function normalizeOrderSide(value: string | undefined): 'buy' | 'sell' | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const normalized = value.toLowerCase();
+  if (normalized === 'buy' || normalized === 'bid' || normalized === 'b') {
+    return 'buy';
+  }
+  if (normalized === 'sell' || normalized === 'ask' || normalized === 's') {
+    return 'sell';
+  }
+  return undefined;
+}
+
+function isMnqRth(nowNs: UnixNs): boolean {
+  return isRth(loadMnqSessionCalendarConfig({ required: false }), nowNs);
 }
 
 function messageTypeOf(value: unknown): unknown {
