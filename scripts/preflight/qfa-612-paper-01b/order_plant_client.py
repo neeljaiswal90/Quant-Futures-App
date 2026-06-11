@@ -99,6 +99,17 @@ def require_env(*names: str) -> str:
     raise PreflightError(f"Missing required environment variable; expected one of: {', '.join(names)}")
 
 
+def order_plant_account_active_confirmed() -> bool:
+    """Return true only when the cancelable-limit account-active gate is explicit.
+
+    The default when QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED is absent is
+    false. The only accepted value is case-insensitive "true" after trimming
+    surrounding whitespace; every other value remains blocked.
+    """
+
+    return os.getenv("QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED", "").strip().lower() == "true"
+
+
 def resolve_sdk_home(raw_home: str | None) -> pathlib.Path:
     if not raw_home:
         raise PreflightError("RITHMIC_RPROTOCOL_HOME is required")
@@ -626,19 +637,33 @@ async def run_order_checks(uri: str, paths: SdkPaths, modules: dict[str, ModuleT
         lifecycle["bbo"] = bbo
 
         far_buy = round(float(bbo["bid"]) - (50 * TICK_SIZE), 2)
-        submit = await submit_order(ctx, user_tag="qfa612pf02-cancelable", side="BUY", price_type="LIMIT", price=far_buy, quantity=1, duration="DAY", cancel_after_secs=30)
-        events = await collect_until(ctx, lambda event, _: event.get("message_type") == "response_new_order", 20)
-        basket_id = next((str(event.get("basket_id")) for event in events if event.get("basket_id")), "")
-        cancel_payload: dict[str, Any] | None = None
-        if basket_id:
-            cancel_payload = await cancel_order(ctx, basket_id)
-        cancel_events = await collect_until(
-            ctx,
-            lambda _event, all_events: any(e.get("message_type") == "response_cancel_order" for e in all_events)
-            or any(str(e.get("status", "")).lower() in {"complete", "cancelled", "canceled"} for e in all_events),
-            45,
-        )
-        lifecycle["cancelable_limit"] = {"status": "PASS" if basket_id and cancel_events else "HOLD", "submit": submit, "basket_id": basket_id, "cancel_request": cancel_payload, "events": events + cancel_events}
+        account_active_confirmed = order_plant_account_active_confirmed()
+        lifecycle["account_active_required_before_cancelable_limit_smoke"] = True
+        lifecycle["account_active_confirmed"] = account_active_confirmed
+        if account_active_confirmed:
+            submit = await submit_order(ctx, user_tag="qfa612pf02-cancelable", side="BUY", price_type="LIMIT", price=far_buy, quantity=1, duration="DAY", cancel_after_secs=30)
+            events = await collect_until(ctx, lambda event, _: event.get("message_type") == "response_new_order", 20)
+            basket_id = next((str(event.get("basket_id")) for event in events if event.get("basket_id")), "")
+            cancel_payload: dict[str, Any] | None = None
+            if basket_id:
+                cancel_payload = await cancel_order(ctx, basket_id)
+            cancel_events = await collect_until(
+                ctx,
+                lambda _event, all_events: any(e.get("message_type") == "response_cancel_order" for e in all_events)
+                or any(str(e.get("status", "")).lower() in {"complete", "cancelled", "canceled"} for e in all_events),
+                45,
+            )
+            lifecycle["cancelable_limit"] = {"status": "PASS" if basket_id and cancel_events else "HOLD", "submit": submit, "basket_id": basket_id, "cancel_request": cancel_payload, "events": events + cancel_events}
+        else:
+            lifecycle["cancelable_limit"] = {
+                "status": "HOLD",
+                "reason": "Positive-quantity cancelable limit smoke is blocked until QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED=true. Prior Rithmic Test evidence produced Account not active after positive-quantity submit, so account-active readiness must be confirmed before another working-order lifecycle attempt.",
+                "blocked_before_submit": True,
+                "account_active_required_before_cancelable_limit_smoke": True,
+                "account_active_confirmed": False,
+                "submit": None,
+                "events": [],
+            }
 
         reject_submit = await submit_order(ctx, user_tag="qfa612pf02-reject", side="BUY", price_type="LIMIT", price=far_buy, quantity=0, duration="DAY")
         reject_events = await collect_until(

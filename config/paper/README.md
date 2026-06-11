@@ -33,6 +33,13 @@ Environment variables:
   reconciliation ticket.
 - `QFA_PAPER_LIVE_ACCOUNT_VERIFICATION_DISABLE`: optional explicit bypass for
   boot-time account-list verification; unset means verification is enabled.
+- `QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED`: optional preflight-only gate for
+  the real Rithmic Test cancelable-limit smoke. It must be `true` before the
+  preflight attempts a positive-quantity working-order candidate; otherwise the
+  check records `HOLD` before submit. The default when absent is blocked
+  (`false`); the accepted value is case-insensitive `true` after trimming
+  whitespace; every other value is blocked. This does not create broker/live
+  authority and does not bypass the account allowlist or flat-at-start checks.
 - `RITHMIC_LUCID_USER` / `RITHMIC_USER`: required only when
   `QFA_BROKER_ADAPTER_KIND=rithmic`.
 - `RITHMIC_LUCID_PASSWORD` / `RITHMIC_PASSWORD`: required only when

@@ -13,6 +13,23 @@ const MEMO_PATH = join(REPO, 'docs', 'research', 'qfa-612-preflight-02-order-pla
 
 type RawRecord = Record<string, unknown>;
 
+function printHelpAndExitIfRequested(): void {
+  if (!process.argv.includes('--help') && !process.argv.includes('-h')) return;
+  console.log(`Usage: npx tsx scripts/preflight/qfa-612-paper-01b/order-plant-client.ts [--from-raw PATH]
+
+Generate redacted QFA-612 ORDER_PLANT preflight evidence.
+
+Options:
+  --from-raw PATH  Generate committed redacted evidence from an existing raw-local JSON file.
+  --help, -h       Print this help without loading credentials or opening network connections.
+
+Safety gate:
+  Positive-quantity cancelable-limit smoke is blocked before submit unless
+  QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED is set to case-insensitive true.
+`);
+  process.exit(0);
+}
+
 function loadEnvFile(path: string): void {
   if (!existsSync(path)) return;
   for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
@@ -124,6 +141,13 @@ function writeMemo(raw: RawRecord, explicitSecrets: readonly string[]): void {
   const fillableReason =
     getPath(raw, ['checks', 'check_05_order_lifecycle', 'fillable_marketable_limit', 'reason']) ??
     'See order lifecycle evidence.';
+  const accountActiveRequired =
+    getPath(raw, ['checks', 'check_05_order_lifecycle', 'account_active_required_before_cancelable_limit_smoke']) ?? true;
+  const accountActiveConfirmed =
+    getPath(raw, ['checks', 'check_05_order_lifecycle', 'account_active_confirmed']) ?? false;
+  const cancelableReason =
+    getPath(raw, ['checks', 'check_05_order_lifecycle', 'cancelable_limit', 'reason']) ??
+    'See cancelable-limit lifecycle evidence.';
   const blocker =
     authStatus === 'FAIL'
       ? `ORDER_PLANT login failed before order checks could execute. Broker response: \`${String(authError)}\`. This indicates the supplied test credentials can authenticate to the gateway for market-data evidence, but are not permissioned for ORDER_PLANT in the current Rithmic test environment.`
@@ -161,6 +185,15 @@ PREFLIGHT-02 upgraded the ORDER_PLANT connection/reconnect path and attempted th
 - Fillable marketable-limit sub-check: \`${statusOf(raw, ['checks', 'check_05_order_lifecycle', 'fillable_marketable_limit', 'status'])}\`.
 - Reason: ${String(fillableReason)}
 
+## Account-active gate
+
+- \`account_active_required_before_cancelable_limit_smoke\`: \`${String(accountActiveRequired)}\`.
+- \`account_active_confirmed\`: \`${String(accountActiveConfirmed)}\`.
+- Cancelable positive-quantity limit sub-check: \`${statusOf(raw, ['checks', 'check_05_order_lifecycle', 'cancelable_limit', 'status'])}\`.
+- Reason: ${String(cancelableReason)}
+
+The cancelable-limit smoke must not submit a positive-quantity working-order candidate unless account-active readiness is explicitly confirmed first. This preserves the QFA-612 boundary discovered by the Rithmic Test evidence where ORDER_PLANT auth, route/account discovery, safe reject lineage, and submit/cancel framing worked, but a positive-quantity order produced \`Account not active\` before a clean working-order lifecycle could be proven.
+
 ## Blocker analysis
 
 QFA-612-PAPER-01b remains blocked if this memo says HOLD. ${blocker}
@@ -187,6 +220,7 @@ function runPython(rawPath: string): void {
 }
 
 function main(): void {
+  printHelpAndExitIfRequested();
   loadEnvFile(join(REPO, '.env'));
   loadEnvFile(join(REPO, '.env.preflight.local'));
   loadEnvFile(join(resolve(REPO, '..', 'Quant-futures-app'), '.env'));
