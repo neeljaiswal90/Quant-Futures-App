@@ -263,6 +263,7 @@ function parseProfile(
         'liquidity_sweep_reversal',
         'vwap_overnight_reversal',
         'regime_shock_reversion',
+        'opening_range_box',
         'fallback',
       ],
       issues,

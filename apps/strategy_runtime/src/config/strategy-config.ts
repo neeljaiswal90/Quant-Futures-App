@@ -94,6 +94,22 @@ export interface VwapOvernightReversalStrategyParameters {
   readonly confidence_score: number;
 }
 
+export interface OpeningRangeBoxStrategyParameters {
+  /** Confirmation buffer (ticks) beyond the box edge required to arm a breakout. */
+  readonly breakout_buffer_ticks: number;
+  /** Maximum distance (ticks) past the box edge before the breakout is too chased. */
+  readonly max_chase_ticks: number;
+  /** Stop buffer (ticks) beyond the opposite box edge / poke extreme. */
+  readonly stop_buffer_ticks: number;
+  /** Minimum poke (ticks) beyond the edge for a false-breakout/breakdown fade. */
+  readonly fade_poke_ticks: number;
+  /** adx_14 threshold at/above which the regime dispatcher treats the tape as trending. */
+  readonly adx_trend_min: number;
+  readonly target_1_rr: number;
+  readonly target_2_rr: number;
+  readonly confidence_score: number;
+}
+
 export interface CandidateRankingParameters {
   readonly method: typeof CANDIDATE_RANKING_METHOD;
   readonly confidence_weight: number;
@@ -116,6 +132,12 @@ export interface StrategyConfigById {
   readonly vwap_overnight_reversal_long: VwapOvernightReversalStrategyParameters;
   readonly vwap_overnight_reversal_short: VwapOvernightReversalStrategyParameters;
   readonly regime_shock_reversion_short_v2: RegimeMeanReversionStrategyParameters;
+  readonly opening_range_box_breakout_long: OpeningRangeBoxStrategyParameters;
+  readonly opening_range_box_breakout_short: OpeningRangeBoxStrategyParameters;
+  readonly opening_range_box_fade_long: OpeningRangeBoxStrategyParameters;
+  readonly opening_range_box_fade_short: OpeningRangeBoxStrategyParameters;
+  readonly opening_range_box_regime_long: OpeningRangeBoxStrategyParameters;
+  readonly opening_range_box_regime_short: OpeningRangeBoxStrategyParameters;
 }
 
 export interface StrategyConfigLineage {
@@ -256,6 +278,42 @@ export const DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG: VwapOvernightReversal
   ...DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG,
 };
 
+export const DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG: OpeningRangeBoxStrategyParameters = {
+  breakout_buffer_ticks: 2,
+  max_chase_ticks: 8,
+  stop_buffer_ticks: 2,
+  fade_poke_ticks: 2,
+  adx_trend_min: 20,
+  target_1_rr: 1,
+  target_2_rr: 2,
+  confidence_score: 0.62,
+};
+
+export const DEFAULT_OPENING_RANGE_BOX_BREAKOUT_SHORT_CONFIG: OpeningRangeBoxStrategyParameters = {
+  ...DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG,
+  confidence_score: 0.61,
+};
+
+export const DEFAULT_OPENING_RANGE_BOX_FADE_LONG_CONFIG: OpeningRangeBoxStrategyParameters = {
+  ...DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG,
+  confidence_score: 0.6,
+};
+
+export const DEFAULT_OPENING_RANGE_BOX_FADE_SHORT_CONFIG: OpeningRangeBoxStrategyParameters = {
+  ...DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG,
+  confidence_score: 0.59,
+};
+
+export const DEFAULT_OPENING_RANGE_BOX_REGIME_LONG_CONFIG: OpeningRangeBoxStrategyParameters = {
+  ...DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG,
+  confidence_score: 0.63,
+};
+
+export const DEFAULT_OPENING_RANGE_BOX_REGIME_SHORT_CONFIG: OpeningRangeBoxStrategyParameters = {
+  ...DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG,
+  confidence_score: 0.62,
+};
+
 export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
   method: CANDIDATE_RANKING_METHOD,
   confidence_weight: 100,
@@ -275,6 +333,12 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     vwap_overnight_reversal_long: 90,
     vwap_overnight_reversal_short: 100,
     regime_shock_reversion_short_v2: 110,
+    opening_range_box_breakout_long: 120,
+    opening_range_box_breakout_short: 130,
+    opening_range_box_fade_long: 140,
+    opening_range_box_fade_short: 150,
+    opening_range_box_regime_long: 160,
+    opening_range_box_regime_short: 170,
   },
 };
 
@@ -290,6 +354,12 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   vwap_overnight_reversal_long: DEFAULT_VWAP_OVERNIGHT_REVERSAL_LONG_CONFIG,
   vwap_overnight_reversal_short: DEFAULT_VWAP_OVERNIGHT_REVERSAL_SHORT_CONFIG,
   regime_shock_reversion_short_v2: DEFAULT_REGIME_SHOCK_REVERSION_SHORT_V2_CONFIG,
+  opening_range_box_breakout_long: DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG,
+  opening_range_box_breakout_short: DEFAULT_OPENING_RANGE_BOX_BREAKOUT_SHORT_CONFIG,
+  opening_range_box_fade_long: DEFAULT_OPENING_RANGE_BOX_FADE_LONG_CONFIG,
+  opening_range_box_fade_short: DEFAULT_OPENING_RANGE_BOX_FADE_SHORT_CONFIG,
+  opening_range_box_regime_long: DEFAULT_OPENING_RANGE_BOX_REGIME_LONG_CONFIG,
+  opening_range_box_regime_short: DEFAULT_OPENING_RANGE_BOX_REGIME_SHORT_CONFIG,
 };
 
 export const DEFAULT_STRATEGY_RUNTIME_CONFIG = buildStrategyRuntimeConfig(
@@ -310,6 +380,12 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   vwap_overnight_reversal_long: 'vwap_overnight_reversal_long.yaml',
   vwap_overnight_reversal_short: 'vwap_overnight_reversal_short.yaml',
   regime_shock_reversion_short_v2: 'regime_shock_reversion_short_v2.yaml',
+  opening_range_box_breakout_long: 'opening_range_box_breakout_long.yaml',
+  opening_range_box_breakout_short: 'opening_range_box_breakout_short.yaml',
+  opening_range_box_fade_long: 'opening_range_box_fade_long.yaml',
+  opening_range_box_fade_short: 'opening_range_box_fade_short.yaml',
+  opening_range_box_regime_long: 'opening_range_box_regime_long.yaml',
+  opening_range_box_regime_short: 'opening_range_box_regime_short.yaml',
 } as const satisfies Record<StrategyId, string>;
 
 export function loadStrategyRuntimeConfig(
@@ -373,6 +449,30 @@ export function loadStrategyRuntimeConfig(
       'regime_shock_reversion_short_v2',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v2), sourceFiles),
     ),
+    opening_range_box_breakout_long: parseOpeningRangeBoxConfig(
+      'opening_range_box_breakout_long',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.opening_range_box_breakout_long), sourceFiles),
+    ),
+    opening_range_box_breakout_short: parseOpeningRangeBoxConfig(
+      'opening_range_box_breakout_short',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.opening_range_box_breakout_short), sourceFiles),
+    ),
+    opening_range_box_fade_long: parseOpeningRangeBoxConfig(
+      'opening_range_box_fade_long',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.opening_range_box_fade_long), sourceFiles),
+    ),
+    opening_range_box_fade_short: parseOpeningRangeBoxConfig(
+      'opening_range_box_fade_short',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.opening_range_box_fade_short), sourceFiles),
+    ),
+    opening_range_box_regime_long: parseOpeningRangeBoxConfig(
+      'opening_range_box_regime_long',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.opening_range_box_regime_long), sourceFiles),
+    ),
+    opening_range_box_regime_short: parseOpeningRangeBoxConfig(
+      'opening_range_box_regime_short',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.opening_range_box_regime_short), sourceFiles),
+    ),
   };
 
   return buildStrategyRuntimeConfig(strategies, shared.ranking, sourceFiles.sort());
@@ -424,12 +524,37 @@ export function getStrategyParameters(
 ): RegimeMeanReversionStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
+  strategyId: 'opening_range_box_breakout_long',
+): OpeningRangeBoxStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'opening_range_box_breakout_short',
+): OpeningRangeBoxStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'opening_range_box_fade_long',
+): OpeningRangeBoxStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'opening_range_box_fade_short',
+): OpeningRangeBoxStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'opening_range_box_regime_long',
+): OpeningRangeBoxStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'opening_range_box_regime_short',
+): OpeningRangeBoxStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
   strategyId: StrategyId,
 ): TrendPullbackStrategyParameters
   | BreakoutRetestStrategyParameters
   | RegimeMeanReversionStrategyParameters
   | LiquiditySweepReversalStrategyParameters
-  | VwapOvernightReversalStrategyParameters {
+  | VwapOvernightReversalStrategyParameters
+  | OpeningRangeBoxStrategyParameters {
   return (config ?? DEFAULT_STRATEGY_RUNTIME_CONFIG).strategies[strategyId];
 }
 
@@ -519,6 +644,12 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'vwap_overnight_reversal_long',
     'vwap_overnight_reversal_short',
     'regime_shock_reversion_short_v2',
+    'opening_range_box_breakout_long',
+    'opening_range_box_breakout_short',
+    'opening_range_box_fade_long',
+    'opening_range_box_fade_short',
+    'opening_range_box_regime_long',
+    'opening_range_box_regime_short',
   ], issues);
 
   const parsed = {
@@ -541,6 +672,12 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         vwap_overnight_reversal_long: readNumber(strategyPriority, 'vwap_overnight_reversal_long', '$.ranking.strategy_priority', issues),
         vwap_overnight_reversal_short: readNumber(strategyPriority, 'vwap_overnight_reversal_short', '$.ranking.strategy_priority', issues),
         regime_shock_reversion_short_v2: readNumber(strategyPriority, 'regime_shock_reversion_short_v2', '$.ranking.strategy_priority', issues),
+        opening_range_box_breakout_long: readNumber(strategyPriority, 'opening_range_box_breakout_long', '$.ranking.strategy_priority', issues),
+        opening_range_box_breakout_short: readNumber(strategyPriority, 'opening_range_box_breakout_short', '$.ranking.strategy_priority', issues),
+        opening_range_box_fade_long: readNumber(strategyPriority, 'opening_range_box_fade_long', '$.ranking.strategy_priority', issues),
+        opening_range_box_fade_short: readNumber(strategyPriority, 'opening_range_box_fade_short', '$.ranking.strategy_priority', issues),
+        opening_range_box_regime_long: readNumber(strategyPriority, 'opening_range_box_regime_long', '$.ranking.strategy_priority', issues),
+        opening_range_box_regime_short: readNumber(strategyPriority, 'opening_range_box_regime_short', '$.ranking.strategy_priority', issues),
       },
     },
   };
@@ -799,6 +936,64 @@ function parseVwapOvernightReversalConfig(
       path: '$.parameters.low_regime_z_entry_sigma',
       message: 'must be > high_regime_z_entry_sigma',
     });
+  }
+  if (parsed.confidence_score > 1) {
+    issues.push({ path: '$.parameters.confidence_score', message: 'must be <= 1' });
+  }
+  throwIfIssues(issues);
+  return parsed;
+}
+
+function parseOpeningRangeBoxConfig(
+  strategyId:
+    | 'opening_range_box_breakout_long'
+    | 'opening_range_box_breakout_short'
+    | 'opening_range_box_fade_long'
+    | 'opening_range_box_fade_short'
+    | 'opening_range_box_regime_long'
+    | 'opening_range_box_regime_short',
+  input: unknown,
+): OpeningRangeBoxStrategyParameters {
+  const issues: ConfigValidationIssue[] = [];
+  const { root, parameters } = parseStrategyConfigRoot(strategyId, input, issues);
+  void root;
+  checkUnknownKeys(parameters, '$.parameters', [
+    'breakout_buffer_ticks',
+    'max_chase_ticks',
+    'stop_buffer_ticks',
+    'fade_poke_ticks',
+    'adx_trend_min',
+    'target_1_rr',
+    'target_2_rr',
+    'confidence_score',
+  ], issues);
+  const parsed = {
+    breakout_buffer_ticks: readNonNegativeNumber(parameters, 'breakout_buffer_ticks', '$.parameters', issues),
+    max_chase_ticks: readPositiveNumber(parameters, 'max_chase_ticks', '$.parameters', issues),
+    stop_buffer_ticks: readNonNegativeNumber(parameters, 'stop_buffer_ticks', '$.parameters', issues),
+    fade_poke_ticks: readPositiveNumber(parameters, 'fade_poke_ticks', '$.parameters', issues),
+    adx_trend_min: readPositiveNumber(parameters, 'adx_trend_min', '$.parameters', issues),
+    target_1_rr: readPositiveNumber(parameters, 'target_1_rr', '$.parameters', issues),
+    target_2_rr: readPositiveNumber(parameters, 'target_2_rr', '$.parameters', issues),
+    confidence_score: readPositiveNumber(parameters, 'confidence_score', '$.parameters', issues),
+  };
+  if (!Number.isInteger(parsed.breakout_buffer_ticks)) {
+    issues.push({ path: '$.parameters.breakout_buffer_ticks', message: 'must be an integer' });
+  }
+  if (!Number.isInteger(parsed.max_chase_ticks)) {
+    issues.push({ path: '$.parameters.max_chase_ticks', message: 'must be an integer' });
+  }
+  if (!Number.isInteger(parsed.stop_buffer_ticks)) {
+    issues.push({ path: '$.parameters.stop_buffer_ticks', message: 'must be an integer' });
+  }
+  if (!Number.isInteger(parsed.fade_poke_ticks)) {
+    issues.push({ path: '$.parameters.fade_poke_ticks', message: 'must be an integer' });
+  }
+  if (parsed.max_chase_ticks <= parsed.breakout_buffer_ticks) {
+    issues.push({ path: '$.parameters.max_chase_ticks', message: 'must be > breakout_buffer_ticks' });
+  }
+  if (parsed.target_2_rr <= parsed.target_1_rr) {
+    issues.push({ path: '$.parameters.target_2_rr', message: 'must be > target_1_rr' });
   }
   if (parsed.confidence_score > 1) {
     issues.push({ path: '$.parameters.confidence_score', message: 'must be <= 1' });

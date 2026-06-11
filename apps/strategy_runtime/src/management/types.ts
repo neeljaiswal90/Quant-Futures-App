@@ -37,6 +37,12 @@ export type ManagementProfileId =
   | 'vwap_overnight_reversal_long_management_v1'
   | 'vwap_overnight_reversal_short_management_v1'
   | 'regime_shock_reversion_short_v2_management_v1'
+  | 'opening_range_box_breakout_long_management_v1'
+  | 'opening_range_box_breakout_short_management_v1'
+  | 'opening_range_box_fade_long_management_v1'
+  | 'opening_range_box_fade_short_management_v1'
+  | 'opening_range_box_regime_long_management_v1'
+  | 'opening_range_box_regime_short_management_v1'
   | 'fallback_management_v1';
 
 export interface InitialStopBehavior {

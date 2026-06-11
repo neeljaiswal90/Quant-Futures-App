@@ -2,6 +2,12 @@ export const ACTIVE_STRATEGY_IDS = [
   'vwap_overnight_reversal_long',
   'vwap_overnight_reversal_short',
   'regime_shock_reversion_short_v2',
+  'opening_range_box_breakout_long',
+  'opening_range_box_breakout_short',
+  'opening_range_box_fade_long',
+  'opening_range_box_fade_short',
+  'opening_range_box_regime_long',
+  'opening_range_box_regime_short',
 ] as const;
 
 export const CANDIDATE_STRATEGY_IDS = [] as const;

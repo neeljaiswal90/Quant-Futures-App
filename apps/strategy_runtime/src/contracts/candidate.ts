@@ -19,7 +19,8 @@ export type CandidateSetupFamily =
   | 'regime_mean_reversion'
   | 'regime_shock_reversion'
   | 'liquidity_sweep_reversal'
-  | 'vwap_overnight_reversal';
+  | 'vwap_overnight_reversal'
+  | 'opening_range_box';
 
 export interface PriceTarget {
   readonly label: 'pt1' | 'pt2' | 'runner';

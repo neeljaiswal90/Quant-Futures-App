@@ -18,7 +18,7 @@ import {
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const EXPECTED_STRATEGY_CONFIG_HASH =
-  'ea423a64b2a00210e07bb0b83e3f053feec41137eeaab952ee445515422aa9be';
+  '72ed84a88da40d267b8ac65c9d01de765fee016cf050a15442dac4f4dee4f287';
 
 const STRATEGY_CONFIG_FILES = [
   'shared.yaml',
@@ -33,6 +33,12 @@ const STRATEGY_CONFIG_FILES = [
   'vwap_overnight_reversal_long.yaml',
   'vwap_overnight_reversal_short.yaml',
   'regime_shock_reversion_short_v2.yaml',
+  'opening_range_box_breakout_long.yaml',
+  'opening_range_box_breakout_short.yaml',
+  'opening_range_box_fade_long.yaml',
+  'opening_range_box_fade_short.yaml',
+  'opening_range_box_regime_long.yaml',
+  'opening_range_box_regime_short.yaml',
 ] as const;
 
 const tempDirs: string[] = [];
@@ -145,6 +151,12 @@ describe('STRAT-07 strategy config surface', () => {
       vwap_overnight_reversal_long: 90,
       vwap_overnight_reversal_short: 100,
       regime_shock_reversion_short_v2: 110,
+      opening_range_box_breakout_long: 120,
+      opening_range_box_breakout_short: 130,
+      opening_range_box_fade_long: 140,
+      opening_range_box_fade_short: 150,
+      opening_range_box_regime_long: 160,
+      opening_range_box_regime_short: 170,
     });
     expect(config.lineage.strategy_config_hash).toBe(EXPECTED_STRATEGY_CONFIG_HASH);
     expect(config.lineage.canonical_strategy_config_json).toContain(

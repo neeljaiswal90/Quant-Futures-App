@@ -46,6 +46,12 @@ const STRATEGY_CONFIG_PATHS: Readonly<Record<StrategyId, string>> = Object.freez
   vwap_overnight_reversal_long: 'config/strategies/vwap_overnight_reversal_long.yaml',
   vwap_overnight_reversal_short: 'config/strategies/vwap_overnight_reversal_short.yaml',
   regime_shock_reversion_short_v2: 'config/strategies/regime_shock_reversion_short_v2.yaml',
+  opening_range_box_breakout_long: 'config/strategies/opening_range_box_breakout_long.yaml',
+  opening_range_box_breakout_short: 'config/strategies/opening_range_box_breakout_short.yaml',
+  opening_range_box_fade_long: 'config/strategies/opening_range_box_fade_long.yaml',
+  opening_range_box_fade_short: 'config/strategies/opening_range_box_fade_short.yaml',
+  opening_range_box_regime_long: 'config/strategies/opening_range_box_regime_long.yaml',
+  opening_range_box_regime_short: 'config/strategies/opening_range_box_regime_short.yaml',
 });
 
 const RECOGNIZED_SCHEMAS: ReadonlySet<string> = new Set([

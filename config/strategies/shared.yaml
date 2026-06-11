@@ -18,3 +18,9 @@ ranking:
     vwap_overnight_reversal_long: 90
     vwap_overnight_reversal_short: 100
     regime_shock_reversion_short_v2: 110
+    opening_range_box_breakout_long: 120
+    opening_range_box_breakout_short: 130
+    opening_range_box_fade_long: 140
+    opening_range_box_fade_short: 150
+    opening_range_box_regime_long: 160
+    opening_range_box_regime_short: 170

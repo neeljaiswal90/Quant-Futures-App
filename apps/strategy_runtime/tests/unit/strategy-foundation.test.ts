@@ -138,10 +138,16 @@ describe('STRAT-01 active strategy registry', () => {
   it('groups strategies by direction and setup family deterministically', () => {
     expect(listStrategyIdsByDirection('long')).toEqual([
       'vwap_overnight_reversal_long',
+      'opening_range_box_breakout_long',
+      'opening_range_box_fade_long',
+      'opening_range_box_regime_long',
     ]);
     expect(listStrategyIdsByDirection('short')).toEqual([
       'vwap_overnight_reversal_short',
       'regime_shock_reversion_short_v2',
+      'opening_range_box_breakout_short',
+      'opening_range_box_fade_short',
+      'opening_range_box_regime_short',
     ]);
     expect(listStrategyIdsBySetupFamily('trend_pullback')).toEqual([
     ]);
@@ -157,6 +163,14 @@ describe('STRAT-01 active strategy registry', () => {
     ]);
     expect(listStrategyIdsBySetupFamily('regime_shock_reversion')).toEqual([
       'regime_shock_reversion_short_v2',
+    ]);
+    expect(listStrategyIdsBySetupFamily('opening_range_box')).toEqual([
+      'opening_range_box_breakout_long',
+      'opening_range_box_breakout_short',
+      'opening_range_box_fade_long',
+      'opening_range_box_fade_short',
+      'opening_range_box_regime_long',
+      'opening_range_box_regime_short',
     ]);
   });
 
@@ -177,11 +191,47 @@ describe('STRAT-01 active strategy registry', () => {
         extraction_ticket: 'QFA-7xx-S3-v2',
         implementation_status: 'active',
       }),
+      expect.objectContaining({
+        strategy_id: 'opening_range_box_breakout_long',
+        extraction_ticket: 'QFA-410B-ORB',
+        implementation_status: 'active',
+      }),
+      expect.objectContaining({
+        strategy_id: 'opening_range_box_breakout_short',
+        extraction_ticket: 'QFA-410B-ORB',
+        implementation_status: 'active',
+      }),
+      expect.objectContaining({
+        strategy_id: 'opening_range_box_fade_long',
+        extraction_ticket: 'QFA-410B-ORB',
+        implementation_status: 'active',
+      }),
+      expect.objectContaining({
+        strategy_id: 'opening_range_box_fade_short',
+        extraction_ticket: 'QFA-410B-ORB',
+        implementation_status: 'active',
+      }),
+      expect.objectContaining({
+        strategy_id: 'opening_range_box_regime_long',
+        extraction_ticket: 'QFA-410B-ORB',
+        implementation_status: 'active',
+      }),
+      expect.objectContaining({
+        strategy_id: 'opening_range_box_regime_short',
+        extraction_ticket: 'QFA-410B-ORB',
+        implementation_status: 'active',
+      }),
     ]);
     expect(listExecutableStrategyIds()).toEqual([
       'vwap_overnight_reversal_long',
       'vwap_overnight_reversal_short',
       'regime_shock_reversion_short_v2',
+      'opening_range_box_breakout_long',
+      'opening_range_box_breakout_short',
+      'opening_range_box_fade_long',
+      'opening_range_box_fade_short',
+      'opening_range_box_regime_long',
+      'opening_range_box_regime_short',
     ]);
   });
 
