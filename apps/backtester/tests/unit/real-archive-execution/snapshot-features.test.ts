@@ -116,6 +116,34 @@ describe('QFA-410c real-archive snapshot features', () => {
     });
   });
 
+  it('accumulates the 10 AM box over [30,35) min and locks it after the window', () => {
+    const min = 60_000_000_000n;
+    const state = createSnapshotContextState();
+    // RTH open — before the box window: null, not ready.
+    let context = updateSnapshotContextForBar(state, {
+      bar: contextBar(0n, { open: 100, high: 101, low: 99, close: 100 }),
+      rth_start_ts_ns: 0n,
+    });
+    expect(context.ten_am_box_high).toBeNull();
+    expect(context.ten_am_box_ready).toBe(false);
+    // Inside the box window [30,35) min — accumulates high/low, not yet locked.
+    context = updateSnapshotContextForBar(state, {
+      bar: contextBar(30n * min, { open: 110, high: 115, low: 108, close: 112 }),
+      rth_start_ts_ns: 0n,
+    });
+    expect(context.ten_am_box_high).toBe(115);
+    expect(context.ten_am_box_low).toBe(108);
+    expect(context.ten_am_box_ready).toBe(false);
+    // At/after 35 min — box locked (ready) and values frozen to the window.
+    context = updateSnapshotContextForBar(state, {
+      bar: contextBar(35n * min, { open: 120, high: 130, low: 118, close: 125 }),
+      rth_start_ts_ns: 0n,
+    });
+    expect(context.ten_am_box_high).toBe(115);
+    expect(context.ten_am_box_low).toBe(108);
+    expect(context.ten_am_box_ready).toBe(true);
+  });
+
   it('tracks session VWAP and VWAP-band sigma at session scope', () => {
     const state = createSnapshotContextState({ prior_day_close: 100 });
     let context = updateSnapshotContextForBar(state, {

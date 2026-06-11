@@ -31,6 +31,14 @@ export type StrategyScalarMap = Readonly<Record<string, StrategyScalarValue>>;
 
 export const OPENING_RANGE_MINUTES = 30 as const;
 
+/**
+ * The "10 AM box": the first 5-minute candle of the 10:00 ET hour, i.e. the
+ * window [30, 35) minutes after the 09:30 ET RTH open. Anchors the opening-range
+ * box breakout/fade strategies (distinct from the 30-min opening range above).
+ */
+export const TEN_AM_BOX_ANCHOR_MINUTES = 30 as const;
+export const TEN_AM_BOX_WIDTH_MINUTES = 5 as const;
+
 export type SignedShockAnchorType = 'vwap' | 'prior_close';
 export type SignedShockSigmaBasis = 'atr_14' | 'sigma_pts';
 
@@ -80,6 +88,11 @@ export interface StrategyFeatureSnapshotContext {
   readonly opening_range_high: number | null;
   readonly opening_range_low: number | null;
   readonly opening_range_minutes_elapsed: number;
+  /** The 10:00 ET first-5-min "box" high/low; null until that window prints. */
+  readonly ten_am_box_high: number | null;
+  readonly ten_am_box_low: number | null;
+  /** True once the box window has fully elapsed (the box is locked). */
+  readonly ten_am_box_ready: boolean;
   readonly session_vwap: number | null;
   readonly session_vwap_band_sigma_pts: number | null;
   readonly overnight_return_bps: number | null;

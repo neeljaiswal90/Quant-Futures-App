@@ -2,6 +2,8 @@ import type { DbnLevel, DbnMbp1Record, DbnRecord, DbnTradesRecord } from '../../
 import {
   createNullSignedShockMeasurement,
   OPENING_RANGE_MINUTES,
+  TEN_AM_BOX_ANCHOR_MINUTES,
+  TEN_AM_BOX_WIDTH_MINUTES,
   type SignedShockAnchorType,
   type SignedShockMeasurement,
   type SignedShockSigmaBasis,
@@ -36,6 +38,8 @@ export interface SnapshotContextState {
   today_open: number | null;
   opening_range_high: number | null;
   opening_range_low: number | null;
+  ten_am_box_high: number | null;
+  ten_am_box_low: number | null;
   session_vwap_price_volume_sum: number;
   session_vwap_volume_sum: number;
   session_vwap_deviations: number[];
@@ -80,6 +84,8 @@ export function createSnapshotContextState(seed: SnapshotContextSeed = {}): Snap
     today_open: null,
     opening_range_high: null,
     opening_range_low: null,
+    ten_am_box_high: null,
+    ten_am_box_low: null,
     session_vwap_price_volume_sum: 0,
     session_vwap_volume_sum: 0,
     session_vwap_deviations: [],
@@ -146,6 +152,19 @@ export function updateSnapshotContextForBar(
       : Math.min(state.opening_range_low, input.bar.low);
   }
 
+  // 10 AM box: accumulate high/low over [anchor, anchor+width) from RTH start.
+  const boxAnchorNs = BigInt(TEN_AM_BOX_ANCHOR_MINUTES) * minuteNs;
+  const boxEndNs = boxAnchorNs + BigInt(TEN_AM_BOX_WIDTH_MINUTES) * minuteNs;
+  if (elapsedNs >= boxAnchorNs && elapsedNs < boxEndNs) {
+    state.ten_am_box_high = state.ten_am_box_high === null
+      ? input.bar.high
+      : Math.max(state.ten_am_box_high, input.bar.high);
+    state.ten_am_box_low = state.ten_am_box_low === null
+      ? input.bar.low
+      : Math.min(state.ten_am_box_low, input.bar.low);
+  }
+  const tenAmBoxReady = elapsedNs >= boxEndNs && state.ten_am_box_high !== null;
+
   return {
     prior_day_close: state.prior_day_close,
     prior_day_high: state.prior_day_high,
@@ -157,6 +176,9 @@ export function updateSnapshotContextForBar(
     opening_range_high: state.opening_range_high,
     opening_range_low: state.opening_range_low,
     opening_range_minutes_elapsed: elapsedMinutes,
+    ten_am_box_high: state.ten_am_box_high,
+    ten_am_box_low: state.ten_am_box_low,
+    ten_am_box_ready: tenAmBoxReady,
     session_vwap: sessionVwap,
     session_vwap_band_sigma_pts: sessionVwapBandSigmaPts,
     overnight_return_bps: overnightReturnBps,
