@@ -1,0 +1,177 @@
+import {
+  DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG,
+  getStrategyParameters,
+  type OpeningRangeBoxStrategyParameters,
+} from '../config/index.js';
+import {
+  makeCandidateId,
+  makeStrategyEvaluationId,
+  type Candidate,
+  type StrategyEvaluation,
+} from '../contracts/index.js';
+import {
+  buildOpeningRangeBoxTargets,
+  clampBox,
+  getBoxAtr14Pts,
+  rewardRiskBox,
+  round4Box,
+  roundToTickBox,
+  validateOpeningRangeBoxParameters,
+} from './opening_range_box_common.js';
+import type {
+  StrategyEvaluationInput,
+  StrategyFeatureSnapshot,
+  StrategyGenerationResult,
+} from './types.js';
+
+export const OPENING_RANGE_BOX_BREAKOUT_LONG_DEFAULTS = DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG;
+
+/**
+ * 10 AM box BREAKOUT (long): once the 10:00 ET 5-min box is locked, arm a long
+ * when price closes above the box high by a confirmation buffer (and hasn't
+ * already run beyond the chase limit). Stop at the opposite box edge; targets by RR.
+ */
+export function generateOpeningRangeBoxBreakoutLong(
+  input: StrategyEvaluationInput,
+): StrategyGenerationResult {
+  if (input.strategy_id !== 'opening_range_box_breakout_long') {
+    throw new Error(`opening_range_box_breakout_long generator received ${input.strategy_id}`);
+  }
+
+  const { snapshot } = input;
+  const parameters = getStrategyParameters(input.strategy_config, 'opening_range_box_breakout_long');
+  const reasons: string[] = [];
+  const rejection = firstOpeningRangeBoxBreakoutLongRejection(snapshot, parameters, reasons);
+  if (rejection !== undefined) {
+    return { evaluation: makeEvaluation(snapshot, 'blocked', undefined, [rejection, ...reasons]) };
+  }
+
+  const tick = snapshot.instrument.tick_size;
+  const boxHigh = snapshot.context.ten_am_box_high as number;
+  const boxLow = snapshot.context.ten_am_box_low as number;
+
+  // Entry at the breakout level (box high + buffer); stop at the opposite edge.
+  const entryPrice = roundToTickBox(boxHigh + parameters.breakout_buffer_ticks * tick, tick);
+  const stopPrice = roundToTickBox(boxLow - parameters.stop_buffer_ticks * tick, tick);
+  const riskPts = entryPrice - stopPrice;
+  if (!(riskPts > 0)) {
+    return {
+      evaluation: makeEvaluation(snapshot, 'blocked', undefined, [
+        'opening_range_box_breakout_long:non_positive_risk',
+        ...reasons,
+      ]),
+    };
+  }
+
+  const targets = buildOpeningRangeBoxTargets({
+    direction: 'long',
+    entryPrice,
+    riskPts,
+    parameters,
+    tickSize: tick,
+  });
+
+  const confidence = clampBox(round4Box(parameters.confidence_score), 0, 1);
+  const candidate: Candidate = {
+    candidate_id: makeCandidateId(
+      `candidate-${snapshot.feature_snapshot_id}-opening_range_box_breakout_long`,
+    ),
+    strategy_id: 'opening_range_box_breakout_long',
+    setup_type: 'opening_range_box_breakout_long',
+    setup_family: 'opening_range_box',
+    instrument: snapshot.instrument,
+    feature_snapshot_id: snapshot.feature_snapshot_id,
+    direction: 'long',
+    status: 'proposed',
+    proposed_ts_ns: snapshot.created_ts_ns,
+    entry_price: entryPrice,
+    stop_price: stopPrice,
+    risk_points: round4Box(riskPts),
+    targets,
+    reward_risk: targets.map((target) => ({
+      label: target.label,
+      reward_risk: rewardRiskBox(target.price, entryPrice, riskPts, 'long'),
+    })),
+    confidence,
+    config: snapshot.config,
+    reasons: [
+      'opening_range_box_breakout_long:armed',
+      `opening_range_box_breakout_long:box_${round4Box(boxLow)}_${round4Box(boxHigh)}`,
+      ...reasons,
+    ],
+  };
+
+  return {
+    evaluation: makeEvaluation(snapshot, 'armed', confidence, [
+      'opening_range_box_breakout_long:armed',
+      ...candidate.reasons,
+    ]),
+    candidate,
+  };
+}
+
+export function firstOpeningRangeBoxBreakoutLongRejection(
+  snapshot: StrategyFeatureSnapshot,
+  parameters: OpeningRangeBoxStrategyParameters,
+  reasons: string[] = [],
+): string | undefined {
+  const parameterIssues = validateOpeningRangeBoxParameters(parameters);
+  if (parameterIssues[0] !== undefined) {
+    return `opening_range_box_breakout_long:${parameterIssues[0]}`;
+  }
+  if (!snapshot.session.is_rth) {
+    return 'opening_range_box_breakout_long:session_not_rth';
+  }
+  if (snapshot.session.is_halt) {
+    return 'opening_range_box_breakout_long:session_halted';
+  }
+  if (snapshot.session.is_roll_block) {
+    return 'opening_range_box_breakout_long:roll_block_active';
+  }
+  if (!snapshot.context.ten_am_box_ready) {
+    return 'opening_range_box_breakout_long:box_not_ready';
+  }
+  const boxHigh = snapshot.context.ten_am_box_high;
+  const boxLow = snapshot.context.ten_am_box_low;
+  if (boxHigh === null || boxLow === null) {
+    return 'opening_range_box_breakout_long:box_unavailable';
+  }
+
+  const tick = snapshot.instrument.tick_size;
+  const price = snapshot.last_trade_price ?? snapshot.quote.mid_px;
+  const breakoutLevel = boxHigh + parameters.breakout_buffer_ticks * tick;
+  if (price < breakoutLevel) {
+    return 'opening_range_box_breakout_long:no_upside_breakout';
+  }
+  reasons.push(`box_breakout_distance_ticks:${round4Box((price - boxHigh) / tick)}`);
+  if (price > boxHigh + parameters.max_chase_ticks * tick) {
+    return 'opening_range_box_breakout_long:breakout_beyond_chase_limit';
+  }
+
+  // ATR must be available so the position manager can size/trail.
+  if (getBoxAtr14Pts(snapshot) === null) {
+    return 'opening_range_box_breakout_long:atr_unavailable';
+  }
+  return undefined;
+}
+
+function makeEvaluation(
+  snapshot: StrategyFeatureSnapshot,
+  gateState: StrategyEvaluation['gate_state'],
+  score: number | undefined,
+  reasons: readonly string[],
+): StrategyEvaluation {
+  return {
+    strategy_evaluation_id: makeStrategyEvaluationId(
+      `eval-${snapshot.feature_snapshot_id}-opening_range_box_breakout_long`,
+    ),
+    strategy_id: 'opening_range_box_breakout_long',
+    instrument: snapshot.instrument,
+    feature_snapshot_id: snapshot.feature_snapshot_id,
+    evaluated_ts_ns: snapshot.created_ts_ns,
+    gate_state: gateState,
+    ...(score === undefined ? {} : { score }),
+    reasons,
+    config: snapshot.config,
+  };
+}
