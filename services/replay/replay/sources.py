@@ -9,6 +9,21 @@ from heapq import heappop, heappush
 from pathlib import Path
 from typing import Any, Literal
 
+# Perf: orjson parses obs01/mbo lines ~4x faster than stdlib json (measured on
+# real captures). Optional dependency — fall back to stdlib when absent.
+# orjson.JSONDecodeError subclasses json.JSONDecodeError, so existing
+# `except json.JSONDecodeError` handlers still catch malformed lines.
+try:
+    import orjson as _orjson
+
+    def _loads(text: str | bytes) -> Any:
+        return _orjson.loads(text)
+except ImportError:  # pragma: no cover - orjson is an optional perf dependency
+
+    def _loads(text: str | bytes) -> Any:
+        return json.loads(text)
+
+
 SourceKind = Literal["trade", "mbo"]
 
 
@@ -87,7 +102,7 @@ def _iter_jsonl_rows(path: Path, *, kind: SourceKind, start_ordinal: int) -> Ite
             if not line:
                 continue
             try:
-                record = json.loads(line)
+                record = _loads(line)
             except json.JSONDecodeError:
                 continue
             if not isinstance(record, dict):
