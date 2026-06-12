@@ -102,3 +102,40 @@ matches exactly.
 
 Expected win: detect_icebergs 133s → ~5s; full ~254s → ~120s on the 800-step
 fixture, and a far larger multiple on full sessions (the quadratic is removed).
+
+## UPDATE 2026-06-12 — built the foundation, found the trade-depletion wall
+
+Implemented the pure-incremental approach (commit pending): `consume_events`
+refactor, `evict_before((ts, seq))`, `_TradeIndex.extend/evict_before`, and
+`RollingConsumeState`. A step-by-step equivalence test
+(`tests/test_incremental_tracker.py`) vs the fresh path PASSES for the quiet
+(TTL-binds), busy (window-back-binds), and full-batch regimes — the inductive
+ORDER-BOOK proof holds, and the `(ts, seq)` window-back edge (NOT ts alone) is
+required to split adds that share a tail timestamp.
+
+BUT the test's adversarial tiny window exposed a wall the original proof missed:
+**the trade-index depletion does not decompose incrementally.** `_TradeIndex`
+depletes matched volume (`quantity_remaining -= take`) so competing same-price
+consumptions don't double-count one trade. The fresh path REBUILDS the index
+every step, so when a depleting consumption scrolls out of the window it
+effectively "un-depletes" that trade for the remaining competitor. A persistent
+depleting index cannot reproduce that without a re-computation cascade. Concrete
+failure: two bids at one price, one sell trade of 22 lots → fresh gives (20, 2);
+once the first consumption's window scrolls past, fresh re-gives the survivor 20,
+incremental is stuck at 2. Alignment-dependent (needs the window-back to fall
+between a competing group), so it passes on lucky windows and WOULD silently
+corrupt labels on others. Marked `xfail(strict)`.
+
+### The byte-exact fix: incremental book + re-match the coupled part each step
+
+Split `_remove` into (a) BOOK removal + candidate capture (order side/price/size,
+`add_ts/seq`, `consume_ts`, `at_queue_front`, `priority`, `visible_size` — all
+book-derived, frozen at removal) and (b) the TRADE MATCH (index-derived qty +
+`obs_confirmed`/source/inclusion). Keep the book persistent/incremental (the 115s
+of `_add/_remove/_evict`), but each step REBUILD a fresh `_TradeIndex` from the
+window trades and RE-RUN (b) over the in-window candidates in `consume_ts` order.
+This reproduces the fresh per-step depletion exactly (only C/F/T events deplete,
+matched in ts order against a fresh index) while skipping the book rebuild.
+Profile says the match half is ~18s vs ~115s book ops, so the win survives:
+detect_icebergs 133s → ~25s. Validate on tiny + busy + quiet equivalence AND the
+golden gates (remove the xfail). This is the next concrete step.

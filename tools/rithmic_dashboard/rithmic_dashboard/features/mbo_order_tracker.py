@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import bisect
 import json
 import math
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -92,6 +93,9 @@ class ConsumedOrder:
     consume_ts_ns: int
     confirmation_source: str = _SOURCE_OBS
     priority: str | None = None
+    # Phase 4: sequence of the ADD event, for position-precise window-back
+    # eviction when several events share a timestamp at the tail boundary.
+    add_seq: int = 0
 
 
 @dataclass(slots=True)
@@ -102,6 +106,7 @@ class _TrackedOrder:
     size: int
     add_ts_ns: int
     last_ts_ns: int
+    add_seq: int = 0  # Phase 4: ADD-event sequence for (ts, seq) window-back order
     # RA-065: raw queue-position string (as emitted by the probe) and its
     # lazily-parsed int form. ``priority_int`` is None when priority is absent
     # or non-numeric — in that case this order never enters the priority index
@@ -160,17 +165,40 @@ class MboOrderTracker:
         # the tracker is rebuilt per detect_icebergs call — so it stays in the KB
         # range and cannot leak across the RA-052 light path.
         self._last_tail_priority: dict[tuple[int, str], tuple[int, int]] = {}
+        # Phase 4 (incremental tracker): (add_ts_ns, add_seq, order_id) queue so
+        # evict_before() can drop orders whose ADD scrolled out of the byte-window
+        # in O(evicted) without scanning all active orders. Appended only in _add
+        # (events arrive in (ts, seq) order, so this stays sorted). The seq makes
+        # the boundary position-precise when several adds share a tail timestamp.
+        self._add_queue: deque[tuple[int, int, str]] = deque()
 
     def process(
         self,
         mbo_events: tuple[MboOrderEvent, ...] | list[MboOrderEvent],
         trades: list[TradeTick],
     ) -> tuple[ConsumedOrder, ...]:
-        """Process MBO events and return OBS-confirmed consumed orders."""
+        """Process MBO events and return OBS-confirmed consumed orders.
+
+        Stateless-per-call entry point (prod + the fresh-per-window replay path):
+        builds a fresh trade index and consumes a fully-sorted event batch.
+        """
+
+        trade_index = _TradeIndex(trades, tick_size=self.tick_size)
+        ordered = sorted(mbo_events, key=lambda item: (item.timestamp_ns, item.sequence or 0))
+        return self.consume_events(ordered, trade_index)
+
+    def consume_events(
+        self,
+        ordered_events: list[MboOrderEvent] | tuple[MboOrderEvent, ...],
+        trade_index: _TradeIndex,
+    ) -> tuple[ConsumedOrder, ...]:
+        """Consume an ALREADY-SORTED event batch against a (possibly persistent)
+        trade index. Extracted from ``process`` so the Phase 4 incremental path
+        can feed only new events on a persistent book + persistent trade index.
+        """
 
         consumed: list[ConsumedOrder] = []
-        trade_index = _TradeIndex(trades, tick_size=self.tick_size)
-        for event in sorted(mbo_events, key=lambda item: (item.timestamp_ns, item.sequence or 0)):
+        for event in ordered_events:
             self._evict_stale(event.timestamp_ns)
             if event.action == "A":
                 self._add(event)
@@ -183,10 +211,35 @@ class MboOrderTracker:
             self._evict_overflow()
         return tuple(consumed)
 
+    def evict_before(self, window_back_ts: int, window_back_seq: int = 0) -> None:
+        """Phase 4: drop active orders whose ADD is before the window-back edge
+        ``(window_back_ts, window_back_seq)`` in (ts, seq) order.
+
+        Replicates the fresh-per-window detector's cold start: a fresh tracker
+        processing only the bounded tail never sees orders added before the
+        window, so a persistent tracker must forget them to stay byte-identical.
+        The (ts, seq) edge — not ts alone — is required because several adds can
+        share a timestamp while straddling the tail boundary. Combined with the
+        per-event TTL eviction in :meth:`consume_events`, the persistent active
+        set equals a from-empty rebuild over the same window (inductive proof in
+        docs/perf/replay-incremental-tracker-design.md).
+        """
+
+        edge = (window_back_ts, window_back_seq)
+        while self._add_queue and (self._add_queue[0][0], self._add_queue[0][1]) < edge:
+            add_ts, add_seq, order_id = self._add_queue.popleft()
+            order = self.active.get(order_id)
+            # Guard against order_id reuse: only evict if this is still the same
+            # order instance the queue entry referred to (same add ts + seq).
+            if order is not None and order.add_ts_ns == add_ts and order.add_seq == add_seq:
+                self.active.pop(order_id, None)
+                self._index_remove(order)
+
     def _add(self, event: MboOrderEvent) -> None:
         if event.size <= 0:
             return
         priority_int = _parse_priority(event.priority)
+        add_seq = event.sequence or 0
         order = _TrackedOrder(
             order_id=event.order_id,
             side=event.side,
@@ -194,6 +247,7 @@ class MboOrderTracker:
             size=event.size,
             add_ts_ns=event.timestamp_ns,
             last_ts_ns=event.timestamp_ns,
+            add_seq=add_seq,
             priority=event.priority,
             priority_int=priority_int,
         )
@@ -206,6 +260,7 @@ class MboOrderTracker:
         )
         self.active[event.order_id] = order
         self._order_queue.append((event.timestamp_ns, event.order_id))
+        self._add_queue.append((event.timestamp_ns, add_seq, event.order_id))
         self._index_add(order)
 
     def _modify(self, event: MboOrderEvent) -> None:
@@ -277,6 +332,7 @@ class MboOrderTracker:
             consume_ts_ns=event.timestamp_ns,
             confirmation_source=source,
             priority=order.priority,
+            add_seq=order.add_seq,
         )
 
     def _evict_stale(self, now_ns: int) -> None:
@@ -390,6 +446,39 @@ class _TradeIndex:
             )
         for rows in self.by_price_side.values():
             rows.sort(key=lambda tick: tick.timestamp_ns)
+
+    def extend(self, trades: list[TradeTick] | tuple[TradeTick, ...]) -> None:
+        """Phase 4: append NEW trades to the persistent index. ``trades`` must be
+        in ts order (a suffix of the sorted trade tail), so each bucket stays
+        ts-sorted by appending — no re-sort. New trades carry full remaining
+        quantity; already-indexed trades keep their depletion state.
+        """
+        for trade in trades:
+            if trade.timestamp_ns is None or trade.aggressor_side not in {"buy", "sell"}:
+                continue
+            bucket = round(trade.price / self.tick_size)
+            self.by_price_side.setdefault((bucket, trade.aggressor_side), []).append(
+                _IndexedTrade(
+                    timestamp_ns=trade.timestamp_ns,
+                    quantity_remaining=max(0, trade.quantity),
+                )
+            )
+
+    def evict_before(self, cutoff_ts: int) -> None:
+        """Phase 4: drop trades older than ``cutoff_ts`` (the trade-window back).
+        Buckets are ts-sorted, so this is a prefix trim. Keeps the persistent
+        index bounded to the current trade tail and matches the fresh path, which
+        only ever indexes the window's trades."""
+        for key in list(self.by_price_side.keys()):
+            rows = self.by_price_side[key]
+            i = 0
+            n = len(rows)
+            while i < n and rows[i].timestamp_ns < cutoff_ts:
+                i += 1
+            if i:
+                del rows[:i]
+            if not rows:
+                del self.by_price_side[key]
 
     def consume_matching_volume(
         self,
@@ -562,3 +651,112 @@ def _parse_priority(value: str | None) -> int | None:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return None
+
+
+# ----------------------------------------------------------------------------
+# Phase 4: persistent incremental consumption (replay perf, byte-exact)
+# ----------------------------------------------------------------------------
+#
+# A fresh ``MboOrderTracker().process(window, trades)`` rebuilds the entire order
+# book from empty on EVERY replay step — O(steps x window), the dominant cost left
+# after the Phase 2 parse caches. ``RollingConsumeState`` keeps ONE book + ONE
+# depleting trade index across steps, feeds only newly-appended events, and evicts
+# orders/trades whose event scrolled out of the bounded tail. ``step()`` returns
+# the SAME consumed set as a fresh ``process()`` over that step's window. Proof +
+# the trade-depletion equivalence are gated by tests/test_incremental_tracker.py
+# and the replay golden gate. Design: docs/perf/replay-incremental-tracker-design.md.
+
+
+def _new_suffix(
+    items: list[Any] | tuple[Any, ...],
+    ts_of: Any,
+    last_ts: int | None,
+    n_at_last: int,
+) -> tuple[list[Any], int | None, int]:
+    """Return ``(new_items, updated_last_ts, updated_n_at_last)`` for a ts-sorted
+    sliding window. ``new_items`` = everything past the high-water ``(last_ts,
+    n_at_last)``, where ``n_at_last`` counts items already taken AT exactly
+    ``last_ts`` so ts-ties at the boundary aren't double-fed. O(log n + new).
+
+    Safe because the newest ts sits at the window END (never dropped by the
+    front-sliding tail), so its already-taken count stays valid step to step.
+    """
+    if not items:
+        return [], last_ts, n_at_last
+    if last_ts is None:
+        new = list(items)
+    else:
+        start = bisect.bisect_left(items, last_ts, key=ts_of)
+        new = list(items[start + n_at_last :])
+    max_ts = ts_of(items[-1])
+    lo = bisect.bisect_left(items, max_ts, key=ts_of)
+    return new, max_ts, len(items) - lo
+
+
+@dataclass(slots=True)
+class RollingConsumeState:
+    """Persistent state for incremental, byte-exact iceberg consumption."""
+
+    tracker: MboOrderTracker
+    trade_index: _TradeIndex
+    rolling: list[ConsumedOrder] = field(default_factory=list)
+    last_mbo_ts: int | None = None
+    n_mbo_at_last: int = 0
+    last_trade_ts: int | None = None
+    n_trade_at_last: int = 0
+
+    def step(
+        self,
+        mbo_events: tuple[MboOrderEvent, ...] | list[MboOrderEvent],
+        trades: list[TradeTick],
+    ) -> tuple[ConsumedOrder, ...]:
+        """Incremental equivalent of ``MboOrderTracker().process(mbo_events, trades)``.
+
+        ``mbo_events`` / ``trades`` are the CURRENT bounded-tail windows (ascending,
+        exactly as the fresh path receives them). Returns the consumed orders whose
+        ADD is still inside the MBO window — byte-identical to a fresh per-window
+        ``process()`` over the same window.
+        """
+        # Window-back edges. The MBO order book is keyed by the (ts, seq) of the
+        # oldest in-window event so adds that share a tail timestamp are split
+        # exactly as the fresh path's sorted window splits them. Trades have no
+        # sequence, so the trade index uses the ts edge (trades only ever match by
+        # price + time tolerance, never by tie-break).
+        mbo_back_ts = mbo_events[0].timestamp_ns if mbo_events else None
+        mbo_back_seq = (mbo_events[0].sequence or 0) if mbo_events else 0
+        trade_back = trades[0].timestamp_ns if trades else None
+
+        new_mbo, self.last_mbo_ts, self.n_mbo_at_last = _new_suffix(
+            mbo_events, lambda e: e.timestamp_ns, self.last_mbo_ts, self.n_mbo_at_last
+        )
+        new_trades, self.last_trade_ts, self.n_trade_at_last = _new_suffix(
+            trades, lambda t: t.timestamp_ns or 0, self.last_trade_ts, self.n_trade_at_last
+        )
+
+        # Replicate the fresh path's cold start: forget orders/trades whose event
+        # scrolled out of the bounded byte-window.
+        if mbo_back_ts is not None:
+            self.tracker.evict_before(mbo_back_ts, mbo_back_seq)
+        if trade_back is not None:
+            self.trade_index.evict_before(trade_back)
+        self.trade_index.extend(new_trades)
+
+        newly = self.tracker.consume_events(new_mbo, self.trade_index)
+        if newly:
+            self.rolling.extend(newly)
+        # A consumption is in the fresh window output iff its ADD is in-window,
+        # compared on the same (ts, seq) edge used for order eviction.
+        if mbo_back_ts is not None and self.rolling:
+            edge = (mbo_back_ts, mbo_back_seq)
+            self.rolling = [c for c in self.rolling if (c.add_ts_ns, c.add_seq) >= edge]
+        return tuple(self.rolling)
+
+
+def new_rolling_consume_state(
+    *, match_tolerance_ms: int = DEFAULT_MATCH_TOLERANCE_MS
+) -> RollingConsumeState:
+    """Build empty Phase 4 incremental-consumption state (one per replay session)."""
+    return RollingConsumeState(
+        tracker=MboOrderTracker(match_tolerance_ms=match_tolerance_ms),
+        trade_index=_TradeIndex([], tick_size=TICK_SIZE),
+    )
