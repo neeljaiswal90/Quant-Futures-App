@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from functools import lru_cache
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -246,6 +247,23 @@ def compute_live_signals(
     return signals
 
 
+# Perf (incremental-parse rewrite, Phase 2): mirrors the MBO line cache in
+# mbo_order_tracker.py. The replay re-reads an overlapping obs01 tail every step,
+# so the same line is json-parsed thousands of times. The parse is pure (line ->
+# immutable TradeTick | None), so an LRU cache keyed on the line collapses the
+# re-parses to one per unique line. Keeps stdlib json.loads exactly (NOT orjson)
+# so output stays byte-identical to the pre-cache path (golden gate gates it).
+@lru_cache(maxsize=131_072)
+def _parse_trade_line(line: str) -> TradeTick | None:
+    try:
+        rec = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(rec, dict):
+        return None
+    return _trade_tick(rec)
+
+
 def load_trade_ticks_from_tail(
     capture_path: Path,
     *,
@@ -289,13 +307,7 @@ def load_trade_ticks_from_tail(
                 continue
             if not line:
                 continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(rec, dict):
-                continue
-            tick = _trade_tick(rec)
+            tick = _parse_trade_line(line)
             if tick is not None:
                 ticks.append(tick)
     return sorted(ticks, key=lambda tick: tick.timestamp_ns or 0)

@@ -6,10 +6,24 @@ import json
 import math
 from collections import deque
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
 from rithmic_dashboard.models import DataWarning, MboOrderEvent, TradeTick
+
+# Perf: orjson parses MBO lines ~4x faster than stdlib json (measured on real
+# captures). Optional dependency — fall back to stdlib when absent. orjson's
+# JSONDecodeError subclasses json.JSONDecodeError, so the handler below is safe.
+try:
+    import orjson as _orjson
+
+    def _loads(text: str | bytes) -> Any:
+        return _orjson.loads(text)
+except ImportError:  # pragma: no cover - orjson is an optional perf dependency
+
+    def _loads(text: str | bytes) -> Any:
+        return json.loads(text)
 
 DEFAULT_MAX_ACTIVE_ORDERS = 50_000
 DEFAULT_ORDER_TTL_SECONDS = 120
@@ -405,6 +419,26 @@ class _TradeIndex:
         return total
 
 
+# Perf (incremental-parse rewrite, Phase 2): the replay harness re-reads an
+# overlapping bounded MBO tail every 500ms step, so the same raw line gets parsed
+# thousands of times (~30M parses / 800 steps in profiling — the dominant cost).
+# Parsing is a pure function of the raw line (-> immutable MboOrderEvent | None),
+# so an LRU cache keyed on the line collapses N_steps re-parses to one parse per
+# unique line: the per-step O(tail) parse becomes amortized O(new bytes). maxsize
+# comfortably exceeds one ~20MB tail window (~40k lines) so the whole current
+# window stays hot between consecutive steps; older lines evict as the window
+# slides forward. Byte-exact: identical line -> identical event (golden gate).
+@lru_cache(maxsize=131_072)
+def _parse_mbo_line(raw: str) -> MboOrderEvent | None:
+    try:
+        rec = _loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(rec, dict):
+        return None
+    return _mbo_event(rec)
+
+
 def load_mbo_events_from_tail(
     mbo_path: Path,
     *,
@@ -429,13 +463,7 @@ def load_mbo_events_from_tail(
         lines = lines[1:]
     events: list[MboOrderEvent] = []
     for raw in lines:
-        try:
-            rec = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(rec, dict):
-            continue
-        event = _mbo_event(rec)
+        event = _parse_mbo_line(raw)
         if event is not None:
             events.append(event)
     events.sort(key=lambda item: (item.timestamp_ns, item.sequence or 0))
