@@ -47,7 +47,10 @@ from rithmic_dashboard.features.institutional_flow import (
     recent_institutional_flow_events,
     summarize_institutional_flow,
 )
-from rithmic_dashboard.features.mbo_order_tracker import load_mbo_events_from_tail
+from rithmic_dashboard.features.mbo_order_tracker import (
+    RollingConsumeState,
+    load_mbo_events_from_tail,
+)
 from rithmic_dashboard.features.sweep_detector import append_new_sweeps, detect_sweeps, load_sweeps
 from rithmic_dashboard.features.threshold_calibration import load_threshold
 from rithmic_dashboard.features.trade_size_classifier import load_trade_size_thresholds
@@ -81,8 +84,14 @@ def compute_live_signals(
     ewma_calibration_path: Path | None = None,
     tail_bytes: int = DEFAULT_TAIL_BYTES,
     vwap_window_minutes: int = DEFAULT_VWAP_WINDOW_MINUTES,
+    iceberg_state: RollingConsumeState | None = None,
 ) -> LiveSignals:
-    """Compute live signals from a bounded tail of the active capture."""
+    """Compute live signals from a bounded tail of the active capture.
+
+    ``iceberg_state`` (Phase 4): replay passes a persistent RollingConsumeState so
+    the iceberg order tracker is incremental instead of rebuilt every step.
+    Production leaves it None (fresh per call). Byte-identical either way.
+    """
 
     warnings: list[DataWarning] = []
     tick_source_path = _trade_tail_source_path(capture_path)
@@ -182,6 +191,7 @@ def compute_live_signals(
         mbo_events=mbo_result.events,
         trades=ticks,
         levels=levels,
+        state=iceberg_state,
         config=load_iceberg_thresholds(live_dir / "iceberg_thresholds.json"),
     )
     append_new_iceberg_events(iceberg_path, detected_icebergs)

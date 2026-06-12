@@ -16,6 +16,7 @@ from rithmic_dashboard.features.mbo_order_tracker import (
     _SOURCE_PRIORITY,
     ConsumedOrder,
     MboOrderTracker,
+    RollingConsumeState,
 )
 from rithmic_dashboard.models import IcebergEvent, IcebergSummary, MboOrderEvent, TradeTick
 from rithmic_dashboard.session_state import PT
@@ -56,14 +57,24 @@ def detect_icebergs(
     trades: list[TradeTick],
     levels: list[dict[str, Any]],
     config: IcebergDetectorConfig | None = None,
+    state: RollingConsumeState | None = None,
 ) -> tuple[IcebergEvent, ...]:
-    """Detect repeated OBS-confirmed consumed-then-refilled MBO orders."""
+    """Detect repeated OBS-confirmed consumed-then-refilled MBO orders.
+
+    ``state`` (Phase 4): when provided (replay), consumption is computed
+    incrementally via a persistent order book + per-step re-match, byte-identical
+    to the fresh per-window path. When None (production), a fresh tracker rebuilds
+    the book from the whole window each call (unchanged behavior).
+    """
 
     config = config or IcebergDetectorConfig()
-    consumed = MboOrderTracker(match_tolerance_ms=config.match_tolerance_ms).process(
-        mbo_events,
-        trades,
-    )
+    if state is None:
+        consumed = MboOrderTracker(match_tolerance_ms=config.match_tolerance_ms).process(
+            mbo_events,
+            trades,
+        )
+    else:
+        consumed = state.step(mbo_events, trades)
     if not config.admit_priority_confirmation:
         # RA-069 (blocker fix): drop priority-queue-ONLY confirmations — these are
         # consumptions RA-065 inferred purely from front-of-queue position when

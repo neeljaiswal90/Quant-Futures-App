@@ -53,7 +53,11 @@ from replay.setups import SetupDatasetResult, write_setup_dataset
 from replay.sources import CaptureSources, SourceRow, iter_source_rows, resolve_capture_sources
 from rithmic_dashboard.features.depth_book import DepthBook
 from rithmic_dashboard.features.live_signals import DEFAULT_TAIL_BYTES, compute_live_signals
-from rithmic_dashboard.features.mbo_order_tracker import _mbo_event
+from rithmic_dashboard.features.mbo_order_tracker import (
+    RollingConsumeState,
+    _mbo_event,
+    new_rolling_consume_state,
+)
 from rithmic_dashboard.features.recent_signals_panel import RecentSignal, build_recent_signals
 from rithmic_dashboard.models import (
     InstitutionalFlowEvent,
@@ -117,6 +121,7 @@ class _ReplayState:
     seeded_files: dict[str, str | None]
     ewma_calibration_path: Path | None
     depth_book: DepthBook
+    iceberg_state: RollingConsumeState
     previous_signals: LiveSignals | None = None
     previous_institutional_keys: set[tuple[Any, ...]] | None = None
     rows: list[SignalDatasetRow] | None = None
@@ -209,6 +214,7 @@ def _prepare_state(config: ReplayConfig, sources: CaptureSources) -> _ReplayStat
         seeded_files=seeded_files,
         ewma_calibration_path=ewma_calibration_path,
         depth_book=DepthBook(),
+        iceberg_state=new_rolling_consume_state(),
         rows=[],
     )
 
@@ -295,6 +301,7 @@ def _compute_step(state: _ReplayState, *, step_ns: int) -> None:
         dashboard_dir=state.detector_dashboard_dir,
         ewma_calibration_path=state.ewma_calibration_path,
         tail_bytes=config.tail_bytes,
+        iceberg_state=state.iceberg_state,
     )
     live_dir = state.detector_dashboard_dir.parent / "live_analysis"
     recent = build_recent_signals(

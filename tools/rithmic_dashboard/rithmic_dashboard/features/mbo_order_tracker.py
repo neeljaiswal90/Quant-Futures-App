@@ -98,6 +98,28 @@ class ConsumedOrder:
     add_seq: int = 0
 
 
+@dataclass(slots=True, frozen=True)
+class _RemovalCandidate:
+    """Phase 4: a book removal (C/F/T of a tracked order), captured WITHOUT the
+    trade match. All fields are book-derived and frozen at removal time
+    (``at_queue_front`` reflects the priority-index state then). The trade match
+    — which depletes a shared index and so couples competing same-price
+    consumptions — is re-run each step over the in-window candidates against a
+    fresh index, reproducing the fresh path's per-step depletion byte-for-byte.
+    """
+
+    order_id: str
+    side: Literal["B", "A"]
+    price: float
+    max_qty: int  # max(order.size, event.size, 1) — both the match cap and visible_size
+    add_ts_ns: int
+    add_seq: int
+    consume_ts_ns: int
+    consume_seq: int
+    at_queue_front: bool
+    priority: str | None
+
+
 @dataclass(slots=True)
 class _TrackedOrder:
     order_id: str
@@ -211,6 +233,29 @@ class MboOrderTracker:
             self._evict_overflow()
         return tuple(consumed)
 
+    def consume_events_book(
+        self,
+        ordered_events: list[MboOrderEvent] | tuple[MboOrderEvent, ...],
+    ) -> list[_RemovalCandidate]:
+        """Phase 4: the BOOK half of :meth:`consume_events` — applies A/M/C book
+        ops + TTL/overflow eviction (identical to the fresh path) but returns
+        removal CANDIDATES instead of matched ConsumedOrders. The trade match is
+        deferred so it can be re-run each step against a fresh index (see
+        :class:`RollingConsumeState`). No trade index needed here."""
+        candidates: list[_RemovalCandidate] = []
+        for event in ordered_events:
+            self._evict_stale(event.timestamp_ns)
+            if event.action == "A":
+                self._add(event)
+            elif event.action == "M":
+                self._modify(event)
+            elif event.action in {"C", "F", "T"}:
+                candidate = self._remove_to_candidate(event)
+                if candidate is not None:
+                    candidates.append(candidate)
+            self._evict_overflow()
+        return candidates
+
     def evict_before(self, window_back_ts: int, window_back_seq: int = 0) -> None:
         """Phase 4: drop active orders whose ADD is before the window-back edge
         ``(window_back_ts, window_back_seq)`` in (ts, seq) order.
@@ -284,6 +329,17 @@ class MboOrderTracker:
         self._index_add(order)
 
     def _remove(self, event: MboOrderEvent, trade_index: _TradeIndex) -> ConsumedOrder | None:
+        """Fresh path: book removal + trade match inline (unchanged behavior)."""
+        candidate = self._remove_to_candidate(event)
+        if candidate is None:
+            return None
+        return self._match_candidate(candidate, trade_index)
+
+    def _remove_to_candidate(self, event: MboOrderEvent) -> _RemovalCandidate | None:
+        """Phase 4 book half of ``_remove``: pop the order, freeze the priority
+        channel + visible size, prune the index. NO trade match (that's the
+        coupled part, deferred to :meth:`_match_candidate`). Returns None when the
+        order isn't tracked (its ADD was never seen / already removed / evicted)."""
         order = self.active.pop(event.order_id, None)
         if order is None:
             return None
@@ -291,13 +347,32 @@ class MboOrderTracker:
         # queue-position-1 test sees this order still in place.
         at_queue_front = self._is_at_queue_front(order)
         self._index_remove(order)
-        expected_aggressor: Literal["buy", "sell"] = "sell" if order.side == "B" else "buy"
-        matched_qty = trade_index.consume_matching_volume(
+        return _RemovalCandidate(
+            order_id=order.order_id,
+            side=order.side,
             price=order.price,
-            timestamp_ns=event.timestamp_ns,
+            max_qty=max(order.size, event.size, 1),
+            add_ts_ns=order.add_ts_ns,
+            add_seq=order.add_seq,
+            consume_ts_ns=event.timestamp_ns,
+            consume_seq=event.sequence or 0,
+            at_queue_front=at_queue_front,
+            priority=order.priority,
+        )
+
+    def _match_candidate(
+        self, candidate: _RemovalCandidate, trade_index: _TradeIndex
+    ) -> ConsumedOrder | None:
+        """Phase 4 trade-match half of ``_remove``: depletes ``trade_index``, so it
+        MUST be invoked over candidates in (consume_ts, consume_seq) order to match
+        the fresh path. Numerics/source identical to the original inline logic."""
+        expected_aggressor: Literal["buy", "sell"] = "sell" if candidate.side == "B" else "buy"
+        matched_qty = trade_index.consume_matching_volume(
+            price=candidate.price,
+            timestamp_ns=candidate.consume_ts_ns,
             aggressor_side=expected_aggressor,
             tolerance_ns=self.match_tolerance_ns,
-            max_qty=max(order.size, event.size, 1),
+            max_qty=candidate.max_qty,
         )
         # Either-channel composition (RA-065): an OBS-trade match OR a
         # queue-position-1 delete (or both) confirms consumption. OBS-only stays
@@ -306,33 +381,32 @@ class MboOrderTracker:
         # and only ever fires when priority data is present, so the all-None path
         # is byte-exact. Priority is NEVER a necessary condition.
         obs_confirmed = matched_qty > 0
-        if not obs_confirmed and not at_queue_front:
+        if not obs_confirmed and not candidate.at_queue_front:
             return None
 
-        visible_size = max(order.size, event.size, 1)
         if obs_confirmed:
             # OBS-derived numerics are preserved exactly (RA-059 untouched). The
             # source tag is the only thing the priority channel adds here.
             consumed_qty = matched_qty
-            source = _SOURCE_OBS_PRIORITY if at_queue_front else _SOURCE_OBS
+            source = _SOURCE_OBS_PRIORITY if candidate.at_queue_front else _SOURCE_OBS
         else:
             # Queue-only confirmation: OBS gave nothing but this order was at the
             # front of its FIFO queue when it deleted → probable fill. Use the
             # known visible size as the consumed quantity.
-            consumed_qty = visible_size
+            consumed_qty = candidate.max_qty
             source = _SOURCE_PRIORITY
         return ConsumedOrder(
-            order_id=order.order_id,
-            side=order.side,
-            price=order.price,
-            visible_size=visible_size,
+            order_id=candidate.order_id,
+            side=candidate.side,
+            price=candidate.price,
+            visible_size=candidate.max_qty,
             consumed_qty=consumed_qty,
             aggressor_side=expected_aggressor,
-            add_ts_ns=order.add_ts_ns,
-            consume_ts_ns=event.timestamp_ns,
+            add_ts_ns=candidate.add_ts_ns,
+            consume_ts_ns=candidate.consume_ts_ns,
             confirmation_source=source,
-            priority=order.priority,
-            add_seq=order.add_seq,
+            priority=candidate.priority,
+            add_seq=candidate.add_seq,
         )
 
     def _evict_stale(self, now_ns: int) -> None:
@@ -446,39 +520,6 @@ class _TradeIndex:
             )
         for rows in self.by_price_side.values():
             rows.sort(key=lambda tick: tick.timestamp_ns)
-
-    def extend(self, trades: list[TradeTick] | tuple[TradeTick, ...]) -> None:
-        """Phase 4: append NEW trades to the persistent index. ``trades`` must be
-        in ts order (a suffix of the sorted trade tail), so each bucket stays
-        ts-sorted by appending — no re-sort. New trades carry full remaining
-        quantity; already-indexed trades keep their depletion state.
-        """
-        for trade in trades:
-            if trade.timestamp_ns is None or trade.aggressor_side not in {"buy", "sell"}:
-                continue
-            bucket = round(trade.price / self.tick_size)
-            self.by_price_side.setdefault((bucket, trade.aggressor_side), []).append(
-                _IndexedTrade(
-                    timestamp_ns=trade.timestamp_ns,
-                    quantity_remaining=max(0, trade.quantity),
-                )
-            )
-
-    def evict_before(self, cutoff_ts: int) -> None:
-        """Phase 4: drop trades older than ``cutoff_ts`` (the trade-window back).
-        Buckets are ts-sorted, so this is a prefix trim. Keeps the persistent
-        index bounded to the current trade tail and matches the fresh path, which
-        only ever indexes the window's trades."""
-        for key in list(self.by_price_side.keys()):
-            rows = self.by_price_side[key]
-            i = 0
-            n = len(rows)
-            while i < n and rows[i].timestamp_ns < cutoff_ts:
-                i += 1
-            if i:
-                del rows[:i]
-            if not rows:
-                del self.by_price_side[key]
 
     def consume_matching_volume(
         self,
@@ -659,12 +700,14 @@ def _parse_priority(value: str | None) -> int | None:
 #
 # A fresh ``MboOrderTracker().process(window, trades)`` rebuilds the entire order
 # book from empty on EVERY replay step — O(steps x window), the dominant cost left
-# after the Phase 2 parse caches. ``RollingConsumeState`` keeps ONE book + ONE
-# depleting trade index across steps, feeds only newly-appended events, and evicts
-# orders/trades whose event scrolled out of the bounded tail. ``step()`` returns
-# the SAME consumed set as a fresh ``process()`` over that step's window. Proof +
-# the trade-depletion equivalence are gated by tests/test_incremental_tracker.py
-# and the replay golden gate. Design: docs/perf/replay-incremental-tracker-design.md.
+# after the Phase 2 parse caches. ``RollingConsumeState`` keeps ONE persistent book
+# across steps (feeding only new events, evicting orders whose ADD scrolled out of
+# the tail) but re-runs the trade match each step against a FRESH index — because
+# the index depletes a shared resource across competing same-price consumptions and
+# so does NOT decompose incrementally. ``step()`` returns the SAME consumed set as a
+# fresh ``process()`` over that step's window; equivalence (incl. the trade-depletion
+# case) is gated by tests/test_incremental_tracker.py and the replay golden gate.
+# Design: docs/perf/replay-incremental-tracker-design.md.
 
 
 def _new_suffix(
@@ -695,15 +738,23 @@ def _new_suffix(
 
 @dataclass(slots=True)
 class RollingConsumeState:
-    """Persistent state for incremental, byte-exact iceberg consumption."""
+    """Persistent state for incremental, byte-exact iceberg consumption.
+
+    The ORDER BOOK is incremental (only new events update it), but the TRADE
+    MATCH is re-run every step: the trade index depletes a shared resource across
+    competing same-price consumptions, which doesn't decompose incrementally (a
+    persistent depleting index can't 'un-deplete' when a consumption scrolls out
+    of the window, the way the fresh path's per-step rebuild does). So we keep the
+    book persistent (the expensive ~115s of add/remove/evict) and re-match the
+    in-window removal CANDIDATES against a FRESH index each step (the cheap ~18s).
+    This reproduces the fresh path's per-step depletion exactly. See
+    docs/perf/replay-incremental-tracker-design.md.
+    """
 
     tracker: MboOrderTracker
-    trade_index: _TradeIndex
-    rolling: list[ConsumedOrder] = field(default_factory=list)
+    candidates: list[_RemovalCandidate] = field(default_factory=list)
     last_mbo_ts: int | None = None
     n_mbo_at_last: int = 0
-    last_trade_ts: int | None = None
-    n_trade_at_last: int = 0
 
     def step(
         self,
@@ -717,46 +768,42 @@ class RollingConsumeState:
         ADD is still inside the MBO window — byte-identical to a fresh per-window
         ``process()`` over the same window.
         """
-        # Window-back edges. The MBO order book is keyed by the (ts, seq) of the
-        # oldest in-window event so adds that share a tail timestamp are split
-        # exactly as the fresh path's sorted window splits them. Trades have no
-        # sequence, so the trade index uses the ts edge (trades only ever match by
-        # price + time tolerance, never by tie-break).
+        # Window-back edge is (ts, seq) — the oldest in-window event — so adds
+        # sharing a tail timestamp split exactly as the fresh path's sorted window.
         mbo_back_ts = mbo_events[0].timestamp_ns if mbo_events else None
         mbo_back_seq = (mbo_events[0].sequence or 0) if mbo_events else 0
-        trade_back = trades[0].timestamp_ns if trades else None
 
         new_mbo, self.last_mbo_ts, self.n_mbo_at_last = _new_suffix(
             mbo_events, lambda e: e.timestamp_ns, self.last_mbo_ts, self.n_mbo_at_last
         )
-        new_trades, self.last_trade_ts, self.n_trade_at_last = _new_suffix(
-            trades, lambda t: t.timestamp_ns or 0, self.last_trade_ts, self.n_trade_at_last
-        )
 
-        # Replicate the fresh path's cold start: forget orders/trades whose event
-        # scrolled out of the bounded byte-window.
+        # Book: forget orders whose ADD scrolled out (cold-start parity), then
+        # apply only the new events. Removal candidates accumulate; drop those
+        # whose ADD left the window (their order wouldn't be in a fresh rebuild —
+        # and ADD<back implies CONSUME<back too, since consume follows add).
         if mbo_back_ts is not None:
             self.tracker.evict_before(mbo_back_ts, mbo_back_seq)
-        if trade_back is not None:
-            self.trade_index.evict_before(trade_back)
-        self.trade_index.extend(new_trades)
-
-        newly = self.tracker.consume_events(new_mbo, self.trade_index)
-        if newly:
-            self.rolling.extend(newly)
-        # A consumption is in the fresh window output iff its ADD is in-window,
-        # compared on the same (ts, seq) edge used for order eviction.
-        if mbo_back_ts is not None and self.rolling:
+        self.candidates.extend(self.tracker.consume_events_book(new_mbo))
+        if mbo_back_ts is not None and self.candidates:
             edge = (mbo_back_ts, mbo_back_seq)
-            self.rolling = [c for c in self.rolling if (c.add_ts_ns, c.add_seq) >= edge]
-        return tuple(self.rolling)
+            self.candidates = [c for c in self.candidates if (c.add_ts_ns, c.add_seq) >= edge]
+
+        # Trade match: FRESH index from this window's trades, candidates re-matched
+        # in (consume_ts, consume_seq) order = the fresh path's C/F/T processing
+        # order, so the shared-index depletion is reproduced byte-for-byte.
+        trade_index = _TradeIndex(list(trades), tick_size=self.tracker.tick_size)
+        out: list[ConsumedOrder] = []
+        for candidate in sorted(
+            self.candidates, key=lambda c: (c.consume_ts_ns, c.consume_seq)
+        ):
+            consumed = self.tracker._match_candidate(candidate, trade_index)
+            if consumed is not None:
+                out.append(consumed)
+        return tuple(out)
 
 
 def new_rolling_consume_state(
     *, match_tolerance_ms: int = DEFAULT_MATCH_TOLERANCE_MS
 ) -> RollingConsumeState:
     """Build empty Phase 4 incremental-consumption state (one per replay session)."""
-    return RollingConsumeState(
-        tracker=MboOrderTracker(match_tolerance_ms=match_tolerance_ms),
-        trade_index=_TradeIndex([], tick_size=TICK_SIZE),
-    )
+    return RollingConsumeState(tracker=MboOrderTracker(match_tolerance_ms=match_tolerance_ms))

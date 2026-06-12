@@ -17,8 +17,6 @@ paths return the same consumed set at EVERY step — covering both regimes:
 
 from __future__ import annotations
 
-import pytest
-
 from rithmic_dashboard.features.mbo_order_tracker import (
     MboOrderTracker,
     new_rolling_consume_state,
@@ -152,26 +150,11 @@ def test_incremental_equivalence_busy_regime() -> None:
     assert nonempty > 0
 
 
-@pytest.mark.xfail(
-    reason=(
-        "KNOWN LIMITATION (Phase 4): the pure-incremental RollingConsumeState is "
-        "byte-exact for the ORDER BOOK but not for TRADE-INDEX DEPLETION when "
-        "same-price consumptions compete for the same trade AND the window-back "
-        "slides between them. The fresh path rebuilds the trade index every step, "
-        "so it 'un-depletes' a trade when the depleting consumption scrolls out — "
-        "a re-computation that a persistent depleting index can't reproduce. The "
-        "byte-exact fix is the 'incremental book + re-match the coupled trade "
-        "matching each step' redesign in docs/perf/replay-incremental-tracker-design.md. "
-        "A tiny (6-event) window triggers this reliably; the 25/10000 windows above "
-        "happen not to align the boundary with a competing group, but that's luck, "
-        "NOT a guarantee — do not rely on the pure-incremental path until the "
-        "re-match redesign lands and this xfail is removed.",
-    ),
-    strict=True,
-)
 def test_incremental_equivalence_tiny_window() -> None:
-    """Extreme slide (window of a few events) — maximal window-back churn. Triggers
-    the trade-depletion-competition limitation; see xfail reason."""
+    """Extreme slide (window of a few events) — maximal window-back churn. This
+    triggers the trade-depletion-competition case (same-price consumptions sharing
+    a trade while the window-back slides between them) that the re-match design
+    handles by re-matching candidates against a fresh per-step index."""
     _assert_sliding_equivalence(w_mbo=6, w_trade=6)
 
 

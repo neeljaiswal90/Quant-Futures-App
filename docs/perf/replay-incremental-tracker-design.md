@@ -1,8 +1,14 @@
 # Replay incremental MBO tracker — Phase 4 design (byte-exact)
 
-**Status:** designed + de-risked, NOT implemented. Phase 2 (parse caches) shipped
-in `8fdc1c1` (515s→254s, -51%, byte-exact). This doc is the implementation spec
-for Phase 4, the remaining ~52% (`detect_icebergs` = 133s of the post-Phase-2 254s).
+**Status: DONE 2026-06-12.** Phase 2 (parse caches) shipped in `8fdc1c1`
+(515s→254s). Phase 4 (re-match redesign) now shipped + wired: `detect_icebergs`
+133s→59.6s, **overall 515s→217s (-58%)** on the 800-step gate, byte-IDENTICAL on
+BOTH the 800-step and 1600-step (window-slide) golden gates + the 4-regime
+equivalence test (incl. the tiny-window trade-depletion case). The pure-incremental
+attempt + its trade-depletion wall are recorded below as the rationale for the
+re-match design that shipped. Remaining hot path: `load_mbo_events_from_tail` ~40s
+(reader still re-reads/sorts the tail each step — a separate Phase 2.5) + the
+re-match ~60s (byte-exact floor — matching can't decompose incrementally).
 
 ## The bottleneck
 
