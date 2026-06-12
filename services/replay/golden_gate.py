@@ -43,7 +43,22 @@ DASHBOARD_ROOT = _REPO / "tools" / "rithmic_dashboard"
 CAPTURE_DATE = "2026-05-25"
 SESSION = "rth"
 STEP_LIMIT = 800  # bounded baseline: exercises detectors without a full-session run
+# A larger budget so the scratch MBO file exceeds DEFAULT_TAIL_BYTES (20MB) and
+# the bounded tail actually SLIDES — required to guard the incremental-tracker
+# rewrite (Phase 4), whose window-back behavior the 800-step baseline (12.9MB,
+# never slides) cannot exercise. NOTE: 2026-05-25 is a quiet session (20MB spans
+# ~620s >> the 120s order TTL), so even this only exercises reader/parse slide,
+# NOT window-back-binding eviction — that needs a busy-session fixture (see
+# docs/perf/replay-incremental-tracker-design.md).
+SLIDE_STEP_LIMIT = 1600
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden_gate_baseline.json"
+
+
+def _baseline_path(steps: int) -> Path:
+    here = Path(__file__).resolve().parent
+    if steps == STEP_LIMIT:
+        return here / "golden_gate_baseline.json"
+    return here / f"golden_gate_baseline_{steps}.json"
 
 
 def _sha256_file(path: Path) -> str:
@@ -54,7 +69,7 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def run_and_hash(work: Path) -> dict[str, str]:
+def run_and_hash(work: Path, *, steps: int = STEP_LIMIT) -> dict[str, str]:
     """Run the replay into a fresh scratch dir; return {relpath: sha256} for all outputs."""
     out_path = work / "signals.jsonl"
     setup_path = work / "setups.jsonl"
@@ -68,7 +83,7 @@ def run_and_hash(work: Path) -> dict[str, str]:
             out_path=out_path,
             setup_out_path=setup_path,
             scratch_dir=scratch,
-            limit_steps=STEP_LIMIT,
+            limit_steps=steps,
         )
     )
     hashes: dict[str, str] = {}
@@ -90,29 +105,36 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--capture", action="store_true", help="record the golden baseline")
     ap.add_argument("--check", action="store_true", help="assert current run matches golden")
+    ap.add_argument(
+        "--steps",
+        type=int,
+        default=STEP_LIMIT,
+        help=f"step budget (default {STEP_LIMIT}; {SLIDE_STEP_LIMIT} exercises tail-slide)",
+    )
     args = ap.parse_args()
     if not (args.capture or args.check):
         ap.error("pass --capture or --check")
 
+    baseline_path = _baseline_path(args.steps)
     import tempfile
 
     with tempfile.TemporaryDirectory(prefix="golden-gate-") as td:
-        hashes = run_and_hash(Path(td))
+        hashes = run_and_hash(Path(td), steps=args.steps)
 
-    print(f"hashed {len(hashes)} output files from {CAPTURE_DATE}/{SESSION} @ {STEP_LIMIT} steps")
+    print(f"hashed {len(hashes)} output files from {CAPTURE_DATE}/{SESSION} @ {args.steps} steps")
     for name, digest in sorted(hashes.items()):
         print(f"  {digest[:12]}  {name}")
 
     if args.capture:
-        GOLDEN_PATH.write_text(json.dumps(hashes, indent=2, sort_keys=True), encoding="utf-8")
-        print(f"\nbaseline written: {GOLDEN_PATH}")
+        baseline_path.write_text(json.dumps(hashes, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"\nbaseline written: {baseline_path}")
         return 0
 
     # --check
-    if not GOLDEN_PATH.exists():
-        print("\nNO BASELINE — run --capture first", file=sys.stderr)
+    if not baseline_path.exists():
+        print(f"\nNO BASELINE at {baseline_path} — run --capture --steps {args.steps} first", file=sys.stderr)
         return 2
-    golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
+    golden = json.loads(baseline_path.read_text(encoding="utf-8"))
     mismatches = []
     for name, digest in hashes.items():
         if golden.get(name) != digest:
