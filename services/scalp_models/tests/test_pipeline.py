@@ -37,7 +37,10 @@ def test_schema_seam_smoke_rejects_all_missing_join(tmp_path: Path) -> None:
     setups = tmp_path / "setups.jsonl"
     labels = tmp_path / "labels.jsonl"
     setups.write_text(_jsonl([_setup_row()]), encoding="utf-8")
-    labels.write_text(_jsonl([_label_row(ts_ns=2000)]), encoding="utf-8")
+    # Label ts must land in a *different* 1-second join bucket than the setup
+    # (_bucket_ts_ns rounds to 1e9 ns); 1000 vs 2000 ns share bucket 0 and would
+    # spuriously join. 2e9 ns is a genuinely disjoint bucket so the seam guard fires.
+    labels.write_text(_jsonl([_label_row(ts_ns=2_000_000_000)]), encoding="utf-8")
 
     with pytest.raises(PipelineError, match="all missing_label"):
         validate_schema_seam(setups, labels)

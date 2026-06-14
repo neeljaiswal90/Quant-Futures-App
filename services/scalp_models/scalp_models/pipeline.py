@@ -105,11 +105,99 @@ class PipelineResult:
     sessions: tuple[SessionPipelineResult, ...]
 
 
+_MAX_SESSION_HOURS = 26.0  # globex+RTH day ~23h; longer => a multi-day capture blob
+
+
+def _session_obs01(session: PipelineSession, analytics_root: Path) -> Path:
+    return (analytics_root / "data" / "captures" / session.capture_date
+            / f"MNQ_{session.session}.obs01.jsonl")
+
+
+def _content_key(obs01: Path) -> str:
+    """size + sha256 of first+last 1 MB — byte-identical multi-GB blobs collide here."""
+    import hashlib
+
+    size = obs01.stat().st_size
+    h = hashlib.sha256()
+    h.update(str(size).encode())
+    with obs01.open("rb") as f:
+        h.update(f.read(1 << 20))
+        if size > (2 << 20):
+            f.seek(size - (1 << 20))
+            h.update(f.read())
+    return f"{size}:{h.hexdigest()[:16]}"
+
+
+def _span_hours(obs01: Path) -> float | None:
+    def _ts(line: bytes) -> int | None:
+        try:
+            d = json.loads(line)
+        except Exception:
+            return None
+        t = d.get("ts_ns") or (d.get("payload") or {}).get("exchange_event_ts_ns")
+        try:
+            return int(t)
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        size = obs01.stat().st_size
+        with obs01.open("rb") as f:
+            first = f.readline()
+            f.seek(max(0, size - 65536))
+            tail = f.read().splitlines()
+        last = tail[-1] if tail else b""
+        ft, lt = _ts(first), _ts(last)
+        return (lt - ft) / 3.6e12 if (ft and lt) else None
+    except OSError:
+        return None
+
+
+def _filter_clean_sessions(
+    sessions: tuple[PipelineSession, ...], analytics_root: Path
+) -> tuple[list[PipelineSession], list[tuple[PipelineSession, str]]]:
+    """Drop byte-identical duplicate session dirs + multi-day blobs so a
+    --date-range glob can't double-count or train a 3-day cutover blob as one
+    session. Content-based (size->hash) + span-based, NOT junction-based: the
+    6/03 and 6/07 cutover artifacts are real duplicate copies (LinkType=none),
+    so a reparse-point check would miss them. Sessions whose obs01 is absent are
+    kept (the replay surfaces the missing-capture error)."""
+    clean: list[PipelineSession] = []
+    dropped: list[tuple[PipelineSession, str]] = []
+    seen: dict[str, str] = {}
+    for s in sessions:
+        obs = _session_obs01(s, analytics_root)
+        if not obs.exists():
+            clean.append(s)
+            continue
+        label = f"{s.capture_date}_{s.session}"
+        key = _content_key(obs)
+        if key in seen:
+            dropped.append((s, f"duplicate of {seen[key]}"))
+            continue
+        seen[key] = label
+        span = _span_hours(obs)
+        if span is not None and span > _MAX_SESSION_HOURS:
+            dropped.append((s, f"multi-day blob ({span:.0f}h)"))
+            continue
+        clean.append(s)
+    return clean, dropped
+
+
 def run_pipeline(config: PipelineConfig) -> PipelineResult:
     """Run replay, forward-return labeling, and RA-093 training in one command."""
 
     if not config.sessions:
         raise PipelineError("at least one capture date/session pair is required")
+
+    # Integrity guard (defensive): drop byte-identical duplicate session dirs and
+    # multi-day blobs so a --date-range glob can't double-count or train a 3-day
+    # cutover blob as one session. No-op when the requested sessions are clean.
+    sessions, dropped = _filter_clean_sessions(config.sessions, config.analytics_root)
+    for s, reason in dropped:
+        print(f"[integrity] dropping {s.capture_date}_{s.session}: {reason}", flush=True)
+    if not sessions:
+        raise PipelineError("all requested sessions were dropped as duplicates/blobs")
 
     run_id = config.run_id or _derive_run_id(config)
     run_dir = config.out_root / run_id
@@ -124,10 +212,10 @@ def run_pipeline(config: PipelineConfig) -> PipelineResult:
     # `capture-rithmic-probe` (literally, as the regex it's about to run),
     # so a concurrent worker spots it and false-positives. Running the
     # guard in the parent before fan-out is the only correct ordering.
-    for session in config.sessions:
+    for session in sessions:
         _assert_capture_not_active(session, config)
 
-    worker_count = max(1, min(config.parallel_sessions, len(config.sessions)))
+    worker_count = max(1, min(config.parallel_sessions, len(sessions)))
     if worker_count > 1:
         from multiprocessing import get_context
 
@@ -138,12 +226,12 @@ def run_pipeline(config: PipelineConfig) -> PipelineResult:
             session_results = list(
                 pool.starmap(
                     _run_session,
-                    [(config, run_dir, session) for session in config.sessions],
+                    [(config, run_dir, session) for session in sessions],
                 )
             )
     else:
         session_results = []
-        for session in config.sessions:
+        for session in sessions:
             session_results.append(_run_session(config, run_dir, session))
 
     merged_setups = run_dir / "merged_setups.jsonl"
