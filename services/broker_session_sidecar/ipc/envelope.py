@@ -42,7 +42,7 @@ def make_event(event_type: str, **fields: Any) -> dict[str, Any]:
         "adapter_version": __version__,
         "payload": payload,
         "sidecar": SIDECAR_NAME,
-        "ts_ns": int(event_ts_ns),
+        "ts_ns": str(event_ts_ns),
     }
 
 
