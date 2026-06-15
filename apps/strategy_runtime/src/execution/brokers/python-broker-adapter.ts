@@ -704,6 +704,17 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     }
     const side = normalizeOrderSide(stringRecordField(intent.payload, 'side') ?? stringRecordField(intent.payload, 'transaction_type'));
     const quantity = numberRecordField(intent.payload, 'quantity') ?? numberRecordField(intent.payload, 'qty') ?? 0;
+    if (quantity > 0 && !orderPlantAccountActiveConfirmed(this.env)) {
+      return {
+        ok: false,
+        code: 'order_plant_account_active_not_confirmed',
+        message: 'positive-quantity ORDER_PLANT submits require QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED=true',
+        details: {
+          account_id_redacted: redactAccountId(accountId),
+          qfa_order_plant_account_active_confirmed: false,
+        },
+      };
+    }
     if (side !== undefined && quantity > 0) {
       const projected = this.accountNetPosition(accountId) + (side === 'sell' ? -quantity : quantity);
       if (Math.abs(projected) > allowlistEntry.max_position_contracts) {
@@ -849,6 +860,10 @@ function normalizeOrderSide(value: string | undefined): 'buy' | 'sell' | undefin
     return 'sell';
   }
   return undefined;
+}
+
+function orderPlantAccountActiveConfirmed(env: NodeJS.ProcessEnv): boolean {
+  return env.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED?.trim().toLowerCase() === 'true';
 }
 
 function isMnqRth(nowNs: UnixNs): boolean {

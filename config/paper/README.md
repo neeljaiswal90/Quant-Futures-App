@@ -40,14 +40,16 @@ Environment variables:
   (`false`); the accepted value is case-insensitive `true` after trimming
   whitespace; every other value is blocked. This does not create broker/live
   authority and does not bypass the account allowlist or flat-at-start checks.
-- `RITHMIC_LUCID_USER` / `RITHMIC_USER`: required only when
-  `QFA_BROKER_ADAPTER_KIND=rithmic`.
-- `RITHMIC_LUCID_PASSWORD` / `RITHMIC_PASSWORD`: required only when
-  `QFA_BROKER_ADAPTER_KIND=rithmic`.
-- `RITHMIC_LUCID_GATEWAY` / `RITHMIC_CONNECT_POINT`: required only when
-  `QFA_BROKER_ADAPTER_KIND=rithmic`.
-- `RITHMIC_LUCID_SYSTEM_NAME` / `RITHMIC_SYSTEM_NAME`: required only when
-  `QFA_BROKER_ADAPTER_KIND=rithmic`.
+- `RITHMIC_TEST_USERNAME` or `RITHMIC_TEST_USER`: required only when
+  `QFA_BROKER_ADAPTER_KIND=rithmic`; scoped to ORDER_PLANT order placement.
+- `RITHMIC_TEST_PASSWORD`: required only when
+  `QFA_BROKER_ADAPTER_KIND=rithmic`; scoped to ORDER_PLANT order placement.
+- `RITHMIC_TEST_GATEWAY_URL` or `RITHMIC_TEST_WS_URL`: required only when
+  `QFA_BROKER_ADAPTER_KIND=rithmic`; scoped to ORDER_PLANT order placement.
+  Do not rely on `RITHMIC_CONNECT_POINT` for this path; capture credentials are
+  intentionally not used as broker order-placement fallback.
+- `RITHMIC_TEST_SYSTEM_NAME` or `RITHMIC_TEST_SYSTEM`: required only when
+  `QFA_BROKER_ADAPTER_KIND=rithmic`; scoped to ORDER_PLANT order placement.
 - `RITHMIC_USER`: required only when
   `QFA_PAPER_MARKET_DATA_SOURCE=live_rithmic_ticker_plant`; scoped to
   TICKER_PLANT market-data access.

@@ -61,6 +61,8 @@ export type BrokerSessionEvent =
 export interface BrokerCancelRequest {
   readonly intent_id: EventId;
   readonly submission_ack_id: EventId;
+  readonly broker_order_id?: string;
+  readonly account_id?: string;
 }
 
 export interface BrokerAdapter {
