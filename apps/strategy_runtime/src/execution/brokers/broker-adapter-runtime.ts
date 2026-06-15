@@ -313,6 +313,20 @@ export class BrokerAdapterRuntimeIntegration {
   ): void {
     this.sessionEventSequence += 1;
     const emittedTsNs = this.captureLocalTimestamp();
+    const payload: JournalEventPayloadFor<'VALIDATOR_ISSUE'> = {
+      validator_id: 'EXEC-VALIDATOR-09',
+      severity: 'fatal',
+      emitted_ts_ns: emittedTsNs,
+      code: 'broker_cancel_missing_submission_lineage',
+      message: 'cancel request requires remembered broker_order_id and broker_account_id before adapter cancel',
+      session_family_id: this.sessionId,
+      details: {
+        intent_id: String(request.intent_id),
+        submission_ack_id: String(request.submission_ack_id),
+        ...details,
+      },
+    };
+
     this.eventSink(
       createJournalEventEnvelope({
         event_id: makeEventId(`broker-cancel-validator-issue-${this.sessionEventSequence}`),
@@ -321,19 +335,7 @@ export class BrokerAdapterRuntimeIntegration {
         run_id: this.runId,
         session_id: this.sessionId,
         causation_id: makeCausationId(request.intent_id),
-        payload: {
-          validator_id: 'EXEC-VALIDATOR-09',
-          severity: 'fatal',
-          emitted_ts_ns: emittedTsNs,
-          code: 'broker_cancel_missing_submission_lineage',
-          message: 'cancel request requires remembered broker_order_id and broker_account_id before adapter cancel',
-          session_family_id: this.sessionId,
-          details: {
-            intent_id: String(request.intent_id),
-            submission_ack_id: String(request.submission_ack_id),
-            ...details,
-          },
-        },
+        payload,
       }),
     );
   }
