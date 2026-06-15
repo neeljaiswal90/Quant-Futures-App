@@ -14,10 +14,9 @@ import {
   makeSizingDecisionId,
   ns,
   type AnyJournalEventEnvelope,
-  type OrderIntentEventEnvelope,
   type UnixNs,
 } from '../../apps/strategy_runtime/src/contracts/index.js';
-import type { BrokerAckEnvelope } from '../../apps/strategy_runtime/src/execution/brokers/broker-adapter.js';
+import type { BrokerAckEnvelope, OrderIntentEventEnvelope } from '../../apps/strategy_runtime/src/execution/brokers/broker-adapter.js';
 import { PaperTradingSession } from '../../apps/strategy_runtime/src/paper-trading/index.js';
 
 const TICKET = 'QFA-612-PAPER-RUNTIME-RITHMIC-ORDER-INTENT-SMOKE-01';
@@ -310,7 +309,7 @@ function makeQuoteCauseEvent(price: PriceContext): AnyJournalEventEnvelope {
       bid_qty: 1,
       ask_px: price.ask_px,
       ask_qty: 1,
-      authority: 'authoritative',
+      authority: 'authoritative' as const,
     },
   });
 }
@@ -349,11 +348,11 @@ function makeIntent(accountId: string, limitPrice: number): OrderIntentEventEnve
       account_id: accountId,
       instrument_symbol: 'MNQM6',
       exchange: 'CME',
-      side: 'buy',
-      order_type: 'limit',
+      side: 'buy' as const,
+      order_type: 'limit' as const,
       quantity: 1,
       limit_price: limitPrice,
-      time_in_force: 'day',
+      time_in_force: 'day' as const,
     },
   });
 }
@@ -712,7 +711,7 @@ function writeBlockedAccountDiscoveryReport(envResolution: EnvResolution, price:
     request: {
       symbol: 'MNQM6',
       exchange: 'CME',
-      side: 'BUY',
+      side: 'buy' as const,
       quantity: 1,
       price_type: 'LIMIT',
       limit_basis: `BUY_LIMIT_${NON_MARKETABLE_OFFSET_TICKS}_TICKS_BELOW_LOCAL_BID`,

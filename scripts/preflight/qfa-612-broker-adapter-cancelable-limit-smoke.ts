@@ -14,10 +14,9 @@ import {
   makeSizingDecisionId,
   ns,
   type AnyJournalEventEnvelope,
-  type OrderIntentEventEnvelope,
   type UnixNs,
 } from '../../apps/strategy_runtime/src/contracts/index.js';
-import type { BrokerAckEnvelope } from '../../apps/strategy_runtime/src/execution/brokers/broker-adapter.js';
+import type { BrokerAckEnvelope, OrderIntentEventEnvelope } from '../../apps/strategy_runtime/src/execution/brokers/broker-adapter.js';
 import { BrokerAdapterRuntimeIntegration } from '../../apps/strategy_runtime/src/execution/brokers/broker-adapter-runtime.js';
 import { PythonBrokerAdapter } from '../../apps/strategy_runtime/src/execution/brokers/python-broker-adapter.js';
 import { SubmissionGate } from '../../apps/strategy_runtime/src/execution/order-lifecycle-state-machine.js';
@@ -306,11 +305,11 @@ function makeIntent(accountId: string, limitPrice: number): OrderIntentEventEnve
       account_id: accountId,
       instrument_symbol: 'MNQM6',
       exchange: 'CME',
-      side: 'buy',
-      order_type: 'limit',
+      side: 'buy' as const,
+      order_type: 'limit' as const,
       quantity: 1,
       limit_price: limitPrice,
-      time_in_force: 'day',
+      time_in_force: 'day' as const,
     },
   });
 }
@@ -384,7 +383,7 @@ async function main(): Promise<void> {
   });
 
   const intent = makeIntent(selected.account_id, price.limit_price);
-  let submitResult: { readonly accepted: boolean; readonly broker_intent_correlation_id: string } | undefined;
+  let submitResult: { readonly accepted: boolean; readonly broker_intent_correlation_id?: string } | undefined;
   let cancelResult: { readonly accepted: boolean } | undefined;
   let submitError: string | undefined;
   let cancel_path = 'not_attempted';
@@ -644,7 +643,7 @@ function writeBlockedAccountDiscoveryReport(envResolution: EnvResolution, price:
     request: {
       symbol: 'MNQM6',
       exchange: 'CME',
-      side: 'BUY',
+      side: 'buy' as const,
       quantity: 1,
       price_type: 'LIMIT',
       limit_basis: `BUY_LIMIT_${NON_MARKETABLE_OFFSET_TICKS}_TICKS_BELOW_LOCAL_BID`,
