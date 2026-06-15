@@ -26,6 +26,7 @@ import {
   DEFAULT_BROKER_RECONNECT_POLICY_CONFIG,
   type BrokerAckEnvelope,
   type BrokerAdapter,
+  type BrokerReconnectState,
   type BrokerSessionEvent,
   type OrderIntentEventEnvelope,
   type PlantScope,
@@ -251,6 +252,110 @@ describe('BrokerAdapterRuntimeIntegration', () => {
             has_broker_account_id: true,
           },
         },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not submit a duplicate order when the same ORDER_INTENT is redispatched', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new CapturingCancelableAdapter();
+      const events: AnyJournalEventEnvelope[] = [];
+      const runtime = runtimeFor(adapter, events);
+
+      await runtime.start();
+      const intent = orderIntent('intent-idempotent-redispatch');
+      const first = await runtime.handleOrderIntent(intent);
+      await vi.advanceTimersByTimeAsync(0);
+      const second = await runtime.handleOrderIntent(intent);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(first).toMatchObject({ accepted: true });
+      expect(second).toEqual(first);
+      expect(adapter.submitted_intent_count).toBe(1);
+      expect(events.filter((event) => event.type === 'ORDER_ACK_SUBMISSION')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('blocks submission on conflicting duplicate submission ACK lineage', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new CapturingCancelableAdapter();
+      const gate = new SubmissionGate();
+      const events: AnyJournalEventEnvelope[] = [];
+      const runtime = runtimeFor(adapter, events, { submission_gate: gate });
+
+      await runtime.start();
+      const intent = orderIntent('intent-conflicting-submission-lineage');
+      await runtime.handleOrderIntent(intent);
+      await vi.advanceTimersByTimeAsync(0);
+
+      adapter.emitSubmissionAck(intent, {
+        broker_order_id: 'BROKER-CONFLICT',
+        broker_account_id: 'TEST_ACCT_001',
+      });
+
+      expect(events.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+        payload: {
+          validator_id: 'EXEC-VALIDATOR-09',
+          code: 'broker_duplicate_submission_ack_lineage_conflict',
+          severity: 'fatal',
+        },
+      });
+      expect(gate.acquire()).toMatchObject({
+        allowed: false,
+        reason: 'broker_reconciliation_in_progress_active',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses broker reconciliation gate during reconnect and releases when no active broker order remains', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new CapturingCancelableAdapter();
+      const gate = new SubmissionGate();
+      const events: AnyJournalEventEnvelope[] = [];
+      const runtime = runtimeFor(adapter, events, { submission_gate: gate });
+
+      await runtime.start();
+      adapter.emitReconnectState('RECONNECTING');
+      expect(gate.acquire()).toMatchObject({
+        allowed: false,
+        reason: 'broker_reconciliation_in_progress_active',
+      });
+
+      adapter.emitReconnectState('CONNECTED');
+      expect(gate.acquire()).toEqual({ allowed: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps broker reconciliation gate active after reconnect when an order is unresolved', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new CapturingCancelableAdapter();
+      const gate = new SubmissionGate();
+      const events: AnyJournalEventEnvelope[] = [];
+      const runtime = runtimeFor(adapter, events, { submission_gate: gate });
+
+      await runtime.start();
+      const intent = orderIntent('intent-reconnect-active-order');
+      await runtime.handleOrderIntent(intent);
+      await vi.advanceTimersByTimeAsync(0);
+
+      adapter.emitReconnectState('RECONNECTING');
+      adapter.emitReconnectState('CONNECTED');
+
+      expect(gate.acquire()).toMatchObject({
+        allowed: false,
+        reason: 'broker_reconciliation_in_progress_active',
       });
     } finally {
       vi.useRealTimers();
@@ -484,6 +589,7 @@ class CapturingCancelableAdapter implements BrokerAdapter {
   private readonly sessionHandlers = new Set<(event: BrokerSessionEvent) => void>();
   private readonly ackHandlers = new Set<(event: BrokerAckEnvelope) => void>();
   private readonly omitBrokerOrderId: boolean;
+  submitted_intent_count = 0;
   cancel_request?: {
     readonly intent_id: EventId;
     readonly submission_ack_id: EventId;
@@ -519,19 +625,49 @@ class CapturingCancelableAdapter implements BrokerAdapter {
   async submitIntent(
     intent: OrderIntentEventEnvelope,
   ): Promise<{ readonly accepted: boolean; readonly broker_intent_correlation_id: string }> {
+    this.submitted_intent_count += 1;
+    this.emitSubmissionAck(intent, {
+      broker_order_id: 'BROKER-CANCEL-1',
+      broker_account_id: 'TEST_ACCT_001',
+    });
+    return { accepted: true, broker_intent_correlation_id: 'capturing-correlation' };
+  }
+
+  emitSubmissionAck(
+    intent: OrderIntentEventEnvelope,
+    lineage: {
+      readonly broker_order_id: string;
+      readonly broker_account_id: string;
+    },
+  ): void {
     this.ackHandlers.forEach((handler) => handler({
       type: 'ORDER_ACK_SUBMISSION',
       ts_ns: BASE_TS_NS,
       payload: {
         intent_id: intent.event_id,
         submission_ack_id: makeEventId(`submission-${intent.event_id}`),
-        ...(this.omitBrokerOrderId ? {} : { broker_order_id: 'BROKER-CANCEL-1' }),
-        broker_account_id: 'TEST_ACCT_001',
+        ...(this.omitBrokerOrderId ? {} : { broker_order_id: lineage.broker_order_id }),
+        broker_account_id: lineage.broker_account_id,
         instrument_symbol: 'MNQM6',
       } as JournalEventPayloadFor<'ORDER_ACK_SUBMISSION'>,
       broker_intent_correlation_id: 'capturing-correlation',
     }));
-    return { accepted: true, broker_intent_correlation_id: 'capturing-correlation' };
+  }
+
+  emitReconnectState(state: BrokerReconnectState): void {
+    this.sessionHandlers.forEach((handler) => handler({
+      type: 'RECONNECT_STATE',
+      ts_ns: BASE_TS_NS,
+      payload: {
+        previous_state: state === 'CONNECTED' ? 'RECONNECTING' : 'CONNECTED',
+        state,
+        phase: state === 'CONNECTED' ? 'success' : 'attempt',
+        max_attempts: 3,
+        retry_budget_config: DEFAULT_BROKER_RECONNECT_POLICY_CONFIG,
+        terminal: state === 'FAILED',
+        blocked_submission_gate: state !== 'CONNECTED',
+      },
+    }));
   }
 
   async requestCancel(request: {

@@ -123,6 +123,7 @@ export class BrokerAdapterRuntimeIntegration {
   private readonly correlationIdByIntentEventId = new Map<string, string>();
   private readonly brokerOrderIdByIntentEventId = new Map<string, string>();
   private readonly accountIdByIntentEventId = new Map<string, string>();
+  private readonly activeBrokerIntentEventIds = new Set<string>();
   private readonly ackTimeoutTimersByIntentEventId = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly unsubscribers: (() => void)[] = [];
   private lifecycleEventSequence = 0;
@@ -176,6 +177,22 @@ export class BrokerAdapterRuntimeIntegration {
   ): Promise<BrokerAdapterRuntimeDispatchResult> {
     if (intent.type !== 'ORDER_INTENT') {
       throw new Error(`Broker adapter runtime can only dispatch ORDER_INTENT events, received ${intent.type}`);
+    }
+
+    const intentKey = String(intent.event_id);
+    const existingCorrelationId = this.correlationIdByIntentEventId.get(intentKey);
+    if (existingCorrelationId !== undefined) {
+      return {
+        accepted: true,
+        broker_intent_correlation_id: existingCorrelationId,
+      };
+    }
+    if (this.intentsByEventId.has(intentKey)) {
+      return {
+        accepted: false,
+        reason: 'adapter_rejected',
+        detail: 'duplicate_order_intent_dispatch_in_progress',
+      };
     }
 
     this.ackLatencyObserver?.observe(intent);
@@ -233,19 +250,20 @@ export class BrokerAdapterRuntimeIntegration {
       };
     }
 
-    this.intentsByEventId.set(String(intent.event_id), intent);
+    this.intentsByEventId.set(intentKey, intent);
     this.orderLifecycle?.createPendingIntent({ intent_id: intent.event_id });
 
     const submitResult = await this.adapter.submitIntent(intent);
     if (!submitResult.accepted) {
-      this.intentsByEventId.delete(String(intent.event_id));
+      this.intentsByEventId.delete(intentKey);
       return { accepted: false, reason: 'adapter_rejected' };
     }
 
     this.correlationIdByIntentEventId.set(
-      String(intent.event_id),
+      intentKey,
       submitResult.broker_intent_correlation_id,
     );
+    this.activeBrokerIntentEventIds.add(intentKey);
     this.orderLifecycle?.markSubmitted(intent.event_id);
     this.schedulePendingAckTimeout(intent.event_id);
 
@@ -286,22 +304,46 @@ export class BrokerAdapterRuntimeIntegration {
   }
 
   private handleAckEvent(event: BrokerAckEnvelope): void {
-    this.rememberSubmissionAck(event);
+    const lineageAccepted = this.rememberSubmissionAck(event);
+    if (!lineageAccepted) {
+      this.eventSink(this.toBrokerJournalEnvelope(event));
+      return;
+    }
     this.clearAckTimeoutForTerminalEvent(event);
     this.applyLifecycleAck(event);
+    this.applyTerminalAckState(event);
 
     const envelope = this.toBrokerJournalEnvelope(event);
     this.eventSink(envelope);
     this.ackLatencyObserver?.observe(envelope);
   }
 
-  private rememberSubmissionAck(event: BrokerAckEnvelope): void {
+  private rememberSubmissionAck(event: BrokerAckEnvelope): boolean {
     if (event.type !== 'ORDER_ACK_SUBMISSION') {
-      return;
+      return true;
     }
     const intentKey = String(event.payload.intent_id);
+    const existingBrokerOrderId = this.brokerOrderIdByIntentEventId.get(intentKey);
+    const existingAccountId = this.accountIdByIntentEventId.get(intentKey);
+    const brokerOrderConflict =
+      existingBrokerOrderId !== undefined &&
+      existingBrokerOrderId !== event.payload.broker_order_id;
+    const accountConflict =
+      existingAccountId !== undefined &&
+      existingAccountId !== event.payload.broker_account_id;
+    if (brokerOrderConflict || accountConflict) {
+      this.emitDuplicateSubmissionAckLineageValidatorIssue(event, {
+        existing_broker_order_id: existingBrokerOrderId,
+        incoming_broker_order_id: event.payload.broker_order_id,
+        existing_broker_account_id: existingAccountId,
+        incoming_broker_account_id: event.payload.broker_account_id,
+      });
+      this.submissionGate.requestBlock('broker_reconciliation_in_progress');
+      return false;
+    }
     this.brokerOrderIdByIntentEventId.set(intentKey, event.payload.broker_order_id);
     this.accountIdByIntentEventId.set(intentKey, event.payload.broker_account_id);
+    return true;
   }
 
   private emitCancelLineageValidatorIssue(
@@ -340,6 +382,44 @@ export class BrokerAdapterRuntimeIntegration {
     );
   }
 
+  private emitDuplicateSubmissionAckLineageValidatorIssue(
+    event: Extract<BrokerAckEnvelope, { readonly type: 'ORDER_ACK_SUBMISSION' }>,
+    details: {
+      readonly existing_broker_order_id?: string;
+      readonly incoming_broker_order_id: string;
+      readonly existing_broker_account_id?: string;
+      readonly incoming_broker_account_id: string;
+    },
+  ): void {
+    this.sessionEventSequence += 1;
+    const emittedTsNs = this.captureLocalTimestamp();
+    const payload: JournalEventPayloadFor<'VALIDATOR_ISSUE'> = {
+      validator_id: 'EXEC-VALIDATOR-09',
+      severity: 'fatal',
+      emitted_ts_ns: emittedTsNs,
+      code: 'broker_duplicate_submission_ack_lineage_conflict',
+      message: 'duplicate ORDER_ACK_SUBMISSION for intent has conflicting broker lineage',
+      session_family_id: this.sessionId,
+      details: {
+        intent_id: String(event.payload.intent_id),
+        submission_ack_id: String(event.payload.submission_ack_id),
+        ...details,
+      },
+    };
+
+    this.eventSink(
+      createJournalEventEnvelope({
+        event_id: makeEventId(`broker-duplicate-submission-ack-validator-issue-${this.sessionEventSequence}`),
+        type: 'VALIDATOR_ISSUE',
+        ts_ns: emittedTsNs,
+        run_id: this.runId,
+        session_id: this.sessionId,
+        causation_id: makeCausationId(event.payload.intent_id),
+        payload,
+      }),
+    );
+  }
+
   private handleSessionEvent(event: BrokerSessionEvent): void {
     if (event.type === 'SESSION_MANIFEST') {
       this.eventSink(
@@ -357,6 +437,7 @@ export class BrokerAdapterRuntimeIntegration {
 
     if (event.type === 'RECONNECT_STATE') {
       const payload = normalizeReconnectStatePayload(event);
+      this.updateReconciliationGateForReconnectState(payload);
       this.sessionEventSequence += 1;
       this.eventSink(
         createJournalEventEnvelope({
@@ -383,6 +464,20 @@ export class BrokerAdapterRuntimeIntegration {
         }),
       );
     }
+  }
+
+  private updateReconciliationGateForReconnectState(
+    payload: JournalEventPayloadFor<'RECONNECT_STATE'>,
+  ): void {
+    if (payload.state === 'CONNECTED') {
+      if (this.activeBrokerIntentEventIds.size === 0) {
+        this.submissionGate.releaseBlock('broker_reconciliation_in_progress');
+      } else {
+        this.submissionGate.requestBlock('broker_reconciliation_in_progress');
+      }
+      return;
+    }
+    this.submissionGate.requestBlock('broker_reconciliation_in_progress');
   }
 
   private toBrokerJournalEnvelope(
@@ -526,6 +621,24 @@ export class BrokerAdapterRuntimeIntegration {
         return;
       case 'ORDER_BROKER_REJECT':
         this.orderLifecycle.brokerReject(event.payload);
+        return;
+      default:
+        assertNeverAckEvent(event);
+    }
+  }
+
+  private applyTerminalAckState(event: BrokerAckEnvelope): void {
+    switch (event.type) {
+      case 'ORDER_ACK_SUBMISSION':
+        return;
+      case 'ORDER_ACK_FILL':
+        if (event.payload.fill_kind === 'FULL') {
+          this.activeBrokerIntentEventIds.delete(String(event.payload.intent_id));
+        }
+        return;
+      case 'ORDER_ACK_CANCEL':
+      case 'ORDER_BROKER_REJECT':
+        this.activeBrokerIntentEventIds.delete(String(event.payload.intent_id));
         return;
       default:
         assertNeverAckEvent(event);
