@@ -412,6 +412,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
         return;
       case 'heartbeat_pong':
       case 'recovered':
+      case 'qfa_broker_sidecar_ipc_ms':
       case 'cancel_pending':
       case 'position_snapshot':
       case 'reconciliation_snapshot':
