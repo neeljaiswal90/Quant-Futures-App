@@ -1,0 +1,42 @@
+session:
+  strategy_id: regime_shock_reversion_short_v2_utc_16_18_exclusion
+  mode: paper
+  adapter_kind: rithmic
+  app_config_path: config/app.example.json
+  journal_dir: journals/paper/qfa-612-rth-2026-06-15-paper-trading
+
+execution:
+  plant_scope: ORDER_PLANT
+  capability_mask_id: execution-capability-mask-v1-adr0018-paper-only-order-plant
+  capability_mask_version: 1
+  reconnect_policy:
+    max_attempts: 3
+    initial_delay_ms: 250
+    max_delay_ms: 2000
+    retry_budget_ms: 10000
+    jitter: seeded
+  live_account_allowlist: []
+  live_account_verification_enabled: true
+  operator_confirmed_account_flat_at_session_start: false
+  shutdown_quarantine_timeout_ms: 30000
+
+observability:
+  market_data_source: live_rithmic_ticker_plant
+  local_obs_replay_path: null
+  local_obs_replay_pace_mode: realtime
+  metrics:
+    enabled: true
+    host: 127.0.0.1
+    port: 9469
+  slo_budgets_source: qfa-627-provisional-registry
+  slo_budget_overrides: {}
+
+paper_start:
+  ticket: QFA-612-PAPER-TRADING-START-RTH-2026-06-15-IMPL-01
+  trading_date: 2026-06-15
+  order_credential_prefix: RITHMIC_TEST
+  market_data_credential_prefix: RITHMIC
+  production_account_authorized: false
+  live_broker_authority_created: false
+  phase_6_authority_created: false
+  roster_mutation_authorized: false
