@@ -164,6 +164,99 @@ describe('BrokerAdapterRuntimeIntegration', () => {
     }
   });
 
+  it('passes broker_order_id and account_id from submission ACK into cancel requests', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new CapturingCancelableAdapter();
+      const events: AnyJournalEventEnvelope[] = [];
+      const runtime = runtimeFor(adapter, events);
+
+      await runtime.start();
+      const intent = orderIntent('intent-broker-order-cancel');
+      await runtime.handleOrderIntent(intent);
+      await vi.advanceTimersByTimeAsync(0);
+      const submission = events.find((event) => event.type === 'ORDER_ACK_SUBMISSION')!
+        .payload as JournalEventPayloadFor<'ORDER_ACK_SUBMISSION'>;
+
+      expect(await runtime.requestCancel({
+        intent_id: intent.event_id,
+        submission_ack_id: submission.submission_ack_id,
+      })).toEqual({ accepted: true });
+
+      expect(adapter.cancel_request).toMatchObject({
+        intent_id: intent.event_id,
+        submission_ack_id: submission.submission_ack_id,
+        broker_order_id: 'BROKER-CANCEL-1',
+        account_id: 'TEST_ACCT_001',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails closed before adapter cancel when no submission ACK lineage was remembered', async () => {
+    const adapter = new CapturingCancelableAdapter();
+    const events: AnyJournalEventEnvelope[] = [];
+    const runtime = runtimeFor(adapter, events);
+
+    await runtime.start();
+    const result = await runtime.requestCancel({
+      intent_id: makeEventId('intent-no-submission-ack'),
+      submission_ack_id: makeEventId('submission-no-submission-ack'),
+    });
+
+    expect(result).toEqual({ accepted: false });
+    expect(adapter.cancel_request).toBeUndefined();
+    expect(events.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+      payload: {
+        validator_id: 'EXEC-VALIDATOR-09',
+        code: 'broker_cancel_missing_submission_lineage',
+        severity: 'fatal',
+        details: {
+          has_broker_order_id: false,
+          has_broker_account_id: false,
+        },
+      },
+    });
+  });
+
+  it('fails closed before adapter cancel when submission ACK lacks broker order lineage', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new CapturingCancelableAdapter({ omit_broker_order_id: true });
+      const events: AnyJournalEventEnvelope[] = [];
+      const runtime = runtimeFor(adapter, events);
+
+      await runtime.start();
+      const intent = orderIntent('intent-missing-broker-order-id');
+      await runtime.handleOrderIntent(intent);
+      await vi.advanceTimersByTimeAsync(0);
+      const submission = events.find((event) => event.type === 'ORDER_ACK_SUBMISSION')!
+        .payload as JournalEventPayloadFor<'ORDER_ACK_SUBMISSION'>;
+
+      const result = await runtime.requestCancel({
+        intent_id: intent.event_id,
+        submission_ack_id: submission.submission_ack_id,
+      });
+
+      expect(result).toEqual({ accepted: false });
+      expect(adapter.cancel_request).toBeUndefined();
+      expect(events.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+        payload: {
+          validator_id: 'EXEC-VALIDATOR-09',
+          code: 'broker_cancel_missing_submission_lineage',
+          severity: 'fatal',
+          details: {
+            has_broker_order_id: false,
+            has_broker_account_id: true,
+          },
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('preserves broker reject subreason taxonomy', async () => {
     vi.useFakeTimers();
     try {
@@ -375,6 +468,87 @@ class SilentAcceptingAdapter implements BrokerAdapter {
 
   subscribeAckEvents(_handler: (event: BrokerAckEnvelope) => void): Unsubscribe {
     return () => undefined;
+  }
+
+  subscribeSessionEvents(handler: (event: BrokerSessionEvent) => void): Unsubscribe {
+    this.sessionHandlers.add(handler);
+    return () => {
+      this.sessionHandlers.delete(handler);
+    };
+  }
+}
+
+class CapturingCancelableAdapter implements BrokerAdapter {
+  readonly plant_scope: PlantScope = 'ORDER_PLANT';
+  readonly mode: RuntimeMode = 'paper';
+  private readonly sessionHandlers = new Set<(event: BrokerSessionEvent) => void>();
+  private readonly ackHandlers = new Set<(event: BrokerAckEnvelope) => void>();
+  private readonly omitBrokerOrderId: boolean;
+  cancel_request?: {
+    readonly intent_id: EventId;
+    readonly submission_ack_id: EventId;
+    readonly broker_order_id?: string;
+    readonly account_id?: string;
+  };
+
+  constructor(options: { readonly omit_broker_order_id?: boolean } = {}) {
+    this.omitBrokerOrderId = options.omit_broker_order_id ?? false;
+  }
+
+  async start(): Promise<void> {
+    const mask = buildExecutionCapabilityMask();
+    this.sessionHandlers.forEach((handler) => handler({
+      type: 'SESSION_MANIFEST',
+      ts_ns: BASE_TS_NS,
+      payload: {
+        mask_id: mask.mask_id,
+        mask_version: mask.mask_version,
+        mask_hash: mask.mask_hash,
+        reconnect_policy_config: DEFAULT_BROKER_RECONNECT_POLICY_CONFIG,
+        plant_scope: 'ORDER_PLANT',
+        mode: 'paper',
+        timestamp_anchor: 'broker_exchange_ts_ns',
+        broker_session_id: 'capturing-cancel-session',
+        adapter_kind: 'MOCK_ORDER_PLANT',
+      },
+    }));
+  }
+
+  async stop(): Promise<void> {}
+
+  async submitIntent(
+    intent: OrderIntentEventEnvelope,
+  ): Promise<{ readonly accepted: boolean; readonly broker_intent_correlation_id: string }> {
+    this.ackHandlers.forEach((handler) => handler({
+      type: 'ORDER_ACK_SUBMISSION',
+      ts_ns: BASE_TS_NS,
+      payload: {
+        intent_id: intent.event_id,
+        submission_ack_id: makeEventId(`submission-${intent.event_id}`),
+        ...(this.omitBrokerOrderId ? {} : { broker_order_id: 'BROKER-CANCEL-1' }),
+        broker_account_id: 'TEST_ACCT_001',
+        instrument_symbol: 'MNQM6',
+      } as JournalEventPayloadFor<'ORDER_ACK_SUBMISSION'>,
+      broker_intent_correlation_id: 'capturing-correlation',
+    }));
+    return { accepted: true, broker_intent_correlation_id: 'capturing-correlation' };
+  }
+
+  async requestCancel(request: {
+    readonly intent_id: EventId;
+    readonly submission_ack_id: EventId;
+    readonly broker_order_id?: string;
+    readonly account_id?: string;
+  }): Promise<{ readonly accepted: boolean }> {
+    this.cancel_request = request;
+    return { accepted: true };
+  }
+
+  subscribeAckEvents(handler: (event: BrokerAckEnvelope) => void): Unsubscribe {
+    this.ackHandlers.add(handler);
+    return () => {
+      this.ackHandlers.delete(handler);
+    };
   }
 
   subscribeSessionEvents(handler: (event: BrokerSessionEvent) => void): Unsubscribe {

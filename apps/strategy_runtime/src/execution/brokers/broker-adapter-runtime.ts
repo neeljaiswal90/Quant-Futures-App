@@ -121,6 +121,8 @@ export class BrokerAdapterRuntimeIntegration {
   private readonly orderLifecycle?: OrderLifecycleStateMachine;
   private readonly intentsByEventId = new Map<string, OrderIntentEventEnvelope>();
   private readonly correlationIdByIntentEventId = new Map<string, string>();
+  private readonly brokerOrderIdByIntentEventId = new Map<string, string>();
+  private readonly accountIdByIntentEventId = new Map<string, string>();
   private readonly ackTimeoutTimersByIntentEventId = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly unsubscribers: (() => void)[] = [];
   private lifecycleEventSequence = 0;
@@ -259,7 +261,23 @@ export class BrokerAdapterRuntimeIntegration {
       return { accepted: false };
     }
 
-    const result = await this.adapter.requestCancel(request);
+    const intentKey = String(request.intent_id);
+    const brokerOrderId = this.brokerOrderIdByIntentEventId.get(intentKey);
+    const accountId = this.accountIdByIntentEventId.get(intentKey);
+    if (brokerOrderId === undefined || accountId === undefined) {
+      this.emitCancelLineageValidatorIssue(request, {
+        has_broker_order_id: brokerOrderId !== undefined,
+        has_broker_account_id: accountId !== undefined,
+      });
+      return { accepted: false };
+    }
+    const enrichedRequest: BrokerCancelRequest = {
+      ...request,
+      broker_order_id: brokerOrderId,
+      account_id: accountId,
+    };
+
+    const result = await this.adapter.requestCancel(enrichedRequest);
     if (result.accepted) {
       this.orderLifecycle?.requestCancel(request.intent_id);
       this.schedulePendingAckTimeout(request.intent_id);
@@ -268,12 +286,56 @@ export class BrokerAdapterRuntimeIntegration {
   }
 
   private handleAckEvent(event: BrokerAckEnvelope): void {
+    this.rememberSubmissionAck(event);
     this.clearAckTimeoutForTerminalEvent(event);
     this.applyLifecycleAck(event);
 
     const envelope = this.toBrokerJournalEnvelope(event);
     this.eventSink(envelope);
     this.ackLatencyObserver?.observe(envelope);
+  }
+
+  private rememberSubmissionAck(event: BrokerAckEnvelope): void {
+    if (event.type !== 'ORDER_ACK_SUBMISSION') {
+      return;
+    }
+    const intentKey = String(event.payload.intent_id);
+    this.brokerOrderIdByIntentEventId.set(intentKey, event.payload.broker_order_id);
+    this.accountIdByIntentEventId.set(intentKey, event.payload.broker_account_id);
+  }
+
+  private emitCancelLineageValidatorIssue(
+    request: BrokerCancelRequest,
+    details: {
+      readonly has_broker_order_id: boolean;
+      readonly has_broker_account_id: boolean;
+    },
+  ): void {
+    this.sessionEventSequence += 1;
+    const emittedTsNs = this.captureLocalTimestamp();
+    this.eventSink(
+      createJournalEventEnvelope({
+        event_id: makeEventId(`broker-cancel-validator-issue-${this.sessionEventSequence}`),
+        type: 'VALIDATOR_ISSUE',
+        ts_ns: emittedTsNs,
+        run_id: this.runId,
+        session_id: this.sessionId,
+        causation_id: makeCausationId(request.intent_id),
+        payload: {
+          validator_id: 'EXEC-VALIDATOR-09',
+          severity: 'fatal',
+          emitted_ts_ns: emittedTsNs,
+          code: 'broker_cancel_missing_submission_lineage',
+          message: 'cancel request requires remembered broker_order_id and broker_account_id before adapter cancel',
+          session_family_id: this.sessionId,
+          details: {
+            intent_id: String(request.intent_id),
+            submission_ack_id: String(request.submission_ack_id),
+            ...details,
+          },
+        },
+      }),
+    );
   }
 
   private handleSessionEvent(event: BrokerSessionEvent): void {

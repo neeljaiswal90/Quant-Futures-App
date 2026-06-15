@@ -423,6 +423,7 @@ export function createPaperCredentialResolver(input: {
   readonly adapter_kind?: PaperBrokerAdapterKind;
   readonly market_data_source?: PaperMarketDataSource;
 } = {}): CredentialResolver {
+  const env = normalizeOrderPlantCredentialEnv(input.env ?? process.env);
   const descriptors = [
     ...((input.adapter_kind ?? 'mock') === 'rithmic' ? RITHMIC_TEST_CREDENTIAL_DESCRIPTORS : []),
     ...((input.market_data_source ?? DEFAULT_PAPER_MARKET_DATA_SOURCE) === 'live_rithmic_ticker_plant'
@@ -434,7 +435,7 @@ export function createPaperCredentialResolver(input: {
     mode_reader: () => PAPER_RUNTIME_MODE,
     env_var_backend: new EnvVarCredentialBackend({
       descriptors,
-      env: input.env,
+      env,
     }),
     emit: input.emit,
   });
@@ -502,8 +503,18 @@ export class PaperTradingSession {
       throw new Error(
         `QFA-612-BROKER-03 requires manual operator confirmation that LUCIDFLEX account is flat at session start. ` +
           `Verify in Lucid portal that all positions in account ${redacted} are zero, then set ` +
-          'QFA_PAPER_OPERATOR_CONFIRMS_FLAT=true to proceed. Programmatic position reconciliation lands in QFA-612-BROKER-04.',
+        'QFA_PAPER_OPERATOR_CONFIRMS_FLAT=true to proceed. Programmatic position reconciliation lands in QFA-612-BROKER-04.',
       );
+    }
+    if (
+      options.broker_adapter === undefined &&
+      this.config.adapter_kind === 'rithmic' &&
+      !orderPlantAccountActiveConfirmed(this.env)
+    ) {
+      throw new Error('QFA-612-BROKER-ADAPTER-CANCELABLE-LIMIT-INTEGRATION requires QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED=true when QFA_BROKER_ADAPTER_KIND=rithmic');
+    }
+    if (options.broker_adapter === undefined && this.config.adapter_kind === 'rithmic') {
+      assertOrderPlantCredentialEnvPresent(this.env);
     }
     this.container = options.container ?? this.createDefaultContainer();
     this.submissionGate = options.submission_gate ?? new SubmissionGate();
@@ -855,13 +866,15 @@ export class PaperTradingSession {
 
   private createBrokerAdapter(): BrokerAdapter {
     if (this.config.adapter_kind === 'rithmic') {
+      const orderPlantEnv = normalizeOrderPlantCredentialEnv(this.env);
       return new PythonBrokerAdapter({
         mode: PAPER_RUNTIME_MODE,
         credentials_env: {
-          RITHMIC_LUCID_USER: this.env.RITHMIC_LUCID_USER ?? this.env.RITHMIC_USER,
-          RITHMIC_LUCID_PASSWORD: this.env.RITHMIC_LUCID_PASSWORD ?? this.env.RITHMIC_PASSWORD,
-          RITHMIC_LUCID_GATEWAY: this.env.RITHMIC_LUCID_GATEWAY ?? this.env.RITHMIC_CONNECT_POINT,
-          RITHMIC_LUCID_SYSTEM_NAME: this.env.RITHMIC_LUCID_SYSTEM_NAME ?? this.env.RITHMIC_SYSTEM_NAME,
+          RITHMIC_LUCID_USER: orderPlantEnv.RITHMIC_TEST_USERNAME,
+          RITHMIC_LUCID_PASSWORD: orderPlantEnv.RITHMIC_TEST_PASSWORD,
+          RITHMIC_LUCID_GATEWAY: orderPlantEnv.RITHMIC_TEST_GATEWAY_URL,
+          RITHMIC_LUCID_SYSTEM_NAME: orderPlantEnv.RITHMIC_TEST_SYSTEM_NAME,
+          QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED: orderPlantEnv.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED,
           QFA_BROKER_ADAPTER_KIND: 'rithmic',
           QFA_BROKER_ALLOWLIST_JSON: JSON.stringify(liveAccountAllowlistToJsonValue(this.config.live_account_allowlist)),
         },
@@ -1152,6 +1165,38 @@ function parseAdapterKind(value: string): PaperBrokerAdapterKind {
     return value;
   }
   throw new Error('QFA_BROKER_ADAPTER_KIND must be one of: mock, rithmic');
+}
+
+function normalizeOrderPlantCredentialEnv(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  return {
+    ...env,
+    RITHMIC_TEST_USERNAME: env.RITHMIC_TEST_USERNAME ?? env.RITHMIC_TEST_USER,
+    RITHMIC_TEST_GATEWAY_URL: env.RITHMIC_TEST_GATEWAY_URL ?? env.RITHMIC_TEST_WS_URL,
+    RITHMIC_TEST_SYSTEM_NAME: env.RITHMIC_TEST_SYSTEM_NAME ?? env.RITHMIC_TEST_SYSTEM,
+  };
+}
+
+function orderPlantAccountActiveConfirmed(env: Readonly<Record<string, string | undefined>>): boolean {
+  return env.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED?.trim().toLowerCase() === 'true';
+}
+
+function assertOrderPlantCredentialEnvPresent(env: Record<string, string | undefined>): void {
+  const normalized = normalizeOrderPlantCredentialEnv(env);
+  const missing = [
+    ['RITHMIC_TEST_USERNAME', normalized.RITHMIC_TEST_USERNAME],
+    ['RITHMIC_TEST_PASSWORD', normalized.RITHMIC_TEST_PASSWORD],
+    ['RITHMIC_TEST_GATEWAY_URL', normalized.RITHMIC_TEST_GATEWAY_URL],
+    ['RITHMIC_TEST_SYSTEM_NAME', normalized.RITHMIC_TEST_SYSTEM_NAME],
+  ].filter(([, value]) => value === undefined || value.trim() === '');
+  if (missing.length > 0) {
+    throw new Error(
+      `QFA-612 Rithmic ORDER_PLANT adapter requires order-placement env vars: ${missing
+        .map(([name]) => name)
+        .join(', ')}. Set RITHMIC_TEST_* order-placement values explicitly; capture credentials are not used as fallback.`,
+    );
+  }
 }
 
 function parseMarketDataSource(value: string): PaperMarketDataSource {

@@ -117,6 +117,28 @@ describe('PythonBrokerAdapter', () => {
     });
   });
 
+  it('blocks positive-quantity submits when account-active confirmation is absent', async () => {
+    const { adapter, sessions } = adapterFor('clean_shutdown', {
+      env: {
+        QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED: 'false',
+      },
+      live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
+    });
+    await adapter.start();
+
+    const result = await adapter.submitIntent(orderIntent('intent-account-active-missing', 'TEST_ACCT_001'));
+    await adapter.stop();
+
+    expect(result).toMatchObject({ accepted: false });
+    expect(sessions.find((event) => event.type === 'VALIDATOR_ISSUE')).toMatchObject({
+      payload: {
+        validator_id: 'EXEC-VALIDATOR-09',
+        code: 'order_plant_account_active_not_confirmed',
+        severity: 'fatal',
+      },
+    });
+  });
+
   it('rejects non-allowlisted account intents before sending to the sidecar', async () => {
     const { adapter, sessions } = adapterFor('clean_shutdown', {
       live_account_allowlist: LIVE_ACCOUNT_ALLOWLIST,
@@ -294,6 +316,10 @@ function adapterFor(
 } {
   const sessions: BrokerSessionEvent[] = [];
   const acks: BrokerAckEnvelope[] = [];
+  const env = {
+    QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED: 'true',
+    ...overrides.env,
+  };
   const adapter = new PythonBrokerAdapter({
     executable: process.execPath,
     args: ['-e', mockSidecarScript(), scenario],
@@ -302,6 +328,7 @@ function adapterFor(
     heartbeat_timeout_ms: 1_000,
     now_ns: timestampSource(),
     ...overrides,
+    env,
   });
   adapter.subscribeSessionEvents((event) => sessions.push(event));
   adapter.subscribeAckEvents((event) => acks.push(event));
