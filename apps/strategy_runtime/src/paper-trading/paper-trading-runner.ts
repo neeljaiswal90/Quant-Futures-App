@@ -122,6 +122,7 @@ export interface PaperTradingSessionConfig {
   readonly explicit_strategy_ids?: readonly StrategyId[];
   readonly paper_observation_stop_after_candidate: boolean;
   readonly live_capture_feature_bridge_enabled: boolean;
+  readonly live_capture_minute_bar_seed_path?: string;
   readonly live_capture_regime_label: StrategyFeatureSnapshotRegime;
   readonly duration_ms?: number;
   readonly shutdown_quarantine_timeout_ms: number;
@@ -390,6 +391,10 @@ export function resolvePaperTradingSessionConfig(
       parseOptionalBoolean(env.QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED) ??
       booleanAt(yamlObservability, 'live_capture_feature_bridge_enabled') ??
       false,
+    live_capture_minute_bar_seed_path:
+      input.overrides?.live_capture_minute_bar_seed_path ??
+      env.QFA_PAPER_LIVE_CAPTURE_MINUTE_BAR_SEED_PATH ??
+      optionalStringAt(yamlObservability, 'live_capture_minute_bar_seed_path'),
     live_capture_regime_label:
       input.overrides?.live_capture_regime_label ??
       parseCaptureRegimeLabel(env.QFA_PAPER_CAPTURE_REGIME_LABEL ?? optionalStringAt(yamlObservability, 'live_capture_regime_label')),
@@ -1007,6 +1012,7 @@ export class PaperTradingSession {
     }
     return new LiveLocalCaptureFeatureBridge({
       obs01_path: obs01Path,
+      minute_bar_seed_path: this.config.live_capture_minute_bar_seed_path,
       regime_label: this.config.live_capture_regime_label,
       process_snapshot: async (snapshot) => this.processFeatureSnapshot(snapshot),
     });
