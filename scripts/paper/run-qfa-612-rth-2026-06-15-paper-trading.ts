@@ -9,7 +9,9 @@ import { getMnqSessionPhase, loadMnqSessionCalendarConfig } from '../../apps/str
 const TICKET = 'QFA-612-PAPER-TRADING-START-RTH-2026-06-15-IMPL-01';
 const CONFIG_PATH = 'config/paper/qfa-612-rth-2026-06-15-paper-trading.yaml';
 const STRATEGY_ID = 'regime_shock_reversion_short_v2_utc_16_18_exclusion' as const;
-const LIVE_CAPTURE_OBS_PATH = 'D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-15/MNQ_globex.obs01.jsonl';
+const LIVE_CAPTURE_ROOT = 'D:/Quant-futures-app/tools/rithmic_analytics/data/captures';
+const LIVE_CAPTURE_OBS_FILE = 'MNQ_globex.obs01.jsonl';
+const MAX_LIVE_CAPTURE_TAIL_STALENESS_MS = 120_000;
 const REPO_ROOT = process.cwd();
 const PRIMARY_ENV_PATH = 'D:/Quant-futures-app/.env';
 const ARTIFACT_DIR = path.join(REPO_ROOT, 'artifacts', 'broker', 'qfa-612-paper-trading-start-rth-2026-06-15-impl-01');
@@ -94,12 +96,17 @@ function mergedEnv(): NodeJS.ProcessEnv {
   env.QFA_PAPER_SESSION_CONFIG = CONFIG_PATH;
   env.QFA_BROKER_ADAPTER_KIND = 'rithmic';
   env.QFA_PAPER_MARKET_DATA_SOURCE = 'live_local_capture_tail';
-  env.QFA_PAPER_LOCAL_OBS_PATH = env.QFA_PAPER_LOCAL_OBS_PATH ?? LIVE_CAPTURE_OBS_PATH;
+  env.QFA_PAPER_LOCAL_OBS_PATH = env.QFA_PAPER_LOCAL_OBS_PATH ?? currentTradingDateLiveCaptureObsPath();
   env.QFA_PAPER_LOCAL_OBS_PACE_MODE = 'tail_from_end';
   env.RITHMIC_TEST_USERNAME = env.RITHMIC_TEST_USERNAME ?? env.RITHMIC_TEST_USER;
   env.RITHMIC_TEST_GATEWAY_URL = env.RITHMIC_TEST_GATEWAY_URL ?? env.RITHMIC_TEST_WS_URL;
   env.RITHMIC_TEST_SYSTEM_NAME = normalizeSystemName(env.RITHMIC_TEST_SYSTEM_NAME ?? env.RITHMIC_TEST_SYSTEM ?? '');
   return env;
+}
+
+function currentTradingDateLiveCaptureObsPath(): string {
+  const phase = getMnqSessionPhase(loadMnqSessionCalendarConfig(), nowNs());
+  return `${LIVE_CAPTURE_ROOT}/${phase.trading_date}/${LIVE_CAPTURE_OBS_FILE}`;
 }
 
 function normalizeSystemName(value: string): string {
@@ -128,7 +135,9 @@ function preflight(env: NodeJS.ProcessEnv, options: CliOptions): { readonly gate
   const liveAllowlistCount = allowlistCount(env);
   const liveCapturePath = env.QFA_PAPER_LOCAL_OBS_PATH ?? '';
   const liveCaptureExists = liveCapturePath !== '' && existsSync(liveCapturePath);
-  const liveCaptureSize = liveCaptureExists ? statSync(liveCapturePath).size : 0;
+  const liveCaptureStat = liveCaptureExists ? statSync(liveCapturePath) : undefined;
+  const liveCaptureSize = liveCaptureStat?.size ?? 0;
+  const liveCaptureAgeMs = liveCaptureStat === undefined ? undefined : Math.max(0, Date.now() - liveCaptureStat.mtimeMs);
   const gates: GateResult[] = [
     { name: 'RITHMIC_TEST_USERNAME_present', passed: present(env.RITHMIC_TEST_USERNAME), detail: present(env.RITHMIC_TEST_USERNAME) },
     { name: 'RITHMIC_TEST_PASSWORD_present', passed: present(env.RITHMIC_TEST_PASSWORD), detail: present(env.RITHMIC_TEST_PASSWORD) },
@@ -139,6 +148,11 @@ function preflight(env: NodeJS.ProcessEnv, options: CliOptions): { readonly gate
     { name: 'live_capture_tail_path_present', passed: present(liveCapturePath), detail: present(liveCapturePath) },
     { name: 'live_capture_tail_path_exists', passed: liveCaptureExists, detail: liveCapturePath },
     { name: 'live_capture_tail_path_nonempty', passed: liveCaptureSize > 0, detail: liveCaptureSize },
+    {
+      name: 'live_capture_tail_recent',
+      passed: liveCaptureAgeMs !== undefined && liveCaptureAgeMs <= MAX_LIVE_CAPTURE_TAIL_STALENESS_MS,
+      detail: liveCaptureAgeMs ?? 'unavailable',
+    },
     { name: 'QFA_PAPER_OPERATOR_CONFIRMS_FLAT_true', passed: boolEnv(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT), detail: boolEnv(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT) },
     { name: 'QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED_true', passed: boolEnv(env.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED), detail: boolEnv(env.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED) },
     { name: 'allowlist_path_present', passed: present(env.QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH), detail: present(env.QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH) },
