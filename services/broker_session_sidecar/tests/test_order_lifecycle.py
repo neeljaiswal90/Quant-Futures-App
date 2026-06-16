@@ -8,7 +8,7 @@ import json
 import os
 import sys
 from types import ModuleType
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from services.broker_session_sidecar.sidecar import SidecarConfig, run
 
@@ -51,6 +51,8 @@ def _module() -> ModuleType:
         session_id = "mock-session-123"
         fcm_id = "TEST_FCM"
         ib_id = "TEST_IB"
+        account_id = "TEST_ACCT_001"
+        sdk_version = "rithmic-rprotocol-order-plant-test"
 
         def __init__(self, **kwargs: object) -> None:
             self.kwargs = kwargs
@@ -140,7 +142,14 @@ def _payload(event: dict[str, object]) -> dict[str, object]:
 def _run(commands: list[dict[str, object]]) -> list[dict[str, object]]:
     stdout = io.StringIO()
     stdin = io.StringIO("".join(json.dumps(command) + "\n" for command in commands))
-    with patch.dict(os.environ, _env(), clear=True), patch.dict(sys.modules, {"async_rithmic": _module()}):
+    module = _module()
+    rprotocol_client = module.RithmicClient()
+    connect = AsyncMock(return_value=rprotocol_client)
+    with (
+        patch.dict(os.environ, _env(), clear=True),
+        patch.dict(sys.modules, {"async_rithmic": module}),
+        patch("services.broker_session_sidecar.auth.RProtocolOrderPlantClient.connect", connect),
+    ):
         code = asyncio.run(run(SidecarConfig(config_path=None, log_level="info", mode="test"), stdin, stdout))
     assert code == 0
     return _events(stdout.getvalue())

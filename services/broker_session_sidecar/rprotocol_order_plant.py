@@ -151,7 +151,13 @@ def _load_order_plant_preflight() -> ModuleType:
 
 
 def _rprotocol_system_name(normalized_system: str) -> str:
-    raw = _first_env("RITHMIC_TEST_SYSTEM", "RITHMIC_TEST_SYSTEM_NAME", "RITHMIC_SYSTEM_NAME", "RITHMIC_SYSTEM")
+    raw = _first_env(
+        "RITHMIC_LUCID_SYSTEM_NAME",
+        "RITHMIC_TEST_SYSTEM",
+        "RITHMIC_TEST_SYSTEM_NAME",
+        "RITHMIC_SYSTEM_NAME",
+        "RITHMIC_SYSTEM",
+    )
     candidate = raw or normalized_system
     if candidate.strip().lower() == "tradeify" or normalized_system == "Rithmic Paper Trading":
         return "Tradeify"
