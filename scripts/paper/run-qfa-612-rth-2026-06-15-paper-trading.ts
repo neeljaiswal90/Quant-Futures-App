@@ -4,6 +4,11 @@ import path from 'node:path';
 
 import { makeRunId, makeSessionId, ns, type UnixNs } from '../../apps/strategy_runtime/src/contracts/index.js';
 import { PaperTradingSession, resolvePaperTradingSessionConfig } from '../../apps/strategy_runtime/src/paper-trading/index.js';
+import {
+  deriveMbp1Path,
+  LIVE_CAPTURE_FEATURE_BRIDGE_MAX_QUOTE_SEED_BYTES,
+  LIVE_CAPTURE_FEATURE_BRIDGE_MAX_TRADE_SEED_BYTES,
+} from '../../apps/strategy_runtime/src/paper-trading/live-local-capture-feature-bridge.js';
 import { getMnqSessionPhase, loadMnqSessionCalendarConfig } from '../../apps/strategy_runtime/src/session/mnq-session-calendar.js';
 
 const TICKET = 'QFA-612-PAPER-TRADING-START-RTH-2026-06-15-IMPL-01';
@@ -11,6 +16,7 @@ const CONFIG_PATH = 'config/paper/qfa-612-rth-2026-06-15-paper-trading.yaml';
 const STRATEGY_ID = 'regime_shock_reversion_short_v2_utc_16_18_exclusion' as const;
 const LIVE_CAPTURE_ROOT = 'D:/Quant-futures-app/tools/rithmic_analytics/data/captures';
 const LIVE_CAPTURE_OBS_FILE = 'MNQ_globex.obs01.jsonl';
+const DEFAULT_RITHMIC_RPROTOCOL_HOME = 'D:/Quant-futures-app/.local/rithmic';
 const MAX_LIVE_CAPTURE_TAIL_STALENESS_MS = 120_000;
 const REPO_ROOT = process.cwd();
 const PRIMARY_ENV_PATH = 'D:/Quant-futures-app/.env';
@@ -22,7 +28,7 @@ const MEMO_PATH = path.join(REPO_ROOT, 'docs', 'research', 'qfa-612-paper-tradin
 const BACKLOG_PATH = path.join(REPO_ROOT, 'docs', 'plan', 'new_app_v1_ticket_backlog_v6.csv');
 const RUN_ID = makeRunId('run-qfa-612-paper-trading-start-rth-2026-06-15');
 const SESSION_ID = makeSessionId('session-qfa-612-paper-trading-start-rth-2026-06-15');
-const SUBSTRATE = 'origin/main@9f365050c59e58d8778ad782a52c7f9c25e05abb';
+const SUBSTRATE = 'origin/main@9001f64feae342d8a3c8195160d69221f24a253b';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -98,9 +104,23 @@ function mergedEnv(): NodeJS.ProcessEnv {
   env.QFA_PAPER_MARKET_DATA_SOURCE = 'live_local_capture_tail';
   env.QFA_PAPER_LOCAL_OBS_PATH = env.QFA_PAPER_LOCAL_OBS_PATH ?? currentTradingDateLiveCaptureObsPath();
   env.QFA_PAPER_LOCAL_OBS_PACE_MODE = 'tail_from_end';
+  env.QFA_PAPER_OBSERVATION_STOP_AFTER_CANDIDATE = 'true';
+  env.QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED = 'true';
+  env.RITHMIC_RPROTOCOL_HOME = env.RITHMIC_RPROTOCOL_HOME ?? DEFAULT_RITHMIC_RPROTOCOL_HOME;
   env.RITHMIC_TEST_USERNAME = env.RITHMIC_TEST_USERNAME ?? env.RITHMIC_TEST_USER;
   env.RITHMIC_TEST_GATEWAY_URL = env.RITHMIC_TEST_GATEWAY_URL ?? env.RITHMIC_TEST_WS_URL;
-  env.RITHMIC_TEST_SYSTEM_NAME = normalizeSystemName(env.RITHMIC_TEST_SYSTEM_NAME ?? env.RITHMIC_TEST_SYSTEM ?? '');
+  env.RITHMIC_TEST_SYSTEM_NAME = normalizeSystemName(
+    env.RITHMIC_LUCID_SYSTEM_NAME ??
+      env.RITHMIC_TEST_SYSTEM_NAME ??
+      env.RITHMIC_TEST_SYSTEM ??
+      env.RITHMIC_SYSTEM_NAME ??
+      env.RITHMIC_SYSTEM ??
+      'Tradeify',
+  );
+  env.RITHMIC_TEST_SYSTEM = env.RITHMIC_TEST_SYSTEM_NAME;
+  env.RITHMIC_SYSTEM_NAME = env.RITHMIC_TEST_SYSTEM_NAME;
+  env.RITHMIC_SYSTEM = env.RITHMIC_TEST_SYSTEM_NAME;
+  env.RITHMIC_LUCID_SYSTEM_NAME = env.RITHMIC_TEST_SYSTEM_NAME;
   return env;
 }
 
@@ -111,7 +131,11 @@ function currentTradingDateLiveCaptureObsPath(): string {
 
 function normalizeSystemName(value: string): string {
   const trimmed = value.trim().replace(/^["']|["']$/g, '').trim();
-  return trimmed.toLowerCase() === 'tradeify' ? 'Tradeify' : trimmed;
+  const normalized = trimmed.toLowerCase();
+  if (normalized === '' || normalized === 'tradeify' || normalized === 'rithmic paper trading') {
+    return 'Tradeify';
+  }
+  return trimmed;
 }
 
 function nowNs(): UnixNs {
@@ -138,11 +162,18 @@ function preflight(env: NodeJS.ProcessEnv, options: CliOptions): { readonly gate
   const liveCaptureStat = liveCaptureExists ? statSync(liveCapturePath) : undefined;
   const liveCaptureSize = liveCaptureStat?.size ?? 0;
   const liveCaptureAgeMs = liveCaptureStat === undefined ? undefined : Math.max(0, Date.now() - liveCaptureStat.mtimeMs);
+  const liveCaptureMbp1Path = liveCapturePath === '' ? '' : deriveMbp1Path(liveCapturePath);
+  const liveCaptureMbp1Exists = liveCaptureMbp1Path !== '' && existsSync(liveCaptureMbp1Path);
+  const liveCaptureMbp1Stat = liveCaptureMbp1Exists ? statSync(liveCaptureMbp1Path) : undefined;
+  const liveCaptureMbp1AgeMs = liveCaptureMbp1Stat === undefined ? undefined : Math.max(0, Date.now() - liveCaptureMbp1Stat.mtimeMs);
+  const rprotocolHome = env.RITHMIC_RPROTOCOL_HOME ?? '';
   const gates: GateResult[] = [
     { name: 'RITHMIC_TEST_USERNAME_present', passed: present(env.RITHMIC_TEST_USERNAME), detail: present(env.RITHMIC_TEST_USERNAME) },
     { name: 'RITHMIC_TEST_PASSWORD_present', passed: present(env.RITHMIC_TEST_PASSWORD), detail: present(env.RITHMIC_TEST_PASSWORD) },
     { name: 'RITHMIC_TEST_GATEWAY_URL_present', passed: present(env.RITHMIC_TEST_GATEWAY_URL), detail: present(env.RITHMIC_TEST_GATEWAY_URL) },
     { name: 'RITHMIC_TEST_SYSTEM_NAME_is_Tradeify', passed: env.RITHMIC_TEST_SYSTEM_NAME === 'Tradeify', detail: env.RITHMIC_TEST_SYSTEM_NAME === undefined || env.RITHMIC_TEST_SYSTEM_NAME === '' ? 'missing' : env.RITHMIC_TEST_SYSTEM_NAME },
+    { name: 'RITHMIC_RPROTOCOL_HOME_present', passed: present(rprotocolHome), detail: present(rprotocolHome) },
+    { name: 'RITHMIC_RPROTOCOL_HOME_exists', passed: present(rprotocolHome) && existsSync(rprotocolHome), detail: rprotocolHome || 'missing' },
     { name: 'capture_credentials_not_broker_fallback', passed: env.RITHMIC_TEST_GATEWAY_URL !== undefined, detail: 'requires explicit RITHMIC_TEST_GATEWAY_URL/RITHMIC_TEST_WS_URL' },
     { name: 'market_data_source_is_live_local_capture_tail', passed: env.QFA_PAPER_MARKET_DATA_SOURCE === 'live_local_capture_tail', detail: env.QFA_PAPER_MARKET_DATA_SOURCE ?? 'missing' },
     { name: 'live_capture_tail_path_present', passed: present(liveCapturePath), detail: present(liveCapturePath) },
@@ -153,6 +184,14 @@ function preflight(env: NodeJS.ProcessEnv, options: CliOptions): { readonly gate
       passed: liveCaptureAgeMs !== undefined && liveCaptureAgeMs <= MAX_LIVE_CAPTURE_TAIL_STALENESS_MS,
       detail: liveCaptureAgeMs ?? 'unavailable',
     },
+    { name: 'live_capture_mbp1_path_exists', passed: liveCaptureMbp1Exists, detail: liveCaptureMbp1Path },
+    {
+      name: 'live_capture_mbp1_recent',
+      passed: liveCaptureMbp1AgeMs !== undefined && liveCaptureMbp1AgeMs <= MAX_LIVE_CAPTURE_TAIL_STALENESS_MS,
+      detail: liveCaptureMbp1AgeMs ?? 'unavailable',
+    },
+    { name: 'paper_observation_stop_after_candidate_enabled', passed: boolEnv(env.QFA_PAPER_OBSERVATION_STOP_AFTER_CANDIDATE), detail: boolEnv(env.QFA_PAPER_OBSERVATION_STOP_AFTER_CANDIDATE) },
+    { name: 'live_capture_feature_bridge_enabled', passed: boolEnv(env.QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED), detail: boolEnv(env.QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED) },
     { name: 'QFA_PAPER_OPERATOR_CONFIRMS_FLAT_true', passed: boolEnv(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT), detail: boolEnv(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT) },
     { name: 'QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED_true', passed: boolEnv(env.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED), detail: boolEnv(env.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED) },
     { name: 'allowlist_path_present', passed: present(env.QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH), detail: present(env.QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH) },
@@ -197,6 +236,8 @@ async function main(): Promise<void> {
           paper_session_config_path: CONFIG_PATH,
           strategy_id: STRATEGY_ID,
           explicit_strategy_ids: [STRATEGY_ID],
+          paper_observation_stop_after_candidate: true,
+          live_capture_feature_bridge_enabled: true,
           run_id: RUN_ID,
           session_id: SESSION_ID,
           duration_ms: options.duration_ms,
@@ -245,6 +286,19 @@ async function main(): Promise<void> {
     worktree: REPO_ROOT,
     substrate: SUBSTRATE,
     config_path: CONFIG_PATH,
+    live_capture_feature_bridge_contract: {
+      source: 'live_local_capture_tail',
+      obs01_seed_scope: 'bounded_recent_tail',
+      mbp1_seed_scope: 'bounded_recent_tail',
+      max_trade_seed_bytes: LIVE_CAPTURE_FEATURE_BRIDGE_MAX_TRADE_SEED_BYTES,
+      max_quote_seed_bytes: LIVE_CAPTURE_FEATURE_BRIDGE_MAX_QUOTE_SEED_BYTES,
+      historical_replay_policy: 'warm_indicator_state_only_no_historical_strategy_runtime_replay',
+      fresh_runtime_cycle_expected: true,
+      full_session_vwap_authority: false,
+      observation_day_authority: false,
+      order_translation_authority: false,
+      next_source_hardening_ticket: 'QFA-612-LIVE-CAPTURE-FULL-SESSION-MINUTE-BAR-SEED-01',
+    },
     command: options.start
       ? `npx tsx scripts/paper/run-qfa-612-rth-2026-06-15-paper-trading.ts --start --duration-ms ${String(options.duration_ms)}`
       : 'npx tsx scripts/paper/run-qfa-612-rth-2026-06-15-paper-trading.ts --preflight-only --allow-preopen',
@@ -285,12 +339,14 @@ function markdownReport(report: Record<string, unknown>, boundedJsonl: string, r
     `## Gates\n\n| Gate | Status | Detail |\n|---|---|---|\n${rows}\n\n` +
     `## Launch command\n\n\`\`\`powershell\n${String(report.command)}\n\`\`\`\n\n` +
     `## Boundary\n\nThis wrapper is paper-mode Rithmic Test only. Capture credentials are not broker fallback. No production account, live trading authority, Phase 6 authority, roster mutation, automatic shutdown flattening, or capture credential mutation is authorized.\n\n` +
+    `## Live capture feature bridge contract\n\nThe bridge uses bounded recent-tail OBS01/MBP1 seeding for operator start speed, warms indicator state without replaying historical tail records through strategy runtime, and only proves fresh live-capture strategy evaluation. It does not grant full-session VWAP authority, observation-day authority, or order-translation authority.\n\n` +
     `## Output hashes\n\n\`\`\`text\nbounded_jsonl_lf_sha256 = ${sha256Lf(boundedJsonl)}\nreport_json_lf_sha256 = ${sha256Lf(reportJson)}\n\`\`\`\n`;
 }
 
 function memo(report: Record<string, unknown>, boundedJsonl: string, reportJson: string, reportMd: string): string {
   return `# ${TICKET}\n\nSTATE: PENDING-REVIEW\n\nDetermination:\n\n\`\`\`text\n${String(report.determination)}\n\`\`\`\n\n` +
     `This implementation adds a dedicated 2026-06-15 RTH paper-trading config and a fail-closed launch wrapper. Default mode is preflight-only; actual paper start requires --start, --duration-ms, RTH unless explicitly allowed, RITHMIC_TEST_* order-placement env, explicit gateway, exactly one allowlisted account, flat-at-start confirmation, account-active confirmation, and a readable live_local_capture_tail OBS source.\n\n` +
+    `The live capture feature bridge uses bounded recent-tail OBS01/MBP1 seeding for operator start speed, warms indicator state without replaying historical tail records through strategy runtime, and only proves fresh live-capture strategy evaluation. It does not grant full-session VWAP authority, observation-day authority, or order-translation authority.\n\n` +
     `Authority boundary remains: no production account, no live broker authority, no Phase 6 authority, no roster mutation, no capture credential mutation, and no automatic shutdown flattening.\n\n` +
     `Output hashes:\n\n\`\`\`text\nbounded_jsonl_lf_sha256 = ${sha256Lf(boundedJsonl)}\nreport_json_lf_sha256 = ${sha256Lf(reportJson)}\nreport_md_lf_sha256 = ${sha256Lf(reportMd)}\n\`\`\`\n`;
 }

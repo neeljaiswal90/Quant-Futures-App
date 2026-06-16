@@ -8,7 +8,7 @@ import json
 import os
 import sys
 from types import ModuleType
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -137,6 +137,8 @@ def test_sidecar_query_account_list_emits_snapshot() -> None:
         session_id = "mock-session-123"
         fcm_id = "TEST_FCM"
         ib_id = "TEST_IB"
+        account_id = "TEST_ACCT_001"
+        sdk_version = "rithmic-rprotocol-order-plant-test"
 
         def __init__(self, **kwargs: object) -> None:
             pass
@@ -153,7 +155,12 @@ def test_sidecar_query_account_list_emits_snapshot() -> None:
     module.SysInfraType = FakeSysInfraType  # type: ignore[attr-defined]
     module.RithmicClient = FakeClient  # type: ignore[attr-defined]
     env = {**_env(), "QFA_BROKER_ADAPTER_KIND": "rithmic", "QFA_BROKER_ALLOWLIST_JSON": json.dumps(_allowlist())}
-    with patch.dict(os.environ, env, clear=True), patch.dict(sys.modules, {"async_rithmic": module}):
+    connect = AsyncMock(return_value=FakeClient())
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch.dict(sys.modules, {"async_rithmic": module}),
+        patch("services.broker_session_sidecar.auth.RProtocolOrderPlantClient.connect", connect),
+    ):
         code = asyncio.run(run(SidecarConfig(config_path=None, log_level="info", mode="test"), stdin, stdout))
 
     assert code == 0

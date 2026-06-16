@@ -6,7 +6,7 @@ import asyncio
 import os
 import sys
 from types import ModuleType
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -106,36 +106,17 @@ def test_authenticate_connects_ticker_plant_only_with_client_factory() -> None:
 
 
 def test_authenticate_connects_ticker_and_order_plants_for_rithmic_adapter() -> None:
-    captured: dict[str, object] = {}
-    module = ModuleType("async_rithmic")
-    module.__version__ = "1.6.1"
-    ticker_marker = object()
-    order_marker = object()
-
-    class FakeSysInfraType:
-        TICKER_PLANT = ticker_marker
-        ORDER_PLANT = order_marker
-
-    class FakeClient:
-        session_id = "client-session-123"
-
-        def __init__(self, **kwargs: object) -> None:
-            captured["init"] = kwargs
-
-        async def connect(self, **kwargs: object) -> None:
-            captured["connect"] = kwargs
-
-        async def disconnect(self) -> None:
-            captured["disconnect"] = True
-
-    module.SysInfraType = FakeSysInfraType  # type: ignore[attr-defined]
-    module.RithmicClient = FakeClient  # type: ignore[attr-defined]
+    class FakeRProtocolClient:
+        account_id = "TEST_ACCT_001"
+        sdk_version = "rithmic-rprotocol-order-plant-test"
 
     with patch.dict(os.environ, {**_env(), "QFA_BROKER_ADAPTER_KIND": "rithmic"}, clear=True):
         credentials = resolve_credentials(os.environ)
-        with patch.dict(sys.modules, {"async_rithmic": module}):
+        connect = AsyncMock(return_value=FakeRProtocolClient())
+        with patch("services.broker_session_sidecar.auth.RProtocolOrderPlantClient.connect", connect):
             result = asyncio.run(authenticate(credentials))
 
-    assert result.broker_session_id == "client-session-123"
-    assert captured["connect"] == {"plants": [ticker_marker, order_marker]}
-    assert result.authenticated_plants == ("TICKER_PLANT", "ORDER_PLANT")
+    connect.assert_awaited_once_with(credentials)
+    assert result.account_ref_redacted == "TEST_ACCT_001"
+    assert result.sdk_version == "rithmic-rprotocol-order-plant-test"
+    assert result.authenticated_plants == ("ORDER_PLANT",)

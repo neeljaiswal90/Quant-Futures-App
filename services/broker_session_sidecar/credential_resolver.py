@@ -15,7 +15,13 @@ ENV_ALIASES = {
         "RITHMIC_TEST_WS_URL",
         "RITHMIC_CONNECT_POINT",
     ),
-    "system": ("RITHMIC_LUCID_SYSTEM_NAME", "RITHMIC_TEST_SYSTEM", "RITHMIC_SYSTEM_NAME"),
+    "system": (
+        "RITHMIC_LUCID_SYSTEM_NAME",
+        "RITHMIC_TEST_SYSTEM",
+        "RITHMIC_TEST_SYSTEM_NAME",
+        "RITHMIC_SYSTEM_NAME",
+        "RITHMIC_SYSTEM",
+    ),
 }
 
 

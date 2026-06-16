@@ -24,6 +24,10 @@ import {
   type LocalObsReplayPaceMode,
   type LocalObsReplaySourceOptions,
 } from '../data/index.js';
+import {
+  LiveLocalCaptureFeatureBridge,
+  parseCaptureRegimeLabel,
+} from './live-local-capture-feature-bridge.js';
 import { loadAppConfig } from '../config/index.js';
 import {
   BrokerAdapterRuntimeIntegration,
@@ -63,7 +67,7 @@ import {
   type RuntimeEventBusSubscription,
   type StrategyRuntimeEngineContainer,
 } from '../orchestration/index.js';
-import type { StrategyFeatureSnapshot } from '../strategies/index.js';
+import type { StrategyFeatureSnapshot, StrategyFeatureSnapshotRegime } from '../strategies/index.js';
 import {
   BoundedAckLatencyObserver,
   LatencySliRegistry,
@@ -116,6 +120,9 @@ export interface PaperTradingSessionConfig {
   readonly run_id: RunId;
   readonly session_id: SessionId;
   readonly explicit_strategy_ids?: readonly StrategyId[];
+  readonly paper_observation_stop_after_candidate: boolean;
+  readonly live_capture_feature_bridge_enabled: boolean;
+  readonly live_capture_regime_label: StrategyFeatureSnapshotRegime;
   readonly duration_ms?: number;
   readonly shutdown_quarantine_timeout_ms: number;
 }
@@ -139,6 +146,7 @@ export interface PaperTradingSessionOptions {
   readonly liveness_monitor?: DualLivenessMonitor;
   readonly live_ticker_subscriber?: Pick<LiveTickerSubscriber, 'start' | 'stop'>;
   readonly local_obs_replay_source?: Pick<LocalObsReplaySource, 'start' | 'stop'>;
+  readonly live_capture_feature_bridge?: Pick<LiveLocalCaptureFeatureBridge, 'start' | 'stop'>;
 }
 
 export interface PaperTradingSessionDiagnostics {
@@ -372,6 +380,19 @@ export function resolvePaperTradingSessionConfig(
     run_id: input.overrides?.run_id ?? makeRunId('paper-session-run'),
     session_id: input.overrides?.session_id ?? makeSessionId('paper-session'),
     explicit_strategy_ids: explicitStrategyIds,
+    paper_observation_stop_after_candidate:
+      input.overrides?.paper_observation_stop_after_candidate ??
+      parseOptionalBoolean(env.QFA_PAPER_OBSERVATION_STOP_AFTER_CANDIDATE) ??
+      booleanAt(yamlSession, 'paper_observation_stop_after_candidate') ??
+      false,
+    live_capture_feature_bridge_enabled:
+      input.overrides?.live_capture_feature_bridge_enabled ??
+      parseOptionalBoolean(env.QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED) ??
+      booleanAt(yamlObservability, 'live_capture_feature_bridge_enabled') ??
+      false,
+    live_capture_regime_label:
+      input.overrides?.live_capture_regime_label ??
+      parseCaptureRegimeLabel(env.QFA_PAPER_CAPTURE_REGIME_LABEL ?? optionalStringAt(yamlObservability, 'live_capture_regime_label')),
     duration_ms:
       input.overrides?.duration_ms ??
       parseOptionalPositiveInteger(env.QFA_PAPER_SESSION_DURATION_MS) ??
@@ -464,6 +485,7 @@ export class PaperTradingSession {
   private readonly reconnectRunner: ReconnectRunner;
   private readonly liveTickerSubscriber?: Pick<LiveTickerSubscriber, 'start' | 'stop'>;
   private readonly localObsReplaySource?: Pick<LocalObsReplaySource, 'start' | 'stop'>;
+  private readonly liveCaptureFeatureBridge?: Pick<LiveLocalCaptureFeatureBridge, 'start' | 'stop'>;
   private journalWriter: PaperSessionJournalWriter | undefined;
   private journalPath: string | undefined;
   private brokerRuntime: BrokerAdapterRuntimeIntegration | undefined;
@@ -570,6 +592,7 @@ export class PaperTradingSession {
     });
     this.liveTickerSubscriber = options.live_ticker_subscriber ?? this.createLiveTickerSubscriber();
     this.localObsReplaySource = options.local_obs_replay_source ?? this.createLocalObsReplaySource();
+    this.liveCaptureFeatureBridge = options.live_capture_feature_bridge ?? this.createLiveCaptureFeatureBridge();
   }
 
   async start(): Promise<void> {
@@ -597,6 +620,7 @@ export class PaperTradingSession {
       }),
       runtime_mode: 'paper',
       paper_observation_explicit_strategy_ids: this.config.explicit_strategy_ids,
+      paper_observation_stop_after_candidate: this.config.paper_observation_stop_after_candidate,
       latency_metrics_endpoint: this.config.metrics_endpoint,
     });
 
@@ -648,8 +672,9 @@ export class PaperTradingSession {
       this.handleOperationalSessionEvent(event);
     });
     await this.liveTickerSubscriber?.start();
-    await this.localObsReplaySource?.start();
+    await this.startLocalObsReplaySource();
     await this.brokerRuntime.start();
+    await this.liveCaptureFeatureBridge?.start();
     await this.drain();
     this.assertSessionManifestValid();
     this.started = true;
@@ -662,12 +687,15 @@ export class PaperTradingSession {
     if (this.runner === undefined) {
       throw new Error('PaperTradingSession must be started before processing snapshots');
     }
-    await this.runner.publishExternalEvent(sourceQuoteEventForSnapshot(
+    const quoteEvent = sourceQuoteEventForSnapshot(
       snapshot,
       this.config.run_id,
       this.config.session_id,
-    ));
+    );
+    await this.runner.publishExternalEvent(quoteEvent);
+    this.recordHarnessEvent(quoteEvent);
     const result = await this.runner.processFeatureSnapshot(snapshot);
+    this.recordStrategyEvaluationCycle(result);
     await this.drain();
     return result;
   }
@@ -707,6 +735,7 @@ export class PaperTradingSession {
     }
     await this.liveTickerSubscriber?.stop();
     await this.localObsReplaySource?.stop();
+    await this.liveCaptureFeatureBridge?.stop();
     await this.brokerRuntime?.stop();
     this.brokerRuntime = undefined;
     await this.metricsEndpoint?.close();
@@ -873,11 +902,15 @@ export class PaperTradingSession {
       const orderPlantEnv = normalizeOrderPlantCredentialEnv(this.env);
       return new PythonBrokerAdapter({
         mode: PAPER_RUNTIME_MODE,
+        env: { ...orderPlantEnv },
         credentials_env: {
           RITHMIC_LUCID_USER: orderPlantEnv.RITHMIC_TEST_USERNAME,
           RITHMIC_LUCID_PASSWORD: orderPlantEnv.RITHMIC_TEST_PASSWORD,
           RITHMIC_LUCID_GATEWAY: orderPlantEnv.RITHMIC_TEST_GATEWAY_URL,
           RITHMIC_LUCID_SYSTEM_NAME: orderPlantEnv.RITHMIC_TEST_SYSTEM_NAME,
+          RITHMIC_TEST_SYSTEM: orderPlantEnv.RITHMIC_TEST_SYSTEM_NAME,
+          RITHMIC_TEST_SYSTEM_NAME: orderPlantEnv.RITHMIC_TEST_SYSTEM_NAME,
+          RITHMIC_SYSTEM_NAME: orderPlantEnv.RITHMIC_TEST_SYSTEM_NAME,
           QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED: orderPlantEnv.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED,
           QFA_BROKER_ADAPTER_KIND: 'rithmic',
           QFA_BROKER_ALLOWLIST_JSON: JSON.stringify(liveAccountAllowlistToJsonValue(this.config.live_account_allowlist)),
@@ -925,6 +958,12 @@ export class PaperTradingSession {
     ) {
       return undefined;
     }
+    if (
+      this.config.market_data_source === 'live_local_capture_tail' &&
+      this.config.live_capture_feature_bridge_enabled
+    ) {
+      return undefined;
+    }
     const path = this.config.local_obs_replay_path;
     if (path === undefined) {
       throw new Error('QFA_PAPER_LOCAL_OBS_PATH is required when QFA_PAPER_MARKET_DATA_SOURCE=local_obs_replay');
@@ -940,6 +979,37 @@ export class PaperTradingSession {
       event_sink: (event) => this.publishHarnessEvent(event),
     };
     return new LocalObsReplaySource(options);
+  }
+
+  private async startLocalObsReplaySource(): Promise<void> {
+    if (this.localObsReplaySource === undefined) {
+      return;
+    }
+    if (this.config.market_data_source === 'live_local_capture_tail') {
+      void this.localObsReplaySource.start().catch((error: unknown) => {
+        console.error('[qfa-paper-local-obs-tail] source failed', error);
+      });
+      return;
+    }
+    await this.localObsReplaySource.start();
+  }
+
+  private createLiveCaptureFeatureBridge(): Pick<LiveLocalCaptureFeatureBridge, 'start' | 'stop'> | undefined {
+    if (!this.config.live_capture_feature_bridge_enabled) {
+      return undefined;
+    }
+    if (this.config.market_data_source !== 'live_local_capture_tail') {
+      throw new Error('QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED requires QFA_PAPER_MARKET_DATA_SOURCE=live_local_capture_tail');
+    }
+    const obs01Path = this.config.local_obs_replay_path;
+    if (obs01Path === undefined) {
+      throw new Error('QFA_PAPER_LOCAL_OBS_PATH is required when QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED=true');
+    }
+    return new LiveLocalCaptureFeatureBridge({
+      obs01_path: obs01Path,
+      regime_label: this.config.live_capture_regime_label,
+      process_snapshot: async (snapshot) => this.processFeatureSnapshot(snapshot),
+    });
   }
 
   private credentialLookup(): BrokerCredentialLookup {
@@ -970,11 +1040,40 @@ export class PaperTradingSession {
   }
 
   private publishHarnessEvent(event: AnyJournalEventEnvelope): void {
-    const enrichedEvent = this.withMarketDataSource(this.withOrderIntentAccount(event));
+    const enrichedEvent = this.recordHarnessEvent(event);
+    this.pendingPublishes.push(this.container.publish(enrichedEvent));
+  }
+
+  private recordHarnessEvent(event: AnyJournalEventEnvelope): AnyJournalEventEnvelope {
+    const enrichedEvent = stripUndefinedJsonFields(this.withMarketDataSource(this.withOrderIntentAccount(event))) as AnyJournalEventEnvelope;
     this.journalEvents.push(enrichedEvent);
     this.journalWriter?.write(enrichedEvent);
-    this.pendingPublishes.push(this.container.publish(enrichedEvent));
     this.anomalyDetector.observeEvent(enrichedEvent);
+    return enrichedEvent;
+  }
+
+  private recordStrategyEvaluationCycle(
+    result: Awaited<ReturnType<StrategyRuntimeRunner['processFeatureSnapshot']>>,
+  ): void {
+    const record = (event: AnyJournalEventEnvelope | undefined): void => {
+      if (event !== undefined) {
+        this.recordHarnessEvent(event);
+      }
+    };
+
+    record(result.session_phase_event as AnyJournalEventEnvelope | undefined);
+    record(result.roll_advisory_event as AnyJournalEventEnvelope | undefined);
+    for (const event of result.forced_flatten_action_events) record(event);
+    record(result.feature_event);
+    for (const event of result.strategy_evaluation_events) record(event);
+    for (const event of result.candidate_events) record(event);
+    record(result.rank_event as AnyJournalEventEnvelope | undefined);
+    for (const event of result.sizing_events) record(event);
+    for (const event of result.risk_gate_events) record(event);
+    for (const event of result.order_intent_events) record(event);
+    for (const event of result.sim_fill_events) record(event);
+    for (const event of result.exec_reject_events) record(event);
+    for (const event of result.position_events) record(event);
   }
 
   private withOrderIntentAccount(event: AnyJournalEventEnvelope): AnyJournalEventEnvelope {
@@ -1180,12 +1279,30 @@ function parseAdapterKind(value: string): PaperBrokerAdapterKind {
 function normalizeOrderPlantCredentialEnv(
   env: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
+  const systemName = normalizeRithmicSystemName(
+    env.RITHMIC_LUCID_SYSTEM_NAME ??
+      env.RITHMIC_TEST_SYSTEM_NAME ??
+      env.RITHMIC_TEST_SYSTEM ??
+      env.RITHMIC_SYSTEM_NAME ??
+      env.RITHMIC_SYSTEM,
+  );
   return {
     ...env,
     RITHMIC_TEST_USERNAME: env.RITHMIC_TEST_USERNAME ?? env.RITHMIC_TEST_USER,
     RITHMIC_TEST_GATEWAY_URL: env.RITHMIC_TEST_GATEWAY_URL ?? env.RITHMIC_TEST_WS_URL,
-    RITHMIC_TEST_SYSTEM_NAME: env.RITHMIC_TEST_SYSTEM_NAME ?? env.RITHMIC_TEST_SYSTEM,
+    RITHMIC_LUCID_SYSTEM_NAME: systemName,
+    RITHMIC_TEST_SYSTEM: systemName,
+    RITHMIC_TEST_SYSTEM_NAME: systemName,
+    RITHMIC_SYSTEM_NAME: systemName,
+    RITHMIC_SYSTEM: systemName,
   };
+}
+
+function normalizeRithmicSystemName(value: string | undefined): string | undefined {
+  const trimmed = value?.trim().replace(/^["']|["']$/gu, '').trim();
+  if (trimmed === undefined || trimmed === '') return trimmed;
+  const normalized = trimmed.toLowerCase();
+  return normalized === 'tradeify' || normalized === 'rithmic paper trading' ? 'Tradeify' : trimmed;
 }
 
 function orderPlantAccountActiveConfirmed(env: Readonly<Record<string, string | undefined>>): boolean {
@@ -1441,4 +1558,20 @@ function reconnectPayloadForSessionEvent(
     terminal: event.state === 'FAILED',
     blocked_submission_gate: event.state !== 'CONNECTED',
   };
+}
+
+function stripUndefinedJsonFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stripUndefinedJsonFields(item))
+      .filter((item) => item !== undefined);
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, stripUndefinedJsonFields(entryValue)]),
+    );
+  }
+  return value;
 }
