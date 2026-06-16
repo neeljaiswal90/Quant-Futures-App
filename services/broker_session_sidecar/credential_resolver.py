@@ -11,6 +11,7 @@ ENV_ALIASES = {
     "ws_url": (
         "RITHMIC_LUCID_GATEWAY",
         "RITHMIC_LUCID_CONNECT_POINT",
+        "RITHMIC_TEST_GATEWAY_URL",
         "RITHMIC_TEST_WS_URL",
         "RITHMIC_CONNECT_POINT",
     ),
@@ -47,7 +48,7 @@ def resolve_credentials(environ: Mapping[str, str]) -> RithmicCredentials:
         user=resolved["user"],
         password=resolved["password"],
         ws_url=resolved["ws_url"],
-        system=resolved["system"],
+        system=_normalize_system(resolved["system"]),
     )
 
 
@@ -57,3 +58,10 @@ def _first(environ: Mapping[str, str], names: tuple[str, ...]) -> str | None:
         if value is not None and value.strip() != "":
             return value
     return None
+
+
+def _normalize_system(value: str) -> str:
+    stripped = value.strip()
+    if stripped.lower() == "tradeify":
+        return "Rithmic Paper Trading"
+    return stripped

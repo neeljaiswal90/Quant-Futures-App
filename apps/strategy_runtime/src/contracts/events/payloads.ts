@@ -30,7 +30,11 @@ import type { RuntimeEventType } from './event-types.js';
 
 export type FeatureScalarValue = number | string | boolean | null;
 export type FeatureScalarMap = Readonly<Record<string, FeatureScalarValue>>;
-export type PaperMarketDataSource = 'simulation' | 'live_rithmic_ticker_plant' | 'local_obs_replay';
+export type PaperMarketDataSource =
+  | 'simulation'
+  | 'live_rithmic_ticker_plant'
+  | 'local_obs_replay'
+  | 'live_local_capture_tail';
 
 export interface SourceTimestampPayload {
   readonly exchange_event_ts_ns: UnixNs;

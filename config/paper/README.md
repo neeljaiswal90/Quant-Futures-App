@@ -8,8 +8,9 @@ Environment variables:
 - `QFA_PAPER_SESSION_CONFIG`: optional path to a paper YAML config. The QFA-614
   runner loads this file at startup; default `config/paper/paper-session-defaults.yaml`.
 - `QFA_BROKER_ADAPTER_KIND`: `mock` or `rithmic`; default `mock`.
-- `QFA_PAPER_MARKET_DATA_SOURCE`: `simulation`, `live_rithmic_ticker_plant`, or
-  `local_obs_replay`; default `simulation`. All sources keep `mode=paper`.
+- `QFA_PAPER_MARKET_DATA_SOURCE`: `simulation`, `live_rithmic_ticker_plant`,
+  `local_obs_replay`, or `live_local_capture_tail`; default `simulation`. All
+  sources keep `mode=paper`.
   When `QFA_BROKER_ADAPTER_KIND=rithmic`, the broker path uses the paper
   ORDER_PLANT adapter and requires a single configured live account allowlist
   entry plus explicit flat-at-start operator confirmation.
@@ -50,6 +51,8 @@ Environment variables:
   intentionally not used as broker order-placement fallback.
 - `RITHMIC_TEST_SYSTEM_NAME` or `RITHMIC_TEST_SYSTEM`: required only when
   `QFA_BROKER_ADAPTER_KIND=rithmic`; scoped to ORDER_PLANT order placement.
+  Tradeify must be supplied with exact RProtocol casing as `Tradeify`; lowercase
+  `tradeify` fails the ORDER_PLANT login with an invalid-system response.
 - `RITHMIC_USER`: required only when
   `QFA_PAPER_MARKET_DATA_SOURCE=live_rithmic_ticker_plant`; scoped to
   TICKER_PLANT market-data access.

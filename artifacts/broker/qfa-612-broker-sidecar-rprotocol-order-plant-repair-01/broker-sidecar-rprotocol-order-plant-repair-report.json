@@ -1,0 +1,67 @@
+{
+  "authority_locks": {
+    "cancel_order_executed": false,
+    "capture_credentials_touched": false,
+    "live_trading_authority_created": false,
+    "net_position_exposure_created": false,
+    "paper_runtime_started": false,
+    "phase_6_authority_created": false,
+    "production_account_used": false,
+    "record_type": "AUTHORITY_LOCKS",
+    "roster_mutated": false,
+    "submit_order_executed": false
+  },
+  "code_changes": [
+    "services/broker_session_sidecar/rprotocol_order_plant.py",
+    "services/broker_session_sidecar/auth.py",
+    "services/broker_session_sidecar/credential_resolver.py",
+    "config/paper/README.md"
+  ],
+  "determination": "BROKER_SIDECAR_RPROTOCOL_ORDER_PLANT_REPAIR_READY_RUNTIME_START_BLOCKED_OUTSIDE_RTH",
+  "local_config": {
+    "allowlist_count": 1,
+    "allowlist_path": "D:/Quant-futures-app/.local/qfa612/rithmic-test-order-account-allowlist.json",
+    "allowlist_source": "ORDER_PLANT_account_discovery_no_order_lifecycle",
+    "capture_credentials_touched": false,
+    "gateway_source": "explicit_RITHMIC_TEST_GATEWAY_URL_alias_from_existing_connect_point",
+    "record_type": "LOCAL_CONFIG",
+    "rithmic_test_gateway_url_present": true
+  },
+  "next_action": "Run QFA-612 paper-trading start wrapper during the next RTH window after repeating --preflight-only; do not use --allow-preopen for this RTH-only launch.",
+  "output_hashes": {
+    "bounded_jsonl_lf_sha256": "72a840e314612bf90e1892437a1ade6a8d29f8d1b0336ef97d1760e29da95db2",
+    "memo_lf_sha256": "cfbeeaca5576e553b2e410f9a58e2940fadce2d6db250249001440e58cf04a68",
+    "report_json_lf_sha256": "921eee2adfcb9a08a88ed38901d5bf21b56fca403230ebd3614f2c82b05636f1",
+    "report_md_lf_sha256": "cfbeeaca5576e553b2e410f9a58e2940fadce2d6db250249001440e58cf04a68"
+  },
+  "proofs": [
+    {
+      "account_ref_redacted_present": true,
+      "authenticated_plants": [
+        "ORDER_PLANT"
+      ],
+      "boot_status": "PASS",
+      "cancel_order_executed": false,
+      "credential_path": "RITHMIC_TEST_GATEWAY_URL_EXPLICIT_ALIAS",
+      "message_type": "boot_identity",
+      "record_type": "BOOT_PROOF",
+      "sdk_name": "async-rithmic",
+      "sdk_version": "rithmic-rprotocol-order-plant",
+      "submit_order_executed": false
+    },
+    {
+      "block_reason": "outside_rth",
+      "blocked_gates": [
+        "rth_gate"
+      ],
+      "phase": "eth",
+      "preflight_passed": false,
+      "record_type": "PAPER_START_PREFLIGHT",
+      "runtime_started": false,
+      "session_id": "2026-06-16-eth"
+    }
+  ],
+  "summary": "ORDER_PLANT sidecar boot is repaired and explicit order-placement gateway/allowlist config is present; paper runtime start remains fail-closed because the MNQ session calendar is currently outside RTH.",
+  "ticket": "QFA-612-BROKER-SIDECAR-RPROTOCOL-ORDER-PLANT-REPAIR-01",
+  "worktree": "D:\\qfa612-broker04-recon-impl"
+}

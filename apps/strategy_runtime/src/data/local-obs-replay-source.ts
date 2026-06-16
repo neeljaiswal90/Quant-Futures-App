@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import {
   createJournalEventEnvelope,
   journalEventFromJsonLine,
@@ -13,7 +13,7 @@ import {
   type UnixNs,
 } from '../contracts/index.js';
 
-export type LocalObsReplayPaceMode = 'realtime' | 'as_fast_as_possible';
+export type LocalObsReplayPaceMode = 'realtime' | 'as_fast_as_possible' | 'tail_from_end';
 
 export interface LocalObsReplaySourceOptions {
   readonly path: string;
@@ -51,7 +51,7 @@ export class LocalObsReplaySource {
     }
     this.assertReadablePath();
     this.stopping = false;
-    this.completion = this.replay();
+    this.completion = this.paceMode === 'tail_from_end' ? this.tailFromEnd() : this.replay();
     if (this.paceMode === 'as_fast_as_possible') {
       await this.completion;
     }
@@ -101,6 +101,41 @@ export class LocalObsReplaySource {
       }
       previousTsNs = event.ts_ns;
       await Promise.resolve(this.eventSink(this.rewriteEvent(event)));
+    }
+  }
+
+  private async tailFromEnd(): Promise<void> {
+    let offset = statSync(this.path).size;
+    let pending = '';
+    while (!this.stopping) {
+      const size = statSync(this.path).size;
+      if (size < offset) {
+        offset = size;
+        pending = '';
+      }
+      if (size > offset) {
+        const length = size - offset;
+        const fd = openSync(this.path, 'r');
+        try {
+          const buffer = Buffer.alloc(length);
+          const bytesRead = readSync(fd, buffer, 0, length, offset);
+          offset += bytesRead;
+          pending += buffer.subarray(0, bytesRead).toString('utf8');
+          const lines = pending.split(/\r?\n/u);
+          pending = lines.pop() ?? '';
+          for (const line of lines) {
+            if (this.stopping) return;
+            if (line.trim() === '') continue;
+            const event = this.parseLine(line, this.sequence + 1);
+            if (event !== undefined) {
+              await Promise.resolve(this.eventSink(this.rewriteEvent(event)));
+            }
+          }
+        } finally {
+          closeSync(fd);
+        }
+      }
+      await sleep(250);
     }
   }
 
