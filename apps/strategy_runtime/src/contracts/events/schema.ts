@@ -452,6 +452,7 @@ function validateSessionManifestPayload(
     'simulation',
     'live_rithmic_ticker_plant',
     'local_obs_replay',
+    'live_local_capture_tail',
   ]);
   optionalLiveAccountAllowlistSummary(
     record.live_account_allowlist_summary,
