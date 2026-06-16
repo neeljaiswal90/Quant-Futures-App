@@ -73,10 +73,19 @@ export class LocalObsReplaySource {
     if (!existsSync(this.path)) {
       throw new Error(`QFA_PAPER_LOCAL_OBS_PATH does not exist: ${this.path}`);
     }
+    const stats = statSync(this.path);
+    if (!stats.isFile()) {
+      throw new Error(`QFA_PAPER_LOCAL_OBS_PATH is not a file: ${this.path}`);
+    }
+    let fd: number | undefined;
     try {
-      readFileSync(this.path, { encoding: 'utf8' });
+      fd = openSync(this.path, 'r');
     } catch (error) {
       throw new Error(`QFA_PAPER_LOCAL_OBS_PATH is not readable: ${this.path}: ${messageFrom(error)}`);
+    } finally {
+      if (fd !== undefined) {
+        closeSync(fd);
+      }
     }
   }
 
