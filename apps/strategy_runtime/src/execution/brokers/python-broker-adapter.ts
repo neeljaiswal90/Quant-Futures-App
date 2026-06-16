@@ -601,7 +601,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   }
 
   private commandEnvelope(
-    messageType: 'submit_order' | 'cancel_order' | 'query_order' | 'query_account_list' | 'shutdown',
+    messageType: 'submit_order' | 'cancel_order' | 'query_order' | 'query_account_list' | 'heartbeat' | 'shutdown',
     correlationId: string,
     payload: Readonly<Record<string, unknown>>,
     idempotencyKey: string | undefined,
