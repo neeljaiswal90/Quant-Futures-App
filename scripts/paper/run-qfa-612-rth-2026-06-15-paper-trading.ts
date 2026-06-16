@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { makeRunId, makeSessionId, ns, type UnixNs } from '../../apps/strategy_runtime/src/contracts/index.js';
@@ -9,6 +9,7 @@ import { getMnqSessionPhase, loadMnqSessionCalendarConfig } from '../../apps/str
 const TICKET = 'QFA-612-PAPER-TRADING-START-RTH-2026-06-15-IMPL-01';
 const CONFIG_PATH = 'config/paper/qfa-612-rth-2026-06-15-paper-trading.yaml';
 const STRATEGY_ID = 'regime_shock_reversion_short_v2_utc_16_18_exclusion' as const;
+const LIVE_CAPTURE_OBS_PATH = 'D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-15/MNQ_globex.obs01.jsonl';
 const REPO_ROOT = process.cwd();
 const PRIMARY_ENV_PATH = 'D:/Quant-futures-app/.env';
 const ARTIFACT_DIR = path.join(REPO_ROOT, 'artifacts', 'broker', 'qfa-612-paper-trading-start-rth-2026-06-15-impl-01');
@@ -68,7 +69,7 @@ function parseCli(argv: readonly string[]): CliOptions {
 
 function helpText(): string {
   return `Usage: npx tsx scripts/paper/run-qfa-612-rth-2026-06-15-paper-trading.ts [--preflight-only|--start] [--duration-ms MS] [--allow-preopen]\n\n` +
-    `Default mode is --preflight-only. --start requires RTH unless --allow-preopen is explicitly used, plus QFA_PAPER_OPERATOR_CONFIRMS_FLAT=true, QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED=true, RITHMIC_TEST_* order-placement env, and exactly one live-account allowlist.\n`;
+    `Default mode is --preflight-only. --start requires RTH unless --allow-preopen is explicitly used, plus QFA_PAPER_OPERATOR_CONFIRMS_FLAT=true, QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED=true, RITHMIC_TEST_* order-placement env, exactly one live-account allowlist, and a readable live_local_capture_tail OBS source.\n`;
 }
 
 function loadEnvFile(filePath: string): Record<string, string> {
@@ -92,7 +93,9 @@ function mergedEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...dotenv, ...process.env };
   env.QFA_PAPER_SESSION_CONFIG = CONFIG_PATH;
   env.QFA_BROKER_ADAPTER_KIND = 'rithmic';
-  env.QFA_PAPER_MARKET_DATA_SOURCE = 'live_rithmic_ticker_plant';
+  env.QFA_PAPER_MARKET_DATA_SOURCE = 'live_local_capture_tail';
+  env.QFA_PAPER_LOCAL_OBS_PATH = env.QFA_PAPER_LOCAL_OBS_PATH ?? LIVE_CAPTURE_OBS_PATH;
+  env.QFA_PAPER_LOCAL_OBS_PACE_MODE = 'tail_from_end';
   env.RITHMIC_TEST_USERNAME = env.RITHMIC_TEST_USERNAME ?? env.RITHMIC_TEST_USER;
   env.RITHMIC_TEST_GATEWAY_URL = env.RITHMIC_TEST_GATEWAY_URL ?? env.RITHMIC_TEST_WS_URL;
   env.RITHMIC_TEST_SYSTEM_NAME = normalizeSystemName(env.RITHMIC_TEST_SYSTEM_NAME ?? env.RITHMIC_TEST_SYSTEM ?? '');
@@ -123,12 +126,19 @@ function allowlistCount(env: NodeJS.ProcessEnv): number | undefined {
 function preflight(env: NodeJS.ProcessEnv, options: CliOptions): { readonly gates: readonly GateResult[]; readonly session_phase: Record<string, Json> } {
   const phase = getMnqSessionPhase(loadMnqSessionCalendarConfig(), nowNs());
   const liveAllowlistCount = allowlistCount(env);
+  const liveCapturePath = env.QFA_PAPER_LOCAL_OBS_PATH ?? '';
+  const liveCaptureExists = liveCapturePath !== '' && existsSync(liveCapturePath);
+  const liveCaptureSize = liveCaptureExists ? statSync(liveCapturePath).size : 0;
   const gates: GateResult[] = [
     { name: 'RITHMIC_TEST_USERNAME_present', passed: present(env.RITHMIC_TEST_USERNAME), detail: present(env.RITHMIC_TEST_USERNAME) },
     { name: 'RITHMIC_TEST_PASSWORD_present', passed: present(env.RITHMIC_TEST_PASSWORD), detail: present(env.RITHMIC_TEST_PASSWORD) },
     { name: 'RITHMIC_TEST_GATEWAY_URL_present', passed: present(env.RITHMIC_TEST_GATEWAY_URL), detail: present(env.RITHMIC_TEST_GATEWAY_URL) },
     { name: 'RITHMIC_TEST_SYSTEM_NAME_is_Tradeify', passed: env.RITHMIC_TEST_SYSTEM_NAME === 'Tradeify', detail: env.RITHMIC_TEST_SYSTEM_NAME === undefined || env.RITHMIC_TEST_SYSTEM_NAME === '' ? 'missing' : env.RITHMIC_TEST_SYSTEM_NAME },
     { name: 'capture_credentials_not_broker_fallback', passed: env.RITHMIC_TEST_GATEWAY_URL !== undefined, detail: 'requires explicit RITHMIC_TEST_GATEWAY_URL/RITHMIC_TEST_WS_URL' },
+    { name: 'market_data_source_is_live_local_capture_tail', passed: env.QFA_PAPER_MARKET_DATA_SOURCE === 'live_local_capture_tail', detail: env.QFA_PAPER_MARKET_DATA_SOURCE ?? 'missing' },
+    { name: 'live_capture_tail_path_present', passed: present(liveCapturePath), detail: present(liveCapturePath) },
+    { name: 'live_capture_tail_path_exists', passed: liveCaptureExists, detail: liveCapturePath },
+    { name: 'live_capture_tail_path_nonempty', passed: liveCaptureSize > 0, detail: liveCaptureSize },
     { name: 'QFA_PAPER_OPERATOR_CONFIRMS_FLAT_true', passed: boolEnv(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT), detail: boolEnv(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT) },
     { name: 'QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED_true', passed: boolEnv(env.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED), detail: boolEnv(env.QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED) },
     { name: 'allowlist_path_present', passed: present(env.QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH), detail: present(env.QFA_PAPER_LIVE_ACCOUNT_ALLOWLIST_PATH) },
@@ -266,7 +276,7 @@ function markdownReport(report: Record<string, unknown>, boundedJsonl: string, r
 
 function memo(report: Record<string, unknown>, boundedJsonl: string, reportJson: string, reportMd: string): string {
   return `# ${TICKET}\n\nSTATE: PENDING-REVIEW\n\nDetermination:\n\n\`\`\`text\n${String(report.determination)}\n\`\`\`\n\n` +
-    `This implementation adds a dedicated 2026-06-15 RTH paper-trading config and a fail-closed launch wrapper. Default mode is preflight-only; actual paper start requires --start, --duration-ms, RTH unless explicitly allowed, RITHMIC_TEST_* order-placement env, explicit gateway, exactly one allowlisted account, flat-at-start confirmation, and account-active confirmation.\n\n` +
+    `This implementation adds a dedicated 2026-06-15 RTH paper-trading config and a fail-closed launch wrapper. Default mode is preflight-only; actual paper start requires --start, --duration-ms, RTH unless explicitly allowed, RITHMIC_TEST_* order-placement env, explicit gateway, exactly one allowlisted account, flat-at-start confirmation, account-active confirmation, and a readable live_local_capture_tail OBS source.\n\n` +
     `Authority boundary remains: no production account, no live broker authority, no Phase 6 authority, no roster mutation, no capture credential mutation, and no automatic shutdown flattening.\n\n` +
     `Output hashes:\n\n\`\`\`text\nbounded_jsonl_lf_sha256 = ${sha256Lf(boundedJsonl)}\nreport_json_lf_sha256 = ${sha256Lf(reportJson)}\nreport_md_lf_sha256 = ${sha256Lf(reportMd)}\n\`\`\`\n`;
 }

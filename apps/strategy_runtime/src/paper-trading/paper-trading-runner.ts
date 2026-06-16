@@ -491,8 +491,12 @@ export class PaperTradingSession {
     ) {
       throw new Error('live_rithmic_ticker_plant shadow mode requires a non-empty live_account_allowlist');
     }
-    if (this.config.market_data_source === 'local_obs_replay' && this.config.local_obs_replay_path === undefined) {
-      throw new Error('QFA_PAPER_LOCAL_OBS_PATH is required when QFA_PAPER_MARKET_DATA_SOURCE=local_obs_replay');
+    if (
+      (this.config.market_data_source === 'local_obs_replay' ||
+        this.config.market_data_source === 'live_local_capture_tail') &&
+      this.config.local_obs_replay_path === undefined
+    ) {
+      throw new Error('QFA_PAPER_LOCAL_OBS_PATH is required when QFA_PAPER_MARKET_DATA_SOURCE=local_obs_replay or live_local_capture_tail');
     }
     if (this.config.adapter_kind === 'rithmic' && this.config.live_account_allowlist.length !== 1) {
       throw new Error('QFA-612-BROKER-03 requires exactly one live_account_allowlist entry when QFA_BROKER_ADAPTER_KIND=rithmic');
@@ -915,7 +919,10 @@ export class PaperTradingSession {
   }
 
   private createLocalObsReplaySource(): Pick<LocalObsReplaySource, 'start' | 'stop'> | undefined {
-    if (this.config.market_data_source !== 'local_obs_replay') {
+    if (
+      this.config.market_data_source !== 'local_obs_replay' &&
+      this.config.market_data_source !== 'live_local_capture_tail'
+    ) {
       return undefined;
     }
     const path = this.config.local_obs_replay_path;
@@ -926,7 +933,10 @@ export class PaperTradingSession {
       path,
       run_id: this.config.run_id,
       session_id: this.config.session_id,
-      pace_mode: this.config.local_obs_replay_pace_mode,
+      pace_mode:
+        this.config.market_data_source === 'live_local_capture_tail'
+          ? 'tail_from_end'
+          : this.config.local_obs_replay_pace_mode,
       event_sink: (event) => this.publishHarnessEvent(event),
     };
     return new LocalObsReplaySource(options);
@@ -1200,17 +1210,22 @@ function assertOrderPlantCredentialEnvPresent(env: Record<string, string | undef
 }
 
 function parseMarketDataSource(value: string): PaperMarketDataSource {
-  if (value === 'simulation' || value === 'live_rithmic_ticker_plant' || value === 'local_obs_replay') {
+  if (
+    value === 'simulation' ||
+    value === 'live_rithmic_ticker_plant' ||
+    value === 'local_obs_replay' ||
+    value === 'live_local_capture_tail'
+  ) {
     return value;
   }
-  throw new Error('QFA_PAPER_MARKET_DATA_SOURCE must be one of: simulation, live_rithmic_ticker_plant, local_obs_replay');
+  throw new Error('QFA_PAPER_MARKET_DATA_SOURCE must be one of: simulation, live_rithmic_ticker_plant, local_obs_replay, live_local_capture_tail');
 }
 
 function parseLocalObsReplayPaceMode(value: string): LocalObsReplayPaceMode {
-  if (value === 'realtime' || value === 'as_fast_as_possible') {
+  if (value === 'realtime' || value === 'as_fast_as_possible' || value === 'tail_from_end') {
     return value;
   }
-  throw new Error('QFA_PAPER_LOCAL_OBS_PACE_MODE must be one of: realtime, as_fast_as_possible');
+  throw new Error('QFA_PAPER_LOCAL_OBS_PACE_MODE must be one of: realtime, as_fast_as_possible, tail_from_end');
 }
 
 function parseOptionalPort(value: string | undefined): number | undefined {

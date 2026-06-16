@@ -12,6 +12,10 @@ from typing import Any
 from services.broker_session_sidecar import __version__
 from services.broker_session_sidecar.credential_resolver import RithmicCredentials
 from services.broker_session_sidecar.ipc.redactor import redact_text
+from services.broker_session_sidecar.rprotocol_order_plant import (
+    RProtocolOrderPlantClient,
+    broker_session_id,
+)
 
 ASYNC_RITHMIC_DISTRIBUTION = "async-rithmic"
 ASYNC_RITHMIC_IMPORT_NAME = "async_rithmic"
@@ -41,6 +45,8 @@ class AuthDeniedError(RuntimeError):
 async def authenticate(credentials: RithmicCredentials, mode: str = "test") -> AuthResult:
     if mode != "test":
         raise AuthDeniedError("live mode is out of scope for QFA-612-BROKER-03")
+    if os.environ.get("QFA_BROKER_ADAPTER_KIND") == "rithmic":
+        return await _authenticate_rprotocol_order_plant(credentials)
     try:
         async_rithmic = importlib.import_module(ASYNC_RITHMIC_IMPORT_NAME)
     except Exception as exc:  # noqa: BLE001 - import boundary intentionally normalized.
@@ -58,6 +64,21 @@ async def authenticate(credentials: RithmicCredentials, mode: str = "test") -> A
         response,
         sdk_version,
         authenticated_plants,
+        gateway_url_redacted=redact_text(credentials.ws_url),
+    )
+
+
+async def _authenticate_rprotocol_order_plant(credentials: RithmicCredentials) -> AuthResult:
+    try:
+        client = await RProtocolOrderPlantClient.connect(credentials)
+    except Exception as exc:  # noqa: BLE001 - broker library errors may be arbitrary.
+        raise AuthDeniedError(str(exc), _error_code(exc)) from exc
+    return AuthResult(
+        broker_session_id=broker_session_id(),
+        account_ref_redacted=redact_text(client.account_id),
+        sdk_version=client.sdk_version,
+        client=client,
+        authenticated_plants=(ORDER_PLANT_NAME,),
         gateway_url_redacted=redact_text(credentials.ws_url),
     )
 
@@ -162,7 +183,7 @@ def _plant_markers(async_rithmic: Any) -> dict[str, Any]:
 
 def _authenticated_plant_names() -> tuple[str, ...]:
     return (
-        (TICKER_PLANT_NAME, ORDER_PLANT_NAME)
+        (ORDER_PLANT_NAME,)
         if os.environ.get("QFA_BROKER_ADAPTER_KIND") == "rithmic"
         else (TICKER_PLANT_NAME,)
     )

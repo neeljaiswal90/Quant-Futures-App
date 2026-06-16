@@ -21,9 +21,9 @@ execution:
   shutdown_quarantine_timeout_ms: 30000
 
 observability:
-  market_data_source: live_rithmic_ticker_plant
-  local_obs_replay_path: null
-  local_obs_replay_pace_mode: realtime
+  market_data_source: live_local_capture_tail
+  local_obs_replay_path: D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-15/MNQ_globex.obs01.jsonl
+  local_obs_replay_pace_mode: tail_from_end
   metrics:
     enabled: true
     host: 127.0.0.1
