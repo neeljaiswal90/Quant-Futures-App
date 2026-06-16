@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, openSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -32,6 +32,7 @@ const PROCESSING_LAG_NS = 2n * ONE_SECOND_NS;
 const POLL_INTERVAL_MS = 1_000;
 export const LIVE_CAPTURE_FEATURE_BRIDGE_MAX_TRADE_SEED_BYTES = 128 * 1024 * 1024;
 export const LIVE_CAPTURE_FEATURE_BRIDGE_MAX_QUOTE_SEED_BYTES = 64 * 1024 * 1024;
+export const LIVE_CAPTURE_MINUTE_BAR_SEED_SCHEMA_VERSION = 1;
 const LIVE_CAPTURE_FEATURE_BRIDGE_CONFIG_HASH = makeConfigHash(
   createHash('sha256').update('qfa612-live-local-capture-feature-bridge-v1', 'utf8').digest('hex'),
 );
@@ -57,6 +58,27 @@ interface MutableBar {
   trade_count: number;
 }
 
+interface MinuteBarSeedBar {
+  readonly slot: number;
+  readonly start_ts_ns: string;
+  readonly end_ts_ns: string;
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+  readonly volume: number;
+  readonly trade_count: number;
+}
+
+interface MinuteBarSeedFile {
+  readonly schema_version: number;
+  readonly record_type: string;
+  readonly source_obs01_path: string;
+  readonly source_obs01_size_bytes: number;
+  readonly trading_date: string;
+  readonly bars: readonly MinuteBarSeedBar[];
+}
+
 interface AppendState {
   offset: number;
   remainder: string;
@@ -64,6 +86,7 @@ interface AppendState {
 
 export interface LiveLocalCaptureFeatureBridgeOptions {
   readonly obs01_path: string;
+  readonly minute_bar_seed_path?: string;
   readonly regime_label: StrategyFeatureSnapshotRegime;
   readonly process_snapshot: (snapshot: StrategyFeatureSnapshot) => Promise<unknown>;
   readonly symbol?: string;
@@ -73,6 +96,7 @@ export interface LiveLocalCaptureFeatureBridgeOptions {
 export class LiveLocalCaptureFeatureBridge {
   private readonly obs01Path: string;
   private readonly mbp1Path: string;
+  private readonly minuteBarSeedPath: string | undefined;
   private readonly regimeLabel: StrategyFeatureSnapshotRegime;
   private readonly processSnapshot: (snapshot: StrategyFeatureSnapshot) => Promise<unknown>;
   private readonly instrument: InstrumentIdentity;
@@ -94,6 +118,7 @@ export class LiveLocalCaptureFeatureBridge {
   constructor(options: LiveLocalCaptureFeatureBridgeOptions) {
     this.obs01Path = options.obs01_path;
     this.mbp1Path = deriveMbp1Path(options.obs01_path);
+    this.minuteBarSeedPath = options.minute_bar_seed_path;
     this.regimeLabel = options.regime_label;
     this.processSnapshot = options.process_snapshot;
     const symbol = options.symbol ?? DEFAULT_SYMBOL;
@@ -159,9 +184,55 @@ export class LiveLocalCaptureFeatureBridge {
   }
 
   private async seedTrades(): Promise<void> {
+    if (this.seedTradesFromMinuteBarSeed()) {
+      return;
+    }
     this.tradeAppend = readSeedLines(this.obs01Path, LIVE_CAPTURE_FEATURE_BRIDGE_MAX_TRADE_SEED_BYTES, (line) => {
       this.ingestTradeLine(line);
     });
+  }
+
+  private seedTradesFromMinuteBarSeed(): boolean {
+    if (this.minuteBarSeedPath === undefined || this.minuteBarSeedPath.trim() === '') {
+      return false;
+    }
+    if (!existsSync(this.minuteBarSeedPath)) {
+      throw new Error(`QFA live capture feature bridge minute-bar seed is missing: ${this.minuteBarSeedPath}`);
+    }
+    const seed = JSON.parse(readFileSync(this.minuteBarSeedPath, 'utf8')) as MinuteBarSeedFile;
+    if (seed.schema_version !== LIVE_CAPTURE_MINUTE_BAR_SEED_SCHEMA_VERSION || seed.record_type !== 'LIVE_CAPTURE_MINUTE_BAR_SEED') {
+      throw new Error('QFA live capture feature bridge minute-bar seed schema is incompatible');
+    }
+    if (seed.trading_date !== this.tradingDate) {
+      throw new Error(`QFA live capture feature bridge minute-bar seed trading date mismatch: ${seed.trading_date} !== ${this.tradingDate}`);
+    }
+    if (normalizePath(seed.source_obs01_path) !== normalizePath(this.obs01Path)) {
+      throw new Error('QFA live capture feature bridge minute-bar seed source path does not match OBS01 path');
+    }
+    const currentSize = statSync(this.obs01Path).size;
+    if (!Number.isSafeInteger(seed.source_obs01_size_bytes) || seed.source_obs01_size_bytes < 0 || seed.source_obs01_size_bytes > currentSize) {
+      throw new Error('QFA live capture feature bridge minute-bar seed source offset is invalid for current OBS01 file');
+    }
+    for (const seedBar of seed.bars) {
+      if (!Number.isInteger(seedBar.slot) || seedBar.slot < 0 || seedBar.slot >= 390) {
+        continue;
+      }
+      const start = BigInt(seedBar.start_ts_ns);
+      const end = BigInt(seedBar.end_ts_ns);
+      this.barsBySlot.set(seedBar.slot, {
+        start_ts_ns: start,
+        end_ts_ns: end,
+        open: seedBar.open,
+        high: seedBar.high,
+        low: seedBar.low,
+        close: seedBar.close,
+        volume: seedBar.volume,
+        trade_count: seedBar.trade_count,
+      });
+      this.observeTs(end);
+    }
+    this.tradeAppend = { offset: seed.source_obs01_size_bytes, remainder: '' };
+    return true;
   }
 
   private async poll(): Promise<void> {
@@ -359,6 +430,10 @@ export function deriveMbp1Path(obs01Path: string): string {
     return obs01Path.slice(0, -'.obs01.jsonl'.length) + '.mbp1.jsonl';
   }
   return path.join(path.dirname(obs01Path), 'MNQ_globex.mbp1.jsonl');
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/gu, '/').toLowerCase();
 }
 
 export function parseCaptureRegimeLabel(value: string | undefined): StrategyFeatureSnapshotRegime {
