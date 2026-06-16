@@ -111,6 +111,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   private bootTimer?: ReturnType<typeof setTimeout>;
   private shutdownTimer?: ReturnType<typeof setTimeout>;
   private heartbeatTimer?: ReturnType<typeof setTimeout>;
+  private heartbeatPingTimer?: ReturnType<typeof setTimeout>;
   private running = false;
   private stopping = false;
   private brokerSessionId = 'python-broker-session-pending';
@@ -184,7 +185,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     }
 
     this.stopping = true;
-    this.clearHeartbeatTimer();
+    this.clearHeartbeatTimers();
     this.writeCommand(this.commandEnvelope('shutdown', this.nextCorrelationId('shutdown'), {}, undefined));
 
     await new Promise<void>((resolve, reject) => {
@@ -411,6 +412,8 @@ export class PythonBrokerAdapter implements BrokerAdapter {
         this.handleAccountListSnapshot(message);
         return;
       case 'heartbeat_pong':
+        this.scheduleHeartbeatPing();
+        return;
       case 'recovered':
       case 'qfa_broker_sidecar_ipc_ms':
       case 'cancel_pending':
@@ -447,6 +450,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
       },
     });
     this.markActivity();
+    this.scheduleHeartbeatPing();
     if (this.accountListVerificationEnabled && this.liveAccountAllowlist.length > 0) {
       this.writeCommand(this.commandEnvelope(
         'query_account_list',
@@ -491,7 +495,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     const wasStopping = this.stopping;
     this.running = false;
     this.child = undefined;
-    this.clearHeartbeatTimer();
+    this.clearHeartbeatTimers();
     if (this.shutdownTimer !== undefined) {
       clearTimeout(this.shutdownTimer);
       this.shutdownTimer = undefined;
@@ -511,6 +515,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     if (this.stopping) {
       return;
     }
+    this.clearHeartbeatTimers();
     const payload = failure ?? {
       failure_state: 'sidecar_unavailable',
       reason: `Python broker sidecar unavailable: ${reason}`,
@@ -529,7 +534,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   }
 
   private markActivity(): void {
-    this.clearHeartbeatTimer();
+    this.clearHeartbeatTimeout();
     this.heartbeatTimer = setTimeout(() => {
       this.heartbeatTimer = undefined;
       this.markSidecarUnavailable('heartbeat_timeout');
@@ -537,10 +542,37 @@ export class PythonBrokerAdapter implements BrokerAdapter {
     this.heartbeatTimer.unref?.();
   }
 
-  private clearHeartbeatTimer(): void {
+  private scheduleHeartbeatPing(): void {
+    if (!this.running || this.stopping || this.child === undefined || this.heartbeatPingTimer !== undefined) {
+      return;
+    }
+    this.heartbeatPingTimer = setTimeout(() => {
+      this.heartbeatPingTimer = undefined;
+      if (!this.running || this.stopping || this.child === undefined) {
+        return;
+      }
+      this.writeCommand(this.commandEnvelope(
+        'heartbeat',
+        this.nextCorrelationId('heartbeat'),
+        {},
+        undefined,
+      ));
+    }, Math.max(1_000, Math.floor(this.heartbeatTimeoutMs / 2)));
+    this.heartbeatPingTimer.unref?.();
+  }
+
+  private clearHeartbeatTimeout(): void {
     if (this.heartbeatTimer !== undefined) {
       clearTimeout(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
+    }
+  }
+
+  private clearHeartbeatTimers(): void {
+    this.clearHeartbeatTimeout();
+    if (this.heartbeatPingTimer !== undefined) {
+      clearTimeout(this.heartbeatPingTimer);
+      this.heartbeatPingTimer = undefined;
     }
   }
 
@@ -569,7 +601,7 @@ export class PythonBrokerAdapter implements BrokerAdapter {
   }
 
   private commandEnvelope(
-    messageType: 'submit_order' | 'cancel_order' | 'query_order' | 'query_account_list' | 'shutdown',
+    messageType: 'submit_order' | 'cancel_order' | 'query_order' | 'query_account_list' | 'heartbeat' | 'shutdown',
     correlationId: string,
     payload: Readonly<Record<string, unknown>>,
     idempotencyKey: string | undefined,
