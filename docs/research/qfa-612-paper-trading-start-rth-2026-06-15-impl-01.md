@@ -17,7 +17,7 @@ Authority boundary remains: no production account, no live broker authority, no 
 Output hashes:
 
 ```text
-bounded_jsonl_lf_sha256 = 82e2f368e20c162f342d79638ff6eb742e01cbbf3e76db03618cd997b5fb696a
-report_json_lf_sha256 = 9d08455645ac935c7e4e053c425de9384d8e0a11d7c34462e2bc12f53c74f19e
-report_md_lf_sha256 = 75e1a63154a7acf168f76df11e95b8a76333500d81edc39d426cd6cf84a8f791
+bounded_jsonl_lf_sha256 = d99f5d192f295bd0bba98a308b7f6f1e45bfdba5b8ecab767121f018fb190e9e
+report_json_lf_sha256 = c02775d22ebd90c0e0b74f0109376e4df4eba32ea9a687bc2857513d0787f343
+report_md_lf_sha256 = de3d5d7139270fc50bd24dadb6b316b2dd0b066dc6c6a56024c8d44c47bff867
 ```

@@ -19,16 +19,16 @@ PAPER_TRADING_START_RTH_2026_06_15_STARTED_AND_STOPPED_BOUNDED
 | capture_credentials_not_broker_fallback | PASS | "requires explicit RITHMIC_TEST_GATEWAY_URL/RITHMIC_TEST_WS_URL" |
 | market_data_source_is_live_local_capture_tail | PASS | "live_local_capture_tail" |
 | live_capture_tail_path_present | PASS | true |
-| live_capture_tail_path_exists | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-16/MNQ_globex.obs01.jsonl" |
-| live_capture_tail_path_nonempty | PASS | 924564002 |
-| live_capture_tail_recent | PASS | 90.968994140625 |
-| live_capture_mbp1_path_exists | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-16/MNQ_globex.mbp1.jsonl" |
-| live_capture_mbp1_recent | PASS | 82.4580078125 |
-| live_capture_minute_bar_seed_path_present | PASS | "D:\\qfa612-live-capture-full-session-seed-01\\.tmp\\qfa-612-live-capture-minute-bar-seed\\2026-06-16-MNQ_globex.minute-bars.seed.json" |
-| live_capture_minute_bar_seed_path_exists | PASS | "D:\\qfa612-live-capture-full-session-seed-01\\.tmp\\qfa-612-live-capture-minute-bar-seed\\2026-06-16-MNQ_globex.minute-bars.seed.json" |
-| live_capture_minute_bar_seed_source_matches_obs01 | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-16/MNQ_globex.obs01.jsonl" |
-| live_capture_minute_bar_seed_source_size_covered | PASS | 924433845 |
-| live_capture_minute_bar_seed_has_warmup | PASS | 385 |
+| live_capture_tail_path_exists | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-18/MNQ_globex.obs01.jsonl" |
+| live_capture_tail_path_nonempty | PASS | 646159485 |
+| live_capture_tail_recent | PASS | 243.98583984375 |
+| live_capture_mbp1_path_exists | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-18/MNQ_globex.mbp1.jsonl" |
+| live_capture_mbp1_recent | PASS | 232.471435546875 |
+| live_capture_minute_bar_seed_path_present | PASS | "D:\\qfa612-system-precedence-pr\\.tmp\\qfa-612-live-capture-minute-bar-seed\\2026-06-18-MNQ_globex.minute-bars.seed.json" |
+| live_capture_minute_bar_seed_path_exists | PASS | "D:\\qfa612-system-precedence-pr\\.tmp\\qfa-612-live-capture-minute-bar-seed\\2026-06-18-MNQ_globex.minute-bars.seed.json" |
+| live_capture_minute_bar_seed_source_matches_obs01 | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-18/MNQ_globex.obs01.jsonl" |
+| live_capture_minute_bar_seed_source_size_covered | PASS | 646093036 |
+| live_capture_minute_bar_seed_has_warmup | PASS | 128 |
 | live_capture_minute_bar_seed_starts_at_rth_open | PASS | 0 |
 | paper_observation_stop_after_candidate_enabled | PASS | true |
 | live_capture_feature_bridge_enabled | PASS | true |
@@ -36,7 +36,7 @@ PAPER_TRADING_START_RTH_2026_06_15_STARTED_AND_STOPPED_BOUNDED
 | QFA_ORDER_PLANT_ACCOUNT_ACTIVE_CONFIRMED_true | PASS | true |
 | allowlist_path_present | PASS | true |
 | allowlist_count_exactly_one | PASS | 1 |
-| rth_gate | PASS | {"allow_preopen":false,"is_rth":true,"phase":"rth","trading_date":"2026-06-16"} |
+| rth_gate | PASS | {"allow_preopen":false,"is_rth":true,"phase":"rth","trading_date":"2026-06-18"} |
 | start_duration_required | PASS | 60000 |
 
 ## Launch command
@@ -56,6 +56,6 @@ The bridge uses a compact full-session minute-bar seed built from OBS01 before s
 ## Output hashes
 
 ```text
-bounded_jsonl_lf_sha256 = 82e2f368e20c162f342d79638ff6eb742e01cbbf3e76db03618cd997b5fb696a
-report_json_lf_sha256 = 9d08455645ac935c7e4e053c425de9384d8e0a11d7c34462e2bc12f53c74f19e
+bounded_jsonl_lf_sha256 = d99f5d192f295bd0bba98a308b7f6f1e45bfdba5b8ecab767121f018fb190e9e
+report_json_lf_sha256 = c02775d22ebd90c0e0b74f0109376e4df4eba32ea9a687bc2857513d0787f343
 ```
