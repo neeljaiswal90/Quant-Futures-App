@@ -20,15 +20,15 @@ PAPER_TRADING_START_RTH_2026_06_15_STARTED_AND_STOPPED_BOUNDED
 | market_data_source_is_live_local_capture_tail | PASS | "live_local_capture_tail" |
 | live_capture_tail_path_present | PASS | true |
 | live_capture_tail_path_exists | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-18/MNQ_globex.obs01.jsonl" |
-| live_capture_tail_path_nonempty | PASS | 608629809 |
-| live_capture_tail_recent | PASS | 271.00390625 |
+| live_capture_tail_path_nonempty | PASS | 646159485 |
+| live_capture_tail_recent | PASS | 243.98583984375 |
 | live_capture_mbp1_path_exists | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-18/MNQ_globex.mbp1.jsonl" |
-| live_capture_mbp1_recent | PASS | 254.45849609375 |
-| live_capture_minute_bar_seed_path_present | PASS | "D:\\qfa612-live-capture-full-session-seed-01\\.tmp\\qfa-612-live-capture-minute-bar-seed\\2026-06-18-MNQ_globex.minute-bars.seed.json" |
-| live_capture_minute_bar_seed_path_exists | PASS | "D:\\qfa612-live-capture-full-session-seed-01\\.tmp\\qfa-612-live-capture-minute-bar-seed\\2026-06-18-MNQ_globex.minute-bars.seed.json" |
+| live_capture_mbp1_recent | PASS | 232.471435546875 |
+| live_capture_minute_bar_seed_path_present | PASS | "D:\\qfa612-system-precedence-pr\\.tmp\\qfa-612-live-capture-minute-bar-seed\\2026-06-18-MNQ_globex.minute-bars.seed.json" |
+| live_capture_minute_bar_seed_path_exists | PASS | "D:\\qfa612-system-precedence-pr\\.tmp\\qfa-612-live-capture-minute-bar-seed\\2026-06-18-MNQ_globex.minute-bars.seed.json" |
 | live_capture_minute_bar_seed_source_matches_obs01 | PASS | "D:/Quant-futures-app/tools/rithmic_analytics/data/captures/2026-06-18/MNQ_globex.obs01.jsonl" |
-| live_capture_minute_bar_seed_source_size_covered | PASS | 608602440 |
-| live_capture_minute_bar_seed_has_warmup | PASS | 109 |
+| live_capture_minute_bar_seed_source_size_covered | PASS | 646093036 |
+| live_capture_minute_bar_seed_has_warmup | PASS | 128 |
 | live_capture_minute_bar_seed_starts_at_rth_open | PASS | 0 |
 | paper_observation_stop_after_candidate_enabled | PASS | true |
 | live_capture_feature_bridge_enabled | PASS | true |
@@ -56,6 +56,6 @@ The bridge uses a compact full-session minute-bar seed built from OBS01 before s
 ## Output hashes
 
 ```text
-bounded_jsonl_lf_sha256 = 7f52b8a20c5206ee93211c6fb54a9867a6541e6271e8d0f35cf71040a7434a64
-report_json_lf_sha256 = d05dd493e5dc8bd445e400ce078003780b9e7a89783e643a10ca6ac4ce31fdb1
+bounded_jsonl_lf_sha256 = d99f5d192f295bd0bba98a308b7f6f1e45bfdba5b8ecab767121f018fb190e9e
+report_json_lf_sha256 = c02775d22ebd90c0e0b74f0109376e4df4eba32ea9a687bc2857513d0787f343
 ```
