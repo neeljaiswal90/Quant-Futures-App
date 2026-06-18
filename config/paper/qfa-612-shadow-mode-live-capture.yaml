@@ -1,0 +1,22 @@
+session:
+  strategy_id: regime_shock_reversion_short_v2_utc_16_18_exclusion
+  mode: paper
+  adapter_kind: rithmic
+  profile: qfa-612-shadow-mode-live-capture
+
+shadow_mode:
+  ticket: QFA-612-SHADOW-MODE-LIVE-CAPTURE-PROFILE-01
+  market_data_source: live_local_capture_tail
+  feature_bridge_enabled: true
+  paper_observation_stop_after_candidate: true
+  order_intent_must_remain_zero: true
+  regime_label_source_path: config/paper/qfa-612-shadow-regime-label-source.json
+  performance_rollup_ticket: QFA-612-SHADOW-MODE-PERFORMANCE-ROLLUP-01
+
+execution_boundary:
+  order_translation_authorized: false
+  production_account_authorized: false
+  live_broker_authority_created: false
+  phase_6_authority_created: false
+  roster_mutation_authorized: false
+  capture_credentials_as_broker_fallback: false
