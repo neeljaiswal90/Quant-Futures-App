@@ -1286,11 +1286,8 @@ function normalizeOrderPlantCredentialEnv(
   env: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
   const systemName = normalizeRithmicSystemName(
-    env.RITHMIC_LUCID_SYSTEM_NAME ??
-      env.RITHMIC_TEST_SYSTEM_NAME ??
-      env.RITHMIC_TEST_SYSTEM ??
-      env.RITHMIC_SYSTEM_NAME ??
-      env.RITHMIC_SYSTEM,
+    env.RITHMIC_TEST_SYSTEM_NAME ??
+      env.RITHMIC_TEST_SYSTEM,
   );
   return {
     ...env,
