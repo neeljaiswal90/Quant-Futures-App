@@ -18,7 +18,7 @@ import {
   type JournalEventEnvelope,
   type JournalEventPayloadFor,
 } from '../../../strategy_runtime/src/contracts/index.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import { ns, type UnixNs } from '../../../strategy_runtime/src/contracts/time.js';
 import {
   buildBars,
@@ -451,6 +451,7 @@ async function runSession(input: {
     const result = input.strategyGenerator({
       strategy_id: input.options.strategy_id,
       snapshot,
+      strategy_config: input.options.strategy_config,
     });
     input.events.push(strategyEvalEvent({
       runId: input.runId,
@@ -1182,7 +1183,7 @@ function knownSnapshotRegime(value: unknown): StrategyFeatureSnapshotRegime | nu
 }
 
 function buildFeatureSnapshot(input: {
-  readonly strategyId: StrategyId;
+  readonly strategyId: AnyStrategyId;
   readonly bar: BuiltBar;
   readonly history: readonly BuiltBar[];
   readonly session: RealArchiveSessionSource;

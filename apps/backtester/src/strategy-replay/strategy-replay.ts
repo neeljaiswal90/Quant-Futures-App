@@ -1,4 +1,4 @@
-import { ACTIVE_STRATEGY_IDS, parseStrategyId, type StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import { ACTIVE_STRATEGY_IDS, parseAnyStrategyId, type AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { BuiltBar } from '../../../strategy_runtime/src/data/bar-builder/index.js';
 import { getStrategyGenerator } from '../../../strategy_runtime/src/strategies/index.js';
 import { buildReplayFeatureSnapshot } from './feature-bridge.js';
@@ -12,9 +12,9 @@ import type {
 export async function replayStrategies(
   options: StrategyReplayOptions,
 ): Promise<StrategyReplayResult> {
-  const strategyIds = resolveStrategyIds(options.strategy_ids);
+  const strategyIds = resolveAnyStrategyIds(options.strategy_ids);
   const bars = sortBars(await collectBars(options.bars));
-  const summaryByStrategy = new Map<StrategyId, MutableSummary>();
+  const summaryByStrategy = new Map<AnyStrategyId, MutableSummary>();
 
   for (const strategyId of strategyIds) {
     summaryByStrategy.set(strategyId, {
@@ -65,12 +65,12 @@ export async function replayStrategies(
   };
 }
 
-export function defaultStrategyReplayIds(): readonly StrategyId[] {
+export function defaultStrategyReplayIds(): readonly AnyStrategyId[] {
   return [...ACTIVE_STRATEGY_IDS];
 }
 
-function resolveStrategyIds(strategyIds: readonly (StrategyId | string)[]): readonly StrategyId[] {
-  return strategyIds.map((strategyId) => parseStrategyId(strategyId));
+function resolveAnyStrategyIds(strategyIds: readonly (AnyStrategyId | string)[]): readonly AnyStrategyId[] {
+  return strategyIds.map((strategyId) => parseAnyStrategyId(strategyId));
 }
 
 async function collectBars(
@@ -96,7 +96,7 @@ function sortBars(bars: readonly BuiltBar[]): readonly BuiltBar[] {
 }
 
 interface MutableSummary {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   bars_evaluated: number;
   evaluations_emitted: number;
   readonly errors: string[];

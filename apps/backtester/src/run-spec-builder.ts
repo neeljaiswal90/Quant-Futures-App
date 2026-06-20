@@ -14,7 +14,12 @@ import { validateRunSpec } from '../../strategy_runtime/src/contracts/run-spec-v
 import { classifyCorpusTier, type DatabentoSchema } from '../../strategy_runtime/src/contracts/tier-policy.js';
 import { makeConfigHash } from '../../strategy_runtime/src/contracts/ids.js';
 import type { CorpusManifest } from '../../strategy_runtime/src/contracts/corpus-manifest.js';
-import { parseStrategyId, type StrategyId } from '../../strategy_runtime/src/contracts/strategy-ids.js';
+import {
+  parseAnyStrategyId,
+  type AnyStrategyId,
+  type StrategyId,
+} from '../../strategy_runtime/src/contracts/strategy-ids.js';
+import { isGeneratedCandidateStrategyId } from '../../strategy_runtime/src/contracts/generated-candidate-strategy-ids.js';
 import type { BacktestRunnerOptions } from './types.js';
 
 export interface BacktestDbnInputSource {
@@ -28,7 +33,7 @@ export interface BuiltBacktestRunSpec {
   readonly manifest_hash: string;
   readonly run_spec: RunSpec;
   readonly identity: RunIdentity;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly input_schemas: readonly DatabentoSchema[];
   readonly input_sources: readonly BacktestDbnInputSource[];
   readonly manifest_symbol: string;
@@ -68,7 +73,7 @@ const RECOGNIZED_SCHEMAS: ReadonlySet<string> = new Set([
 ]);
 
 export function buildRunSpecFromOptions(options: BacktestRunnerOptions): BuiltBacktestRunSpec {
-  const strategyId = parseStrategyId(options.strategy_id);
+  const strategyId = parseAnyStrategyId(options.strategy_id);
   const manifest = loadCorpusManifest(options.corpus_manifest_path);
   const manifestHash = computeManifestHash(manifest);
   const tier = classifyCorpusTier(manifest);
@@ -177,13 +182,21 @@ function resolveManifestDbnPath(manifestDir: string, dbnPath: string): string {
   return isAbsolute(dbnPath) || /^[A-Za-z]:[\\/]/u.test(dbnPath) ? dbnPath : resolve(manifestDir, dbnPath);
 }
 
-function buildConfigInputs(repoRoot: string, strategyId: StrategyId): readonly NamedConfigLineageRef[] {
+function buildConfigInputs(repoRoot: string, strategyId: AnyStrategyId): readonly NamedConfigLineageRef[] {
+  const strategyConfigPath = strategyConfigPathFor(strategyId);
   return Object.freeze([
-    configInput(repoRoot, 'strategy', STRATEGY_CONFIG_PATHS[strategyId]),
+    configInput(repoRoot, 'strategy', strategyConfigPath),
     configInput(repoRoot, 'strategy_shared', 'config/strategies/shared.yaml'),
     configInput(repoRoot, 'risk', 'config/risk/risk-policy.yaml'),
     configInput(repoRoot, 'management', 'config/management/profiles.yaml'),
   ]);
+}
+
+function strategyConfigPathFor(strategyId: AnyStrategyId): string {
+  if (isGeneratedCandidateStrategyId(strategyId)) {
+    return `config/strategies/_candidates/${strategyId}.yaml`;
+  }
+  return STRATEGY_CONFIG_PATHS[strategyId];
 }
 
 function configInput(

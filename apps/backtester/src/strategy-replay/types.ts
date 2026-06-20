@@ -1,5 +1,5 @@
 import type { Candidate, StrategyEvaluation } from '../../../strategy_runtime/src/contracts/index.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { UnixNs } from '../../../strategy_runtime/src/contracts/time.js';
 import type { BuiltBar } from '../../../strategy_runtime/src/data/bar-builder/index.js';
 import type { StrategyFeatureSnapshot } from '../../../strategy_runtime/src/strategies/index.js';
@@ -27,7 +27,7 @@ export type ReplaySanityPlaceholderField =
   (typeof REPLAY_SANITY_PLACEHOLDER_FIELDS)[number];
 
 export interface StrategyReplayOptions {
-  readonly strategy_ids: readonly (StrategyId | string)[];
+  readonly strategy_ids: readonly (AnyStrategyId | string)[];
   readonly bars: AsyncIterable<BuiltBar> | readonly BuiltBar[];
 }
 
@@ -38,7 +38,7 @@ export interface StrategyReplayFeatureSnapshot {
 }
 
 export interface StrategyReplayEvaluation {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly bar_id: string;
   readonly ts_ns: UnixNs;
   readonly evaluation: StrategyEvaluation;
@@ -46,7 +46,7 @@ export interface StrategyReplayEvaluation {
 }
 
 export interface StrategyReplaySanityResult {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly bars_evaluated: number;
   readonly evaluations_emitted: number;
   readonly errors: readonly string[];

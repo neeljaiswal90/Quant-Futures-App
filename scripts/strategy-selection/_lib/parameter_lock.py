@@ -31,12 +31,21 @@ def parse_yaml_scalar(raw: str) -> object:
         return value.strip('"').strip("'")
 
 
+def strategy_config_path(strategy_id: str, config_dir: str | Path) -> Path:
+    root = Path(config_dir)
+    primary = root / f"{strategy_id}.yaml"
+    if primary.exists():
+        return primary
+    candidate = root / "_candidates" / f"{strategy_id}.yaml"
+    if candidate.exists():
+        return candidate
+    raise ValueError(f"runtime parameter config missing for {strategy_id}: {primary} or {candidate}")
+
+
 def load_strategy_parameter_struct(strategy_id: str, config_dir: str | Path) -> dict[str, object]:
     """Load the simple Cycle1 strategy parameter YAML without adding PyYAML."""
 
-    path = Path(config_dir) / f"{strategy_id}.yaml"
-    if not path.exists():
-        raise ValueError(f"runtime parameter config missing for {strategy_id}: {path}")
+    path = strategy_config_path(strategy_id, config_dir)
 
     parameters: dict[str, object] = {}
     in_parameters = False

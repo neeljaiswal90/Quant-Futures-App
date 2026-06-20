@@ -2,7 +2,7 @@ import type {
   JournalEventEnvelope,
   SimFillEventPayload,
 } from '../../../strategy_runtime/src/contracts/events/index.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import {
   deriveLedgerExecutionId,
 } from './ledger-ids.js';
@@ -19,7 +19,7 @@ import type {
 
 export interface FillAdapterContext {
   readonly instrument_context?: TradeLedgerInstrumentContext;
-  readonly strategy_id?: StrategyId | null;
+  readonly strategy_id?: AnyStrategyId | null;
 }
 
 interface ResolvedInstrumentIdentity {

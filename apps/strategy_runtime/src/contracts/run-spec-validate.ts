@@ -29,7 +29,7 @@ import {
   type NamedConfigLineageRef,
   type RunSpec,
 } from './run-spec.js';
-import { isStrategyId } from './strategy-ids.js';
+import { isAnyStrategyId } from './strategy-ids.js';
 
 /** A single invariant failure with a path identifying the offending field. */
 export interface RunSpecValidationIssue {
@@ -296,7 +296,7 @@ function validateStrategyIds(
       issues.push({ path: itemPath, message: 'must be a string' });
       return;
     }
-    if (!isStrategyId(item)) {
+    if (!isAnyStrategyId(item)) {
       issues.push({ path: itemPath, message: `unknown strategy_id: ${item}` });
       return;
     }

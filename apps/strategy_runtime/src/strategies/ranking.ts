@@ -1,7 +1,7 @@
 import type { Candidate, RewardRiskTarget } from '../contracts/candidate.js';
 import type { CandidateId } from '../contracts/ids.js';
 import type { RankEventPayload } from '../contracts/events/payloads.js';
-import type { StrategyId } from '../contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../contracts/strategy-ids.js';
 import {
   CANDIDATE_RANKING_METHOD,
   DEFAULT_CANDIDATE_RANKING_CONFIG,
@@ -35,7 +35,7 @@ export interface RankedCandidate {
   readonly rank: number;
   readonly candidate: Candidate;
   readonly candidate_id: CandidateId;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly score: number;
   readonly features: CandidateRankingFeatureVector;
   readonly tie_break_keys: readonly string[];
@@ -129,7 +129,7 @@ function extractRankingFeatures(
     pt2_reward_risk: pt2RewardRisk,
     max_reward_risk: maxRewardRisk,
     risk_points: normalizeFiniteNumber(candidate.risk_points),
-    strategy_priority: rankingConfig.strategy_priority[candidate.strategy_id],
+    strategy_priority: rankingConfig.strategy_priority[candidate.strategy_id] ?? 1_000_000,
     candidate_id: candidate.candidate_id,
   };
 }

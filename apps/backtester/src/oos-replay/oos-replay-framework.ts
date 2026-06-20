@@ -1,5 +1,5 @@
-import { ACTIVE_STRATEGY_IDS, isStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import { ACTIVE_STRATEGY_IDS, isAnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { StrategyFingerprint, StrategyFingerprintSet } from '../strategy-fingerprint/index.js';
 import type {
   CapabilityAssessmentSet,
@@ -108,10 +108,10 @@ function validateInputSpec(inputSpec: TierBOosInputSpec, issues: OosReplayIssue[
   }
 }
 
-function validateStrategyOrder(strategyOrder: readonly StrategyId[], issues: OosReplayIssue[]): void {
-  const seen = new Set<StrategyId>();
+function validateStrategyOrder(strategyOrder: readonly AnyStrategyId[], issues: OosReplayIssue[]): void {
+  const seen = new Set<AnyStrategyId>();
   strategyOrder.forEach((strategyId, index) => {
-    if (!isStrategyId(strategyId)) {
+    if (!isAnyStrategyId(strategyId)) {
       issues.push({
         path: `$.strategy_order[${index}]`,
         code: 'unknown_strategy_id',
@@ -131,28 +131,28 @@ function validateStrategyOrder(strategyOrder: readonly StrategyId[], issues: Oos
   });
 }
 
-function resolveStrategyOrder(strategyOrder: readonly StrategyId[]): readonly StrategyId[] {
+function resolveStrategyOrder(strategyOrder: readonly AnyStrategyId[]): readonly AnyStrategyId[] {
   validateStrategyOrder(strategyOrder, []);
   return Object.freeze([...strategyOrder]);
 }
 
 function indexFingerprints(
   input: StrategyFingerprintSet | readonly StrategyFingerprint[] | undefined,
-): ReadonlyMap<StrategyId, StrategyFingerprint> {
+): ReadonlyMap<AnyStrategyId, StrategyFingerprint> {
   const fingerprints = isReadonlyArray<StrategyFingerprint>(input) ? input : input?.fingerprints ?? [];
   return indexByStrategy(fingerprints, 'fingerprint');
 }
 
 function indexCapabilities(
   input: CapabilityAssessmentSet | readonly StrategyCapabilityAssessment[] | undefined,
-): ReadonlyMap<StrategyId, StrategyCapabilityAssessment> {
+): ReadonlyMap<AnyStrategyId, StrategyCapabilityAssessment> {
   const capabilities = isReadonlyArray<StrategyCapabilityAssessment>(input) ? input : input?.assessments ?? [];
   return indexByStrategy(capabilities, 'capability');
 }
 
 function indexValidationResults(
   input: ValidationGateResultSet | readonly StrategyValidationGateResult[] | undefined,
-): ReadonlyMap<StrategyId, StrategyValidationGateResult> {
+): ReadonlyMap<AnyStrategyId, StrategyValidationGateResult> {
   const validationResults = isReadonlyArray<StrategyValidationGateResult>(input) ? input : input?.results ?? [];
   return indexByStrategy(validationResults, 'validation');
 }
@@ -161,14 +161,14 @@ function isReadonlyArray<TItem>(input: unknown): input is readonly TItem[] {
   return Array.isArray(input);
 }
 
-function indexByStrategy<TItem extends { readonly strategy_id: StrategyId }>(
+function indexByStrategy<TItem extends { readonly strategy_id: AnyStrategyId }>(
   items: readonly TItem[],
   artifactName: string,
-): ReadonlyMap<StrategyId, TItem> {
+): ReadonlyMap<AnyStrategyId, TItem> {
   const issues: OosReplayIssue[] = [];
-  const output = new Map<StrategyId, TItem>();
+  const output = new Map<AnyStrategyId, TItem>();
   items.forEach((item, index) => {
-    if (!isStrategyId(item.strategy_id)) {
+    if (!isAnyStrategyId(item.strategy_id)) {
       issues.push({
         path: `$.${artifactName}[${index}].strategy_id`,
         code: 'invalid_artifact_strategy_id',
@@ -236,6 +236,6 @@ function buildReasons(
   return Object.freeze(REASON_ORDER.filter((reason) => reasons.has(reason)));
 }
 
-export function defaultOosStrategyOrder(): readonly StrategyId[] {
+export function defaultOosStrategyOrder(): readonly AnyStrategyId[] {
   return Object.freeze([...ACTIVE_STRATEGY_IDS]);
 }

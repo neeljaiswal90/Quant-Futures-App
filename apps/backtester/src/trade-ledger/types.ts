@@ -1,4 +1,4 @@
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { UnixNs } from '../../../strategy_runtime/src/contracts/time.js';
 
 export type LedgerExecutionSide = 'buy' | 'sell';
@@ -22,7 +22,7 @@ export interface LedgerExecution {
   readonly event_id: string;
   readonly ts_ns: UnixNs;
 
-  readonly strategy_id: StrategyId | null;
+  readonly strategy_id: AnyStrategyId | null;
   readonly instrument_id: number;
   readonly raw_symbol: string | null;
   readonly instrument_identity_source: InstrumentIdentitySource;
@@ -42,7 +42,7 @@ export interface LedgerExecution {
 export interface OpenLedgerPosition {
   readonly position_id: string;
   readonly run_id: string;
-  readonly strategy_id: StrategyId | null;
+  readonly strategy_id: AnyStrategyId | null;
   readonly instrument_id: number;
   readonly raw_symbol: string | null;
   readonly instrument_identity_source: InstrumentIdentitySource;
@@ -59,7 +59,7 @@ export interface OpenLedgerPosition {
 export interface ClosedTrade {
   readonly trade_id: string;
   readonly run_id: string;
-  readonly strategy_id: StrategyId | null;
+  readonly strategy_id: AnyStrategyId | null;
   readonly instrument_id: number;
   readonly raw_symbol: string | null;
   readonly instrument_identity_source: InstrumentIdentitySource;

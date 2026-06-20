@@ -12,7 +12,7 @@ import type {
   SessionState,
 } from '../contracts/market.js';
 import type { FeatureSnapshotId, EventId } from '../contracts/ids.js';
-import type { StrategyId } from '../contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../contracts/strategy-ids.js';
 import type { UnixNs } from '../contracts/time.js';
 
 export type StrategySetupFamily =
@@ -90,7 +90,7 @@ export interface StrategyFeatureSnapshotContext {
 }
 
 export interface StrategyRegistryEntry {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly display_name: string;
   readonly direction: Direction;
   readonly setup_family: StrategySetupFamily;
@@ -158,7 +158,7 @@ export interface StrategyFeatureSnapshot {
 }
 
 export interface StrategyEvaluationInput {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly snapshot: StrategyFeatureSnapshot;
   readonly strategy_config?: StrategyRuntimeConfig;
 }
