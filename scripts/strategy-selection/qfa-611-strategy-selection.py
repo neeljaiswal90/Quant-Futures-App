@@ -466,8 +466,14 @@ def build_selection(args: argparse.Namespace) -> dict[str, Any]:
         "cf29_roster_count_note": "Methodology is count-agnostic; roster is locked at Step 0 for this run.",
         "bootstrap_seed": args.bootstrap_seed,
         "effective_trial_count": effective_trial_count,
-        "effective_trial_count_source": effective_trial_count_source,
-        "trial_accounting_manifest": trial_accounting_manifest,
+        **(
+            {
+                "effective_trial_count_source": effective_trial_count_source,
+                "trial_accounting_manifest": trial_accounting_manifest,
+            }
+            if trial_accounting_manifest is not None
+            else {}
+        ),
         "thresholds": ADR0016_STAGE1_THRESHOLDS,
         "run_status": run_status,
         "run_outcome": "partial_evidence" if partial_evidence else ("advance_present" if advance_count > 0 else "all_reject"),
