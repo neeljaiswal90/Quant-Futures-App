@@ -22,6 +22,7 @@ sys.path.insert(0, str(LIB_DIR))
 
 from artifact_writer import write_canonical_json, write_lf_text
 from decision import decide_strategy_verdict
+from effective_trials import compute_effective_trial_count
 from hac_sharpe import compute_hac_sharpe
 from parameter_lock import compute_runtime_parameter_hash
 from psr_dsr import compute_psr_dsr
@@ -87,6 +88,32 @@ def active_strategy_ids() -> list[str]:
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def manifest_int_field(manifest: Mapping[str, Any], field: str) -> int:
+    value = manifest.get(field)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"trial_accounting_manifest invalid integer field: {field}")
+    if value < 0:
+        raise ValueError(f"trial_accounting_manifest negative integer field: {field}")
+    return value
+
+
+def load_trial_accounting_manifest(path: Path) -> tuple[dict[str, Any], int]:
+    manifest = load_json(path)
+    if not isinstance(manifest, Mapping):
+        raise ValueError("trial_accounting_manifest must be a JSON object")
+    effective_trial_method = str(
+        manifest.get("effective_trial_method", "max_of_manual_and_distinct_fingerprints")
+    )
+    manual_declared_effective_trials = manifest_int_field(manifest, "manual_declared_effective_trials")
+    distinct_window_fingerprint_tuples = manifest_int_field(manifest, "distinct_window_fingerprint_tuples")
+    effective_trial_count = compute_effective_trial_count(
+        manual_declared_effective_trials=manual_declared_effective_trials,
+        distinct_window_fingerprint_tuples=distinct_window_fingerprint_tuples,
+        effective_trial_method=effective_trial_method,
+    )
+    return dict(manifest), effective_trial_count
 
 
 def finite_or_none(value: float) -> float | None:
@@ -370,6 +397,13 @@ def build_selection(args: argparse.Namespace) -> dict[str, Any]:
     fidelity_cells = load_fidelity_cells(args.fidelity)
     per_strategy: list[dict[str, Any]] = []
     effective_trial_count = max(len(roster), len(locks))
+    effective_trial_count_source = "legacy_roster_lock_count"
+    trial_accounting_manifest = None
+    if args.trial_accounting_manifest is not None:
+        trial_accounting_manifest, effective_trial_count = load_trial_accounting_manifest(
+            args.trial_accounting_manifest
+        )
+        effective_trial_count_source = "trial_accounting_manifest"
 
     for strategy_id in roster:
         path = artifact_path_for(args.held_out_dir, strategy_id)
@@ -432,6 +466,8 @@ def build_selection(args: argparse.Namespace) -> dict[str, Any]:
         "cf29_roster_count_note": "Methodology is count-agnostic; roster is locked at Step 0 for this run.",
         "bootstrap_seed": args.bootstrap_seed,
         "effective_trial_count": effective_trial_count,
+        "effective_trial_count_source": effective_trial_count_source,
+        "trial_accounting_manifest": trial_accounting_manifest,
         "thresholds": ADR0016_STAGE1_THRESHOLDS,
         "run_status": run_status,
         "run_outcome": "partial_evidence" if partial_evidence else ("advance_present" if advance_count > 0 else "all_reject"),
@@ -479,6 +515,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--md-out", type=Path, default=DEFAULT_MD_OUT)
     parser.add_argument("--strategy-ids", nargs="*", default=None)
     parser.add_argument("--strategy-config-dir", type=Path, default=DEFAULT_STRATEGY_CONFIG_DIR)
+    parser.add_argument("--trial-accounting-manifest", type=Path, default=None)
     parser.add_argument(
         "--skip-runtime-parameter-hash",
         action="store_true",
