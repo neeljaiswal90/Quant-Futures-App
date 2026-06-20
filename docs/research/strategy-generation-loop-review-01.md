@@ -93,9 +93,14 @@ Assessment used in this design:
   tradable object.
 - Half-life is **demoted to a diagnostic**, useful as a live
   alpha-decay tripwire in paper/shadow, not as a generation gate.
-- The Horizon *product* itself is out of scope: it is a closed-beta
-  competitor, and "plain English -> live on exchange in minutes" is the
-  opposite of this platform's deliberate gauntlet.
+- The Horizon *product* itself is out of scope as an external/competing
+  platform. Per its public materials (https://horizon.trade/, accessed
+  2026-06; waitlist stage), Horizon offers plain-English strategy
+  creation, backtesting, and broker automation. The detailed
+  loop/IC/ICIR/half-life claims attributed to the thread are paraphrased
+  from the cited post, not from official product documentation, and
+  should be treated as secondary; the "fast path to live" positioning is
+  the opposite of this platform's deliberate gauntlet.
 
 Net: borrow the loop, keep our scoring function, and recognize we
 already own the hardest beat (the deflated gate).
@@ -121,8 +126,9 @@ the generator.
 `generate (1) -> test on TRAIN (2) -> score S on VALIDATION (3) ->
 select + diagnose failures (4) -> refine back into generate (5)`, then
 survivors go once through `QFA-611 on sealed HELD-OUT (6)` and, if they
-advance, to paper -> shadow -> broker. Only steps 0-5 are new code; 6+
-is the existing pipeline.
+advance, to paper -> shadow -> broker. Steps 0-5 are new code; steps 6+
+reuse the existing pipeline but require two wiring changes (candidate
+registration and trial-budget accounting) — see section 12.
 
 ### 3.3 Two scoring functions (the key design choice)
 
@@ -296,4 +302,34 @@ that the eligibility gate is enforced before sampling, not after scoring.
   `trend_pullback_*.yaml`, `liquidity_sweep_reversal_*.yaml`.
 - Family logic: `apps/strategy_runtime/src/strategies/`.
 - Normative spec: `docs/research/strategy-generation-loop-design-01.md`.
-</content>
+
+## 12. Second-review outcomes (folded into design-01)
+
+An external review of PR #362 (neeljaiswal90) verified the gate
+thresholds (PF 1.35, trade floor 300, drawdown 0.08, per-regime 30 in
+`thresholds.py`), the CF-30 retirement on `liquidity_sweep_reversal`,
+and the trend-pullback target-source claim. It raised five findings;
+resolutions:
+
+- **P1-1 (candidate emission not "unchanged").** Confirmed:
+  `CANDIDATE_STRATEGY_IDS = []`, `registry.ts` maps only static ids, and
+  QFA-611's default roster reads only `ACTIVE_STRATEGY_IDS`. Folded into
+  design-01 "Required changes" P1-1 (candidate typegen/manifest +
+  `--strategy-ids`). The "unchanged" wording in this packet (section 3.2)
+  and design-01 is corrected.
+- **P1-2 (trial accounting not wired).** Confirmed: QFA-611 uses
+  `max(len(roster), len(locks))`, not the `effective_trials.py` helper.
+  Folded into design-01 "Required changes" P1-2 (trial-accounting
+  manifest -> `compute_effective_trial_count(...)`). Risk R1 is therefore
+  open until this wiring exists.
+- **P2-3 (corpus surface too coarse).** Folded into design-01 P2-3: a
+  per-family `corpus` block must name the required surface (raw Databento
+  archive vs Parquet cache vs OHLCV/RTH series).
+- **P2-4 (Horizon claims need sourcing).** Section 2b softened and
+  cited (https://horizon.trade/).
+- **P3-5 (no CI signal).** Verified: PR #362 head reports zero check
+  runs despite `ci.yml` triggering on `pull_request` with no path filter.
+  No CI signal is currently available to rely on for this branch.
+
+Net: the architecture is approved directionally; it is NOT
+implementation-ready until P1-1 and P1-2 are built.

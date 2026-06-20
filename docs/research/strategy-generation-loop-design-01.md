@@ -85,8 +85,12 @@ artifacts.
        (alpha-decay / half-life monitored live)
 ```
 
-Only steps 0-5 are new code (a `scripts/strategy-gen/` front end). Steps
-6+ are the pipeline already run by hand for every variant.
+Steps 0-5 are the new `scripts/strategy-gen/` front end. Steps 6+ reuse
+the existing pipeline, but NOT unchanged: feeding the loop into QFA-611
+requires two wiring changes to existing components — candidate
+registration and trial-budget accounting — specified under "Required
+changes to existing components" below. The earlier framing of "steps 6+
+unchanged" was corrected after second review (findings P1-1, P1-2).
 
 ## Two scoring functions, not one
 
@@ -280,14 +284,80 @@ pre-committed *not* to search.
   `<family>.scoring.yaml` — per-family instances.
 - `scripts/strategy-gen/` — sampler + candidate emitter + in-loop scorer,
   reusing `apps/backtester` and `scripts/strategy-selection/_lib`.
-- Candidates emitted to `config/strategies/_candidates/`, registered as
-  `CANDIDATE_STRATEGY_IDS`, locked, then handed to the existing QFA-611
-  driver unchanged.
+- Candidates emitted to `config/strategies/_candidates/`, registered via
+  a candidate typegen/manifest step (see "Required changes" below),
+  locked, then gated by QFA-611 invoked with `--strategy-ids` from the
+  candidate manifest plus a trial-accounting manifest.
 
 Tier sequencing: Tier 1 parametric search first (highest value, lowest
 new code); Tier 2 grammar/GP synthesis next; Tier 3 ML signal models
 deferred (DATA-04 guardrails currently block ML dataset generation, and
 overfit risk is highest there).
+
+## Required changes to existing components (folded from second review)
+
+A second review (PR #362) correctly found that the loop does NOT feed
+QFA-611 "unchanged." Three integration prerequisites are required before
+this design is implementation-ready.
+
+### P1-1. Candidate registration is not automatic
+
+`apps/strategy_runtime/src/contracts/strategy-ids.ts` ships
+`CANDIDATE_STRATEGY_IDS = []`, and
+`apps/strategy_runtime/src/strategies/registry.ts` `STRATEGY_GENERATORS`
+maps only statically-known `StrategyId`s to generator functions;
+`parseStrategyId` throws on any unknown id. QFA-611's default roster
+parser reads only `ACTIVE_STRATEGY_IDS`
+(`qfa-611-strategy-selection.py` `active_strategy_ids()`).
+
+Parametric candidates reuse their family's existing generator function
+(only the config differs), so the fix is registration, not new runtime
+logic:
+
+- A candidate typegen step regenerates `strategy-ids.ts`
+  (`CANDIDATE_STRATEGY_IDS`) and `registry.ts` so each emitted candidate
+  id points at its family generator; OR
+- A generated candidate manifest is passed to QFA-611 via the existing
+  `--strategy-ids` argument, with a candidate-aware loader for the
+  backtester. (`build_selection` already honors `args.strategy_ids` over
+  `active_strategy_ids()`.)
+
+Either way candidate ids must be a build artifact, never a hand-edit.
+
+### P1-2. Trial accounting must be wired into QFA-611
+
+QFA-611 currently sets `effective_trial_count = max(len(roster),
+len(locks))` and emits it directly; it does not call the trial-accounting
+helper. With a loop that scores 500 candidates but gates the top 5, this
+undercounts by ~100x and under-deflates the DSR threshold.
+
+Fix: emit a `trial_accounting_manifest` from the loop carrying
+`manual_declared_effective_trials = trial_budget` (the count of
+candidates actually scored), and have QFA-611 consume it via a new CLI
+arg, computing the count through the existing helper
+`scripts/strategy-selection/_lib/effective_trials.py`
+`compute_effective_trial_count(manual_declared_effective_trials=trial_budget,
+distinct_window_fingerprint_tuples=<current value>,
+effective_trial_method="max_of_manual_and_distinct_fingerprints")`.
+
+This makes honesty invariant #1 enforceable rather than aspirational.
+
+### P2-3. Corpus surface must be specified per family
+
+`D:\qfa-cache` is not one undifferentiated lake. Implementation must pin,
+per family, which surface is consumed:
+
+- raw Databento archive root (e.g.
+  `D:/qfa-cache/databento/tier-a-feb-mar-2026`; MBO / MBP-10 / trades);
+- the derived Parquet cache (`D:/qfa-cache/parquet`, override
+  `QFA_PARQUET_CACHE_ROOT`);
+- continuous / normalized RTH session series vs OHLCV-only.
+
+A microstructure family (e.g. shock reversion using OFI/queue features)
+needs MBP/trades; a bar/structure family (e.g. trend pullback) may run on
+OHLCV. The `search.yaml` must therefore declare a `corpus` block naming
+the required surface, and the loader must reject a family whose features
+are absent from the declared surface.
 
 ## References
 
@@ -301,5 +371,3 @@ overfit risk is highest there).
   effective_trials, parameter_lock, walk_forward_loader).
 - DATA-04 microstructure feature surface
   (`docs/data/DATA-04-MICROSTRUCTURE-FEATURES.md`).
-</content>
-</invoke>
