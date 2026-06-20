@@ -376,13 +376,15 @@ export function getStrategyRegistryEntry(strategyId: StrategyId | string): Strat
 }
 
 export function listStrategyIdsByDirection(direction: Direction): readonly StrategyId[] {
-  return ACTIVE_STRATEGY_IDS.filter((strategyId) => STRATEGY_REGISTRY[strategyId]?.direction === direction);
+  void direction;
+  return [];
 }
 
 export function listStrategyIdsBySetupFamily(
   setupFamily: StrategySetupFamily,
 ): readonly StrategyId[] {
-  return ACTIVE_STRATEGY_IDS.filter((strategyId) => STRATEGY_REGISTRY[strategyId]?.setup_family === setupFamily);
+  void setupFamily;
+  return [];
 }
 
 export function listExecutableStrategyIds(): readonly StrategyId[] {
