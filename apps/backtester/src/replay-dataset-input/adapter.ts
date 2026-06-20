@@ -64,26 +64,47 @@ export function toReplaySignalCandidateSeed(row: ReplaySignalRow): ReplaySignalC
   });
 }
 
+/**
+ * Resolve a signal's directional bias from its direction and/or side fields.
+ *
+ * QFA-DATA-LEAK FIX: this MUST stay at parity with the canonical Python
+ * resolver `services/replay/replay/setups.py:_direction`. The setup-deriver
+ * (Python) and this labeler (TS) independently resolve direction; any
+ * disagreement silently drops training examples — a directional setup whose
+ * label comes back `neutral_direction` is excluded in dataset.py's join.
+ *
+ * The previous TS version recognized only `buy/sell/bid/ask` on the `side`
+ * field and used exact equality, so the detectors' actual emissions —
+ * `side="short"/"long"` and `side_inferred="sell_absorbed"/"buy_absorbed"` —
+ * fell through to `unknown` and ~70% of directional firings were dropped.
+ *
+ * Order matters: absorption tokens are checked BEFORE the generic long/short
+ * tokens because `buy_absorbed` contains "buy" but means SHORT (buyers
+ * absorbed → sellers won), and `sell_absorbed` means LONG. Mirrors Python.
+ */
 export function normalizeSignalDirection(
   direction: string | null,
   side: string | null = null,
 ): NormalizedSignalDirection {
-  const directionRaw = direction?.trim().toLowerCase() ?? '';
-  if (directionRaw.includes('neutral') || directionRaw.includes('mixed')) {
+  const text = [direction, side]
+    .filter((part): part is string => Boolean(part))
+    .join(' ')
+    .toLowerCase();
+
+  if (text.includes('neutral') || text.includes('mixed') || text.includes('balanced')) {
     return 'neutral';
   }
-  if (directionRaw.includes('long') || directionRaw.includes('bull') || directionRaw === 'buy') {
-    return 'long';
-  }
-  if (directionRaw.includes('short') || directionRaw.includes('bear') || directionRaw === 'sell') {
+  // Absorption semantics invert — check before the generic buy/sell tokens.
+  if (text.includes('buy_absorbed')) {
     return 'short';
   }
-
-  const sideRaw = side?.trim().toLowerCase() ?? '';
-  if (sideRaw === 'buy' || sideRaw.includes('bid-side') || sideRaw === 'bid') {
+  if (text.includes('sell_absorbed')) {
     return 'long';
   }
-  if (sideRaw === 'sell' || sideRaw.includes('ask-side') || sideRaw === 'ask') {
+  if (['long', 'bull', 'up', 'buy', 'bid'].some((token) => text.includes(token))) {
+    return 'long';
+  }
+  if (['short', 'bear', 'down', 'sell', 'ask'].some((token) => text.includes(token))) {
     return 'short';
   }
   return 'unknown';
