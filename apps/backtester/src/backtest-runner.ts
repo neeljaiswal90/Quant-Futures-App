@@ -26,7 +26,7 @@ import {
   getActiveStrategyGenerator,
   type StrategyFeatureSnapshot,
 } from '../../strategy_runtime/src/strategies/index.js';
-import type { StrategyId } from '../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../strategy_runtime/src/contracts/strategy-ids.js';
 import { createBacktestJournalWriter } from './backtest-journal.js';
 import { buildRunSpecFromOptions, type BuiltBacktestRunSpec } from './run-spec-builder.js';
 import type { BacktestRunResult, BacktestRunnerOptions } from './types.js';
@@ -249,7 +249,7 @@ function createNeutralStrategySnapshot(
   };
 }
 
-function strategyConfigRef(resolved: BuiltBacktestRunSpec, strategyId: StrategyId): ConfigLineageRef {
+function strategyConfigRef(resolved: BuiltBacktestRunSpec, strategyId: AnyStrategyId): ConfigLineageRef {
   const config = resolved.run_spec.config_inputs.find(
     (input) => input.role === 'strategy' && input.config_path.endsWith(`${strategyId}.yaml`),
   );

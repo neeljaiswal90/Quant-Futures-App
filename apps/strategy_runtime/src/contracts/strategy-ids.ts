@@ -1,6 +1,8 @@
+import { GENERATED_CANDIDATE_STRATEGY_IDS } from './generated-candidate-strategy-ids.js';
+
 export const ACTIVE_STRATEGY_IDS = [] as const;
 
-export const CANDIDATE_STRATEGY_IDS = [] as const;
+export const CANDIDATE_STRATEGY_IDS = GENERATED_CANDIDATE_STRATEGY_IDS;
 
 export const REGISTERED_INACTIVE_STRATEGY_IDS = [
   'trend_pullback_long',
@@ -24,23 +26,40 @@ export const REGISTERED_INACTIVE_STRATEGY_IDS = [
 
 export const ALL_STRATEGY_IDS = [
   ...ACTIVE_STRATEGY_IDS,
-  ...CANDIDATE_STRATEGY_IDS,
   ...REGISTERED_INACTIVE_STRATEGY_IDS,
+] as const;
+
+export const ANY_STRATEGY_IDS = [
+  ...ALL_STRATEGY_IDS,
+  ...CANDIDATE_STRATEGY_IDS,
 ] as const;
 
 export type ActiveStrategyId = (typeof ACTIVE_STRATEGY_IDS)[number];
 export type CandidateStrategyId = (typeof CANDIDATE_STRATEGY_IDS)[number];
 export type RegisteredInactiveStrategyId = (typeof REGISTERED_INACTIVE_STRATEGY_IDS)[number];
 export type StrategyId = (typeof ALL_STRATEGY_IDS)[number];
+export type AnyStrategyId = StrategyId | CandidateStrategyId;
 
 const STRATEGY_ID_SET = new Set<string>(ALL_STRATEGY_IDS);
+const ANY_STRATEGY_ID_SET = new Set<string>(ANY_STRATEGY_IDS);
 
 export function isStrategyId(value: string): value is StrategyId {
   return STRATEGY_ID_SET.has(value);
 }
 
+export function isAnyStrategyId(value: string): value is AnyStrategyId {
+  return ANY_STRATEGY_ID_SET.has(value);
+}
+
 export function parseStrategyId(value: string): StrategyId {
   if (!isStrategyId(value)) {
+    throw new Error(`Unknown strategy_id: ${value}`);
+  }
+  return value;
+}
+
+export function parseAnyStrategyId(value: string): AnyStrategyId {
+  if (!isAnyStrategyId(value)) {
     throw new Error(`Unknown strategy_id: ${value}`);
   }
   return value;

@@ -1,4 +1,4 @@
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 
 export function deriveLedgerExecutionId(sourceEventId: string): string {
   assertNonEmptyString(sourceEventId, 'sourceEventId');
@@ -13,7 +13,7 @@ export function deriveLedgerTradeId(runId: string, sequence: number): string {
 
 export function deriveLedgerPositionId(
   instrumentId: number,
-  strategyId: StrategyId | null,
+  strategyId: AnyStrategyId | null,
   sequence: number,
 ): string {
   assertPositiveSafeInteger(instrumentId, 'instrumentId');

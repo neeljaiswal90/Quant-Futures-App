@@ -1,11 +1,11 @@
 import type { BacktestWindow } from '../../strategy_runtime/src/contracts/run-spec.js';
-import type { StrategyId } from '../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { UnixNsInput } from '../../strategy_runtime/src/contracts/time.js';
 import type { DatabentoSchema } from '../../strategy_runtime/src/contracts/tier-policy.js';
 
 export interface BacktestRunnerOptions {
   readonly corpus_manifest_path: string;
-  readonly strategy_id: StrategyId | string;
+  readonly strategy_id: AnyStrategyId | string;
   readonly bar_spec: string;
   readonly backtest_window: BacktestWindow;
   readonly determinism_seed: number;

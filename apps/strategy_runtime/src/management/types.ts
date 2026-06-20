@@ -5,7 +5,7 @@ import type {
   RewardRiskTarget,
 } from '../contracts/candidate.js';
 import type { ManagementActionType } from '../contracts/position.js';
-import type { StrategyId } from '../contracts/strategy-ids.js';
+import type { AnyStrategyId, StrategyId } from '../contracts/strategy-ids.js';
 
 export const MANAGEMENT_PROFILE_VERSION = 1 as const;
 export const MANAGEMENT_PROFILE_HASH_PLACEHOLDER =
@@ -165,7 +165,7 @@ export interface CandidateTargetPlan {
   readonly profile_id: ManagementProfileId;
   readonly profile_version: typeof MANAGEMENT_PROFILE_VERSION;
   readonly profile_hash: string;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly candidate_id: Candidate['candidate_id'];
   readonly entry_price: number;
   readonly stop_price: number;
@@ -177,7 +177,7 @@ export interface CandidateTargetPlan {
 export interface InitialStopPolicyPlan {
   readonly profile_id: ManagementProfileId;
   readonly profile_version: typeof MANAGEMENT_PROFILE_VERSION;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly candidate_id: Candidate['candidate_id'];
   readonly entry_price: number;
   readonly stop_price: number;

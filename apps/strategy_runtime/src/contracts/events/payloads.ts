@@ -24,7 +24,7 @@ import type {
 import type { BacktestRunMetaPayload } from '../backtest-run-meta.js';
 import type { ManagementActionType, PositionStatus } from '../position.js';
 import type { SimulatedOrderStatus } from '../execution.js';
-import type { StrategyId } from '../strategy-ids.js';
+import type { AnyStrategyId } from '../strategy-ids.js';
 import type { UnixNs } from '../time.js';
 import type { RuntimeEventType } from './event-types.js';
 
@@ -299,7 +299,7 @@ export interface StructureEventPayload {
 
 export interface StrategyEvaluationEventPayload {
   readonly strategy_evaluation_id: StrategyEvaluationId;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly feature_snapshot_id: FeatureSnapshotId;
   readonly gate_state: 'armed' | 'waiting' | 'blocked';
   readonly score?: number;
@@ -315,7 +315,7 @@ export interface PriceTargetEventPayload {
 
 export interface CandidateEventPayload {
   readonly candidate_id: CandidateId;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly feature_snapshot_id: FeatureSnapshotId;
   readonly direction: Direction;
   readonly status: 'proposed' | 'risk_rejected' | 'sized' | 'expired';

@@ -1,7 +1,7 @@
 import {
   ACTIVE_STRATEGY_IDS,
-  isStrategyId,
-  type StrategyId,
+  isAnyStrategyId,
+  type AnyStrategyId,
 } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import { canonicalizeReproJson, sha256Utf8 } from '../repro-hash/index.js';
 import type { StrategyReplayEvaluation } from '../strategy-replay/index.js';
@@ -20,10 +20,10 @@ import {
 const HEX_64 = /^[a-f0-9]{64}$/u;
 
 export function computeStrategyFingerprint(
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   decisions: readonly StrategyFingerprintDecision[],
 ): StrategyFingerprint {
-  validateStrategyId(strategyId, '$.strategy_id');
+  validateAnyStrategyId(strategyId, '$.strategy_id');
   validateFingerprintDecisions(strategyId, decisions);
 
   const decisionPayload = {
@@ -53,7 +53,7 @@ export function computeStrategyFingerprint(
 
 export function computeStrategyFingerprintSet(
   evaluations: readonly StrategyReplayEvaluation[],
-  strategyOrder?: readonly StrategyId[],
+  strategyOrder?: readonly AnyStrategyId[],
 ): StrategyFingerprintSet {
   const decisions = normalizeStrategyReplayDecisions(evaluations);
   const resolvedStrategyOrder = resolveStrategyOrder(decisions, strategyOrder);
@@ -79,8 +79,8 @@ function hashCanonicalPayload(value: unknown): string {
 
 function resolveStrategyOrder(
   decisions: readonly StrategyFingerprintDecision[],
-  strategyOrder?: readonly StrategyId[],
-): readonly StrategyId[] {
+  strategyOrder?: readonly AnyStrategyId[],
+): readonly AnyStrategyId[] {
   if (strategyOrder !== undefined) {
     validateStrategyOrder(strategyOrder);
     return [...strategyOrder];
@@ -93,13 +93,13 @@ function resolveStrategyOrder(
   return ACTIVE_STRATEGY_IDS.filter((strategyId) => present.has(strategyId));
 }
 
-function validateStrategyOrder(strategyOrder: readonly StrategyId[]): void {
+function validateStrategyOrder(strategyOrder: readonly AnyStrategyId[]): void {
   const issues: StrategyFingerprintIssue[] = [];
-  const seen = new Set<StrategyId>();
+  const seen = new Set<AnyStrategyId>();
 
   strategyOrder.forEach((strategyId, index) => {
     const path = `$.strategy_order[${index}]`;
-    if (!isStrategyId(strategyId)) {
+    if (!isAnyStrategyId(strategyId)) {
       issues.push({
         path,
         code: 'unknown_strategy_id',
@@ -123,8 +123,8 @@ function validateStrategyOrder(strategyOrder: readonly StrategyId[]): void {
   }
 }
 
-function validateStrategyId(strategyId: StrategyId, path: string): void {
-  if (!isStrategyId(strategyId)) {
+function validateAnyStrategyId(strategyId: AnyStrategyId, path: string): void {
+  if (!isAnyStrategyId(strategyId)) {
     throwStrategyFingerprintIssues([
       {
         path,
@@ -136,7 +136,7 @@ function validateStrategyId(strategyId: StrategyId, path: string): void {
 }
 
 function validateFingerprintDecisions(
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   decisions: readonly StrategyFingerprintDecision[],
 ): void {
   const issues: StrategyFingerprintIssue[] = [];
@@ -182,8 +182,8 @@ function validateFingerprintDecisions(
 
 function groupDecisionsByStrategy(
   decisions: readonly StrategyFingerprintDecision[],
-): ReadonlyMap<StrategyId, readonly StrategyFingerprintDecision[]> {
-  const grouped = new Map<StrategyId, StrategyFingerprintDecision[]>();
+): ReadonlyMap<AnyStrategyId, readonly StrategyFingerprintDecision[]> {
+  const grouped = new Map<AnyStrategyId, StrategyFingerprintDecision[]>();
   for (const decision of decisions) {
     const strategyDecisions = grouped.get(decision.strategy_id);
     if (strategyDecisions === undefined) {
@@ -196,8 +196,8 @@ function groupDecisionsByStrategy(
 }
 
 function validateNoOmittedStrategies(
-  decisionsByStrategy: ReadonlyMap<StrategyId, readonly StrategyFingerprintDecision[]>,
-  strategyOrder: readonly StrategyId[],
+  decisionsByStrategy: ReadonlyMap<AnyStrategyId, readonly StrategyFingerprintDecision[]>,
+  strategyOrder: readonly AnyStrategyId[],
 ): void {
   const allowed = new Set(strategyOrder);
   const omitted = ACTIVE_STRATEGY_IDS.filter(

@@ -1,7 +1,7 @@
 import {
   ACTIVE_STRATEGY_IDS,
-  isStrategyId,
-  type StrategyId,
+  isAnyStrategyId,
+  type AnyStrategyId,
 } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import {
   REPLAY_SANITY_PLACEHOLDER_FIELDS,
@@ -94,7 +94,7 @@ export function buildCapabilityAssessmentSet(
 }
 
 function buildStrategyAssessment(
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   replayEvaluations: number,
   fingerprint: StrategyFingerprint | null,
   baseFeatures: readonly StrategyFeatureCapability[],
@@ -145,18 +145,18 @@ function extractReplayEvaluations(
 }
 
 function resolveStrategyOrder(
-  strategyOrder: readonly StrategyId[] | undefined,
+  strategyOrder: readonly AnyStrategyId[] | undefined,
   allowPartialStrategyOrder: boolean,
-): readonly StrategyId[] {
+): readonly AnyStrategyId[] {
   if (strategyOrder === undefined) {
     return [...ACTIVE_STRATEGY_IDS];
   }
 
   const issues: CapabilityAssessmentIssue[] = [];
-  const seen = new Set<StrategyId>();
+  const seen = new Set<AnyStrategyId>();
   strategyOrder.forEach((strategyId, index) => {
     const path = `$.strategy_order[${index}]`;
-    if (!isStrategyId(strategyId)) {
+    if (!isAnyStrategyId(strategyId)) {
       issues.push({
         path,
         code: 'unknown_strategy_id',
@@ -194,14 +194,14 @@ function resolveStrategyOrder(
 
 function validateReplayStrategies(
   evaluations: readonly StrategyReplayEvaluation[],
-  strategyOrder: readonly StrategyId[],
+  strategyOrder: readonly AnyStrategyId[],
 ): void {
   const issues: CapabilityAssessmentIssue[] = [];
   const allowed = new Set(strategyOrder);
 
   evaluations.forEach((evaluation, index) => {
     const strategyId = (evaluation as unknown as Record<string, unknown>).strategy_id;
-    if (typeof strategyId !== 'string' || !isStrategyId(strategyId)) {
+    if (typeof strategyId !== 'string' || !isAnyStrategyId(strategyId)) {
       issues.push({
         path: `$.replay.evaluations[${index}].strategy_id`,
         code: 'unknown_strategy_id',
@@ -225,7 +225,7 @@ function validateReplayStrategies(
 
 function indexFingerprints(
   fingerprints: StrategyFingerprintSet,
-): ReadonlyMap<StrategyId, StrategyFingerprint> {
+): ReadonlyMap<AnyStrategyId, StrategyFingerprint> {
   const record = fingerprints as unknown as Record<string, unknown>;
   if (fingerprints === null || typeof fingerprints !== 'object') {
     throwCapabilityAssessmentIssues([
@@ -247,7 +247,7 @@ function indexFingerprints(
   }
 
   const issues: CapabilityAssessmentIssue[] = [];
-  const byStrategy = new Map<StrategyId, StrategyFingerprint>();
+  const byStrategy = new Map<AnyStrategyId, StrategyFingerprint>();
   record.fingerprints.forEach((fingerprint, index) => {
     const path = `$.fingerprints.fingerprints[${index}]`;
     if (fingerprint === null || typeof fingerprint !== 'object') {
@@ -259,7 +259,7 @@ function indexFingerprints(
       return;
     }
     const strategyId = (fingerprint as Record<string, unknown>).strategy_id;
-    if (typeof strategyId !== 'string' || !isStrategyId(strategyId)) {
+    if (typeof strategyId !== 'string' || !isAnyStrategyId(strategyId)) {
       issues.push({
         path: `${path}.strategy_id`,
         code: 'unknown_strategy_id',
@@ -296,8 +296,8 @@ function indexFingerprints(
 
 function countReplayEvaluations(
   evaluations: readonly StrategyReplayEvaluation[],
-): ReadonlyMap<StrategyId, number> {
-  const counts = new Map<StrategyId, number>();
+): ReadonlyMap<AnyStrategyId, number> {
+  const counts = new Map<AnyStrategyId, number>();
   for (const evaluation of evaluations) {
     counts.set(evaluation.strategy_id, (counts.get(evaluation.strategy_id) ?? 0) + 1);
   }

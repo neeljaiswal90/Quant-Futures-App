@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { StrategyId } from '../contracts/strategy-ids.js';
+import {
+  getGeneratedCandidateBaseStrategyId,
+  isGeneratedCandidateStrategyId,
+} from '../contracts/generated-candidate-strategy-ids.js';
+import {
+  CANDIDATE_STRATEGY_IDS,
+  type AnyStrategyId,
+  type CandidateStrategyId,
+  type StrategyId,
+} from '../contracts/strategy-ids.js';
 import { CONFIG_HASH_ALGORITHM, type ConfigValidationIssue } from './types.js';
 import { ConfigValidationError } from './errors.js';
 import { stableStringify } from './hash.js';
@@ -114,10 +123,20 @@ export interface CandidateRankingParameters {
   readonly pt2_reward_risk_weight: number;
   readonly max_reward_risk_weight: number;
   readonly risk_points_penalty_weight: number;
-  readonly strategy_priority: Readonly<Record<StrategyId, number>>;
+  readonly strategy_priority: Readonly<Partial<Record<AnyStrategyId, number>>>;
 }
 
-export interface StrategyConfigById {
+export type StrategyParameterSet =
+  | TrendPullbackStrategyParameters
+  | BreakoutRetestStrategyParameters
+  | RegimeMeanReversionStrategyParameters
+  | RegimeShockReversionShortV3StrategyParameters
+  | RegimeShockReversionShortV4DelayStrategyParameters
+  | RegimeShockReversionShortV4PersistStrategyParameters
+  | LiquiditySweepReversalStrategyParameters
+  | VwapOvernightReversalStrategyParameters;
+
+export interface StaticStrategyConfigById {
   readonly trend_pullback_long: TrendPullbackStrategyParameters;
   readonly trend_pullback_short: TrendPullbackStrategyParameters;
   readonly breakout_retest_long: BreakoutRetestStrategyParameters;
@@ -136,6 +155,9 @@ export interface StrategyConfigById {
   readonly regime_shock_reversion_short_v5_strict_deadline: RegimeMeanReversionStrategyParameters;
   readonly regime_shock_reversion_short_v5_trail_at_deadline: RegimeMeanReversionStrategyParameters;
 }
+
+export type StrategyConfigById = StaticStrategyConfigById
+  & Readonly<Partial<Record<CandidateStrategyId, StrategyParameterSet>>>;
 
 export interface StrategyConfigLineage {
   readonly strategy_config_version: typeof STRATEGY_CONFIG_SCHEMA_VERSION;
@@ -463,8 +485,12 @@ export function loadStrategyRuntimeConfig(
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.regime_shock_reversion_short_v3), sourceFiles),
     ),
   };
+  const candidateStrategies = loadGeneratedCandidateStrategyConfigs(directory, sourceFiles);
 
-  return buildStrategyRuntimeConfig(strategies, shared.ranking, sourceFiles.sort());
+  return buildStrategyRuntimeConfig({
+    ...strategies,
+    ...candidateStrategies,
+  }, shared.ranking, sourceFiles.sort());
 }
 
 export function getStrategyParameters(
@@ -529,16 +555,16 @@ export function getStrategyParameters(
 ): RegimeShockReversionShortV3StrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
-  strategyId: StrategyId,
-): TrendPullbackStrategyParameters
-  | BreakoutRetestStrategyParameters
-  | RegimeMeanReversionStrategyParameters
-  | RegimeShockReversionShortV3StrategyParameters
-  | RegimeShockReversionShortV4DelayStrategyParameters
-  | RegimeShockReversionShortV4PersistStrategyParameters
-  | LiquiditySweepReversalStrategyParameters
-  | VwapOvernightReversalStrategyParameters {
-  return (config ?? DEFAULT_STRATEGY_RUNTIME_CONFIG).strategies[strategyId];
+  strategyId: AnyStrategyId,
+): StrategyParameterSet {
+  const runtimeConfig = config ?? DEFAULT_STRATEGY_RUNTIME_CONFIG;
+  const parameters = runtimeConfig.strategies[strategyId];
+  if (parameters === undefined) {
+    throw new ConfigValidationError([
+      { path: `strategy_configs.strategies.${strategyId}`, message: 'strategy config missing' },
+    ], 'Invalid strategy config');
+  }
+  return parameters;
 }
 
 export function getCandidateRankingParameters(
@@ -585,6 +611,65 @@ function buildStrategyRuntimeConfig(
   };
 }
 
+function loadGeneratedCandidateStrategyConfigs(
+  directory: string,
+  sourceFiles: string[],
+): Readonly<Partial<Record<CandidateStrategyId, StrategyParameterSet>>> {
+  const entries: Record<string, StrategyParameterSet> = {};
+  for (const candidateStrategyId of CANDIDATE_STRATEGY_IDS) {
+    entries[candidateStrategyId] = parseGeneratedCandidateStrategyConfig(
+      candidateStrategyId,
+      readYamlFile(resolve(directory, '_candidates', `${candidateStrategyId}.yaml`), sourceFiles),
+    );
+  }
+  return entries;
+}
+
+function parseGeneratedCandidateStrategyConfig(
+  candidateStrategyId: CandidateStrategyId,
+  input: unknown,
+): StrategyParameterSet {
+  if (!isGeneratedCandidateStrategyId(candidateStrategyId)) {
+    throw new ConfigValidationError([
+      { path: `strategy_configs._candidates.${candidateStrategyId}`, message: 'unknown generated candidate id' },
+    ], 'Invalid strategy config');
+  }
+  const baseStrategyId = getGeneratedCandidateBaseStrategyId(candidateStrategyId);
+  if (baseStrategyId === 'trend_pullback_long' || baseStrategyId === 'trend_pullback_short') {
+    return parseTrendPullbackConfig(candidateStrategyId, input);
+  }
+  if (baseStrategyId === 'breakout_retest_long' || baseStrategyId === 'breakdown_retest_short') {
+    return parseBreakoutRetestConfig(candidateStrategyId, input);
+  }
+  if (
+    baseStrategyId === 'regime_mean_reversion_long'
+    || baseStrategyId === 'regime_mean_reversion_short'
+    || baseStrategyId === 'regime_shock_reversion_short_v2'
+    || baseStrategyId === 'regime_shock_reversion_short_v2_utc_16_18_exclusion'
+    || baseStrategyId === 'regime_shock_reversion_short_v5_strict_deadline'
+    || baseStrategyId === 'regime_shock_reversion_short_v5_trail_at_deadline'
+  ) {
+    return parseRegimeMeanReversionConfig(candidateStrategyId, input);
+  }
+  if (baseStrategyId === 'regime_shock_reversion_short_v4_delay') {
+    return parseRegimeShockReversionShortV4DelayConfig(candidateStrategyId, input);
+  }
+  if (baseStrategyId === 'regime_shock_reversion_short_v4_persist') {
+    return parseRegimeShockReversionShortV4PersistConfig(candidateStrategyId, input);
+  }
+  if (baseStrategyId === 'regime_shock_reversion_short_v3') {
+    return parseRegimeShockReversionShortV3Config(candidateStrategyId, input);
+  }
+  if (baseStrategyId === 'liquidity_sweep_reversal_long' || baseStrategyId === 'liquidity_sweep_reversal_short') {
+    return parseLiquiditySweepReversalConfig(candidateStrategyId, input);
+  }
+  if (baseStrategyId === 'vwap_overnight_reversal_long' || baseStrategyId === 'vwap_overnight_reversal_short') {
+    return parseVwapOvernightReversalConfig(candidateStrategyId, input);
+  }
+  throw new ConfigValidationError([
+    { path: `strategy_configs._candidates.${candidateStrategyId}`, message: `unsupported base strategy ${baseStrategyId}` },
+  ], 'Invalid strategy config');
+}
 function readYamlFile(path: string, sourceFiles: string[]): unknown {
   let contents: string;
   try {
@@ -670,7 +755,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
 }
 
 function parseTrendPullbackConfig(
-  strategyId: 'trend_pullback_long' | 'trend_pullback_short',
+  strategyId: AnyStrategyId,
   input: unknown,
 ): TrendPullbackStrategyParameters {
   const issues: ConfigValidationIssue[] = [];
@@ -713,7 +798,7 @@ function parseTrendPullbackConfig(
 }
 
 function parseBreakoutRetestConfig(
-  strategyId: 'breakout_retest_long' | 'breakdown_retest_short',
+  strategyId: AnyStrategyId,
   input: unknown,
 ): BreakoutRetestStrategyParameters {
   const issues: ConfigValidationIssue[] = [];
@@ -748,13 +833,7 @@ function parseBreakoutRetestConfig(
 }
 
 function parseRegimeMeanReversionConfig(
-  strategyId:
-    | 'regime_mean_reversion_long'
-    | 'regime_mean_reversion_short'
-    | 'regime_shock_reversion_short_v2'
-    | 'regime_shock_reversion_short_v2_utc_16_18_exclusion'
-    | 'regime_shock_reversion_short_v5_strict_deadline'
-    | 'regime_shock_reversion_short_v5_trail_at_deadline',
+  strategyId: AnyStrategyId,
   input: unknown,
 ): RegimeMeanReversionStrategyParameters {
   const issues: ConfigValidationIssue[] = [];
@@ -824,7 +903,7 @@ function parseRegimeMeanReversionConfig(
 }
 
 function parseRegimeShockReversionShortV4DelayConfig(
-  strategyId: 'regime_shock_reversion_short_v4_delay',
+  strategyId: AnyStrategyId,
   input: unknown,
 ): RegimeShockReversionShortV4DelayStrategyParameters {
   const issues: ConfigValidationIssue[] = [];
@@ -858,7 +937,7 @@ function parseRegimeShockReversionShortV4DelayConfig(
 }
 
 function parseRegimeShockReversionShortV4PersistConfig(
-  strategyId: 'regime_shock_reversion_short_v4_persist',
+  strategyId: AnyStrategyId,
   input: unknown,
 ): RegimeShockReversionShortV4PersistStrategyParameters {
   const issues: ConfigValidationIssue[] = [];
@@ -948,7 +1027,7 @@ function validateRegimeMeanReversionParsedFields(
   }
 }
 function parseRegimeShockReversionShortV3Config(
-  strategyId: 'regime_shock_reversion_short_v3',
+  strategyId: AnyStrategyId,
   input: unknown,
 ): RegimeShockReversionShortV3StrategyParameters {
   const issues: ConfigValidationIssue[] = [];
@@ -1034,7 +1113,7 @@ function parseRegimeShockReversionShortV3Config(
 }
 
 function parseLiquiditySweepReversalConfig(
-  strategyId: 'liquidity_sweep_reversal_long' | 'liquidity_sweep_reversal_short',
+  strategyId: AnyStrategyId,
   input: unknown,
 ): LiquiditySweepReversalStrategyParameters {
   const issues: ConfigValidationIssue[] = [];
@@ -1094,7 +1173,7 @@ function parseLiquiditySweepReversalConfig(
 }
 
 function parseVwapOvernightReversalConfig(
-  strategyId: 'vwap_overnight_reversal_long' | 'vwap_overnight_reversal_short',
+  strategyId: AnyStrategyId,
   input: unknown,
 ): VwapOvernightReversalStrategyParameters {
   const issues: ConfigValidationIssue[] = [];
@@ -1144,7 +1223,7 @@ function parseVwapOvernightReversalConfig(
 }
 
 function parseStrategyConfigRoot(
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   input: unknown,
   issues: ConfigValidationIssue[],
 ) {

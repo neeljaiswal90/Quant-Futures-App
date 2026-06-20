@@ -3,7 +3,7 @@ import type {
   StrategyCapabilityStatus,
 } from '../capability-assessment/index.js';
 import type { StrategyFingerprint } from '../strategy-fingerprint/index.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 
 export type ValidationGateStatus =
   | 'pass'
@@ -79,7 +79,7 @@ export interface ValidationStatisticsPolicy {
 
 export interface ValidationTrialAccounting {
   readonly trial_accounting_schema_version: 1;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly campaign_id: string;
   readonly raw_research_trials: number;
   readonly excluded_determinism_reruns: number;
@@ -99,7 +99,7 @@ export interface ValidationTrialAccounting {
 export type ValidationWindowRole = 'train' | 'validation' | 'test';
 
 export interface StrategyValidationWindowInput {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly window_id: string;
   readonly sequence: number;
   readonly role: ValidationWindowRole;
@@ -121,7 +121,7 @@ export interface StrategyValidationWindowInput {
 }
 
 export interface StrategyValidationGateInput {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly capability_assessment: StrategyCapabilityAssessment;
   readonly fingerprint: StrategyFingerprint | null;
   readonly session_order: readonly string[];
@@ -187,7 +187,7 @@ export type ValidationGateReason =
 
 export interface StrategyValidationGateResult {
   readonly result_schema_version: 1;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly status: ValidationGateStatus;
   readonly capability_status: StrategyCapabilityStatus;
   readonly fingerprint_sha256: string | null;

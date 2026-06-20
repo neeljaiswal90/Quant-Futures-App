@@ -18,7 +18,7 @@
  */
 
 import type { ConfigLineageRef } from './lineage.js';
-import type { StrategyId } from './strategy-ids.js';
+import type { AnyStrategyId } from './strategy-ids.js';
 
 /**
  * Operational role of a config artifact relative to a backtest run.
@@ -215,9 +215,10 @@ export interface RunSpec {
   /**
    * Strategies active in this run. Order is semantic (preserved by JCS;
    * NOT sorted) — different orderings produce different run_spec_hashes.
-   * No duplicates allowed; each must be a known StrategyId.
+   * No duplicates allowed; each must be a known strategy id. Generated
+   * candidates are accepted only after explicit materialization.
    */
-  readonly strategy_ids: readonly StrategyId[];
+  readonly strategy_ids: readonly AnyStrategyId[];
   /**
    * Corpus inputs. Ordered by `CORPUS_INPUT_ROLE_ORDER`, then `manifest_hash`
    * ASC, then `manifest_schema_version` ASC. Validation rejects out-of-order;

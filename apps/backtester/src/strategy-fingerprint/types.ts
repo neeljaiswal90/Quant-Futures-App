@@ -1,4 +1,4 @@
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { UnixNs } from '../../../strategy_runtime/src/contracts/time.js';
 
 // Future fingerprint readers must dispatch on this marker at read time; never
@@ -10,7 +10,7 @@ export interface StrategyFingerprintDecision {
   readonly sequence: number;
   readonly bar_id: string;
   readonly ts_ns: UnixNs;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly gate_state: string | null;
   readonly score: number | null;
   readonly candidate_present: boolean;
@@ -21,7 +21,7 @@ export interface StrategyFingerprintDecision {
 export interface StrategyFingerprint {
   readonly fingerprint_schema_version: 1;
   readonly algorithm: typeof STRATEGY_FINGERPRINT_ALGORITHM;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly decision_count: number;
   readonly decisions_sha256: string;
   readonly fingerprint_sha256: string;

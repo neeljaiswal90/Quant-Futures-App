@@ -7,7 +7,7 @@ import type {
 } from './ids.js';
 import type { ConfigLineageRef } from './lineage.js';
 import type { Direction, InstrumentIdentity } from './market.js';
-import type { StrategyId } from './strategy-ids.js';
+import type { AnyStrategyId } from './strategy-ids.js';
 import type { UnixNs } from './time.js';
 
 export type StrategyGateState = 'armed' | 'waiting' | 'blocked';
@@ -34,7 +34,7 @@ export interface RewardRiskTarget {
 
 export interface StrategyEvaluation {
   readonly strategy_evaluation_id: StrategyEvaluationId;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly instrument: InstrumentIdentity;
   readonly feature_snapshot_id: FeatureSnapshotId;
   readonly evaluated_ts_ns: UnixNs;
@@ -46,8 +46,8 @@ export interface StrategyEvaluation {
 
 export interface Candidate {
   readonly candidate_id: CandidateId;
-  readonly strategy_id: StrategyId;
-  readonly setup_type: StrategyId;
+  readonly strategy_id: AnyStrategyId;
+  readonly setup_type: AnyStrategyId;
   readonly setup_family: CandidateSetupFamily;
   readonly instrument: InstrumentIdentity;
   readonly feature_snapshot_id: FeatureSnapshotId;

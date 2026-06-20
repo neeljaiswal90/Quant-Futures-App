@@ -1,4 +1,4 @@
-import { isStrategyId, type StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import { isAnyStrategyId, type AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { UnixNs } from '../../../strategy_runtime/src/contracts/time.js';
 import type { StrategyReplayEvaluation } from '../strategy-replay/index.js';
 import {
@@ -11,19 +11,19 @@ export function normalizeStrategyReplayDecisions(
   evaluations: readonly StrategyReplayEvaluation[],
 ): readonly StrategyFingerprintDecision[] {
   const issues: StrategyFingerprintIssue[] = [];
-  const sequenceByStrategy = new Map<StrategyId, number>();
+  const sequenceByStrategy = new Map<AnyStrategyId, number>();
   const decisions: StrategyFingerprintDecision[] = [];
 
   evaluations.forEach((evaluation, index) => {
     const path = `$[${index}]`;
     const record = evaluation as unknown as Record<string, unknown>;
-    const strategyId = normalizeStrategyId(record.strategy_id, `${path}.strategy_id`, issues);
+    const strategyId = normalizeAnyStrategyId(record.strategy_id, `${path}.strategy_id`, issues);
     const evaluationRecord = normalizeRecord(record.evaluation, `${path}.evaluation`, issues);
 
-    const evaluationStrategyId =
+    const evaluationAnyStrategyId =
       evaluationRecord === null
         ? null
-        : normalizeStrategyId(
+        : normalizeAnyStrategyId(
             evaluationRecord.strategy_id,
             `${path}.evaluation.strategy_id`,
             issues,
@@ -31,13 +31,13 @@ export function normalizeStrategyReplayDecisions(
 
     if (
       strategyId !== null &&
-      evaluationStrategyId !== null &&
-      strategyId !== evaluationStrategyId
+      evaluationAnyStrategyId !== null &&
+      strategyId !== evaluationAnyStrategyId
     ) {
       issues.push({
         path: `${path}.evaluation.strategy_id`,
         code: 'strategy_mismatch',
-        message: `evaluation strategy_id ${evaluationStrategyId} does not match ${strategyId}`,
+        message: `evaluation strategy_id ${evaluationAnyStrategyId} does not match ${strategyId}`,
       });
     }
 
@@ -91,11 +91,11 @@ export function normalizeStrategyReplayDecisions(
   return decisions;
 }
 
-function normalizeStrategyId(
+function normalizeAnyStrategyId(
   value: unknown,
   path: string,
   issues: StrategyFingerprintIssue[],
-): StrategyId | null {
+): AnyStrategyId | null {
   if (typeof value !== 'string' || value.trim() === '') {
     issues.push({
       path,
@@ -104,7 +104,7 @@ function normalizeStrategyId(
     });
     return null;
   }
-  if (!isStrategyId(value)) {
+  if (!isAnyStrategyId(value)) {
     issues.push({
       path,
       code: 'unknown_strategy_id',
@@ -251,7 +251,7 @@ interface NormalizedCandidate {
 function normalizeCandidate(
   value: unknown,
   path: string,
-  strategyId: StrategyId | null,
+  strategyId: AnyStrategyId | null,
   issues: StrategyFingerprintIssue[],
 ): NormalizedCandidate | null {
   if (typeof value === 'undefined') {
@@ -277,7 +277,7 @@ function normalizeCandidate(
 
   if (strategyId !== null) {
     const candidateStrategyId = candidate.strategy_id;
-    if (typeof candidateStrategyId !== 'string' || !isStrategyId(candidateStrategyId)) {
+    if (typeof candidateStrategyId !== 'string' || !isAnyStrategyId(candidateStrategyId)) {
       issues.push({
         path: `${path}.candidate.strategy_id`,
         code: 'unknown_strategy_id',

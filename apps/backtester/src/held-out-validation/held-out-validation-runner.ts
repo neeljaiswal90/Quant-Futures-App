@@ -3,8 +3,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   ACTIVE_STRATEGY_IDS,
-  isStrategyId,
-  type StrategyId,
+  isAnyStrategyId,
+  type AnyStrategyId,
 } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import {
   buildCapabilityAssessmentSet,
@@ -132,6 +132,7 @@ export async function executeHeldOutValidationAgainstArchive(
           fill_policy: options.fill_policy,
           initial_equity_cents: options.initial_equity_cents,
           strategy_generator: options.strategy_generators?.[strategyId],
+          strategy_config: options.strategy_config,
         });
         rawExecutionResults.push(execution);
         const fingerprintSha256 = fingerprintExecution(strategyId, [execution]);
@@ -604,8 +605,8 @@ function serializeTradeMetricsSummary(
 
 function groupExecutions(
   executions: readonly RealArchiveBacktestResult[],
-): ReadonlyMap<StrategyId, readonly RealArchiveBacktestResult[]> {
-  const grouped = new Map<StrategyId, RealArchiveBacktestResult[]>();
+): ReadonlyMap<AnyStrategyId, readonly RealArchiveBacktestResult[]> {
+  const grouped = new Map<AnyStrategyId, RealArchiveBacktestResult[]>();
   for (const execution of executions) {
     const group = grouped.get(execution.strategy_id);
     if (group === undefined) {
@@ -619,7 +620,7 @@ function groupExecutions(
 
 function artifactMetadata(
   options: HeldOutValidationArtifactOutputOptions,
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
 ): HeldOutValidationArtifactMetadata {
   const metadata = options.metadata_by_strategy?.[strategyId] ?? options.default_metadata;
   if (metadata === undefined) {
@@ -694,7 +695,7 @@ function sessionsForRange(
 }
 
 function validationWindowFromExecution(input: {
-  readonly strategyId: StrategyId;
+  readonly strategyId: AnyStrategyId;
   readonly windowId: string;
   readonly sequence: number;
   readonly startSession: string;
@@ -857,7 +858,7 @@ function realArchiveFeatureCapabilities(
 }
 
 function trialAccounting(
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   effectiveTrialCount: number,
 ): ValidationTrialAccounting {
   return Object.freeze({
@@ -875,7 +876,7 @@ function trialAccounting(
 }
 
 function fingerprintExecution(
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   executions: readonly RealArchiveBacktestResult[],
 ): string {
   return hashStable({
@@ -905,7 +906,7 @@ function sumBigint(values: readonly bigint[]): bigint {
 }
 
 function validateStrategyOrder(
-  strategyOrder: readonly StrategyId[],
+  strategyOrder: readonly AnyStrategyId[],
   issues: HeldOutValidationIssue[],
 ): void {
   if (strategyOrder.length === 0) {
@@ -916,9 +917,9 @@ function validateStrategyOrder(
     });
     return;
   }
-  const seen = new Set<StrategyId>();
+  const seen = new Set<AnyStrategyId>();
   strategyOrder.forEach((strategyId, index) => {
-    if (!isStrategyId(strategyId)) {
+    if (!isAnyStrategyId(strategyId)) {
       issues.push({
         path: `$.strategy_order[${index}]`,
         code: 'invalid_strategy_order',
@@ -943,7 +944,7 @@ function validateValidationArtifacts(
   issues: HeldOutValidationIssue[],
 ): void {
   validationWindows.forEach((window, index) => {
-    if (!isStrategyId(window.strategy_id)) {
+    if (!isAnyStrategyId(window.strategy_id)) {
       issues.push({
         path: `$.validation_windows[${index}].strategy_id`,
         code: 'invalid_validation_artifact',
@@ -953,13 +954,13 @@ function validateValidationArtifacts(
   });
 }
 
-function resolveStrategyOrder(strategyOrder: readonly StrategyId[]): readonly StrategyId[] {
+function resolveStrategyOrder(strategyOrder: readonly AnyStrategyId[]): readonly AnyStrategyId[] {
   return Object.freeze([...strategyOrder]);
 }
 
 function buildValidationGateInputs(
   options: HeldOutValidationRunOptions,
-  strategyOrder: readonly StrategyId[],
+  strategyOrder: readonly AnyStrategyId[],
   fingerprintSet: StrategyFingerprintSet,
   capabilitySet: CapabilityAssessmentSet,
 ): readonly StrategyValidationGateInput[] {
@@ -983,7 +984,7 @@ function buildValidationGateInputs(
   );
 }
 
-function missingCapabilityAssessment(strategyId: StrategyId): StrategyCapabilityAssessment {
+function missingCapabilityAssessment(strategyId: AnyStrategyId): StrategyCapabilityAssessment {
   const limitations: readonly StrategyCapabilityLimitation[] = Object.freeze([
     {
       code: 'replay_missing',
@@ -1009,8 +1010,8 @@ function missingCapabilityAssessment(strategyId: StrategyId): StrategyCapability
 
 function indexFingerprints(
   fingerprints: readonly StrategyFingerprint[],
-): ReadonlyMap<StrategyId, StrategyFingerprint> {
-  const output = new Map<StrategyId, StrategyFingerprint>();
+): ReadonlyMap<AnyStrategyId, StrategyFingerprint> {
+  const output = new Map<AnyStrategyId, StrategyFingerprint>();
   for (const fingerprint of fingerprints) {
     output.set(fingerprint.strategy_id, fingerprint);
   }
@@ -1019,8 +1020,8 @@ function indexFingerprints(
 
 function indexCapabilities(
   capabilities: readonly StrategyCapabilityAssessment[],
-): ReadonlyMap<StrategyId, StrategyCapabilityAssessment> {
-  const output = new Map<StrategyId, StrategyCapabilityAssessment>();
+): ReadonlyMap<AnyStrategyId, StrategyCapabilityAssessment> {
+  const output = new Map<AnyStrategyId, StrategyCapabilityAssessment>();
   for (const capability of capabilities) {
     output.set(capability.strategy_id, capability);
   }
@@ -1029,8 +1030,8 @@ function indexCapabilities(
 
 function indexTrialAccounting(
   trialAccounting: readonly ValidationTrialAccounting[],
-): ReadonlyMap<StrategyId, ValidationTrialAccounting> {
-  const output = new Map<StrategyId, ValidationTrialAccounting>();
+): ReadonlyMap<AnyStrategyId, ValidationTrialAccounting> {
+  const output = new Map<AnyStrategyId, ValidationTrialAccounting>();
   for (const trial of trialAccounting) {
     output.set(trial.strategy_id, trial);
   }
@@ -1039,8 +1040,8 @@ function indexTrialAccounting(
 
 function groupValidationWindows(
   windows: readonly StrategyValidationWindowInput[],
-): ReadonlyMap<StrategyId, readonly StrategyValidationWindowInput[]> {
-  const grouped = new Map<StrategyId, StrategyValidationWindowInput[]>();
+): ReadonlyMap<AnyStrategyId, readonly StrategyValidationWindowInput[]> {
+  const grouped = new Map<AnyStrategyId, StrategyValidationWindowInput[]>();
   for (const window of windows) {
     const group = grouped.get(window.strategy_id);
     if (group === undefined) {
@@ -1049,7 +1050,7 @@ function groupValidationWindows(
     }
     group.push(window);
   }
-  const sorted = new Map<StrategyId, readonly StrategyValidationWindowInput[]>();
+  const sorted = new Map<AnyStrategyId, readonly StrategyValidationWindowInput[]>();
   for (const [strategyId, group] of grouped.entries()) {
     sorted.set(
       strategyId,
@@ -1069,8 +1070,8 @@ function groupValidationWindows(
 
 function indexValidationResults(
   results: readonly StrategyValidationGateResult[],
-): ReadonlyMap<StrategyId, StrategyValidationGateResult> {
-  const output = new Map<StrategyId, StrategyValidationGateResult>();
+): ReadonlyMap<AnyStrategyId, StrategyValidationGateResult> {
+  const output = new Map<AnyStrategyId, StrategyValidationGateResult>();
   for (const result of results) {
     output.set(result.strategy_id, result);
   }

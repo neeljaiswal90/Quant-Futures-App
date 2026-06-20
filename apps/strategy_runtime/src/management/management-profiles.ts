@@ -4,6 +4,10 @@ import {
   isStrategyId,
 } from '../contracts/strategy-ids.js';
 import {
+  getGeneratedCandidateBaseStrategyId,
+  isGeneratedCandidateStrategyId,
+} from '../contracts/generated-candidate-strategy-ids.js';
+import {
   MANAGEMENT_PROFILE_HASH_PLACEHOLDER,
   MANAGEMENT_PROFILE_VERSION,
   assertValidManagementProfile,
@@ -567,8 +571,12 @@ export function resolveManagementProfile(
     options.profiles ?? V1_MANAGEMENT_PROFILES;
   const fallback = options.fallback_profile ?? FALLBACK_MANAGEMENT_PROFILE;
 
-  if (isStrategyId(strategyId)) {
-    const profile = profiles[strategyId];
+  const profileStrategyId = isGeneratedCandidateStrategyId(strategyId)
+    ? getGeneratedCandidateBaseStrategyId(strategyId)
+    : strategyId;
+
+  if (isStrategyId(profileStrategyId)) {
+    const profile = profiles[profileStrategyId];
     if (profile !== undefined) {
       assertValidManagementProfile(profile);
       return {

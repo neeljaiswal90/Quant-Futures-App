@@ -1,7 +1,7 @@
 import {
   ACTIVE_STRATEGY_IDS,
-  isStrategyId,
-  type StrategyId,
+  isAnyStrategyId,
+  type AnyStrategyId,
 } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import { STRATEGY_FINGERPRINT_ALGORITHM } from '../strategy-fingerprint/index.js';
 import { computeEffectiveTrialCount, validateTrialAccounting } from './trial-accounting.js';
@@ -208,7 +208,7 @@ export function evaluateStrategyValidationGate(
 export function evaluateValidationGateSet(
   inputs: readonly StrategyValidationGateInput[],
   policy: ValidationGatePolicy = DEFAULT_VALIDATION_GATE_POLICY_V1,
-  strategyOrder?: readonly StrategyId[],
+  strategyOrder?: readonly AnyStrategyId[],
 ): ValidationGateResultSet {
   const resolvedPolicy = resolveValidationGatePolicy(policy);
   const orderedInputs = orderGateInputs(inputs, strategyOrder);
@@ -451,7 +451,7 @@ function buildChecks(
 
 function validateGateInput(input: StrategyValidationGateInput, policy: ValidationGatePolicy): void {
   const issues: ValidationGateIssue[] = [];
-  if (!isStrategyId(input.strategy_id)) {
+  if (!isAnyStrategyId(input.strategy_id)) {
     issues.push(issue('$.strategy_id', 'unknown_strategy_id', `unknown strategy_id ${String(input.strategy_id)}`));
   }
   if (input.capability_assessment.strategy_id !== input.strategy_id) {
@@ -507,7 +507,7 @@ function validateSessionOrder(
 }
 
 function validateWindowInput(
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   sessionOrder: readonly string[],
   window: StrategyValidationWindowInput,
   index: number,
@@ -585,12 +585,12 @@ function deriveTopLevelStatus(
 
 function orderGateInputs(
   inputs: readonly StrategyValidationGateInput[],
-  strategyOrder?: readonly StrategyId[],
+  strategyOrder?: readonly AnyStrategyId[],
 ): readonly StrategyValidationGateInput[] {
   const issues: ValidationGateIssue[] = [];
-  const byStrategy = new Map<StrategyId, StrategyValidationGateInput>();
+  const byStrategy = new Map<AnyStrategyId, StrategyValidationGateInput>();
   inputs.forEach((input, index) => {
-    if (!isStrategyId(input.strategy_id)) {
+    if (!isAnyStrategyId(input.strategy_id)) {
       issues.push(issue(`$[${index}].strategy_id`, 'unknown_strategy_id', 'unknown strategy_id'));
       return;
     }
@@ -602,9 +602,9 @@ function orderGateInputs(
   });
 
   const order = strategyOrder ?? ACTIVE_STRATEGY_IDS;
-  const seen = new Set<StrategyId>();
+  const seen = new Set<AnyStrategyId>();
   order.forEach((strategyId, index) => {
-    if (!isStrategyId(strategyId)) {
+    if (!isAnyStrategyId(strategyId)) {
       issues.push(issue(`$.strategy_order[${index}]`, 'unknown_strategy_id', 'unknown strategy_id'));
       return;
     }

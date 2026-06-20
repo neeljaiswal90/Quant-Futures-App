@@ -6,9 +6,10 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ACTIVE_STRATEGY_IDS,
-  parseStrategyId,
-  type StrategyId,
+  parseAnyStrategyId,
+  type AnyStrategyId,
 } from '../apps/strategy_runtime/src/contracts/strategy-ids.js';
+import { loadStrategyRuntimeConfig } from '../apps/strategy_runtime/src/config/index.js';
 import { getStrategyGenerator } from '../apps/strategy_runtime/src/strategies/registry.js';
 import {
   executeHeldOutValidationAgainstArchive,
@@ -31,6 +32,7 @@ const DEFAULT_MANIFESTS = [
 ];
 const DEFAULT_OUTPUT_DIR = 'artifacts/held-out-validation';
 const DEFAULT_REGIME_LABELS = 'artifacts/regime/regime-labels.json';
+const DEFAULT_STRATEGY_CONFIG_DIR = 'config/strategies';
 const DEFAULT_INITIAL_EQUITY_CENTS = 5_000_000n;
 const PARAMETER_LOCK_SOURCE = 'existing-roster-locked-as-of-qfa611-cycle1';
 
@@ -38,7 +40,7 @@ interface CliArgs {
   readonly archiveRoot?: string;
   readonly manifests: readonly string[];
   readonly outputDir: string;
-  readonly strategyIds: readonly StrategyId[];
+  readonly strategyIds: readonly AnyStrategyId[];
   readonly initialEquityCents: bigint;
   readonly runId: string;
   readonly walkForwardPolicyPath?: string;
@@ -50,6 +52,7 @@ interface CliArgs {
    * remain unchanged.
    */
   readonly researchFixedContracts?: number;
+  readonly strategyConfigDir: string;
 }
 
 interface ManifestSession {
@@ -102,10 +105,10 @@ interface ExecuteDependencies {
 
 interface RunSummary {
   readonly run_id: string;
-  readonly strategy_ids: readonly StrategyId[];
+  readonly strategy_ids: readonly AnyStrategyId[];
   readonly artifact_paths: readonly string[];
   readonly per_strategy: readonly {
-    readonly strategy_id: StrategyId;
+    readonly strategy_id: AnyStrategyId;
     readonly total_trades: number;
     readonly executed_windows: number;
     readonly failed_windows: number;
@@ -139,7 +142,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     throw new Error('--strategy-ids requires at least one strategy id');
   }
   const strategyIds = strategyIdValues
-    .map((value) => parseStrategyId(value));
+    .map((value) => parseAnyStrategyId(value));
   const resolvedStrategyIds = values.has('strategy-ids') ? strategyIds : ACTIVE_STRATEGY_IDS;
   if (resolvedStrategyIds.length === 0) {
     throw new Error(
@@ -157,6 +160,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     metadataByStrategyPath: one(values, 'metadata-by-strategy'),
     regimeLabelsPath: one(values, 'regime-labels') ?? DEFAULT_REGIME_LABELS,
     researchFixedContracts: optionalPositiveInteger(values, 'research-fixed-contracts'),
+    strategyConfigDir: one(values, 'strategy-config-dir') ?? DEFAULT_STRATEGY_CONFIG_DIR,
   };
 }
 
@@ -178,6 +182,10 @@ export async function runQfa410bExecute(
   const policy = loadWalkForwardPolicy(args.walkForwardPolicyPath);
   const walkForwardPlan = buildWalkForwardPlan(sessionOrder, policy);
   const metadataByStrategy = loadMetadataByStrategy(args, manifestHashes);
+  const strategyConfig = loadStrategyRuntimeConfig({
+    directory: args.strategyConfigDir,
+    required: true,
+  });
   const execute = dependencies.execute ?? executeHeldOutValidationAgainstArchive;
   const artifactPaths: string[] = [];
   const perStrategy: RunSummary['per_strategy'][number][] = [];
@@ -202,6 +210,7 @@ export async function runQfa410bExecute(
           ? undefined
           : { order_quantity: args.researchFixedContracts },
         strategy_generators: { [strategyId]: getStrategyGenerator(strategyId) },
+        strategy_config: strategyConfig,
         artifact_output: {
           output_dir: args.outputDir,
           metadata_by_strategy: { [strategyId]: metadataByStrategy[strategyId] },
@@ -283,9 +292,9 @@ function loadWalkForwardPolicy(path: string | undefined): WalkForwardPolicy {
 function loadMetadataByStrategy(
   args: CliArgs,
   manifestHashes: HeldOutValidationArtifactMetadata['input_manifest_hashes'],
-): Record<StrategyId, HeldOutValidationArtifactMetadata> {
+): Record<AnyStrategyId, HeldOutValidationArtifactMetadata> {
   if (args.metadataByStrategyPath !== undefined) {
-    return readJson<Record<StrategyId, HeldOutValidationArtifactMetadata>>(args.metadataByStrategyPath);
+    return readJson<Record<AnyStrategyId, HeldOutValidationArtifactMetadata>>(args.metadataByStrategyPath);
   }
   const lockManifest = readJson<LockManifest>('artifacts/strategy-selection/qfa611-cycle1-parameter-locks.json');
   const locks = new Map<string, string>();
@@ -307,7 +316,7 @@ function loadMetadataByStrategy(
       input_substrate_hash: inputSubstrateHash,
       input_manifest_hashes: manifestHashes,
     } satisfies HeldOutValidationArtifactMetadata];
-  })) as Record<StrategyId, HeldOutValidationArtifactMetadata>;
+  })) as Record<AnyStrategyId, HeldOutValidationArtifactMetadata>;
 }
 
 function inputManifestHashes(paths: readonly string[]): HeldOutValidationArtifactMetadata['input_manifest_hashes'] {
@@ -347,7 +356,7 @@ function loadRegimeLabels(path: string): RegimeLabelSessionContext {
 
 function writePartialEvidenceStub(
   path: string,
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   metadata: HeldOutValidationArtifactMetadata,
   error: unknown,
 ): void {

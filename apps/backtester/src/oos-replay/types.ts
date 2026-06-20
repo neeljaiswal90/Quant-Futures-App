@@ -13,7 +13,7 @@ import type {
   StrategyValidationGateResult,
   ValidationGateResultSet,
 } from '../validation-gate/index.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 
 export type OosReplayDataMode =
   | 'tier_b_corpus'
@@ -50,7 +50,7 @@ export interface TierBOosInputSpec {
 
 export interface StrategyOosWindowResult {
   readonly result_schema_version: 1;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly window_id: string;
   readonly window_sequence: number;
   readonly test_start_session: string;
@@ -70,7 +70,7 @@ export interface OosReplayFrameworkResult {
 
 export interface BuildTierBOosReplayPlanArgs {
   readonly walk_forward_plan: WalkForwardPlan;
-  readonly strategy_order: readonly StrategyId[];
+  readonly strategy_order: readonly AnyStrategyId[];
   readonly input_spec: TierBOosInputSpec;
   readonly strategy_fingerprints?: StrategyFingerprintSet | readonly StrategyFingerprint[];
   readonly capability_assessments?: CapabilityAssessmentSet | readonly StrategyCapabilityAssessment[];

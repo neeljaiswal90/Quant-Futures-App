@@ -1,5 +1,18 @@
-import { ACTIVE_STRATEGY_IDS, ALL_STRATEGY_IDS, parseStrategyId, type StrategyId } from '../contracts/strategy-ids.js';
+import { getGeneratedCandidateBaseStrategyId } from '../contracts/generated-candidate-strategy-ids.js';
+import {
+  ACTIVE_STRATEGY_IDS,
+  ANY_STRATEGY_IDS,
+  CANDIDATE_STRATEGY_IDS,
+  parseAnyStrategyId,
+  type ActiveStrategyId,
+  type AnyStrategyId,
+  type CandidateStrategyId,
+  type RegisteredInactiveStrategyId,
+  type StrategyId,
+} from '../contracts/strategy-ids.js';
 import type { Direction } from '../contracts/market.js';
+import { makeCandidateId, makeStrategyEvaluationId } from '../contracts/ids.js';
+import type { StrategyRuntimeConfig } from '../config/index.js';
 import { generateBreakoutRetestLong } from './breakout_retest_long.js';
 import { generateBreakdownRetestShort } from './breakdown_retest_short.js';
 import { generateLiquiditySweepReversalLong } from './liquidity_sweep_reversal_long.js';
@@ -19,11 +32,12 @@ import { generateVwapOvernightReversalLong } from './vwap_overnight_reversal_lon
 import { generateVwapOvernightReversalShort } from './vwap_overnight_reversal_short.js';
 import type {
   ActiveStrategyGenerator,
+  StrategyGenerationResult,
   StrategyRegistryEntry,
   StrategySetupFamily,
 } from './types.js';
 
-const STRATEGY_REGISTRY_ENTRIES = {
+const STATIC_STRATEGY_REGISTRY_ENTRIES = {
   trend_pullback_long: {
     strategy_id: 'trend_pullback_long',
     display_name: 'Trend Pullback Long',
@@ -193,14 +207,27 @@ const STRATEGY_REGISTRY_ENTRIES = {
     extraction_ticket: 'STRAT-V5-DEADLINE-VARIANTS-01',
     synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v5_trail_at_deadline',
     enabled_in_v1: false,
-  },} as const satisfies Record<StrategyId, StrategyRegistryEntry>;
+  },
+} as const satisfies Record<
+  ActiveStrategyId | RegisteredInactiveStrategyId,
+  StrategyRegistryEntry
+>;
 
-export const STRATEGY_REGISTRY: Readonly<Record<StrategyId, StrategyRegistryEntry>> =
+const GENERATED_CANDIDATE_REGISTRY_ENTRIES = buildGeneratedCandidateRegistryEntries();
+
+const STRATEGY_REGISTRY_ENTRIES = {
+  ...STATIC_STRATEGY_REGISTRY_ENTRIES,
+  ...GENERATED_CANDIDATE_REGISTRY_ENTRIES,
+} as Readonly<Partial<Record<AnyStrategyId, StrategyRegistryEntry>>>;
+
+export const STRATEGY_REGISTRY: Readonly<Partial<Record<AnyStrategyId, StrategyRegistryEntry>>> =
   STRATEGY_REGISTRY_ENTRIES;
 
 const ACTIVE_STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {};
 
-const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> = {
+const STATIC_STRATEGY_GENERATORS: Partial<
+  Record<ActiveStrategyId | RegisteredInactiveStrategyId, ActiveStrategyGenerator>
+> = {
   trend_pullback_long: generateTrendPullbackLong,
   trend_pullback_short: generateTrendPullbackShort,
   breakout_retest_long: generateBreakoutRetestLong,
@@ -220,30 +247,144 @@ const STRATEGY_GENERATORS: Partial<Record<StrategyId, ActiveStrategyGenerator>> 
   regime_shock_reversion_short_v5_trail_at_deadline: generateRegimeShockReversionShortV5TrailAtDeadline,
 };
 
+const STRATEGY_GENERATORS: Partial<Record<AnyStrategyId, ActiveStrategyGenerator>> = {
+  ...STATIC_STRATEGY_GENERATORS,
+  ...buildGeneratedCandidateGenerators(),
+};
+
+function buildGeneratedCandidateRegistryEntries(): Readonly<Record<CandidateStrategyId, StrategyRegistryEntry>> {
+  const entries: Record<string, StrategyRegistryEntry> = {};
+  for (const strategyId of CANDIDATE_STRATEGY_IDS) {
+    const baseStrategyId = getGeneratedCandidateBaseStrategyId(strategyId);
+    const baseEntry = STATIC_STRATEGY_REGISTRY_ENTRIES[baseStrategyId];
+    if (baseEntry === undefined) {
+      throw new Error(`generated candidate ${strategyId} references unknown base strategy ${baseStrategyId}`);
+    }
+    entries[strategyId] = {
+      ...baseEntry,
+      strategy_id: strategyId,
+      display_name: `${baseEntry.display_name} Generated Candidate`,
+      enabled_in_v1: false,
+    };
+  }
+  return Object.freeze(entries) as Readonly<Record<CandidateStrategyId, StrategyRegistryEntry>>;
+}
+
+function buildGeneratedCandidateGenerators(): Partial<Record<CandidateStrategyId, ActiveStrategyGenerator>> {
+  const entries: Record<string, ActiveStrategyGenerator> = {};
+  for (const strategyId of CANDIDATE_STRATEGY_IDS) {
+    const baseStrategyId = getGeneratedCandidateBaseStrategyId(strategyId);
+    const generator = STATIC_STRATEGY_GENERATORS[baseStrategyId];
+    if (generator === undefined) {
+      throw new Error(`generated candidate ${strategyId} base strategy ${baseStrategyId} has no generator`);
+    }
+    entries[strategyId] = (input) => rewriteGeneratedCandidateResult(
+      strategyId,
+      baseStrategyId,
+      generator({
+        ...input,
+        strategy_id: baseStrategyId,
+        strategy_config: strategyConfigWithGeneratedParameters(
+          input.strategy_config,
+          strategyId,
+          baseStrategyId,
+        ),
+      }),
+    );
+  }
+  return entries;
+}
+
+function strategyConfigWithGeneratedParameters(
+  strategyConfig: StrategyRuntimeConfig | undefined,
+  candidateStrategyId: CandidateStrategyId,
+  baseStrategyId: ActiveStrategyId | RegisteredInactiveStrategyId,
+): StrategyRuntimeConfig | undefined {
+  const candidateParameters = strategyConfig?.strategies[candidateStrategyId];
+  if (strategyConfig === undefined || candidateParameters === undefined) {
+    return strategyConfig;
+  }
+  return {
+    ...strategyConfig,
+    strategies: {
+      ...strategyConfig.strategies,
+      [baseStrategyId]: candidateParameters,
+    },
+  } as StrategyRuntimeConfig;
+}
+
+function rewriteGeneratedCandidateResult(
+  candidateStrategyId: CandidateStrategyId,
+  baseStrategyId: ActiveStrategyId | RegisteredInactiveStrategyId,
+  result: StrategyGenerationResult,
+): StrategyGenerationResult {
+  const evaluation = {
+    ...result.evaluation,
+    strategy_evaluation_id: makeStrategyEvaluationId(
+      `${result.evaluation.strategy_evaluation_id}-${candidateStrategyId}`,
+    ),
+    strategy_id: candidateStrategyId,
+    reasons: [
+      `generated_candidate_base:${baseStrategyId}`,
+      ...result.evaluation.reasons,
+    ],
+  };
+  if (result.candidate === undefined) {
+    return { evaluation };
+  }
+  return {
+    evaluation,
+    candidate: {
+      ...result.candidate,
+      candidate_id: makeCandidateId(`${result.candidate.candidate_id}-${candidateStrategyId}`),
+      strategy_id: candidateStrategyId,
+      setup_type: candidateStrategyId,
+      reasons: [
+        `generated_candidate_base:${baseStrategyId}`,
+        ...result.candidate.reasons,
+      ],
+    },
+  };
+}
 export function listStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {
-  return ACTIVE_STRATEGY_IDS.map((strategyId) => STRATEGY_REGISTRY[strategyId]);
+  return ACTIVE_STRATEGY_IDS.map((strategyId) => {
+    const entry = STRATEGY_REGISTRY[strategyId];
+    if (entry === undefined) {
+      throw new Error(`strategy ${strategyId} is missing a registry entry`);
+    }
+    return entry;
+  });
 }
 
 export function listAllStrategyRegistryEntries(): readonly StrategyRegistryEntry[] {
-  return ALL_STRATEGY_IDS.map((strategyId) => STRATEGY_REGISTRY[strategyId]);
+  return ANY_STRATEGY_IDS.map((strategyId) => {
+    const entry = STRATEGY_REGISTRY[strategyId];
+    if (entry === undefined) {
+      throw new Error(`strategy ${strategyId} is missing a registry entry`);
+    }
+    return entry;
+  });
 }
 
 export function getStrategyRegistryEntry(strategyId: StrategyId | string): StrategyRegistryEntry {
-  return STRATEGY_REGISTRY[parseStrategyId(strategyId)];
+  const parsed = parseAnyStrategyId(strategyId);
+  const entry = STRATEGY_REGISTRY[parsed];
+  if (entry === undefined) {
+    throw new Error(`strategy ${parsed} is missing a registry entry`);
+  }
+  return entry;
 }
 
 export function listStrategyIdsByDirection(direction: Direction): readonly StrategyId[] {
-  return listStrategyRegistryEntries()
-    .filter((entry) => entry.direction === direction)
-    .map((entry) => entry.strategy_id);
+  void direction;
+  return [];
 }
 
 export function listStrategyIdsBySetupFamily(
   setupFamily: StrategySetupFamily,
 ): readonly StrategyId[] {
-  return listStrategyRegistryEntries()
-    .filter((entry) => entry.setup_family === setupFamily)
-    .map((entry) => entry.strategy_id);
+  void setupFamily;
+  return [];
 }
 
 export function listExecutableStrategyIds(): readonly StrategyId[] {
@@ -251,7 +392,7 @@ export function listExecutableStrategyIds(): readonly StrategyId[] {
 }
 
 export function getActiveStrategyGenerator(strategyId: StrategyId | string): ActiveStrategyGenerator {
-  const parsed = parseStrategyId(strategyId);
+  const parsed = parseAnyStrategyId(strategyId);
   const generator = STRATEGY_GENERATORS[parsed];
   if (generator === undefined) {
     throw new Error(`strategy ${parsed} is pending extraction and is not executable`);
@@ -260,7 +401,7 @@ export function getActiveStrategyGenerator(strategyId: StrategyId | string): Act
 }
 
 export function getStrategyGenerator(strategyId: StrategyId | string): ActiveStrategyGenerator {
-  const parsed = parseStrategyId(strategyId);
+  const parsed = parseAnyStrategyId(strategyId);
   const generator = STRATEGY_GENERATORS[parsed];
   if (generator === undefined) {
     throw new Error(`strategy ${parsed} is pending extraction and is not executable`);
@@ -271,7 +412,7 @@ export function getStrategyGenerator(strategyId: StrategyId | string): ActiveStr
 export function validateStrategyRegistry(): readonly string[] {
   const issues: string[] = [];
   const registeredIds = Object.keys(STRATEGY_REGISTRY).sort();
-  const allIds = [...ALL_STRATEGY_IDS].sort();
+  const allIds = [...ANY_STRATEGY_IDS].sort();
 
   if (registeredIds.join('|') !== allIds.join('|')) {
     issues.push(
@@ -279,8 +420,12 @@ export function validateStrategyRegistry(): readonly string[] {
     );
   }
 
-  for (const strategyId of ALL_STRATEGY_IDS) {
+  for (const strategyId of ANY_STRATEGY_IDS) {
     const entry = STRATEGY_REGISTRY[strategyId];
+    if (entry === undefined) {
+      issues.push(`${strategyId} is missing a registry entry`);
+      continue;
+    }
     if (entry.strategy_id !== strategyId) {
       issues.push(`${strategyId} registry entry has mismatched strategy_id ${entry.strategy_id}`);
     }

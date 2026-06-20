@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ACTIVE_STRATEGY_IDS,
-  type StrategyId,
+  type AnyStrategyId,
 } from '../../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { StrategyReplayEvaluation } from '../../../src/strategy-replay/index.js';
 import {
@@ -19,7 +19,7 @@ const EXPLICIT_REPLAY_STRATEGY_IDS = [
   'vwap_overnight_reversal_long',
   'vwap_overnight_reversal_short',
   'regime_shock_reversion_short_v2',
-] as const satisfies readonly StrategyId[];
+] as const satisfies readonly AnyStrategyId[];
 
 describe('strategy fingerprint computation', () => {
   it('computes one fingerprint per explicit registered-inactive research strategy', async () => {
@@ -122,7 +122,7 @@ describe('strategy fingerprint computation', () => {
 });
 
 async function replayFixture(
-  strategyIds: readonly StrategyId[] = EXPLICIT_REPLAY_STRATEGY_IDS,
+  strategyIds: readonly AnyStrategyId[] = EXPLICIT_REPLAY_STRATEGY_IDS,
 ) {
   return replayStrategies({
     strategy_ids: strategyIds,

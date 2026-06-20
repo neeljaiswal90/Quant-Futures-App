@@ -1,4 +1,4 @@
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 
 export type StrategyCapabilityStatus =
   | 'ready_for_replay'
@@ -50,7 +50,7 @@ export interface StrategyCapabilityLimitation {
 
 export interface StrategyCapabilityAssessment {
   readonly assessment_schema_version: 1;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly status: StrategyCapabilityStatus;
   readonly replay_evaluations: number;
   readonly fingerprint_sha256: string | null;
@@ -65,7 +65,7 @@ export interface CapabilityAssessmentSet {
 }
 
 export interface BuildCapabilityAssessmentOptions {
-  readonly strategy_order?: readonly StrategyId[];
+  readonly strategy_order?: readonly AnyStrategyId[];
   readonly allow_partial_strategy_order?: boolean;
   readonly feature_capabilities?: readonly StrategyFeatureCapability[];
 }

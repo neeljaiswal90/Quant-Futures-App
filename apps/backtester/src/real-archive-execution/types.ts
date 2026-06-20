@@ -1,7 +1,7 @@
 import type {
   AnyJournalEventEnvelope,
 } from '../../../strategy_runtime/src/contracts/index.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { UnixNs, UnixNsInput } from '../../../strategy_runtime/src/contracts/time.js';
 import type { DbnRecord } from '../../../strategy_runtime/src/data/dbn-types.js';
 import type {
@@ -18,6 +18,7 @@ import type {
   StrategyFeatureSnapshot,
   StrategyGenerationResult,
 } from '../../../strategy_runtime/src/strategies/index.js';
+import type { StrategyRuntimeConfig } from '../../../strategy_runtime/src/config/index.js';
 
 export type RealArchiveRegimeLabel = 'high' | 'mid' | 'low' | 'unknown';
 
@@ -68,7 +69,7 @@ export interface RealArchiveExecutionFillPolicy {
 
 export interface RealArchiveBacktestOptions {
   readonly run_id: string;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly sessions: readonly RealArchiveSessionSource[];
   readonly bar_spec?: string;
   readonly run_started_at_ns: UnixNsInput;
@@ -76,13 +77,15 @@ export interface RealArchiveBacktestOptions {
   readonly initial_equity_cents?: bigint;
   readonly valuation?: InstrumentValuationSpec;
   readonly strategy_generator?: RealArchiveStrategyGenerator;
+  readonly strategy_config?: StrategyRuntimeConfig;
   readonly vix_daily_paths?: readonly string[];
   readonly regime_labels_path?: string;
 }
 
 export interface RealArchiveStrategyGeneratorInput {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly snapshot: StrategyFeatureSnapshot;
+  readonly strategy_config?: StrategyRuntimeConfig;
 }
 
 export type RealArchiveStrategyGenerator = (
@@ -135,7 +138,7 @@ export interface RealArchivePerTradeExitRecord {
 
 export interface RealArchivePerTradeRecord {
   readonly trade_id: string;
-  readonly strategy_id: StrategyId | null;
+  readonly strategy_id: AnyStrategyId | null;
   readonly session_id: string;
   readonly regime_label: RealArchiveRegimeLabel;
   readonly vix_value: number | null;
@@ -195,7 +198,7 @@ export interface RealArchiveExecutionDebugProbe {
 export interface RealArchiveBacktestResult {
   readonly result_schema_version: 1;
   readonly run_id: string;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly journal_events: readonly AnyJournalEventEnvelope[];
   readonly trade_ledger: TradeLedger;
   readonly trade_analysis: TradeLedgerAnalysis;

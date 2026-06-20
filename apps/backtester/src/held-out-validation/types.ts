@@ -18,7 +18,8 @@ import type {
   ValidationTrialAccounting,
 } from '../validation-gate/index.js';
 import type { WalkForwardPlan } from '../walk-forward/index.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { StrategyRuntimeConfig } from '../../../strategy_runtime/src/config/index.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { UnixNsInput } from '../../../strategy_runtime/src/contracts/time.js';
 import type {
   RealArchiveBacktestResult,
@@ -45,7 +46,7 @@ export interface HeldOutValidationRunOptions {
   readonly run_id: string;
   readonly input_spec: TierBOosInputSpec;
   readonly walk_forward_plan: WalkForwardPlan;
-  readonly strategy_order: readonly StrategyId[];
+  readonly strategy_order: readonly AnyStrategyId[];
   readonly validation_policy?: ValidationGatePolicy;
 
   /**
@@ -63,7 +64,7 @@ export interface HeldOutValidationRunOptions {
 
 export interface HeldOutValidationWindowResult {
   readonly result_schema_version: 1;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly window_id: string;
   readonly window_sequence: number;
   readonly replay_status: HeldOutValidationWindowReplayStatus;
@@ -86,13 +87,14 @@ export interface HeldOutValidationRealArchiveOptions {
   readonly run_id: string;
   readonly input_spec: TierBOosInputSpec;
   readonly walk_forward_plan: WalkForwardPlan;
-  readonly strategy_order: readonly StrategyId[];
+  readonly strategy_order: readonly AnyStrategyId[];
   readonly archive_sessions: readonly RealArchiveSessionSource[];
   readonly run_started_at_ns: UnixNsInput;
   readonly validation_policy?: ValidationGatePolicy;
   readonly fill_policy?: Partial<RealArchiveExecutionFillPolicy>;
   readonly initial_equity_cents?: bigint;
-  readonly strategy_generators?: Partial<Record<StrategyId, RealArchiveStrategyGenerator>>;
+  readonly strategy_generators?: Partial<Record<AnyStrategyId, RealArchiveStrategyGenerator>>;
+  readonly strategy_config?: StrategyRuntimeConfig;
   readonly artifact_output?: HeldOutValidationArtifactOutputOptions;
 }
 
@@ -117,7 +119,7 @@ export interface HeldOutValidationArtifactMetadata {
 
 export interface HeldOutValidationArtifactOutputOptions {
   readonly output_dir: string;
-  readonly metadata_by_strategy?: Partial<Record<StrategyId, HeldOutValidationArtifactMetadata>>;
+  readonly metadata_by_strategy?: Partial<Record<AnyStrategyId, HeldOutValidationArtifactMetadata>>;
   readonly default_metadata?: HeldOutValidationArtifactMetadata;
 }
 
@@ -128,7 +130,7 @@ export type HeldOutValidationRealArchiveWindowStatus =
 
 export interface HeldOutValidationRealArchiveWindowResult {
   readonly result_schema_version: 1;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly window_id: string;
   readonly window_sequence: number;
   readonly test_start_session: string;
@@ -142,7 +144,7 @@ export interface HeldOutValidationRealArchiveWindowResult {
 
 export interface HeldOutValidationRealArchiveStrategyResult {
   readonly result_schema_version: 1;
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly fingerprint_sha256: string;
   readonly windows: readonly HeldOutValidationRealArchiveWindowResult[];
   readonly total_trades: number;
@@ -243,7 +245,7 @@ export interface HeldOutValidationArtifactTradeV1 {
 }
 
 export interface HeldOutValidationArtifactWindowV1 {
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly window_id: string;
   readonly sequence: number;
   readonly role: 'test';
@@ -289,7 +291,7 @@ export type HeldOutValidationArtifactCapabilityStatus =
 export interface HeldOutValidationArtifactV1 {
   readonly schema_version: 1;
   readonly methodology_id: 'qfa-410-v1';
-  readonly strategy_id: StrategyId;
+  readonly strategy_id: AnyStrategyId;
   readonly strategy_family: HeldOutValidationStrategyFamily;
   readonly strategy_fingerprint_sha256: string;
   readonly parameter_lock_source: string;

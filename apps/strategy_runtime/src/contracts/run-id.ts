@@ -23,7 +23,14 @@
  * call site rather than at canonicalization time.
  */
 
-import type { StrategyId } from './strategy-ids.js';
+import {
+  type AnyStrategyId,
+  type StrategyId,
+} from './strategy-ids.js';
+import {
+  getGeneratedCandidateBaseStrategyId,
+  isGeneratedCandidateStrategyId,
+} from './generated-candidate-strategy-ids.js';
 import { computeRunSpecHash } from './run-spec-hash.js';
 import type { BacktestWindow, RunSpec } from './run-spec.js';
 
@@ -148,13 +155,16 @@ function instantToToken(value: string, label: 'start' | 'end'): string {
  * Caller is expected to pass deduped, validated strategy IDs (RunSpec
  * validation already enforces this). If passed an empty array, throws.
  */
-export function deriveStrategyToken(strategy_ids: readonly StrategyId[]): string {
+export function deriveStrategyToken(strategy_ids: readonly AnyStrategyId[]): string {
   if (strategy_ids.length === 0) {
     throw new Error('deriveStrategyToken requires at least one strategy_id');
   }
   if (strategy_ids.length === 1) {
     const id = strategy_ids[0]!;
-    const abbrev = STRATEGY_ID_TO_RUN_ID_ABBREV[id];
+    const staticId = isGeneratedCandidateStrategyId(id)
+      ? getGeneratedCandidateBaseStrategyId(id)
+      : id;
+    const abbrev = STRATEGY_ID_TO_RUN_ID_ABBREV[staticId];
     if (abbrev === undefined) {
       throw new Error(`No run-id abbreviation registered for strategy_id: ${id}`);
     }

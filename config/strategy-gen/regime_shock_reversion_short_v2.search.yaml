@@ -1,0 +1,28 @@
+version: 1
+generation_run_id: regime-shock-v2-tier1-smoke
+family: regime_shock_reversion
+base_strategy_id: regime_shock_reversion_short_v2
+base_config: config/strategies/regime_shock_reversion_short_v2.yaml
+strategy_id_template: regime_shock_reversion_short_v2_gen_{hash8}
+trial_budget: 6
+effective_trial_method: max_of_manual_and_distinct_fingerprints
+search_seed: deterministic-grid-v1
+
+generation_policy:
+  eligible: true
+  reason: tier1_parametric_search
+  required_to_revisit: none
+
+corpus:
+  root: D:/qfa-cache/databento/mnq-continuous-12mo-2025-06-20_2026-06-20
+  surface: ohlcv_1m
+  session_scope: rth
+  date_range: 2025-06-20..2026-06-20
+  required_feature_families: quote_mid|closed_1m_bar|session_vwap|signed_shock_vwap|regime_label
+  corpus_fingerprint: mnq-continuous-12mo-2025-06-20_2026-06-20-rth-ohlcv1m
+
+parameters:
+  low_shock_threshold_pos:
+    values: 2.7,2.8,2.9
+  target_1_rr:
+    values: 1.2,1.4

@@ -1,4 +1,4 @@
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type {
   ValidationGatePolicy,
   ValidationTrialAccounting,
@@ -22,7 +22,7 @@ export function computeEffectiveTrialCount(
 }
 
 export function validateTrialAccounting(
-  strategyId: StrategyId,
+  strategyId: AnyStrategyId,
   trialAccounting: ValidationTrialAccounting,
   policy: ValidationGatePolicy,
   path: string,

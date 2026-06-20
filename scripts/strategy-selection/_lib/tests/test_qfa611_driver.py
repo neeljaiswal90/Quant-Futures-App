@@ -326,6 +326,49 @@ class Qfa611DriverTests(unittest.TestCase):
         self.assertEqual(manifest["cycle_id"], "qfa611-cycle2-test")
         self.assertEqual(manifest["strategies"][0]["strategy_id"], "beta")
 
+    def test_trial_accounting_manifest_controls_effective_trial_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            held_out_dir, lock_manifest = write_case(root)
+            trial_manifest = write_trial_accounting_manifest(root, STRATEGIES, manual=9, distinct=7)
+            selection = json.loads(
+                run_driver(
+                    root,
+                    held_out_dir,
+                    lock_manifest,
+                    trial_accounting_manifest=trial_manifest,
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(selection["effective_trial_count"], 9)
+            self.assertEqual(selection["effective_trial_count_source"], "trial_accounting_manifest")
+            self.assertEqual(
+                selection["trial_accounting_manifest"]["candidate_strategy_ids_gated"],
+                STRATEGIES,
+            )
+
+    def test_parameter_lock_hash_reads_generated_candidate_config_dir(self) -> None:
+        from parameter_lock import load_strategy_parameter_struct
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp) / "strategies"
+            candidate_dir = config_dir / "_candidates"
+            candidate_dir.mkdir(parents=True)
+            (candidate_dir / "trend_pullback_long_gen_abcd1234.yaml").write_text(
+                "version: 1\n"
+                "strategy_id: trend_pullback_long_gen_abcd1234\n"
+                "parameters:\n"
+                "  threshold: 1.25\n"
+                "  enabled: true\n",
+                encoding="utf-8",
+            )
+
+            payload = load_strategy_parameter_struct("trend_pullback_long_gen_abcd1234", config_dir)
+
+        self.assertEqual(payload["strategy_id"], "trend_pullback_long_gen_abcd1234")
+        self.assertEqual(payload["parameters"]["threshold"], 1.25)
+        self.assertEqual(payload["parameters"]["enabled"], True)
+
 
 def write_case(
     root: Path,
@@ -371,6 +414,7 @@ def run_driver(
     lock_manifest: Path,
     seed: int = 42,
     skip_runtime_parameter_hash: bool = True,
+    trial_accounting_manifest: Path | None = None,
 ) -> Path:
     json_out = root / f"selection-{seed}.json"
     md_out = root / f"selection-{seed}.md"
@@ -396,8 +440,41 @@ def run_driver(
     ]
     if skip_runtime_parameter_hash:
         command.append("--skip-runtime-parameter-hash")
+    if trial_accounting_manifest is not None:
+        command.extend(["--trial-accounting-manifest", str(trial_accounting_manifest)])
     subprocess.run(command, cwd=REPO_ROOT, check=True, capture_output=True, text=True)
     return json_out
+
+
+def write_trial_accounting_manifest(
+    root: Path,
+    strategy_ids: list[str],
+    *,
+    manual: int,
+    distinct: int,
+) -> Path:
+    path = root / "trial-accounting-manifest.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "generation_run_id": "test-generation-run",
+                "effective_trial_method": "max_of_manual_and_distinct_fingerprints",
+                "manual_declared_effective_trials": manual,
+                "distinct_window_fingerprint_tuples": distinct,
+                "scored_candidate_count": manual,
+                "gated_candidate_count": len(strategy_ids),
+                "constraint_invalid_candidate_count": 2,
+                "search_space_hash": "a" * 64,
+                "search_seed": "test-seed",
+                "corpus_fingerprint": "b" * 64,
+                "candidate_strategy_ids_gated": strategy_ids,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def load_emitter_module():

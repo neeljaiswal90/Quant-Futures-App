@@ -3,8 +3,8 @@ import type {
   JournalEventEnvelope,
   JournalEventPayloadFor,
 } from '../../../strategy_runtime/src/contracts/events/index.js';
-import type { StrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
-import { isStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import type { AnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
+import { isAnyStrategyId } from '../../../strategy_runtime/src/contracts/strategy-ids.js';
 import type { UnixNs } from '../../../strategy_runtime/src/contracts/time.js';
 import { adaptSimFillEvent } from './fill-adapter.js';
 import {
@@ -27,7 +27,7 @@ import type {
 interface MutableLedgerPosition {
   readonly position_id: string;
   readonly run_id: string;
-  readonly strategy_id: StrategyId | null;
+  readonly strategy_id: AnyStrategyId | null;
   readonly instrument_id: number;
   readonly raw_symbol: string | null;
   readonly instrument_identity_source: LedgerExecution['instrument_identity_source'];
@@ -43,7 +43,7 @@ interface MutableLedgerPosition {
 }
 
 interface StrategyRecoveryState {
-  readonly candidateStrategyByCandidateId: Map<string, StrategyId>;
+  readonly candidateStrategyByCandidateId: Map<string, AnyStrategyId>;
   readonly orderCandidateByOrderIntentId: Map<string, string>;
   readonly orderCandidateByEventId: Map<string, string>;
 }
@@ -73,7 +73,7 @@ export function buildTradeLedger(
     }
 
     runId = updateRunId(runId, event, index);
-    const strategyId = recoverStrategyId(event, recovery);
+    const strategyId = recoverAnyStrategyId(event, recovery);
     const adapterContext = options.instrument_context === undefined
       ? { strategy_id: strategyId }
       : { instrument_context: options.instrument_context, strategy_id: strategyId };
@@ -110,7 +110,7 @@ function rememberRecoveryContext(
 ): void {
   if (event.type === 'CANDIDATE') {
     const payload = event.payload as JournalEventPayloadFor<'CANDIDATE'>;
-    if (isStrategyId(payload.strategy_id)) {
+    if (isAnyStrategyId(payload.strategy_id)) {
       recovery.candidateStrategyByCandidateId.set(payload.candidate_id, payload.strategy_id);
     }
     return;
@@ -123,10 +123,10 @@ function rememberRecoveryContext(
   }
 }
 
-function recoverStrategyId(
+function recoverAnyStrategyId(
   event: AnyJournalEventEnvelope,
   recovery: StrategyRecoveryState,
-): StrategyId | null {
+): AnyStrategyId | null {
   if (event.type !== 'SIM_FILL') {
     return null;
   }
