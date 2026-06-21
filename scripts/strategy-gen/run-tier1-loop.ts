@@ -9,6 +9,10 @@ import {
   buildDataSplitSpine,
   writeDataSplitSpine,
 } from './data-split-spine.js';
+import {
+  selectInLoopSurvivors,
+  writeInLoopSelectionArtifacts,
+} from './in-loop-survivor-selection.js';
 
 const DEFAULT_SPEC = 'config/strategy-gen/regime_shock_reversion_short_v2.search.yaml';
 const DEFAULT_MANIFESTS = [
@@ -30,6 +34,8 @@ interface CliArgs {
   readonly skipHeldOut: boolean;
   readonly skipSelection: boolean;
   readonly allowHeldOutGate: boolean;
+  readonly inLoopScoreInput?: string;
+  readonly survivorCount?: number;
 }
 
 interface CandidateManifest {
@@ -59,6 +65,8 @@ function main(): number {
   const parameterLockManifestPath = join(generationRoot, 'parameter-locks.json');
   const metadataByStrategyPath = join(generationRoot, 'held-out-metadata-by-strategy.json');
   const dataSplitSpinePath = join(generationRoot, 'data-split-spine.json');
+  const inLoopScoreLedgerPath = join(generationRoot, 'in-loop-scores.json');
+  const survivorManifestPath = join(generationRoot, 'survivor-manifest.json');
   const heldOutDir = join('artifacts/held-out-validation', generationRunId);
   const selectionJsonOut = join(generationRoot, 'strategy-selection.json');
   const selectionMdOut = join(generationRoot, 'strategy-selection.md');
@@ -96,6 +104,21 @@ function main(): number {
     manifestPaths: args.manifests,
     heldOutDir,
   }));
+  const gateRequiresSurvivors = !args.skipHeldOut || !args.skipSelection;
+  const survivorCandidateIds = args.inLoopScoreInput === undefined
+    ? candidateIds
+    : selectAndWriteSurvivors({
+      generationRunId,
+      candidateIds,
+      inLoopScoreInput: args.inLoopScoreInput,
+      survivorCount: args.survivorCount,
+      inLoopScoreLedgerPath,
+      survivorManifestPath,
+      trialAccountingManifestPath,
+    });
+  if (gateRequiresSurvivors && args.inLoopScoreInput === undefined) {
+    throw new Error('held-out gate requires --in-loop-score-input so only TRAIN/VALIDATION-scored survivors reach QFA-410B/QFA-611');
+  }
 
   if (!args.skipHeldOut) {
     assertHeldOutAccessAllowed({
@@ -118,7 +141,7 @@ function main(): number {
       '--manifests',
       ...args.manifests,
       '--strategy-ids',
-      ...candidateIds,
+      ...survivorCandidateIds,
     ];
     if (args.archiveRoot !== undefined) {
       qfa410bArgs.push('--archive-root', args.archiveRoot);
@@ -147,7 +170,7 @@ function main(): number {
       '--strategy-config-dir',
       args.strategyConfigDir,
       '--strategy-ids',
-      ...candidateIds,
+      ...survivorCandidateIds,
       '--json-out',
       selectionJsonOut,
       '--md-out',
@@ -158,10 +181,13 @@ function main(): number {
   console.log(JSON.stringify({
     generation_run_id: generationRunId,
     candidate_count: candidateIds.length,
+    survivor_count: survivorCandidateIds.length,
     candidate_manifest: candidateManifestPath,
     trial_accounting_manifest: trialAccountingManifestPath,
     parameter_lock_manifest: parameterLockManifestPath,
     data_split_spine: dataSplitSpinePath,
+    in_loop_scores: args.inLoopScoreInput === undefined ? null : inLoopScoreLedgerPath,
+    survivor_manifest: args.inLoopScoreInput === undefined ? null : survivorManifestPath,
     held_out_metadata_by_strategy: metadataByStrategyPath,
     held_out_dir: heldOutDir,
     strategy_selection_json: args.skipSelection ? null : selectionJsonOut,
@@ -198,7 +224,36 @@ function parseArgs(argv: readonly string[]): CliArgs {
     skipHeldOut: emitOnly || values.has('skip-held-out'),
     skipSelection: emitOnly || values.has('skip-selection'),
     allowHeldOutGate: values.has('allow-held-out-gate'),
+    inLoopScoreInput: one(values, 'in-loop-score-input'),
+    survivorCount: optionalPositiveInt(one(values, 'survivor-count'), '--survivor-count'),
   };
+}
+
+function selectAndWriteSurvivors(input: {
+  readonly generationRunId: string;
+  readonly candidateIds: readonly string[];
+  readonly inLoopScoreInput: string;
+  readonly survivorCount?: number;
+  readonly inLoopScoreLedgerPath: string;
+  readonly survivorManifestPath: string;
+  readonly trialAccountingManifestPath: string;
+}): readonly string[] {
+  const result = selectInLoopSurvivors({
+    generationRunId: input.generationRunId,
+    candidateIds: input.candidateIds,
+    scoreInputPath: input.inLoopScoreInput,
+    survivorCount: input.survivorCount,
+  });
+  writeInLoopSelectionArtifacts({
+    scoreLedgerPath: input.inLoopScoreLedgerPath,
+    survivorManifestPath: input.survivorManifestPath,
+    result,
+  });
+  rewriteTrialAccountingForSurvivors(
+    input.trialAccountingManifestPath,
+    result.survivorCandidateIds,
+  );
+  return result.survivorCandidateIds;
 }
 
 function writeHeldOutMetadataByStrategy(input: {
@@ -320,6 +375,15 @@ function one(values: ReadonlyMap<string, readonly string[]>, key: string): strin
   return items[0];
 }
 
+function optionalPositiveInt(value: string | undefined, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
+}
+
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf8')) as T;
 }
@@ -327,6 +391,16 @@ function readJson<T>(path: string): T {
 function writeJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${stableJson(value)}\n`, 'utf8');
+}
+
+function rewriteTrialAccountingForSurvivors(
+  path: string,
+  survivorCandidateIds: readonly string[],
+): void {
+  const manifest = readJson<Record<string, unknown>>(path);
+  manifest.gated_candidate_count = survivorCandidateIds.length;
+  manifest.candidate_strategy_ids_gated = [...survivorCandidateIds].sort();
+  writeJson(path, manifest);
 }
 
 function sha256File(path: string): string {
