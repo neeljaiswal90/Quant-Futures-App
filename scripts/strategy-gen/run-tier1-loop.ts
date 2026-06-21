@@ -13,6 +13,10 @@ import {
   selectInLoopSurvivors,
   writeInLoopSelectionArtifacts,
 } from './in-loop-survivor-selection.js';
+import {
+  buildNestedValidationManifest,
+  writeNestedValidationManifest,
+} from './nested-validation.js';
 
 const DEFAULT_SPEC = 'config/strategy-gen/regime_shock_reversion_short_v2.search.yaml';
 const DEFAULT_MANIFESTS = [
@@ -36,6 +40,7 @@ interface CliArgs {
   readonly allowHeldOutGate: boolean;
   readonly inLoopScoreInput?: string;
   readonly survivorCount?: number;
+  readonly nestedValidationFolds: number;
 }
 
 interface CandidateManifest {
@@ -65,6 +70,7 @@ function main(): number {
   const parameterLockManifestPath = join(generationRoot, 'parameter-locks.json');
   const metadataByStrategyPath = join(generationRoot, 'held-out-metadata-by-strategy.json');
   const dataSplitSpinePath = join(generationRoot, 'data-split-spine.json');
+  const nestedValidationManifestPath = join(generationRoot, 'nested-validation-manifest.json');
   const inLoopScoreLedgerPath = join(generationRoot, 'in-loop-scores.json');
   const survivorManifestPath = join(generationRoot, 'survivor-manifest.json');
   const heldOutDir = join('artifacts/held-out-validation', generationRunId);
@@ -98,12 +104,18 @@ function main(): number {
     outputPath: metadataByStrategyPath,
     regimeLabelsPath: args.regimeLabels,
   });
-  writeDataSplitSpine(dataSplitSpinePath, buildDataSplitSpine({
+  const dataSplitSpine = buildDataSplitSpine({
     generationRunId,
     searchSpecPath: args.spec,
     manifestPaths: args.manifests,
     heldOutDir,
-  }));
+  });
+  writeDataSplitSpine(dataSplitSpinePath, dataSplitSpine);
+  const nestedValidationManifest = buildNestedValidationManifest({
+    spine: dataSplitSpine,
+    foldCount: args.nestedValidationFolds,
+  });
+  writeNestedValidationManifest(nestedValidationManifestPath, nestedValidationManifest);
   const gateRequiresSurvivors = !args.skipHeldOut || !args.skipSelection;
   const survivorCandidateIds = args.inLoopScoreInput === undefined
     ? candidateIds
@@ -112,6 +124,7 @@ function main(): number {
       candidateIds,
       inLoopScoreInput: args.inLoopScoreInput,
       survivorCount: args.survivorCount,
+      minValidationFoldScoreCount: nestedValidationManifest.fold_count,
       inLoopScoreLedgerPath,
       survivorManifestPath,
       trialAccountingManifestPath,
@@ -186,6 +199,7 @@ function main(): number {
     trial_accounting_manifest: trialAccountingManifestPath,
     parameter_lock_manifest: parameterLockManifestPath,
     data_split_spine: dataSplitSpinePath,
+    nested_validation_manifest: nestedValidationManifestPath,
     in_loop_scores: args.inLoopScoreInput === undefined ? null : inLoopScoreLedgerPath,
     survivor_manifest: args.inLoopScoreInput === undefined ? null : survivorManifestPath,
     held_out_metadata_by_strategy: metadataByStrategyPath,
@@ -226,6 +240,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     allowHeldOutGate: values.has('allow-held-out-gate'),
     inLoopScoreInput: one(values, 'in-loop-score-input'),
     survivorCount: optionalPositiveInt(one(values, 'survivor-count'), '--survivor-count'),
+    nestedValidationFolds: optionalPositiveInt(one(values, 'nested-validation-folds'), '--nested-validation-folds') ?? 3,
   };
 }
 
@@ -234,6 +249,7 @@ function selectAndWriteSurvivors(input: {
   readonly candidateIds: readonly string[];
   readonly inLoopScoreInput: string;
   readonly survivorCount?: number;
+  readonly minValidationFoldScoreCount: number;
   readonly inLoopScoreLedgerPath: string;
   readonly survivorManifestPath: string;
   readonly trialAccountingManifestPath: string;
@@ -243,6 +259,7 @@ function selectAndWriteSurvivors(input: {
     candidateIds: input.candidateIds,
     scoreInputPath: input.inLoopScoreInput,
     survivorCount: input.survivorCount,
+    minValidationFoldScoreCount: input.minValidationFoldScoreCount,
   });
   writeInLoopSelectionArtifacts({
     scoreLedgerPath: input.inLoopScoreLedgerPath,
