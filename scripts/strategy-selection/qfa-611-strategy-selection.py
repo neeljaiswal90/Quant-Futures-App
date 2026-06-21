@@ -60,7 +60,12 @@ REQUIRED_TRADE_FIELDS = (
     "spread_bucket",
     "queue_ahead_bucket",
     "gross_pnl_cents",
+    "commission_cost_cents",
+    "exchange_fee_cost_cents",
+    "spread_slippage_cost_cents",
+    "total_execution_cost_cents",
     "net_pnl_cents",
+    "pnl_basis",
 )
 
 
@@ -144,12 +149,27 @@ def require_artifact_completeness(artifact: Mapping[str, Any]) -> None:
         "trades",
         "session_returns",
         "aggregate",
+        "cost_model",
+        "cost_model_config_hash",
+        "cost_adjusted_metrics",
         "gating_pnl_basis",
     ):
         if field not in artifact:
             raise EvidenceIncomplete(f"missing_required_field:{field}")
     if artifact.get("gating_pnl_basis") != "net":
         raise EvidenceIncomplete("missing_or_wrong_pnl_basis")
+    cost_model = artifact.get("cost_model")
+    if not isinstance(cost_model, Mapping):
+        raise EvidenceIncomplete("missing_cost_model")
+    if cost_model.get("fees_enabled") is not True:
+        raise EvidenceIncomplete("cost_model_fees_not_enabled")
+    cost_adjusted_metrics = artifact.get("cost_adjusted_metrics")
+    if not isinstance(cost_adjusted_metrics, Mapping):
+        raise EvidenceIncomplete("missing_cost_adjusted_metrics")
+    total_execution_cost = int_cents(
+        cost_adjusted_metrics.get("total_execution_cost_cents"),
+        "cost_adjusted_metrics.total_execution_cost_cents",
+    )
     if artifact.get("capability_status") not in ("ready_for_replay", "ready_for_live"):
         raise EvidenceIncomplete("capability_not_ready")
     trades = artifact.get("trades")
@@ -161,6 +181,15 @@ def require_artifact_completeness(artifact: Mapping[str, Any]) -> None:
         missing = [field for field in REQUIRED_TRADE_FIELDS if field not in trade]
         if missing:
             raise EvidenceIncomplete("missing_per_trade_metadata")
+        if trade.get("pnl_basis") != "net_of_commission_exchange_fees_and_fill_prices":
+            raise EvidenceIncomplete("missing_or_wrong_pnl_basis")
+        gross = int_cents(trade.get("gross_pnl_cents"), "gross_pnl_cents")
+        net = int_cents(trade.get("net_pnl_cents"), "net_pnl_cents")
+        trade_cost = int_cents(trade.get("total_execution_cost_cents"), "total_execution_cost_cents")
+        if trade_cost <= 0 or gross == net:
+            raise EvidenceIncomplete("missing_or_zero_execution_costs")
+    if len(trades) > 0 and total_execution_cost <= 0:
+        raise EvidenceIncomplete("missing_or_zero_execution_costs")
     returns = artifact.get("session_returns")
     if not isinstance(returns, list) or len(returns) < 2:
         raise EvidenceIncomplete("missing_session_returns")
@@ -234,6 +263,21 @@ def compute_held_out_evidence(
 
     evidence = {
         "total_trades": total_trades,
+        "pnl_basis": "net",
+        "cost_model_config_hash": artifact.get("cost_model_config_hash"),
+        "total_execution_cost_cents": int_cents(
+            artifact["cost_adjusted_metrics"].get("total_execution_cost_cents"),
+            "cost_adjusted_metrics.total_execution_cost_cents",
+        ),
+        "profit_factor_gross": None
+        if artifact["cost_adjusted_metrics"].get("profit_factor_gross_ppm") is None
+        else float(artifact["cost_adjusted_metrics"]["profit_factor_gross_ppm"]) / 1_000_000.0,
+        "profit_factor_net": None
+        if artifact["cost_adjusted_metrics"].get("profit_factor_net_ppm") is None
+        else float(artifact["cost_adjusted_metrics"]["profit_factor_net_ppm"]) / 1_000_000.0,
+        "sharpe_gross": artifact["cost_adjusted_metrics"].get("sharpe_gross"),
+        "sharpe_net": artifact["cost_adjusted_metrics"].get("sharpe_net"),
+        "dsr_net_status": artifact["cost_adjusted_metrics"].get("dsr_net_status"),
         "win_rate": win_rate,
         "profit_factor": profit_factor,
         "max_drawdown_pct": max_drawdown_pct,
@@ -507,14 +551,20 @@ def write_markdown(selection: Mapping[str, Any], output: Path) -> None:
         f"- Run status: `{selection['run_status']}`",
         f"- Phase 6 dispatch authorized: `{selection['summary']['phase_6_dispatch_authorized']}`",
         f"- Execution fragility: `{selection['execution_fragility']}`",
+        f"- Effective trial count: `{selection['effective_trial_count']}`",
+        f"- Effective trial source: `{selection.get('effective_trial_count_source', 'legacy_roster_lock_count')}`",
+        "- PnL basis: `net`",
         "",
-        "| Strategy | Verdict | Evidence status | Reason |",
-        "|---|---|---|---|",
+        "| Strategy | Verdict | Evidence status | PnL basis | Cost hash | Reason |",
+        "|---|---|---|---|---|---|",
     ]
     for entry in selection["per_strategy"]:
+        evidence = entry.get("held_out_evidence")
+        pnl_basis = evidence.get("pnl_basis") if isinstance(evidence, Mapping) else None
+        cost_hash = evidence.get("cost_model_config_hash") if isinstance(evidence, Mapping) else None
         lines.append(
             f"| `{entry['strategy_id']}` | {entry['verdict']} | "
-            f"{entry['evidence_package_status']} | {entry['verdict_reason']} |"
+            f"{entry['evidence_package_status']} | {pnl_basis} | {cost_hash} | {entry['verdict_reason']} |"
         )
     write_lf_text("\n".join(lines), output)
 
