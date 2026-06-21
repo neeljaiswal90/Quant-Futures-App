@@ -20,6 +20,7 @@ export type StrategySetupFamily =
   | 'breakout_retest'
   | 'regime_mean_reversion'
   | 'regime_shock_reversion'
+  | 'opening_range_box'
   | 'liquidity_sweep_reversal'
   | 'vwap_overnight_reversal';
 
@@ -107,6 +108,7 @@ export interface StrategyRegistryEntry {
     | 'CYCLE4-V3-IMPL'
     | 'CYCLE4-V4-COMBINED-01'
     | 'V2-PF-C-LATE-AM-REGISTERED-INACTIVE-IMPL-01'
+    | 'QFA-ORB-PRIOR-DOWN-SHADOW-01'
   | 'STRAT-V5-DEADLINE-VARIANTS-01';
   readonly synthetic_fixture_id: StrategyFixtureId;
   readonly enabled_in_v1: boolean;
@@ -125,6 +127,7 @@ export type StrategyFixtureId =
   | 'fixture_vwap_overnight_reversal_short'
   | 'fixture_regime_shock_reversion_short_v2'
   | 'fixture_regime_shock_reversion_short_v2_utc_16_18_exclusion'
+  | 'fixture_opening_range_box_breakout_long'
   | 'fixture_regime_shock_reversion_short_v3'
   | 'fixture_regime_shock_reversion_short_v4_delay'
   | 'fixture_regime_shock_reversion_short_v4_persist'

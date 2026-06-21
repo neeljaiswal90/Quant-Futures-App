@@ -1,17 +1,31 @@
 session:
-  strategy_id: regime_shock_reversion_short_v2_utc_16_18_exclusion
+  strategy_id: opening_range_box_breakout_long
   mode: paper
   adapter_kind: rithmic
-  profile: qfa-612-shadow-mode-live-capture
+  profile: qfa-612-shadow-mode-live-capture-orb-prior-down-no-late
 
 shadow_mode:
   ticket: QFA-612-SHADOW-MODE-LIVE-CAPTURE-PROFILE-01
+  strategy_id: opening_range_box_breakout_long
+  strategy_profile: orb_breakout_long_prior_down_no_late_shadow
   market_data_source: live_local_capture_tail
   feature_bridge_enabled: true
+  full_session_minute_bar_seed_required: true
+  prior_session_summary_required: true
+  prior_day_trend_state_source: prior_session_summary_open_high_low_close
   paper_observation_stop_after_candidate: true
   order_intent_must_remain_zero: true
   regime_label_source_path: config/paper/qfa-612-shadow-regime-label-source.json
+  regime_label_required_by_strategy: false
   performance_rollup_ticket: QFA-612-SHADOW-MODE-PERFORMANCE-ROLLUP-01
+
+observability:
+  market_data_source: live_local_capture_tail
+  local_obs_replay_pace_mode: tail_from_end
+  live_capture_feature_bridge_enabled: true
+  live_capture_minute_bar_seed_path: null
+  live_capture_prior_session_summary_path: null
+  live_capture_regime_label: unknown
 
 execution_boundary:
   order_translation_authorized: false

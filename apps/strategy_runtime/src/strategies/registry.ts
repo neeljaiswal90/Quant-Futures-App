@@ -20,6 +20,7 @@ import { generateLiquiditySweepReversalShort } from './liquidity_sweep_reversal_
 import { generateRegimeMeanReversionLong } from './regime_mean_reversion_long.js';
 import { generateRegimeMeanReversionShort } from './regime_mean_reversion_short.js';
 import { generateRegimeShockReversionShortV2 } from './regime_shock_reversion_short_v2.js';
+import { generateOpeningRangeBoxBreakoutLongPriorDownNoLateShadow } from './opening_range_box_breakout_long.js';
 import { generateRegimeShockReversionShortV2Utc1618Exclusion } from './regime_shock_reversion_short_v2_utc_16_18_exclusion.js';
 import { generateRegimeShockReversionShortV3 } from './regime_shock_reversion_short_v3.js';
 import { generateRegimeShockReversionShortV4Delay } from './regime_shock_reversion_short_v4_delay.js';
@@ -158,6 +159,16 @@ const STATIC_STRATEGY_REGISTRY_ENTRIES = {
     synthetic_fixture_id: 'fixture_regime_shock_reversion_short_v2_utc_16_18_exclusion',
     enabled_in_v1: false,
   },
+  opening_range_box_breakout_long: {
+    strategy_id: 'opening_range_box_breakout_long',
+    display_name: 'Opening Range Box Breakout Long',
+    direction: 'long',
+    setup_family: 'opening_range_box',
+    implementation_status: 'active',
+    extraction_ticket: 'QFA-ORB-PRIOR-DOWN-SHADOW-01',
+    synthetic_fixture_id: 'fixture_opening_range_box_breakout_long',
+    enabled_in_v1: false,
+  },
   regime_shock_reversion_short_v3: {
     strategy_id: 'regime_shock_reversion_short_v3',
     display_name: 'Regime Shock Reversion Short V3',
@@ -240,6 +251,7 @@ const STATIC_STRATEGY_GENERATORS: Partial<
   vwap_overnight_reversal_short: generateVwapOvernightReversalShort,
   regime_shock_reversion_short_v2: generateRegimeShockReversionShortV2,
   regime_shock_reversion_short_v2_utc_16_18_exclusion: generateRegimeShockReversionShortV2Utc1618Exclusion,
+  opening_range_box_breakout_long: generateOpeningRangeBoxBreakoutLongPriorDownNoLateShadow,
   regime_shock_reversion_short_v3: generateRegimeShockReversionShortV3,
   regime_shock_reversion_short_v4_delay: generateRegimeShockReversionShortV4Delay,
   regime_shock_reversion_short_v4_persist: generateRegimeShockReversionShortV4Persist,
