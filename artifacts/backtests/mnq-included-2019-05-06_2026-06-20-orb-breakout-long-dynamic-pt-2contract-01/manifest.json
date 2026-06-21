@@ -1,0 +1,29 @@
+{
+  "generated_at_utc": "2026-06-21T01:41:40.411Z",
+  "files": [
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-dynamic-pt-2contract-01\\orb-breakout-long-dynamic-pt-2contract-trades.csv",
+      "lf_sha256": "3bd6e1502ddbad67231e00a0710066880c5819e1b630fc5396cb8e3197e13d26"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-dynamic-pt-2contract-01\\orb-breakout-long-dynamic-pt-2contract-summary.csv",
+      "lf_sha256": "3be93f6cd53249134501bf4f89511e55f79fb8e2aca987c7facac7ef440284ef"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-dynamic-pt-2contract-01\\orb-breakout-long-dynamic-pt-2contract-by-year.csv",
+      "lf_sha256": "30c12f51417624ef63c363da78a3483aa2da4a0ddaf8f015b4f14efa0c160e9c"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-dynamic-pt-2contract-01\\orb-breakout-long-dynamic-pt-2contract-report.json",
+      "lf_sha256": "e90b0b819e807e0078143b6e6540f792d2949ec0240de67ffeca4d175fe15625"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-dynamic-pt-2contract-01\\orb-breakout-long-dynamic-pt-2contract-report.md",
+      "lf_sha256": "9a634961c187e7880b5b31167dd09e75daa63c461ca0b5a050c73524111f4a4d"
+    },
+    {
+      "path": "docs/research/qfa-orb-breakout-long-dynamic-pt-2contract-2026-06-20.md",
+      "lf_sha256": "9a634961c187e7880b5b31167dd09e75daa63c461ca0b5a050c73524111f4a4d"
+    }
+  ]
+}

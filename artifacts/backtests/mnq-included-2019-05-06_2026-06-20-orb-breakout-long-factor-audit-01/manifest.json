@@ -1,0 +1,25 @@
+{
+  "generated_at_utc": "2026-06-20T22:45:58.809Z",
+  "files": [
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-factor-audit-01\\orb-breakout-long-factor-trades.csv",
+      "lf_sha256": "f9fa9f01ca42b2e13a131ce5d4338c55c0e299e5d78ccdca93ef4aaf1c2eefc8"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-factor-audit-01\\orb-breakout-long-win-loss-factor-comparison.csv",
+      "lf_sha256": "2149e7ef20f4b60e0f6b43d384afddcbc9957398d9a90bcd316f355b1e0d6179"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-factor-audit-01\\orb-breakout-long-factor-bucket-summary.csv",
+      "lf_sha256": "2adab1dcd999c00c50e38243d07162a443470eae147aa403465e68aa8a56de41"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-factor-audit-01\\orb-breakout-long-factor-audit-report.json",
+      "lf_sha256": "4cfb0dc6b8b298db33de7985272a9cbfb3e4a27d8cf2b1d0d2ab837c4661fdcc"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-factor-audit-01\\orb-breakout-long-factor-audit-report.md",
+      "lf_sha256": "32815dbb106a244efb2c62a1d4d994b9e9de7e8762f18b6a714be85dc1305ada"
+    }
+  ]
+}

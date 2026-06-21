@@ -1,0 +1,7 @@
+universe,management,trades,net_usd,gross_profit_usd,gross_loss_usd,profit_factor,win_rate,avg_trade_usd,max_drawdown_usd,pnl_to_max_drawdown,stop_hit_count,pt1_hit_count,pt2_hit_count,avg_pt_single_r,avg_pt1_r,avg_pt2_r
+all_breakout_long,original_2contract_scaled_after_warmup,531,24600.5,81962.5,57362,1.4289,0.58,46.3286,3534.5,6.9601,0,0,0,0.736357,0.435054,0.991186
+all_breakout_long,single_dynamic_pt_2contracts,531,16853.58,70720.58,53867,1.3129,0.6309,31.7393,3900,4.3214,130,236,0,0.736357,,
+all_breakout_long,two_dynamic_pt_1contract_each,531,16589.03,63805.52,47216.49,1.3513,0.6384,31.2411,3290.69,5.0412,139,337,176,,0.435054,0.991186
+prior_down_no_14_plus,original_2contract_scaled_after_warmup,123,9797,22914,13117,1.7469,0.5772,79.6504,1843,5.3158,0,0,0,0.78259,0.4603,1.0721
+prior_down_no_14_plus,single_dynamic_pt_2contracts,123,8861.17,20898.17,12037,1.7362,0.6341,72.0421,1556.54,5.6929,28,59,0,0.78259,,
+prior_down_no_14_plus,two_dynamic_pt_1contract_each,123,8111.26,18423.82,10312.56,1.7865,0.6341,65.9452,956.97,8.476,30,84,41,,0.4603,1.0721

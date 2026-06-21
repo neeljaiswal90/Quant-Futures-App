@@ -1,0 +1,11 @@
+scenario,description,path_stop_multiple,trades,original_net_usd,adjusted_net_usd,delta_usd,profit_factor,win_rate,avg_adjusted_net_usd,max_drawdown_usd,pnl_to_max_drawdown,path_stop_hits,path_stop_hit_rate
+baseline_all_no_path_stop,"All breakout-long trades, no path overlay.",,631,13286,13286,0,1.4133,0.5753,21.0555,1767.25,7.5179,0,0
+exclude_14_plus_no_path_stop,Exclude only 14:00+ entries.,,561,13881.25,13881.25,0,1.4684,0.5793,24.7438,1761.75,7.8792,0,0
+prior_down_family_no_path_stop,Keep prior_down and prior_down_large only.,,245,9329.75,9329.75,0,1.7851,0.5959,38.0806,921.5,10.1245,0,0
+exclude_14_plus_and_prior_down_family_no_path_stop,Keep prior-down family and exclude 14:00+ entries.,,223,9397,9397,0,1.8457,0.5964,42.139,921.5,10.1975,0,0
+baseline_path_stop_mae60_075risk,All trades with path-ordered 60m adverse stop at 75% risk.,0.75,631,13286,13478.75,192.75,1.4403,0.5563,21.3609,1718,7.8456,111,0.1759
+exclude_14_plus_path_stop_mae60_075risk,Exclude 14:00+ plus path-ordered 60m adverse stop at 75% risk.,0.75,561,13881.25,13900.13,18.88,1.4917,0.5579,24.7774,1712.5,8.1169,99,0.1765
+prior_down_family_path_stop_mae60_075risk,Prior-down family with path-ordered 60m adverse stop at 75% risk.,0.75,245,9329.75,9593.5,263.75,1.8712,0.5796,39.1571,769.13,12.4733,43,0.1755
+exclude_14_plus_and_prior_down_family_path_stop_mae60_075risk,Combined context/time profile with path-ordered 60m adverse stop at 75% risk.,0.75,223,9397,9572.13,175.13,1.9268,0.5785,42.9243,769.13,12.4455,40,0.1794
+baseline_path_stop_mae60_050risk_diagnostic,Diagnostic-only tighter 50% risk path stop.,0.5,631,13286,8501.75,-4784.25,1.2871,0.4659,13.4735,2066,4.1151,216,0.3423
+exclude_14_plus_and_prior_down_family_path_stop_mae60_050risk_diagnostic,Combined profile with diagnostic-only tighter 50% risk path stop.,0.5,223,9397,7230.25,-2166.75,1.7259,0.4933,32.4226,1044,6.9255,76,0.3408

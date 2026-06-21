@@ -1,0 +1,29 @@
+{
+  "generated_at_utc": "2026-06-21T01:46:20.323Z",
+  "files": [
+    {
+      "path": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-test-summary.csv",
+      "lf_sha256": "373263b39a964c66168c15099ac2294c43be7e1559232ae183825e03602889b3"
+    },
+    {
+      "path": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-excluded-trades.csv",
+      "lf_sha256": "92947e23ddbd6df88181c33fe521a5b56d498fa95fe020d5b5b70b5aaf66b3ad"
+    },
+    {
+      "path": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-by-strategy.csv",
+      "lf_sha256": "d781b501ba75de3d43f81eb0bcc78bd00f9bac4dc57e16fec2762ae0d90e1057"
+    },
+    {
+      "path": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-periods.csv",
+      "lf_sha256": "3a63c5927c89c8be170765364c475b155d561ef091dd2fd6aaab128adb93ab6c"
+    },
+    {
+      "path": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-test-report.json",
+      "lf_sha256": "e5bf4c9e94ae7814c0999974c1f271e44be45ccde7feb098cf045574f8c6dbdf"
+    },
+    {
+      "path": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-test-report.md",
+      "lf_sha256": "9a444a7f23df3ced0200ce04ff004ec1fdafec946e10f2a754d3d6ef63b47876"
+    }
+  ]
+}

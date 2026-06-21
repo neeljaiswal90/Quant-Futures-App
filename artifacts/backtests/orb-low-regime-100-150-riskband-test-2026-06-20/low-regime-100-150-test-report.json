@@ -1,0 +1,226 @@
+{
+  "generated_at_utc": "2026-06-21T01:46:20.322Z",
+  "determination": "ORB_LOW_REGIME_100_150_RISKBAND_TEST_COMPLETE_REJECT_EXPANDED_HISTORY",
+  "rule": "regime_label == low and 100 < abs(entry_price - stop_price) <= 150",
+  "ledgers": {
+    "recentBaseline": "artifacts/backtests/mnq-12mo-2025-06-20_2026-06-20-orb-regime-nofade-riskgt30-daystop300/mnq-12mo-trades.csv",
+    "recentExclusion": "artifacts/backtests/mnq-12mo-2025-06-20_2026-06-20-orb-regime-nofade-riskgt30-low-excl100to150-daystop300/mnq-12mo-trades.csv",
+    "expandedBaseline": "artifacts/backtests/mnq-included-2019-05-06_2026-06-20-orb-regime-nofade-riskgt30-daystop300/mnq-12mo-trades.csv",
+    "expandedExclusion": "artifacts/backtests/mnq-included-2019-05-06_2026-06-20-orb-regime-nofade-riskgt30-low-excl100to150-daystop300/mnq-12mo-trades.csv"
+  },
+  "summary": [
+    {
+      "sample": "recent_12mo",
+      "row": "baseline",
+      "trades": 254,
+      "net_usd": 5558.5,
+      "profit_factor": 1.3167,
+      "max_drawdown_usd": 3400.25,
+      "pnl_to_drawdown": 1.6347,
+      "win_rate": 0.5433,
+      "avg_trade_usd": 21.8839,
+      "t_stat": 1.6786
+    },
+    {
+      "sample": "recent_12mo",
+      "row": "exclusion_scenario",
+      "trades": 215,
+      "net_usd": 7485,
+      "profit_factor": 1.5704,
+      "max_drawdown_usd": 2886.5,
+      "pnl_to_drawdown": 2.5931,
+      "win_rate": 0.5581,
+      "avg_trade_usd": 34.814,
+      "t_stat": 2.4776
+    },
+    {
+      "sample": "recent_12mo",
+      "row": "direct_excluded_stream",
+      "trades": 53,
+      "net_usd": -1357,
+      "profit_factor": 0.7505,
+      "max_drawdown_usd": 2510.5,
+      "pnl_to_drawdown": -0.5405,
+      "win_rate": 0.4906,
+      "avg_trade_usd": -25.6038,
+      "t_stat": -0.895
+    },
+    {
+      "sample": "recent_12mo",
+      "row": "exclusion_minus_baseline",
+      "trades": -39,
+      "net_usd": 1926.5,
+      "profit_factor": null,
+      "max_drawdown_usd": -513.75,
+      "pnl_to_drawdown": null,
+      "win_rate": null,
+      "avg_trade_usd": null,
+      "t_stat": null
+    },
+    {
+      "sample": "expanded_2019_2026",
+      "row": "baseline",
+      "trades": 2094,
+      "net_usd": 23580,
+      "profit_factor": 1.1934,
+      "max_drawdown_usd": 5068.75,
+      "pnl_to_drawdown": 4.652,
+      "win_rate": 0.5148,
+      "avg_trade_usd": 11.2607,
+      "t_stat": 3.1606
+    },
+    {
+      "sample": "expanded_2019_2026",
+      "row": "exclusion_scenario",
+      "trades": 1851,
+      "net_usd": 18304.25,
+      "profit_factor": 1.1759,
+      "max_drawdown_usd": 5252.75,
+      "pnl_to_drawdown": 3.4847,
+      "win_rate": 0.5057,
+      "avg_trade_usd": 9.8888,
+      "t_stat": 2.6893
+    },
+    {
+      "sample": "expanded_2019_2026",
+      "row": "direct_excluded_stream",
+      "trades": 303,
+      "net_usd": 7155.25,
+      "profit_factor": 1.3404,
+      "max_drawdown_usd": 4087.25,
+      "pnl_to_drawdown": 1.7506,
+      "win_rate": 0.5842,
+      "avg_trade_usd": 23.6147,
+      "t_stat": 2.1663
+    },
+    {
+      "sample": "expanded_2019_2026",
+      "row": "exclusion_minus_baseline",
+      "trades": -243,
+      "net_usd": -5275.75,
+      "profit_factor": null,
+      "max_drawdown_usd": 184,
+      "pnl_to_drawdown": null,
+      "win_rate": null,
+      "avg_trade_usd": null,
+      "t_stat": null
+    }
+  ],
+  "by_strategy": [
+    {
+      "sample": "recent_12mo_direct_excluded_stream",
+      "strategy_id": "opening_range_box_breakout_long",
+      "trades": 20,
+      "net_usd": -342.5,
+      "profit_factor": 0.8049,
+      "max_drawdown_usd": 723.5,
+      "pnl_to_drawdown": -0.4734,
+      "win_rate": 0.55,
+      "avg_trade_usd": -17.125,
+      "t_stat": -0.4082
+    },
+    {
+      "sample": "recent_12mo_direct_excluded_stream",
+      "strategy_id": "opening_range_box_regime_long",
+      "trades": 33,
+      "net_usd": -1014.5,
+      "profit_factor": 0.7245,
+      "max_drawdown_usd": 1906,
+      "pnl_to_drawdown": -0.5323,
+      "win_rate": 0.4545,
+      "avg_trade_usd": -30.7424,
+      "t_stat": -0.7937
+    },
+    {
+      "sample": "expanded_2019_2026_direct_excluded_stream",
+      "strategy_id": "opening_range_box_breakout_long",
+      "trades": 131,
+      "net_usd": 2882.25,
+      "profit_factor": 1.3212,
+      "max_drawdown_usd": 1650.5,
+      "pnl_to_drawdown": 1.7463,
+      "win_rate": 0.5878,
+      "avg_trade_usd": 22.0019,
+      "t_stat": 1.3499
+    },
+    {
+      "sample": "expanded_2019_2026_direct_excluded_stream",
+      "strategy_id": "opening_range_box_regime_long",
+      "trades": 172,
+      "net_usd": 4273,
+      "profit_factor": 1.3547,
+      "max_drawdown_usd": 2630.75,
+      "pnl_to_drawdown": 1.6243,
+      "win_rate": 0.5814,
+      "avg_trade_usd": 24.843,
+      "t_stat": 1.6908
+    }
+  ],
+  "expanded_periods": [
+    {
+      "period": "2019-2024",
+      "trades": 211,
+      "net_usd": 7668.75,
+      "profit_factor": 1.5946,
+      "max_drawdown_usd": 2087.5,
+      "pnl_to_drawdown": 3.6737,
+      "win_rate": 0.6209,
+      "avg_trade_usd": 36.3448,
+      "t_stat": 2.9126
+    },
+    {
+      "period": "2025-2026",
+      "trades": 92,
+      "net_usd": -513.5,
+      "profit_factor": 0.9368,
+      "max_drawdown_usd": 4087.25,
+      "pnl_to_drawdown": -0.1256,
+      "win_rate": 0.5,
+      "avg_trade_usd": -5.5815,
+      "t_stat": -0.2599
+    },
+    {
+      "period": "2020 only",
+      "trades": 21,
+      "net_usd": 1396.75,
+      "profit_factor": 2.5872,
+      "max_drawdown_usd": 880,
+      "pnl_to_drawdown": 1.5872,
+      "win_rate": 0.7143,
+      "avg_trade_usd": 66.5119,
+      "t_stat": 1.8526
+    },
+    {
+      "period": "2022 only",
+      "trades": 79,
+      "net_usd": 2528.5,
+      "profit_factor": 1.4128,
+      "max_drawdown_usd": 1570.5,
+      "pnl_to_drawdown": 1.61,
+      "win_rate": 0.5696,
+      "avg_trade_usd": 32.0063,
+      "t_stat": 1.3356
+    },
+    {
+      "period": "2026 only",
+      "trades": 32,
+      "net_usd": -348.25,
+      "profit_factor": 0.8932,
+      "max_drawdown_usd": 2225.75,
+      "pnl_to_drawdown": -0.1565,
+      "win_rate": 0.5625,
+      "avg_trade_usd": -10.8828,
+      "t_stat": -0.2704
+    }
+  ],
+  "conclusion": "Reject exact low-regime 100:150 risk-band exclusion because the directly excluded stream is profitable over expanded 2019-2026 history and excluding it lowers expanded net PnL.",
+  "artifact_paths": {
+    "summaryCsv": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-test-summary.csv",
+    "excludedCsv": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-excluded-trades.csv",
+    "byStrategyCsv": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-by-strategy.csv",
+    "periodsCsv": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-periods.csv",
+    "reportJson": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-test-report.json",
+    "reportMd": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\low-regime-100-150-test-report.md",
+    "manifestPath": "artifacts\\backtests\\orb-low-regime-100-150-riskband-test-2026-06-20\\manifest.json"
+  }
+}

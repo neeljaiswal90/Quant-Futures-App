@@ -1,0 +1,13 @@
+{
+  "generated_at_utc": "2026-06-21T01:48:01.817Z",
+  "files": [
+    {
+      "path": "artifacts/backtests/qfa-orb-breakout-long-prior-down-no-late-shadow-freeze-2026-06-20/evidence-chain.json",
+      "sha256": "7e25b5b8a2c2220533bdf69233a558542d7d415ea5ebae3adbe66ff2f25c593c"
+    },
+    {
+      "path": "docs/research/qfa-orb-breakout-long-prior-down-no-late-shadow-freeze-2026-06-20.md",
+      "sha256": "b1c7fb6295b832604cb27e5a49b7aeac575b6576aa728313e2a2ee6966c3a5ac"
+    }
+  ]
+}

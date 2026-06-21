@@ -1,0 +1,8 @@
+scenario,pnl_mode,trades,net_usd,gross_profit_usd,gross_loss_usd,profit_factor,win_rate,avg_trade_usd,max_drawdown_usd,pnl_to_max_drawdown,avg_applied_risk_fraction,avg_raw_full_kelly_fraction,avg_continuous_contract_equivalent,discrete_positive_contract_trades
+one_contract_actual,continuous_contract_equivalent,631,13286,45436,32150,1.4133,0.5753,21.0555,1767.25,7.5179,0.00348669,0,1,631
+fixed_025pct_continuous,continuous_contract_equivalent,631,8737.29,33416.07,24678.78,1.354,0.5753,13.8467,1036.95,8.4259,0.0025,0.10151146,0.879401,0
+fixed_025pct_discrete_floor,discrete_floor_contracts,631,1498.25,8422.75,6924.5,1.2164,0.1759,2.3744,692.75,2.1628,0.0025,0.10151146,0.879401,206
+walkforward_full_kelly_capped_025pct_continuous,continuous_contract_equivalent,631,8156.26,28559.67,20403.41,1.3997,0.4881,12.9259,1036.95,7.8656,0.0021038,0.10151146,0.671859,0
+walkforward_quarter_kelly_capped_025pct_continuous,continuous_contract_equivalent,631,8092.04,28494.96,20402.91,1.3966,0.4881,12.8242,1036.95,7.8037,0.002099,0.10151146,0.670314,0
+walkforward_eighth_kelly_capped_025pct_continuous,continuous_contract_equivalent,631,7930.92,28241.9,20310.98,1.3905,0.4881,12.5688,1036.95,7.6483,0.00208081,0.10151146,0.663893,0
+walkforward_quarter_kelly_capped_025pct_discrete_floor,discrete_floor_contracts,631,1276.25,5996.25,4720,1.2704,0.1125,2.0226,471,2.7097,0.002099,0.10151146,0.670314,131

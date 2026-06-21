@@ -1,0 +1,25 @@
+{
+  "generated_at_utc": "2026-06-21T01:46:41.617Z",
+  "files": [
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-path-risk-control-audit-01\\orb-breakout-long-path-risk-control-overlay-trades.csv",
+      "lf_sha256": "80a5ded0120fa5e1a12c8d061bc769822c2b39ebc17eb8b4dfeae0226a1de6cd"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-path-risk-control-audit-01\\orb-breakout-long-path-risk-control-scenario-summary.csv",
+      "lf_sha256": "847cd293c970639090b3a6448e4e8830659e5c06dfe678349f28956aaf2e3a09"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-path-risk-control-audit-01\\orb-breakout-long-path-risk-control-report.json",
+      "lf_sha256": "f8bee313d07c5ccf1b455e0be5833e4e19df1b08497f2bc5a373d048321ec455"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-path-risk-control-audit-01\\orb-breakout-long-path-risk-control-report.md",
+      "lf_sha256": "482824ee2499df546f083a595627b7aa1196a0957d0b25f4cfcf4cef7ffdefe1"
+    },
+    {
+      "path": "docs/research/qfa-orb-breakout-long-path-risk-control-audit-2026-06-20.md",
+      "lf_sha256": "482824ee2499df546f083a595627b7aa1196a0957d0b25f4cfcf4cef7ffdefe1"
+    }
+  ]
+}

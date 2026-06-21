@@ -1,0 +1,5 @@
+sample,strategy_id,trades,net_usd,profit_factor,max_drawdown_usd,pnl_to_drawdown,win_rate,avg_trade_usd,t_stat
+recent_12mo_direct_excluded_stream,opening_range_box_breakout_long,20,-342.5,0.8049,723.5,-0.4734,0.55,-17.125,-0.4082
+recent_12mo_direct_excluded_stream,opening_range_box_regime_long,33,-1014.5,0.7245,1906,-0.5323,0.4545,-30.7424,-0.7937
+expanded_2019_2026_direct_excluded_stream,opening_range_box_breakout_long,131,2882.25,1.3212,1650.5,1.7463,0.5878,22.0019,1.3499
+expanded_2019_2026_direct_excluded_stream,opening_range_box_regime_long,172,4273,1.3547,2630.75,1.6243,0.5814,24.843,1.6908

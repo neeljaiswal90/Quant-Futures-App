@@ -1,0 +1,29 @@
+{
+  "generated_at_utc": "2026-06-21T01:36:36.735Z",
+  "files": [
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-kelly-sizing-research-01\\orb-breakout-long-kelly-sizing-overlay-trades.csv",
+      "lf_sha256": "5c354219679b3e3803e6d1bdfc586736e027add776794cd3f7072cc6b266c2c3"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-kelly-sizing-research-01\\orb-breakout-long-kelly-sizing-summary.csv",
+      "lf_sha256": "cf02c3a2ec64f45d0232f02682814f60e401ee811499e5cd131ef67f7153a66d"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-kelly-sizing-research-01\\orb-breakout-long-kelly-sizing-by-year.csv",
+      "lf_sha256": "52fd66e8a8f708672a699608943b3d1f8d66f41d866df4cecab1bd0feaac484c"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-kelly-sizing-research-01\\orb-breakout-long-kelly-sizing-report.json",
+      "lf_sha256": "136691cf1459e4d2b7801efa36620e45b9583d3ab0f89f45ebcbcb0dc3d1d6b7"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-kelly-sizing-research-01\\orb-breakout-long-kelly-sizing-report.md",
+      "lf_sha256": "4b2287d39687f24657c9ce8d4f53530ffb9f5b4a63d9277cab57341f7289e289"
+    },
+    {
+      "path": "docs/research/qfa-orb-breakout-long-kelly-sizing-research-2026-06-20.md",
+      "lf_sha256": "4b2287d39687f24657c9ce8d4f53530ffb9f5b4a63d9277cab57341f7289e289"
+    }
+  ]
+}

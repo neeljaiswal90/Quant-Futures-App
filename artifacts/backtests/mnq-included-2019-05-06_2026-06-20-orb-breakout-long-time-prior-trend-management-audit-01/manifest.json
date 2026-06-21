@@ -1,0 +1,29 @@
+{
+  "generated_at_utc": "2026-06-20T22:53:06.261Z",
+  "files": [
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-time-prior-trend-management-audit-01\\orb-breakout-long-scenario-summary.csv",
+      "lf_sha256": "0cc88a03705994aa8ce3eb3bdb6f526edcecea0c26c660dd6d77753602f2b13c"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-time-prior-trend-management-audit-01\\orb-breakout-long-factor-summary.csv",
+      "lf_sha256": "dc0b59d9a3574339c50a577c0a91d9c547beafc47fe0cab0c835685c82e2f4f5"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-time-prior-trend-management-audit-01\\orb-breakout-long-management-diagnostic-summary.csv",
+      "lf_sha256": "0687e5a9f64e628bd28ca0cad5f2406c48f652a674aa41ece883476f42a1c000"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-time-prior-trend-management-audit-01\\orb-breakout-long-time-prior-trend-management-report.json",
+      "lf_sha256": "40f733fd6cd2984de81e2f224d243aba47b65043831753d2501479d5f3cebe84"
+    },
+    {
+      "path": "artifacts\\backtests\\mnq-included-2019-05-06_2026-06-20-orb-breakout-long-time-prior-trend-management-audit-01\\orb-breakout-long-time-prior-trend-management-report.md",
+      "lf_sha256": "6331d8259e52a4d5d6e52faebaf8e25195d0e3181331ad37c227a8bf521566b4"
+    },
+    {
+      "path": "docs/research/qfa-orb-breakout-long-time-prior-trend-management-audit-2026-06-20.md",
+      "lf_sha256": "6331d8259e52a4d5d6e52faebaf8e25195d0e3181331ad37c227a8bf521566b4"
+    }
+  ]
+}

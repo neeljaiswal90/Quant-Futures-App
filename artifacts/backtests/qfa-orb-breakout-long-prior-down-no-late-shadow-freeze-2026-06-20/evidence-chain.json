@@ -1,0 +1,136 @@
+{
+  "generated_at_utc": "2026-06-21T01:50:00.000Z",
+  "determination": "QFA_ORB_BREAKOUT_LONG_PRIOR_DOWN_NO_LATE_SHADOW_FREEZE_COMPLETE",
+  "shadow_profile": {
+    "strategy_id": "opening_range_box_breakout_long",
+    "mode": "live_shadow_only",
+    "order_intent_must_remain": 0,
+    "broker_authority_created": false,
+    "roster_mutation_authorized": false,
+    "entry_context": {
+      "prior_day_trend_state_allowed": [
+        "prior_down",
+        "prior_down_large"
+      ],
+      "exclude_breakout_time_bucket": [
+        "14:00+"
+      ]
+    },
+    "management_overlay": {
+      "mae60_75pct_risk_stop": "log_only_counterfactual",
+      "dynamic_two_pt": "log_only_counterfactual",
+      "kelly_sizing": "log_only_counterfactual"
+    },
+    "primary_forward_readout": "candidate_vs_same_window_baseline_control_and_prior_up_contrast",
+    "absolute_pnl_pf_gate": "not_primary_until_sufficient_forward_sample"
+  },
+  "accepted_shadow_candidate_evidence": {
+    "baseline_all_breakout_long": {
+      "trades": 631,
+      "net_usd": 13286.0,
+      "profit_factor": 1.4133,
+      "max_drawdown_usd": 1767.25,
+      "pnl_to_max_drawdown": 7.5179
+    },
+    "prior_down_no_14_plus_no_path_stop": {
+      "trades": 223,
+      "net_usd": 9397.0,
+      "profit_factor": 1.8457,
+      "win_rate": 0.5964,
+      "avg_trade_usd": 42.139,
+      "max_drawdown_usd": 921.5,
+      "pnl_to_max_drawdown": 10.1975
+    },
+    "prior_down_no_14_plus_mae60_75pct_log_only": {
+      "trades": 223,
+      "adjusted_net_usd": 9572.13,
+      "profit_factor": 1.9268,
+      "max_drawdown_usd": 769.13,
+      "pnl_to_max_drawdown": 12.4455,
+      "path_stop_hits": 40,
+      "interpretation": "historical table improvement but statistically inconclusive; log only"
+    },
+    "prior_down_no_14_plus_dynamic_two_pt_log_only": {
+      "contracts": 2,
+      "trades_after_warmup": 123,
+      "net_usd": 8111.26,
+      "profit_factor": 1.7865,
+      "win_rate": 0.6341,
+      "max_drawdown_usd": 956.97,
+      "pnl_to_max_drawdown": 8.476,
+      "pt1_basis": "prior median winning-trade MFE60/R",
+      "pt2_basis": "prior 75th percentile winning-trade MFE120/R",
+      "interpretation": "risk-control comparison stream only"
+    }
+  },
+  "rejected_or_unpromoted_rules": {
+    "low_regime_100_150_raw_risk_band_exclusion": {
+      "disposition": "reject_expanded_history",
+      "recent_12mo_direct_excluded_net_usd": -1357.0,
+      "recent_12mo_direct_excluded_pf": 0.7505,
+      "expanded_2019_2026_direct_excluded_net_usd": 7155.25,
+      "expanded_2019_2026_direct_excluded_pf": 1.3404,
+      "expanded_exclusion_scenario_delta_usd": -5275.75,
+      "reason": "direct excluded stream flips positive over expanded history"
+    },
+    "opening_range_box_breakout_short": {
+      "disposition": "do_not_promote",
+      "reason": "structurally weaker than breakout_long in expanded research"
+    },
+    "raw_or_prior_filters": {
+      "disposition": "do_not_promote",
+      "reason": "diagnostic only; no broad filter selected"
+    },
+    "mae60_50pct_stop": {
+      "disposition": "do_not_promote",
+      "reason": "too aggressive; materially reduces net"
+    },
+    "kelly_runtime_sizing": {
+      "disposition": "do_not_promote",
+      "reason": "runtime q_kelly remains null; Kelly remains shadow telemetry only"
+    }
+  },
+  "forward_sample_expectations": {
+    "early_directional_evidence": {
+      "accepted_candidate_signals_min": 30,
+      "baseline_control_required": true,
+      "prior_up_contrast_required": true
+    },
+    "useful_validation_evidence": {
+      "accepted_candidate_signals_min": 100,
+      "excluded_stream_counterfactual_required": true,
+      "same_window_relative_readout_required": true
+    },
+    "notes": [
+      "45-60 sessions is operational evidence, not statistical validation for this sparse candidate stream.",
+      "A forward null absolute PnL result does not falsify the hypothesis unless the same-window baseline/prior-up contrast also fails to separate."
+    ]
+  },
+  "evidence_artifacts": [
+    {
+      "name": "orb_breakout_long_factor_audit",
+      "path": "artifacts/backtests/mnq-included-2019-05-06_2026-06-20-orb-breakout-long-factor-audit-01/orb-breakout-long-factor-audit-report.json",
+      "lf_sha256": "4cfb0dc6b8b298db33de7985272a9cbfb3e4a27d8cf2b1d0d2ab837c4661fdcc"
+    },
+    {
+      "name": "time_prior_trend_management_audit",
+      "path": "artifacts/backtests/mnq-included-2019-05-06_2026-06-20-orb-breakout-long-time-prior-trend-management-audit-01/orb-breakout-long-time-prior-trend-management-report.json",
+      "lf_sha256": "40f733fd6cd2984de81e2f224d243aba47b65043831753d2501479d5f3cebe84"
+    },
+    {
+      "name": "path_risk_control_audit_corrected",
+      "path": "artifacts/backtests/mnq-included-2019-05-06_2026-06-20-orb-breakout-long-path-risk-control-audit-01/orb-breakout-long-path-risk-control-report.json",
+      "lf_sha256": "f8bee313d07c5ccf1b455e0be5833e4e19df1b08497f2bc5a373d048321ec455"
+    },
+    {
+      "name": "low_regime_100_150_falsification",
+      "path": "artifacts/backtests/orb-low-regime-100-150-riskband-test-2026-06-20/low-regime-100-150-test-report.json",
+      "lf_sha256": "e5bf4c9e94ae7814c0999974c1f271e44be45ccde7feb098cf045574f8c6dbdf"
+    },
+    {
+      "name": "dynamic_pt_2contract_diagnostic",
+      "path": "artifacts/backtests/mnq-included-2019-05-06_2026-06-20-orb-breakout-long-dynamic-pt-2contract-01/orb-breakout-long-dynamic-pt-2contract-report.json",
+      "lf_sha256": "e90b0b819e807e0078143b6e6540f792d2949ec0240de67ffeca4d175fe15625"
+    }
+  ]
+}

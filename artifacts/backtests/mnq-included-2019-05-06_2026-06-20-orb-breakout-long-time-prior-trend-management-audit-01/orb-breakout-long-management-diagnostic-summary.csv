@@ -1,0 +1,8 @@
+diagnostic,description,flagged_trades,not_flagged_trades,flagged_net_usd,not_flagged_net_usd,flagged_avg_net_usd,not_flagged_avg_net_usd,loss_capture_rate,win_false_positive_rate,flagged_profit_factor,not_flagged_profit_factor
+mae30_ge_050_risk,"Flag trades whose first 30m MAE reaches at least 50% of initial risk. Ex-post path diagnostic, not executable stop proof.",156,475,-8470.25,21756.25,-54.2965,45.8026,0.3933,0.1405,0.399,2.2049
+mae30_ge_075_risk,"Flag trades whose first 30m MAE reaches at least 75% of initial risk. Ex-post path diagnostic, not executable stop proof.",55,576,-6016,19302,-109.3818,33.5104,0.1835,0.0165,0.1095,1.7601
+mae60_ge_050_risk,"Flag trades whose first 60m MAE reaches at least 50% of initial risk. Ex-post path diagnostic, not executable stop proof.",216,415,-12853,26139,-59.5046,62.9855,0.5506,0.1901,0.3628,3.1822
+mae60_ge_075_risk,"Flag trades whose first 60m MAE reaches at least 75% of initial risk. Ex-post path diagnostic, not executable stop proof.",111,520,-12990.75,26276.75,-117.0338,50.5322,0.3708,0.0331,0.0937,2.4749
+mfe60_lt_025_risk,Flag trades with less than 25% risk-equivalent favorable excursion during first 60m. Continuation-failure diagnostic.,215,416,-10489.5,23775.5,-48.7884,57.1526,0.5019,0.2231,0.4068,2.6435
+mfe60_lt_050_risk,Flag trades with less than 50% risk-equivalent favorable excursion during first 60m. Continuation-failure diagnostic.,425,206,-5488.75,18774.75,-12.9147,91.1396,0.8165,0.5702,0.8017,5.2035
+early_failure_mae60_ge050_mfe60_lt050,Flag trades with first 60m MAE >= 50% risk and MFE < 50% risk. Combined broad early-failure diagnostic.,186,445,-13928.25,27214.25,-74.8831,61.1556,0.5056,0.1405,0.253,3.0151
