@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { makeRunId, makeSessionId, ns, type UnixNs } from '../../apps/strategy_runtime/src/contracts/index.js';
+import { parseStrategyId, type StrategyId } from '../../apps/strategy_runtime/src/contracts/strategy-ids.js';
 import { PaperTradingSession, resolvePaperTradingSessionConfig } from '../../apps/strategy_runtime/src/paper-trading/index.js';
 import {
   deriveMbp1Path,
@@ -13,14 +14,15 @@ import {
 import { getMnqSessionPhase, loadMnqSessionCalendarConfig } from '../../apps/strategy_runtime/src/session/mnq-session-calendar.js';
 
 const TICKET = 'QFA-612-PAPER-TRADING-START-RTH-2026-06-15-IMPL-01';
-const CONFIG_PATH = 'config/paper/qfa-612-rth-2026-06-15-paper-trading.yaml';
-const STRATEGY_ID = 'regime_shock_reversion_short_v2_utc_16_18_exclusion' as const;
+const DEFAULT_CONFIG_PATH = 'config/paper/qfa-612-rth-2026-06-15-paper-trading.yaml';
+const DEFAULT_STRATEGY_ID = 'regime_shock_reversion_short_v2_utc_16_18_exclusion' as const;
 const LIVE_CAPTURE_ROOT = 'D:/Quant-futures-app/tools/rithmic_analytics/data/captures';
 const LIVE_CAPTURE_OBS_FILE = 'MNQ_globex.obs01.jsonl';
 const DEFAULT_RITHMIC_RPROTOCOL_HOME = 'D:/Quant-futures-app/.local/rithmic';
 const MAX_LIVE_CAPTURE_TAIL_STALENESS_MS = 120_000;
 const REPO_ROOT = process.cwd();
 const LIVE_CAPTURE_MINUTE_BAR_SEED_DIR = path.join(REPO_ROOT, '.tmp', 'qfa-612-live-capture-minute-bar-seed');
+const LIVE_CAPTURE_PRIOR_SESSION_SUMMARY_DIR = path.join(REPO_ROOT, '.tmp', 'qfa-612-live-capture-prior-session-summary');
 const PRIMARY_ENV_PATH = 'D:/Quant-futures-app/.env';
 const ARTIFACT_DIR = path.join(REPO_ROOT, 'artifacts', 'broker', 'qfa-612-paper-trading-start-rth-2026-06-15-impl-01');
 const BOUNDED_JSONL = path.join(ARTIFACT_DIR, 'bounded-paper-trading-start-rth-2026-06-15.jsonl');
@@ -71,6 +73,19 @@ interface MinuteBarSeedSummary {
   readonly generated_at_utc: string;
 }
 
+interface PriorSessionSummary {
+  readonly path: string;
+  readonly source_obs01_path: string;
+  readonly source_obs01_size_bytes: number;
+  readonly trading_date: string;
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+  readonly trend_state: 'prior_down_large' | 'prior_down' | 'prior_flat' | 'prior_up' | 'prior_up_large';
+  readonly source_records_scanned: number;
+  readonly generated_at_utc: string;
+}
 function parseCli(argv: readonly string[]): CliOptions {
   let start = false;
   let preflightOnly = false;
@@ -122,14 +137,23 @@ function loadEnvFile(filePath: string): Record<string, string> {
   return result;
 }
 
+function configuredPaperSessionConfigPath(env: NodeJS.ProcessEnv): string {
+  return env.QFA_PAPER_SESSION_CONFIG ?? DEFAULT_CONFIG_PATH;
+}
+
+function configuredStrategyId(env: NodeJS.ProcessEnv): StrategyId {
+  return parseStrategyId(env.QFA_PAPER_SHADOW_STRATEGY_ID ?? env.QFA_PAPER_STRATEGY_ID ?? DEFAULT_STRATEGY_ID);
+}
 function mergedEnv(): NodeJS.ProcessEnv {
   const dotenv = loadEnvFile(PRIMARY_ENV_PATH);
   const env: NodeJS.ProcessEnv = { ...dotenv, ...process.env };
-  env.QFA_PAPER_SESSION_CONFIG = CONFIG_PATH;
+  env.QFA_PAPER_SESSION_CONFIG = configuredPaperSessionConfigPath(env);
+  env.QFA_PAPER_SHADOW_STRATEGY_ID = env.QFA_PAPER_SHADOW_STRATEGY_ID ?? env.QFA_PAPER_STRATEGY_ID ?? DEFAULT_STRATEGY_ID;
   env.QFA_BROKER_ADAPTER_KIND = 'rithmic';
   env.QFA_PAPER_MARKET_DATA_SOURCE = 'live_local_capture_tail';
   env.QFA_PAPER_LOCAL_OBS_PATH = env.QFA_PAPER_LOCAL_OBS_PATH ?? currentTradingDateLiveCaptureObsPath();
   env.QFA_PAPER_LIVE_CAPTURE_MINUTE_BAR_SEED_PATH = env.QFA_PAPER_LIVE_CAPTURE_MINUTE_BAR_SEED_PATH ?? defaultMinuteBarSeedPath(env.QFA_PAPER_LOCAL_OBS_PATH);
+  env.QFA_PAPER_CAPTURE_PRIOR_SESSION_SUMMARY_PATH = env.QFA_PAPER_CAPTURE_PRIOR_SESSION_SUMMARY_PATH ?? defaultPriorSessionSummaryPath(env.QFA_PAPER_LOCAL_OBS_PATH);
   env.QFA_PAPER_LOCAL_OBS_PACE_MODE = 'tail_from_end';
   env.QFA_PAPER_OBSERVATION_STOP_AFTER_CANDIDATE = 'true';
   env.QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED = 'true';
@@ -158,6 +182,10 @@ function defaultMinuteBarSeedPath(obs01Path: string): string {
   return path.join(LIVE_CAPTURE_MINUTE_BAR_SEED_DIR, `${tradingDate}-MNQ_globex.minute-bars.seed.json`);
 }
 
+function defaultPriorSessionSummaryPath(obs01Path: string): string {
+  const tradingDate = parseTradingDateFromCapturePath(obs01Path) ?? 'unknown-date';
+  return path.join(LIVE_CAPTURE_PRIOR_SESSION_SUMMARY_DIR, `${tradingDate}-prior-session-summary.json`);
+}
 function normalizeSystemName(value: string): string {
   const trimmed = value.trim().replace(/^["']|["']$/g, '').trim();
   const normalized = trimmed.toLowerCase();
@@ -187,6 +215,7 @@ function preflight(
   env: NodeJS.ProcessEnv,
   options: CliOptions,
   minuteBarSeed: MinuteBarSeedSummary | null,
+  priorSessionSummary: PriorSessionSummary | null,
 ): { readonly gates: readonly GateResult[]; readonly session_phase: Record<string, Json> } {
   const phase = getMnqSessionPhase(loadMnqSessionCalendarConfig(), nowNs());
   const liveAllowlistCount = allowlistCount(env);
@@ -200,6 +229,10 @@ function preflight(
   const liveCaptureMbp1Stat = liveCaptureMbp1Exists ? statSync(liveCaptureMbp1Path) : undefined;
   const liveCaptureMbp1AgeMs = liveCaptureMbp1Stat === undefined ? undefined : Math.max(0, Date.now() - liveCaptureMbp1Stat.mtimeMs);
   const minuteBarSeedPath = env.QFA_PAPER_LIVE_CAPTURE_MINUTE_BAR_SEED_PATH ?? '';
+  const priorSummaryPath = env.QFA_PAPER_CAPTURE_PRIOR_SESSION_SUMMARY_PATH ?? '';
+  const priorSummaryExists = priorSummaryPath !== '' && existsSync(priorSummaryPath);
+  const strategyId = env.QFA_PAPER_SHADOW_STRATEGY_ID ?? DEFAULT_STRATEGY_ID;
+  const priorTrendRequired = strategyId === 'opening_range_box_breakout_long';
   const minuteBarSeedExists = minuteBarSeedPath !== '' && existsSync(minuteBarSeedPath);
   const minuteBarSeedSourceMatches = minuteBarSeed?.source_obs01_path === liveCapturePath;
   const minuteBarSeedSourceSizeCovered =
@@ -237,6 +270,9 @@ function preflight(
     { name: 'live_capture_minute_bar_seed_source_size_covered', passed: minuteBarSeedSourceSizeCovered, detail: minuteBarSeed?.source_obs01_size_bytes ?? 'unavailable' },
     { name: 'live_capture_minute_bar_seed_has_warmup', passed: (minuteBarSeed?.bars_count ?? 0) >= 14, detail: minuteBarSeed?.bars_count ?? 0 },
     { name: 'live_capture_minute_bar_seed_starts_at_rth_open', passed: minuteBarSeed?.first_slot === 0, detail: minuteBarSeed?.first_slot ?? 'unavailable' },
+    { name: 'prior_session_summary_path_present', passed: !priorTrendRequired || present(priorSummaryPath), detail: priorSummaryPath || 'missing' },
+    { name: 'prior_session_summary_path_exists', passed: !priorTrendRequired || priorSummaryExists, detail: priorSummaryPath || 'missing' },
+    { name: 'prior_session_summary_trend_state_ready', passed: !priorTrendRequired || priorSessionSummary !== null, detail: priorSessionSummary?.trend_state ?? 'unavailable' },
     { name: 'paper_observation_stop_after_candidate_enabled', passed: boolEnv(env.QFA_PAPER_OBSERVATION_STOP_AFTER_CANDIDATE), detail: boolEnv(env.QFA_PAPER_OBSERVATION_STOP_AFTER_CANDIDATE) },
     { name: 'live_capture_feature_bridge_enabled', passed: boolEnv(env.QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED), detail: boolEnv(env.QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED) },
     { name: 'QFA_PAPER_OPERATOR_CONFIRMS_FLAT_true', passed: boolEnv(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT), detail: boolEnv(env.QFA_PAPER_OPERATOR_CONFIRMS_FLAT) },
@@ -269,24 +305,27 @@ async function main(): Promise<void> {
   const options = parseCli(process.argv.slice(2));
   const env = mergedEnv();
   const minuteBarSeed = await ensureMinuteBarSeed(env);
-  const readiness = preflight(env, options, minuteBarSeed);
+  const priorSessionSummary = await ensurePriorSessionSummary(env);
+  const readiness = preflight(env, options, minuteBarSeed, priorSessionSummary);
   const preflightPassed = readiness.gates.every((gate) => gate.passed);
   let started = false;
   let stopped = false;
   let diagnostics: unknown = null;
   let startError: string | null = null;
+  const strategyId = configuredStrategyId(env);
 
   if (options.start && preflightPassed) {
     try {
       const config = resolvePaperTradingSessionConfig({
         env,
         overrides: {
-          paper_session_config_path: CONFIG_PATH,
-          strategy_id: STRATEGY_ID,
-          explicit_strategy_ids: [STRATEGY_ID],
+          paper_session_config_path: configuredPaperSessionConfigPath(env),
+          strategy_id: strategyId,
+          explicit_strategy_ids: [strategyId],
           paper_observation_stop_after_candidate: true,
           live_capture_feature_bridge_enabled: true,
           live_capture_minute_bar_seed_path: env.QFA_PAPER_LIVE_CAPTURE_MINUTE_BAR_SEED_PATH,
+          live_capture_prior_session_summary_path: env.QFA_PAPER_CAPTURE_PRIOR_SESSION_SUMMARY_PATH,
           run_id: RUN_ID,
           session_id: SESSION_ID,
           duration_ms: options.duration_ms,
@@ -337,8 +376,9 @@ async function main(): Promise<void> {
     determination,
     worktree: REPO_ROOT,
     substrate: SUBSTRATE,
-    config_path: CONFIG_PATH,
+    config_path: configuredPaperSessionConfigPath(env),
     minute_bar_seed: minuteBarSeed as unknown as Json,
+    prior_session_summary: priorSessionSummary as unknown as Json,
     live_capture_feature_bridge_contract: {
       source: 'live_local_capture_tail',
       obs01_seed_scope: 'full_session_minute_bar_seed',
@@ -384,6 +424,130 @@ async function main(): Promise<void> {
   if (options.start && (!started || startError !== null)) process.exitCode = 1;
 }
 
+async function ensurePriorSessionSummary(env: NodeJS.ProcessEnv): Promise<PriorSessionSummary | null> {
+  const currentObs01Path = env.QFA_PAPER_LOCAL_OBS_PATH;
+  const summaryPath = env.QFA_PAPER_CAPTURE_PRIOR_SESSION_SUMMARY_PATH;
+  if (currentObs01Path === undefined || currentObs01Path.trim() === '' || summaryPath === undefined || summaryPath.trim() === '') {
+    return null;
+  }
+  const currentTradingDate = parseTradingDateFromCapturePath(currentObs01Path);
+  if (currentTradingDate === null) {
+    return null;
+  }
+  mkdirSync(path.dirname(summaryPath), { recursive: true });
+  const priorObs01Path = findPriorCaptureObsPath(currentTradingDate);
+  if (priorObs01Path === null) {
+    return null;
+  }
+  const sourceSizeBytes = statSync(priorObs01Path).size;
+  if (existsSync(summaryPath)) {
+    try {
+      const existing = JSON.parse(readFileSync(summaryPath, 'utf8')) as PriorSessionSummary;
+      if (existing.source_obs01_path === priorObs01Path && existing.source_obs01_size_bytes === sourceSizeBytes) {
+        return existing;
+      }
+    } catch {
+      // Fall through and rebuild.
+    }
+  }
+  return await buildPriorSessionSummary(priorObs01Path, summaryPath, sourceSizeBytes);
+}
+
+function findPriorCaptureObsPath(currentTradingDate: string): string | null {
+  if (!existsSync(LIVE_CAPTURE_ROOT)) {
+    return null;
+  }
+  const candidates = readdirSync(LIVE_CAPTURE_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/u.test(entry.name) && entry.name < currentTradingDate)
+    .map((entry) => entry.name)
+    .sort((left, right) => right.localeCompare(left));
+  for (const date of candidates) {
+    const candidate = path.join(LIVE_CAPTURE_ROOT, date, LIVE_CAPTURE_OBS_FILE);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function buildPriorSessionSummary(
+  priorObs01Path: string,
+  summaryPath: string,
+  sourceSizeBytes: number,
+): Promise<PriorSessionSummary> {
+  const tradingDate = parseTradingDateFromCapturePath(priorObs01Path);
+  if (tradingDate === null) {
+    throw new Error(`could not parse prior trading date from capture path: ${priorObs01Path}`);
+  }
+  const rthOpenNs = BigInt(Date.parse(`${tradingDate}T13:30:00.000Z`)) * 1_000_000n;
+  const rthCloseNs = BigInt(Date.parse(`${tradingDate}T20:00:00.000Z`)) * 1_000_000n;
+  let open: number | null = null;
+  let high = Number.NEGATIVE_INFINITY;
+  let low = Number.POSITIVE_INFINITY;
+  let close: number | null = null;
+  let sourceRecordsScanned = 0;
+  let remainder = '';
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(priorObs01Path, {
+      encoding: 'utf8',
+      highWaterMark: 4 * 1024 * 1024,
+      start: 0,
+      end: Math.max(0, sourceSizeBytes - 1),
+    });
+    stream.on('data', (chunk) => {
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const parts = (remainder + text).split(/\r?\n/u);
+      remainder = parts.pop() ?? '';
+      for (const line of parts) {
+        if (line.trim() === '') continue;
+        sourceRecordsScanned += 1;
+        const tsNs = extractBigintFieldFast(line, 'exchange_event_ts_ns') ?? extractBigintFieldFast(line, 'sidecar_recv_ts_ns');
+        const price = extractNumberFieldFast(line, 'price');
+        if (tsNs === null || price === null || tsNs < rthOpenNs || tsNs >= rthCloseNs) continue;
+        if (open === null) open = price;
+        high = Math.max(high, price);
+        low = Math.min(low, price);
+        close = price;
+      }
+    });
+    stream.on('error', reject);
+    stream.on('end', resolve);
+  });
+  if (open === null || close === null || !Number.isFinite(high) || !Number.isFinite(low) || !(high >= low)) {
+    throw new Error(`prior-session capture has no usable RTH trades: ${priorObs01Path}`);
+  }
+  const summary: PriorSessionSummary = {
+    path: summaryPath,
+    source_obs01_path: priorObs01Path,
+    source_obs01_size_bytes: sourceSizeBytes,
+    trading_date: tradingDate,
+    open: round4(open),
+    high: round4(high),
+    low: round4(low),
+    close: round4(close),
+    trend_state: priorSessionTrendState(open, high, low, close),
+    source_records_scanned: sourceRecordsScanned,
+    generated_at_utc: new Date().toISOString(),
+  };
+  writeFileSync(summaryPath, stableJson(summary) + '\n', 'utf8');
+  return summary;
+}
+
+function priorSessionTrendState(
+  open: number,
+  high: number,
+  low: number,
+  close: number,
+): PriorSessionSummary['trend_state'] {
+  const range = high - low;
+  if (!(range > 0)) return 'prior_flat';
+  const closeLocationFromOpen = (close - open) / range;
+  if (closeLocationFromOpen <= -0.25) return 'prior_down_large';
+  if (closeLocationFromOpen < 0) return 'prior_down';
+  if (closeLocationFromOpen >= 0.25) return 'prior_up_large';
+  if (closeLocationFromOpen > 0) return 'prior_up';
+  return 'prior_flat';
+}
 async function ensureMinuteBarSeed(env: NodeJS.ProcessEnv): Promise<MinuteBarSeedSummary | null> {
   const obs01Path = env.QFA_PAPER_LOCAL_OBS_PATH;
   const seedPath = env.QFA_PAPER_LIVE_CAPTURE_MINUTE_BAR_SEED_PATH;

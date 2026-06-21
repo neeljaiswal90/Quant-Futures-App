@@ -26,7 +26,9 @@ import {
 } from '../data/index.js';
 import {
   LiveLocalCaptureFeatureBridge,
+  parseCapturePriorDayTrendState,
   parseCaptureRegimeLabel,
+  type CapturePriorDayTrendState,
 } from './live-local-capture-feature-bridge.js';
 import { loadAppConfig } from '../config/index.js';
 import {
@@ -123,6 +125,8 @@ export interface PaperTradingSessionConfig {
   readonly paper_observation_stop_after_candidate: boolean;
   readonly live_capture_feature_bridge_enabled: boolean;
   readonly live_capture_minute_bar_seed_path?: string;
+  readonly live_capture_prior_session_summary_path?: string;
+  readonly live_capture_prior_day_trend_state?: CapturePriorDayTrendState;
   readonly live_capture_regime_label: StrategyFeatureSnapshotRegime;
   readonly duration_ms?: number;
   readonly shutdown_quarantine_timeout_ms: number;
@@ -395,6 +399,13 @@ export function resolvePaperTradingSessionConfig(
       input.overrides?.live_capture_minute_bar_seed_path ??
       env.QFA_PAPER_LIVE_CAPTURE_MINUTE_BAR_SEED_PATH ??
       optionalStringAt(yamlObservability, 'live_capture_minute_bar_seed_path'),
+    live_capture_prior_session_summary_path:
+      input.overrides?.live_capture_prior_session_summary_path ??
+      env.QFA_PAPER_CAPTURE_PRIOR_SESSION_SUMMARY_PATH ??
+      optionalStringAt(yamlObservability, 'live_capture_prior_session_summary_path'),
+    live_capture_prior_day_trend_state:
+      input.overrides?.live_capture_prior_day_trend_state ??
+      parseCapturePriorDayTrendState(env.QFA_PAPER_CAPTURE_PRIOR_DAY_TREND_STATE ?? optionalStringAt(yamlObservability, 'live_capture_prior_day_trend_state')),
     live_capture_regime_label:
       input.overrides?.live_capture_regime_label ??
       parseCaptureRegimeLabel(env.QFA_PAPER_CAPTURE_REGIME_LABEL ?? optionalStringAt(yamlObservability, 'live_capture_regime_label')),
@@ -1013,6 +1024,8 @@ export class PaperTradingSession {
     return new LiveLocalCaptureFeatureBridge({
       obs01_path: obs01Path,
       minute_bar_seed_path: this.config.live_capture_minute_bar_seed_path,
+      prior_session_summary_path: this.config.live_capture_prior_session_summary_path,
+      prior_day_trend_state: this.config.live_capture_prior_day_trend_state,
       regime_label: this.config.live_capture_regime_label,
       process_snapshot: async (snapshot) => this.processFeatureSnapshot(snapshot),
     });

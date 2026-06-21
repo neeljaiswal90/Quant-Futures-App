@@ -11,6 +11,7 @@ const REGIME_TICKET = 'QFA-612-SHADOW-MODE-REGIME-LABEL-SOURCE-01';
 const ROLLUP_TICKET = 'QFA-612-SHADOW-MODE-PERFORMANCE-ROLLUP-01';
 const START_HELPER = 'scripts/paper/run-qfa-612-rth-2026-06-15-paper-trading.ts';
 const PROFILE_CONFIG_PATH = 'config/paper/qfa-612-shadow-mode-live-capture.yaml';
+const SHADOW_STRATEGY_ID = 'opening_range_box_breakout_long' as const;
 const REGIME_SOURCE_PATH = 'config/paper/qfa-612-shadow-regime-label-source.json';
 const PRIMARY_ENV_PATH = 'D:/Quant-futures-app/.env';
 const REPO_ROOT = process.cwd();
@@ -150,6 +151,18 @@ function resolveRegimeLabel(sessionId: string): RegimeLabelRecord {
       notes: ['Override requires QFA_SHADOW_ALLOW_OPERATOR_REGIME_OVERRIDE=true and should not be used for source-faithful performance accounting.'],
     };
   }
+  if ((process.env.QFA_PAPER_SHADOW_STRATEGY_ID ?? SHADOW_STRATEGY_ID) === SHADOW_STRATEGY_ID) {
+    return {
+      session_id: sessionId,
+      label: 'unknown',
+      target_prior_close_date: 'not_required_for_orb_shadow_profile',
+      source_name: 'strategy_does_not_consume_regime_label',
+      source_urls: [],
+      source_authority_type: 'SHADOW_MODE_REGIME_LABEL_SOURCE_NOT_REQUIRED_FOR_ORB_PROFILE',
+      global_regime_labels_mutated: false,
+      notes: ['Opening-range breakout long prior-down shadow profile does not consume context.regime_label; label is carried as unknown without mutating global regime labels.'],
+    };
+  }
   throw new Error(`missing source-backed shadow regime label for ${sessionId}; add ${configuredPath} entry or explicitly allow operator override`);
 }
 
@@ -162,6 +175,8 @@ function runStartHelper(options: CliOptions, regime: RegimeLabelRecord, session:
   const env = {
     ...loadEnvFile(PRIMARY_ENV_PATH),
     ...process.env,
+    QFA_PAPER_SESSION_CONFIG: PROFILE_CONFIG_PATH,
+    QFA_PAPER_SHADOW_STRATEGY_ID: SHADOW_STRATEGY_ID,
     QFA_PAPER_CAPTURE_REGIME_LABEL: regime.label,
     QFA_PAPER_OBSERVATION_STOP_AFTER_CANDIDATE: 'true',
     QFA_PAPER_LIVE_CAPTURE_FEATURE_BRIDGE_ENABLED: 'true',

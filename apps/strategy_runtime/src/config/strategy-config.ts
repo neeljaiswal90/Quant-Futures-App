@@ -116,6 +116,16 @@ export interface VwapOvernightReversalStrategyParameters {
   readonly confidence_score: number;
 }
 
+export interface OpeningRangeBoxBreakoutLongStrategyParameters {
+  readonly opening_range_minutes: number;
+  readonly breakout_buffer_ticks: number;
+  readonly max_chase_ticks: number;
+  readonly stop_buffer_ticks: number;
+  readonly target_1_rr: number;
+  readonly target_2_rr: number;
+  readonly confidence_score: number;
+}
+
 export interface CandidateRankingParameters {
   readonly method: typeof CANDIDATE_RANKING_METHOD;
   readonly confidence_weight: number;
@@ -129,6 +139,7 @@ export interface CandidateRankingParameters {
 export type StrategyParameterSet =
   | TrendPullbackStrategyParameters
   | BreakoutRetestStrategyParameters
+  | OpeningRangeBoxBreakoutLongStrategyParameters
   | RegimeMeanReversionStrategyParameters
   | RegimeShockReversionShortV3StrategyParameters
   | RegimeShockReversionShortV4DelayStrategyParameters
@@ -141,6 +152,7 @@ export interface StaticStrategyConfigById {
   readonly trend_pullback_short: TrendPullbackStrategyParameters;
   readonly breakout_retest_long: BreakoutRetestStrategyParameters;
   readonly breakdown_retest_short: BreakoutRetestStrategyParameters;
+  readonly opening_range_box_breakout_long: OpeningRangeBoxBreakoutLongStrategyParameters;
   readonly regime_mean_reversion_long: RegimeMeanReversionStrategyParameters;
   readonly regime_mean_reversion_short: RegimeMeanReversionStrategyParameters;
   readonly liquidity_sweep_reversal_long: LiquiditySweepReversalStrategyParameters;
@@ -218,6 +230,16 @@ export const DEFAULT_BREAKDOWN_RETEST_SHORT_CONFIG: BreakoutRetestStrategyParame
   entry_low_sigma_buffer: 0.15,
   entry_high_sigma_buffer: 0.1,
   confidence_score: 8.05,
+};
+
+export const DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG: OpeningRangeBoxBreakoutLongStrategyParameters = {
+  opening_range_minutes: 30,
+  breakout_buffer_ticks: 2,
+  max_chase_ticks: 8,
+  stop_buffer_ticks: 2,
+  target_1_rr: 1,
+  target_2_rr: 2,
+  confidence_score: 0.62,
 };
 
 export const DEFAULT_REGIME_MEAN_REVERSION_LONG_CONFIG: RegimeMeanReversionStrategyParameters = {
@@ -329,6 +351,7 @@ export const DEFAULT_CANDIDATE_RANKING_CONFIG: CandidateRankingParameters = {
     trend_pullback_short: 20,
     breakout_retest_long: 30,
     breakdown_retest_short: 40,
+    opening_range_box_breakout_long: 45,
     regime_mean_reversion_long: 50,
     regime_mean_reversion_short: 60,
     liquidity_sweep_reversal_long: 70,
@@ -358,6 +381,7 @@ export const DEFAULT_STRATEGY_CONFIGS: StrategyConfigById = {
   trend_pullback_short: DEFAULT_TREND_PULLBACK_SHORT_CONFIG,
   breakout_retest_long: DEFAULT_BREAKOUT_RETEST_LONG_CONFIG,
   breakdown_retest_short: DEFAULT_BREAKDOWN_RETEST_SHORT_CONFIG,
+  opening_range_box_breakout_long: DEFAULT_OPENING_RANGE_BOX_BREAKOUT_LONG_CONFIG,
   regime_mean_reversion_long: DEFAULT_REGIME_MEAN_REVERSION_LONG_CONFIG,
   regime_mean_reversion_short: DEFAULT_REGIME_MEAN_REVERSION_SHORT_CONFIG,
   liquidity_sweep_reversal_long: DEFAULT_LIQUIDITY_SWEEP_REVERSAL_LONG_CONFIG,
@@ -384,6 +408,7 @@ const STRATEGY_CONFIG_FILE_NAMES = {
   trend_pullback_short: 'trend_pullback_short.yaml',
   breakout_retest_long: 'breakout_retest_long.yaml',
   breakdown_retest_short: 'breakdown_retest_short.yaml',
+  opening_range_box_breakout_long: 'opening_range_box_breakout_long.yaml',
   regime_mean_reversion_long: 'regime_mean_reversion_long.yaml',
   regime_mean_reversion_short: 'regime_mean_reversion_short.yaml',
   liquidity_sweep_reversal_long: 'liquidity_sweep_reversal_long.yaml',
@@ -431,6 +456,10 @@ export function loadStrategyRuntimeConfig(
     breakdown_retest_short: parseBreakoutRetestConfig(
       'breakdown_retest_short',
       readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.breakdown_retest_short), sourceFiles),
+    ),
+    opening_range_box_breakout_long: parseOpeningRangeBoxBreakoutLongConfig(
+      'opening_range_box_breakout_long',
+      readYamlFile(resolve(directory, STRATEGY_CONFIG_FILE_NAMES.opening_range_box_breakout_long), sourceFiles),
     ),
     regime_mean_reversion_long: parseRegimeMeanReversionConfig(
       'regime_mean_reversion_long',
@@ -509,6 +538,10 @@ export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
   strategyId: 'breakdown_retest_short',
 ): BreakoutRetestStrategyParameters;
+export function getStrategyParameters(
+  config: StrategyRuntimeConfig | undefined,
+  strategyId: 'opening_range_box_breakout_long',
+): OpeningRangeBoxBreakoutLongStrategyParameters;
 export function getStrategyParameters(
   config: StrategyRuntimeConfig | undefined,
   strategyId: 'regime_mean_reversion_long',
@@ -713,6 +746,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'vwap_overnight_reversal_short',
     'regime_shock_reversion_short_v2',
     'regime_shock_reversion_short_v2_utc_16_18_exclusion',
+    'opening_range_box_breakout_long',
     'regime_shock_reversion_short_v3',
     'regime_shock_reversion_short_v4_delay',
     'regime_shock_reversion_short_v4_persist',
@@ -733,6 +767,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
         trend_pullback_short: readNumber(strategyPriority, 'trend_pullback_short', '$.ranking.strategy_priority', issues),
         breakout_retest_long: readNumber(strategyPriority, 'breakout_retest_long', '$.ranking.strategy_priority', issues),
         breakdown_retest_short: readNumber(strategyPriority, 'breakdown_retest_short', '$.ranking.strategy_priority', issues),
+        opening_range_box_breakout_long: readNumber(strategyPriority, 'opening_range_box_breakout_long', '$.ranking.strategy_priority', issues),
         regime_mean_reversion_long: readNumber(strategyPriority, 'regime_mean_reversion_long', '$.ranking.strategy_priority', issues),
         regime_mean_reversion_short: readNumber(strategyPriority, 'regime_mean_reversion_short', '$.ranking.strategy_priority', issues),
         liquidity_sweep_reversal_long: readNumber(strategyPriority, 'liquidity_sweep_reversal_long', '$.ranking.strategy_priority', issues),
@@ -832,6 +867,55 @@ function parseBreakoutRetestConfig(
   return parsed;
 }
 
+function parseOpeningRangeBoxBreakoutLongConfig(
+  strategyId: AnyStrategyId,
+  input: unknown,
+): OpeningRangeBoxBreakoutLongStrategyParameters {
+  const issues: ConfigValidationIssue[] = [];
+  const { root, parameters } = parseStrategyConfigRoot(strategyId, input, issues);
+  void root;
+  checkUnknownKeys(parameters, '$.parameters', [
+    'opening_range_minutes',
+    'breakout_buffer_ticks',
+    'max_chase_ticks',
+    'stop_buffer_ticks',
+    'target_1_rr',
+    'target_2_rr',
+    'confidence_score',
+  ], issues);
+  const parsed = {
+    opening_range_minutes: readPositiveNumber(parameters, 'opening_range_minutes', '$.parameters', issues),
+    breakout_buffer_ticks: readNonNegativeNumber(parameters, 'breakout_buffer_ticks', '$.parameters', issues),
+    max_chase_ticks: readNonNegativeNumber(parameters, 'max_chase_ticks', '$.parameters', issues),
+    stop_buffer_ticks: readNonNegativeNumber(parameters, 'stop_buffer_ticks', '$.parameters', issues),
+    target_1_rr: readPositiveNumber(parameters, 'target_1_rr', '$.parameters', issues),
+    target_2_rr: readPositiveNumber(parameters, 'target_2_rr', '$.parameters', issues),
+    confidence_score: readPositiveNumber(parameters, 'confidence_score', '$.parameters', issues),
+  };
+  if (!Number.isInteger(parsed.opening_range_minutes)) {
+    issues.push({ path: '$.parameters.opening_range_minutes', message: 'must be an integer' });
+  }
+  if (!Number.isInteger(parsed.breakout_buffer_ticks)) {
+    issues.push({ path: '$.parameters.breakout_buffer_ticks', message: 'must be an integer' });
+  }
+  if (!Number.isInteger(parsed.max_chase_ticks)) {
+    issues.push({ path: '$.parameters.max_chase_ticks', message: 'must be an integer' });
+  }
+  if (!Number.isInteger(parsed.stop_buffer_ticks)) {
+    issues.push({ path: '$.parameters.stop_buffer_ticks', message: 'must be an integer' });
+  }
+  if (parsed.opening_range_minutes < 1 || parsed.opening_range_minutes > 390) {
+    issues.push({ path: '$.parameters.opening_range_minutes', message: 'must be from 1 through 390' });
+  }
+  if (parsed.target_2_rr < parsed.target_1_rr) {
+    issues.push({ path: '$.parameters.target_2_rr', message: 'must be >= target_1_rr' });
+  }
+  if (parsed.confidence_score > 1) {
+    issues.push({ path: '$.parameters.confidence_score', message: 'must be <= 1' });
+  }
+  throwIfIssues(issues);
+  return parsed;
+}
 function parseRegimeMeanReversionConfig(
   strategyId: AnyStrategyId,
   input: unknown,

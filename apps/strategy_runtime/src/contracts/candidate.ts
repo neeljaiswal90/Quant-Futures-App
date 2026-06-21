@@ -18,6 +18,7 @@ export type CandidateSetupFamily =
   | 'breakout_retest'
   | 'regime_mean_reversion'
   | 'regime_shock_reversion'
+  | 'opening_range_box'
   | 'liquidity_sweep_reversal'
   | 'vwap_overnight_reversal';
 

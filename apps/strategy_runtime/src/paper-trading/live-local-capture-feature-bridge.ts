@@ -30,6 +30,7 @@ const DEFAULT_SYMBOL = 'MNQU6';
 const DEFAULT_CONTRACT_MONTH = '2026-09';
 const PROCESSING_LAG_NS = 2n * ONE_SECOND_NS;
 const POLL_INTERVAL_MS = 1_000;
+const DEFAULT_OPENING_RANGE_MINUTES = 30;
 export const LIVE_CAPTURE_FEATURE_BRIDGE_MAX_TRADE_SEED_BYTES = 128 * 1024 * 1024;
 export const LIVE_CAPTURE_FEATURE_BRIDGE_MAX_QUOTE_SEED_BYTES = 64 * 1024 * 1024;
 export const LIVE_CAPTURE_MINUTE_BAR_SEED_SCHEMA_VERSION = 1;
@@ -79,6 +80,25 @@ interface MinuteBarSeedFile {
   readonly bars: readonly MinuteBarSeedBar[];
 }
 
+export type CapturePriorDayTrendState =
+  | 'prior_down_large'
+  | 'prior_down'
+  | 'prior_flat'
+  | 'prior_up'
+  | 'prior_up_large';
+
+interface PriorSessionSummaryFile {
+  readonly trading_date: string;
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+}
+
+interface OpeningRangeBox {
+  readonly high: number;
+  readonly low: number;
+}
 interface AppendState {
   offset: number;
   remainder: string;
@@ -87,6 +107,8 @@ interface AppendState {
 export interface LiveLocalCaptureFeatureBridgeOptions {
   readonly obs01_path: string;
   readonly minute_bar_seed_path?: string;
+  readonly prior_session_summary_path?: string;
+  readonly prior_day_trend_state?: CapturePriorDayTrendState;
   readonly regime_label: StrategyFeatureSnapshotRegime;
   readonly process_snapshot: (snapshot: StrategyFeatureSnapshot) => Promise<unknown>;
   readonly symbol?: string;
@@ -97,6 +119,8 @@ export class LiveLocalCaptureFeatureBridge {
   private readonly obs01Path: string;
   private readonly mbp1Path: string;
   private readonly minuteBarSeedPath: string | undefined;
+  private readonly priorSessionSummary: PriorSessionSummaryFile | undefined;
+  private readonly priorDayTrendState: CapturePriorDayTrendState | undefined;
   private readonly regimeLabel: StrategyFeatureSnapshotRegime;
   private readonly processSnapshot: (snapshot: StrategyFeatureSnapshot) => Promise<unknown>;
   private readonly instrument: InstrumentIdentity;
@@ -133,6 +157,8 @@ export class LiveLocalCaptureFeatureBridge {
       price_decimals: PRICE_DECIMALS,
     };
     this.tradingDate = parseTradingDateFromCapturePath(options.obs01_path);
+    this.priorSessionSummary = loadPriorSessionSummary(options.prior_session_summary_path, this.tradingDate);
+    this.priorDayTrendState = options.prior_day_trend_state ?? determinePriorDayTrendState(this.priorSessionSummary);
     this.rthOpenNs = utcNs(this.tradingDate, RTH_OPEN_HOUR_UTC, RTH_OPEN_MINUTE_UTC);
     this.rthCloseNs = utcNs(this.tradingDate, RTH_CLOSE_HOUR_UTC, RTH_CLOSE_MINUTE_UTC);
   }
@@ -349,6 +375,11 @@ export class LiveLocalCaptureFeatureBridge {
   }): StrategyFeatureSnapshot {
     const timestamp = input.bar.end_ts_ns;
     const featureSnapshotId = makeFeatureSnapshotId(`feature-qfa612-live-capture-${compactDate(this.tradingDate)}-${timestamp.toString()}`);
+    const openingRange = this.openingRangeBox();
+    const structureValues: Record<string, string | number | boolean | null> = {};
+    if (this.priorDayTrendState !== undefined) {
+      structureValues.prior_day_trend_state = this.priorDayTrendState;
+    }
     return {
       feature_snapshot_id: featureSnapshotId,
       source_event_id: makeEventId(`source-live-capture-${featureSnapshotId}`),
@@ -373,19 +404,19 @@ export class LiveLocalCaptureFeatureBridge {
         sigma_pts: input.sigmaPts,
         signed_shock_vwap: input.signedShockVwap,
       },
-      structure: { trend: 'unknown', values: {} },
+      structure: { trend: 'unknown', values: structureValues },
       microstructure: { l3_authority: 'unavailable', values: {} },
       context: {
-        prior_day_close: null,
-        prior_day_high: null,
-        prior_day_low: null,
-        today_open: null,
+        prior_day_close: this.priorSessionSummary?.close ?? null,
+        prior_day_high: this.priorSessionSummary?.high ?? null,
+        prior_day_low: this.priorSessionSummary?.low ?? null,
+        today_open: this.todayOpen(),
         vix_value: null,
         vix_fresh: false,
         vix_prior_close_percentile: null,
         regime_label: this.regimeLabel,
-        opening_range_high: null,
-        opening_range_low: null,
+        opening_range_high: openingRange?.high ?? null,
+        opening_range_low: openingRange?.low ?? null,
         opening_range_minutes_elapsed: Math.max(0, Math.floor(Number(BigInt(input.bar.end_ts_ns) - this.rthOpenNs) / Number(ONE_MINUTE_NS))),
         session_vwap: input.sessionVwap,
         session_vwap_band_sigma_pts: input.sigmaPts,
@@ -413,6 +444,34 @@ export class LiveLocalCaptureFeatureBridge {
     };
   }
 
+  private openingRangeBox(): OpeningRangeBox | null {
+    if (this.processedBars.length < DEFAULT_OPENING_RANGE_MINUTES) {
+      return null;
+    }
+    let high = Number.NEGATIVE_INFINITY;
+    let low = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < DEFAULT_OPENING_RANGE_MINUTES; index += 1) {
+      const bar = this.processedBars[index];
+      if (bar === undefined) {
+        return null;
+      }
+      const expectedStart = this.rthOpenNs + BigInt(index) * ONE_MINUTE_NS;
+      if (BigInt(bar.start_ts_ns) !== expectedStart) {
+        return null;
+      }
+      high = Math.max(high, bar.high);
+      low = Math.min(low, bar.low);
+    }
+    return high > low ? { high: round4(high), low: round4(low) } : null;
+  }
+
+  private todayOpen(): number | null {
+    const first = this.processedBars[0];
+    if (first === undefined || BigInt(first.start_ts_ns) !== this.rthOpenNs) {
+      return null;
+    }
+    return first.open;
+  }
   private slotIndexForTs(tsNs: bigint): number | null {
     if (tsNs < this.rthOpenNs || tsNs >= this.rthCloseNs) return null;
     return Number((tsNs - this.rthOpenNs) / ONE_MINUTE_NS);
@@ -436,6 +495,22 @@ function normalizePath(value: string): string {
   return value.replace(/\\/gu, '/').toLowerCase();
 }
 
+export function parseCapturePriorDayTrendState(value: string | undefined): CapturePriorDayTrendState | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === undefined || normalized === '') {
+    return undefined;
+  }
+  if (
+    normalized === 'prior_down_large' ||
+    normalized === 'prior_down' ||
+    normalized === 'prior_flat' ||
+    normalized === 'prior_up' ||
+    normalized === 'prior_up_large'
+  ) {
+    return normalized;
+  }
+  throw new Error('QFA_PAPER_CAPTURE_PRIOR_DAY_TREND_STATE must be one of: prior_down_large, prior_down, prior_flat, prior_up, prior_up_large');
+}
 export function parseCaptureRegimeLabel(value: string | undefined): StrategyFeatureSnapshotRegime {
   const normalized = value?.trim().toLowerCase();
   if (
@@ -450,6 +525,44 @@ export function parseCaptureRegimeLabel(value: string | undefined): StrategyFeat
   return 'unknown';
 }
 
+function loadPriorSessionSummary(pathValue: string | undefined, currentTradingDate: string): PriorSessionSummaryFile | undefined {
+  if (pathValue === undefined || pathValue.trim() === '') {
+    return undefined;
+  }
+  if (!existsSync(pathValue)) {
+    throw new Error(`QFA live capture feature bridge prior-session summary is missing: ${pathValue}`);
+  }
+  const parsed = JSON.parse(readFileSync(pathValue, 'utf8')) as PriorSessionSummaryFile;
+  if (typeof parsed.trading_date !== 'string' || parsed.trading_date >= currentTradingDate) {
+    throw new Error('QFA live capture feature bridge prior-session summary must be dated before the capture trading date');
+  }
+  for (const key of ['open', 'high', 'low', 'close'] as const) {
+    const value = parsed[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error(`QFA live capture feature bridge prior-session summary ${key} must be finite`);
+    }
+  }
+  if (parsed.high < parsed.low || parsed.open < parsed.low || parsed.open > parsed.high || parsed.close < parsed.low || parsed.close > parsed.high) {
+    throw new Error('QFA live capture feature bridge prior-session summary OHLC is inconsistent');
+  }
+  return parsed;
+}
+
+function determinePriorDayTrendState(summary: PriorSessionSummaryFile | undefined): CapturePriorDayTrendState | undefined {
+  if (summary === undefined) {
+    return undefined;
+  }
+  const range = summary.high - summary.low;
+  if (!(range > 0)) {
+    return undefined;
+  }
+  const closeLocationFromOpen = (summary.close - summary.open) / range;
+  if (closeLocationFromOpen <= -0.25) return 'prior_down_large';
+  if (closeLocationFromOpen < 0) return 'prior_down';
+  if (closeLocationFromOpen >= 0.25) return 'prior_up_large';
+  if (closeLocationFromOpen > 0) return 'prior_up';
+  return 'prior_flat';
+}
 function readAppendedLines(file: string, state: AppendState): string[] {
   const stat = statSync(file);
   if (stat.size <= state.offset) return [];

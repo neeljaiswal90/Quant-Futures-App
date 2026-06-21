@@ -192,6 +192,40 @@ export const BREAKDOWN_RETEST_SHORT_MANAGEMENT_PROFILE = {
   ],
 } as const satisfies ManagementProfile;
 
+export const OPENING_RANGE_BOX_BREAKOUT_LONG_MANAGEMENT_PROFILE = {
+  profile_id: 'opening_range_box_breakout_long_management_v1',
+  profile_version: MANAGEMENT_PROFILE_VERSION,
+  strategy_id: 'opening_range_box_breakout_long',
+  setup_family: 'opening_range_box',
+  display_name: 'Opening Range Box Breakout Long Management V1',
+  profile_hash: MANAGEMENT_PROFILE_HASH_PLACEHOLDER,
+  initial_stop: {
+    ...BASE_INITIAL_STOP,
+    min_stop_distance_ticks: 4,
+  },
+  targets: BASE_TARGETS,
+  break_even: BASE_BREAK_EVEN,
+  trailing_stop: {
+    enabled: false,
+    mode: 'disabled',
+    activation: 'after_pt1',
+    distance_ticks: 0,
+    action: 'ACTIVATE_TRAIL',
+  },
+  time_stop: {
+    ...BASE_TIME_STOP,
+    max_hold_minutes: 90,
+  },
+  fail_safe: BASE_FAIL_SAFE,
+  partial_exit: BASE_PARTIAL_EXIT,
+  reasons: [
+    'management_profile:opening_range_box_breakout_long',
+    'initial_stop:candidate_stop',
+    'partials:pt1_50_pt2_50',
+    'shadow_only:no_order_intent_authority',
+  ],
+} as const satisfies ManagementProfile;
+
 export const REGIME_MEAN_REVERSION_LONG_MANAGEMENT_PROFILE = {
   profile_id: 'regime_mean_reversion_long_management_v1',
   profile_version: MANAGEMENT_PROFILE_VERSION,
@@ -547,6 +581,7 @@ export const V1_MANAGEMENT_PROFILES = {
   trend_pullback_short: TREND_PULLBACK_SHORT_MANAGEMENT_PROFILE,
   breakout_retest_long: BREAKOUT_RETEST_LONG_MANAGEMENT_PROFILE,
   breakdown_retest_short: BREAKDOWN_RETEST_SHORT_MANAGEMENT_PROFILE,
+  opening_range_box_breakout_long: OPENING_RANGE_BOX_BREAKOUT_LONG_MANAGEMENT_PROFILE,
   regime_mean_reversion_long: REGIME_MEAN_REVERSION_LONG_MANAGEMENT_PROFILE,
   regime_mean_reversion_short: REGIME_MEAN_REVERSION_SHORT_MANAGEMENT_PROFILE,
   liquidity_sweep_reversal_long: LIQUIDITY_SWEEP_REVERSAL_LONG_MANAGEMENT_PROFILE,

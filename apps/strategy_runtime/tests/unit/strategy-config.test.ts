@@ -18,7 +18,7 @@ import {
 import { STRATEGY_SYNTHETIC_FIXTURES } from '../fixtures/strategies/synthetic-feature-snapshots.js';
 
 const EXPECTED_STRATEGY_CONFIG_HASH =
-  '22c80535af8c009b05dd452d778a24570231c8510eec842cf39af4e7168d978a';
+  '92dbc6cb059cbd4ab08fb875401528fb0e58519ddf7d8b2ced2f1049bc06f844';
 
 const STRATEGY_CONFIG_FILES = [
   'shared.yaml',
@@ -149,6 +149,7 @@ describe('STRAT-07 strategy config surface', () => {
       trend_pullback_short: 20,
       breakout_retest_long: 30,
       breakdown_retest_short: 40,
+      opening_range_box_breakout_long: 45,
       regime_mean_reversion_long: 50,
       regime_mean_reversion_short: 60,
       liquidity_sweep_reversal_long: 70,

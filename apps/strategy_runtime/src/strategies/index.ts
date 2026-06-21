@@ -3,6 +3,7 @@ export * from './breakdown_retest_short.js';
 export * from './liquidity_sweep_reversal_common.js';
 export * from './liquidity_sweep_reversal_long.js';
 export * from './liquidity_sweep_reversal_short.js';
+export * from './opening_range_box_breakout_long.js';
 export * from './regime_mean_reversion_common.js';
 export * from './regime_mean_reversion_long.js';
 export * from './regime_mean_reversion_short.js';
