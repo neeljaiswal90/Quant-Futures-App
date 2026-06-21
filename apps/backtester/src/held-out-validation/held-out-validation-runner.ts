@@ -44,6 +44,8 @@ import {
 } from './held-out-validation-error.js';
 import type {
   HeldOutValidationArtifactCapabilityStatus,
+  HeldOutValidationArtifactCostAdjustedMetricsV1,
+  HeldOutValidationExecutionCostModel,
   HeldOutValidationArtifactMetadata,
   HeldOutValidationArtifactOutputOptions,
   HeldOutValidationArtifactQueueAheadBucket,
@@ -81,6 +83,19 @@ const HELD_OUT_REASON_ORDER: readonly HeldOutValidationWindowReason[] = Object.f
   'framework_only_no_replay_execution',
 ]);
 
+const DISABLED_EXECUTION_COST_MODEL: HeldOutValidationExecutionCostModel = Object.freeze({
+  cost_model_schema_version: 1,
+  fees_enabled: false,
+  instrument_root: 'MNQ',
+  commission_per_side_per_contract_usd: 0,
+  exchange_fees_per_side_per_contract_usd: 0,
+  spread_slippage_per_side_points: '0',
+  spread_slippage_model: 'included_in_fill_prices_no_extra_adder',
+  fill_prices_include_spread: true,
+  cost_assumption_source: 'disabled_default_for_legacy_callers',
+  config_hash_sha256: '0'.repeat(64),
+});
+
 export async function runHeldOutValidation(
   options: HeldOutValidationRunOptions,
 ): Promise<HeldOutValidationRunResult> {
@@ -91,6 +106,7 @@ export async function executeHeldOutValidationAgainstArchive(
   options: HeldOutValidationRealArchiveOptions,
 ): Promise<HeldOutValidationRealArchiveResult> {
   validateRealArchiveOptions(options);
+  const costModel = resolveExecutionCostModel(options.execution_cost_model);
   const strategyOrder = resolveStrategyOrder(options.strategy_order);
   const sessionsById = new Map(options.archive_sessions.map((session) => [session.session_id, session]));
   const rawExecutionResults: RealArchiveBacktestResult[] = [];
@@ -129,7 +145,7 @@ export async function executeHeldOutValidationAgainstArchive(
           strategy_id: strategyId,
           sessions: windowSessions,
           run_started_at_ns: options.run_started_at_ns,
-          fill_policy: options.fill_policy,
+          fill_policy: fillPolicyWithCostModel(options.fill_policy, costModel),
           initial_equity_cents: options.initial_equity_cents,
           strategy_generator: options.strategy_generators?.[strategyId],
           strategy_config: options.strategy_config,
@@ -206,6 +222,7 @@ export async function executeHeldOutValidationAgainstArchive(
     : writeHeldOutValidationArtifacts({
       artifactOutput: options.artifact_output,
       capabilitySet,
+      costModel,
       initialEquityCents: options.initial_equity_cents ?? 3_000_000n,
       perStrategy,
       rawExecutionResults,
@@ -347,6 +364,7 @@ function validateRealArchiveOptions(options: HeldOutValidationRealArchiveOptions
 function writeHeldOutValidationArtifacts(input: {
   readonly artifactOutput: HeldOutValidationArtifactOutputOptions;
   readonly capabilitySet: CapabilityAssessmentSet;
+  readonly costModel: HeldOutValidationExecutionCostModel;
   readonly initialEquityCents: bigint;
   readonly perStrategy: readonly HeldOutValidationRealArchiveStrategyResult[];
   readonly rawExecutionResults: readonly RealArchiveBacktestResult[];
@@ -367,6 +385,7 @@ function writeHeldOutValidationArtifacts(input: {
     const executions = executionsByStrategy.get(strategy.strategy_id) ?? [];
     const artifact = buildHeldOutValidationArtifact({
       capabilityStatus: artifactCapabilityStatus(capabilityByStrategy.get(strategy.strategy_id)),
+      costModel: input.costModel,
       executions,
       initialEquityCents: input.initialEquityCents,
       metadata,
@@ -386,6 +405,7 @@ function writeHeldOutValidationArtifacts(input: {
 
 function buildHeldOutValidationArtifact(input: {
   readonly capabilityStatus: HeldOutValidationArtifactCapabilityStatus;
+  readonly costModel: HeldOutValidationExecutionCostModel;
   readonly executions: readonly RealArchiveBacktestResult[];
   readonly initialEquityCents: bigint;
   readonly metadata: HeldOutValidationArtifactMetadata;
@@ -402,6 +422,7 @@ function buildHeldOutValidationArtifact(input: {
       tradePnl.push(pnl);
     }
   }
+  assertCostTruth(tradePnl, input.costModel);
   const sourceTrades = input.strategy.windows.flatMap((window) => [...window.per_trade_records]);
   const trades = sourceTrades.map((trade) => artifactTrade(trade, pnlByTradeId));
   return Object.freeze({
@@ -432,6 +453,9 @@ function buildHeldOutValidationArtifact(input: {
     aggregate: serializeTradeMetricsSummary(
       summarizeTradePnl(tradePnl, input.initialEquityCents),
     ),
+    cost_model: input.costModel,
+    cost_model_config_hash: input.costModel.config_hash_sha256,
+    cost_adjusted_metrics: costAdjustedMetrics(tradePnl),
     gating_pnl_basis: 'net',
     input_substrate_hash: input.metadata.input_substrate_hash,
     input_manifest_hashes: input.metadata.input_manifest_hashes,
@@ -487,7 +511,12 @@ function artifactTrade(
     entry_price: trade.entry_px,
     exit_price: trade.exit_px,
     gross_pnl_cents: pnl.gross_pnl_cents.toString(),
+    commission_cost_cents: pnl.commissions_cents.toString(),
+    exchange_fee_cost_cents: pnl.fees_cents.toString(),
+    spread_slippage_cost_cents: '0',
+    total_execution_cost_cents: (pnl.commissions_cents + pnl.fees_cents).toString(),
     net_pnl_cents: pnl.net_pnl_cents.toString(),
+    pnl_basis: 'net_of_commission_exchange_fees_and_fill_prices',
     entry_quantity: trade.entry_quantity,
     exit_quantity: trade.exit_quantity,
     management_profile_id: trade.management_profile_id,
@@ -511,6 +540,114 @@ function artifactTrade(
     first_minute_close_pnl_cents: trade.first_minute_close_pnl_cents?.toString() ?? null,
     first_minute_observed: trade.first_minute_observed,
   });
+}
+
+function resolveExecutionCostModel(
+  costModel: HeldOutValidationExecutionCostModel | undefined,
+): HeldOutValidationExecutionCostModel {
+  if (costModel === undefined) {
+    return DISABLED_EXECUTION_COST_MODEL;
+  }
+  validateNonNegativeFinite(
+    costModel.commission_per_side_per_contract_usd,
+    '$.execution_cost_model.commission_per_side_per_contract_usd',
+  );
+  validateNonNegativeFinite(
+    costModel.exchange_fees_per_side_per_contract_usd,
+    '$.execution_cost_model.exchange_fees_per_side_per_contract_usd',
+  );
+  if (costModel.instrument_root.trim().length === 0) {
+    throw new Error('execution_cost_model.instrument_root must be non-empty');
+  }
+  if (!/^[a-f0-9]{64}$/.test(costModel.config_hash_sha256)) {
+    throw new Error('execution_cost_model.config_hash_sha256 must be a lowercase sha256 hex digest');
+  }
+  return Object.freeze({ ...costModel });
+}
+
+function fillPolicyWithCostModel(
+  fillPolicy: HeldOutValidationRealArchiveOptions['fill_policy'],
+  costModel: HeldOutValidationExecutionCostModel,
+): HeldOutValidationRealArchiveOptions['fill_policy'] {
+  if (!costModel.fees_enabled) {
+    return fillPolicy;
+  }
+  return Object.freeze({
+    ...fillPolicy,
+    exchange_fee_usd: costModel.exchange_fees_per_side_per_contract_usd,
+    commission_usd: costModel.commission_per_side_per_contract_usd,
+  });
+}
+
+function assertCostTruth(
+  tradePnl: readonly TradePnl[],
+  costModel: HeldOutValidationExecutionCostModel,
+): void {
+  if (!costModel.fees_enabled || tradePnl.length === 0) {
+    return;
+  }
+  const totalCosts = sumBigint(tradePnl.map((pnl) => pnl.commissions_cents + pnl.fees_cents));
+  if (totalCosts <= 0n) {
+    throw new Error('fees_enabled=true but trade-bearing held-out artifact has zero execution costs');
+  }
+  const unchangedNetTrades = tradePnl.filter((pnl) => pnl.gross_pnl_cents === pnl.net_pnl_cents);
+  if (unchangedNetTrades.length > 0) {
+    throw new Error('fees_enabled=true but at least one trade has gross_pnl_cents equal to net_pnl_cents');
+  }
+}
+
+function costAdjustedMetrics(
+  tradePnl: readonly TradePnl[],
+): HeldOutValidationArtifactCostAdjustedMetricsV1 {
+  const grossValues = tradePnl.map((pnl) => pnl.gross_pnl_cents);
+  const netValues = tradePnl.map((pnl) => pnl.net_pnl_cents);
+  const commissionCosts = sumBigint(tradePnl.map((pnl) => pnl.commissions_cents));
+  const exchangeFeeCosts = sumBigint(tradePnl.map((pnl) => pnl.fees_cents));
+  return Object.freeze({
+    gross_pnl_cents: sumBigint(grossValues).toString(),
+    commission_cost_cents: commissionCosts.toString(),
+    exchange_fee_cost_cents: exchangeFeeCosts.toString(),
+    spread_slippage_cost_cents: '0',
+    total_execution_cost_cents: (commissionCosts + exchangeFeeCosts).toString(),
+    net_pnl_cents: sumBigint(netValues).toString(),
+    profit_factor_gross_ppm: profitFactorPpm(grossValues),
+    profit_factor_net_ppm: profitFactorPpm(netValues),
+    sharpe_gross: simpleSharpe(grossValues),
+    sharpe_net: simpleSharpe(netValues),
+    dsr_net: null,
+    dsr_net_status: 'blocked_until_cumulative_trial_ledger',
+  });
+}
+
+function profitFactorPpm(values: readonly bigint[]): number | null {
+  const grossProfit = sumBigint(values.filter((value) => value > 0n));
+  const grossLoss = absBigint(sumBigint(values.filter((value) => value < 0n)));
+  if (grossLoss === 0n) {
+    return null;
+  }
+  return Number((grossProfit * 1_000_000n) / grossLoss);
+}
+
+function simpleSharpe(values: readonly bigint[]): number | null {
+  if (values.length < 2) {
+    return null;
+  }
+  const numeric = values.map((value) => Number(value));
+  const mean = numeric.reduce((sum, value) => sum + value, 0) / numeric.length;
+  const variance = numeric.reduce((sum, value) => {
+    const delta = value - mean;
+    return sum + delta * delta;
+  }, 0) / (numeric.length - 1);
+  if (variance <= 0) {
+    return null;
+  }
+  return Number((mean / Math.sqrt(variance)).toFixed(8));
+}
+
+function validateNonNegativeFinite(value: number, path: string): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${path} must be a non-negative finite number`);
+  }
 }
 
 function sessionReturns(input: {
