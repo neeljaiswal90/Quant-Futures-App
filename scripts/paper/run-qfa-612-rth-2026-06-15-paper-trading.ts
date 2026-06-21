@@ -215,6 +215,7 @@ function preflight(
   env: NodeJS.ProcessEnv,
   options: CliOptions,
   minuteBarSeed: MinuteBarSeedSummary | null,
+  priorSessionSummary: PriorSessionSummary | null,
 ): { readonly gates: readonly GateResult[]; readonly session_phase: Record<string, Json> } {
   const phase = getMnqSessionPhase(loadMnqSessionCalendarConfig(), nowNs());
   const liveAllowlistCount = allowlistCount(env);

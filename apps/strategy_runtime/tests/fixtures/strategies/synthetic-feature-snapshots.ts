@@ -587,6 +587,63 @@ export const STRATEGY_SYNTHETIC_FIXTURES = {
       },
     }),
   },
+  opening_range_box_breakout_long: {
+    fixture_id: 'fixture_opening_range_box_breakout_long',
+    strategy_id: 'opening_range_box_breakout_long',
+    description: 'Prior-down RTH opening-range breakout long eligible for shadow-only forward observation.',
+    expected_direction: 'long',
+    expected_gate_state: 'armed',
+    expected_reason_fragments: ['opening_range_box_breakout_long:armed', 'prior_day_trend_state:prior_down', 'entry_before_14_00_et'],
+    snapshot: makeSnapshot({
+      fixtureId: 'fixture_opening_range_box_breakout_long',
+      sourceEventId: 'source-bar-opening-range-box-breakout-long',
+      createdOffsetNs: 20n * 60_000_000_000n,
+      direction: 'long',
+      bidPx: 18600.75,
+      askPx: 18601,
+      lastTradePrice: 18601,
+      barsStartClose: 18592,
+      trend: 'up',
+      indicators: {
+        supertrend_direction: 'up',
+        ema_9: 18598,
+        ema_21: 18595,
+        ema_50: 18590,
+        vwap: 18594,
+        atr_14: 8,
+        atr_14_pts: 8,
+        adx_14: 18,
+        sigma_pts: 5,
+        z_ema9: 0.72,
+        z_ofi_blend: 0.33,
+      },
+      structure: {
+        prior_day_trend_state: 'prior_down',
+        bos_direction: 'up',
+        nearest_resistance: 18604,
+      },
+      microstructure: {
+        spread_pts: 0.25,
+        ofi_z: 0.42,
+        depth_imbalance: 0.22,
+        queue_imbalance: 0.18,
+      },
+      regimeLabel: 'low',
+      context: {
+        opening_range_high: 18600,
+        opening_range_low: 18580,
+        opening_range_minutes_elapsed: 30,
+        session_vwap: 18594,
+        signed_shock_vwap: {
+          value: 1.375,
+          anchor_type: 'vwap',
+          anchor_value: 18594,
+          sigma_basis: 'atr_14',
+          sigma_basis_value: 8,
+        },
+      },
+    }),
+  },
   regime_shock_reversion_short_v2: {
     fixture_id: 'fixture_regime_shock_reversion_short_v2',
     strategy_id: 'regime_shock_reversion_short_v2',
@@ -958,5 +1015,4 @@ export const STRATEGY_SYNTHETIC_FIXTURES = {
 export function listSyntheticStrategyFixtures(): readonly SyntheticStrategyFixture[] {
   return [];
 }
-
 

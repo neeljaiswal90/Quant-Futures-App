@@ -67,6 +67,7 @@ const STRATEGY_ID_TO_RUN_ID_ABBREV: Record<StrategyId, string> = {
   vwap_overnight_reversal_short: 'vor_short',
   regime_shock_reversion_short_v2: 'rsr_short_v2',
   regime_shock_reversion_short_v2_utc_16_18_exclusion: 'rsr_short_v2_u1618x',
+  opening_range_box_breakout_long: 'orb_long',
   regime_shock_reversion_short_v3: 'rsr_short_v3',
   regime_shock_reversion_short_v4_delay: 'rsr_short_v4_delay',
   regime_shock_reversion_short_v4_persist: 'rsr_short_v4_persist',
