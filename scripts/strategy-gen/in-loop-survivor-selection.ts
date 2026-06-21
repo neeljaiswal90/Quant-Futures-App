@@ -45,6 +45,7 @@ export interface SelectInLoopSurvivorsInput {
   readonly candidateIds: readonly string[];
   readonly scoreInputPath: string;
   readonly survivorCount?: number;
+  readonly minValidationFoldScoreCount?: number;
 }
 
 export interface SelectInLoopSurvivorsResult {
@@ -61,6 +62,15 @@ export function selectInLoopSurvivors(
   const computedScores = scoreInput.scores.map((score) => {
     if (!candidateSet.has(score.candidate_strategy_id)) {
       throw new Error(`in-loop score input references unknown candidate ${score.candidate_strategy_id}`);
+    }
+    if (
+      score.partition_role === 'validation' &&
+      input.minValidationFoldScoreCount !== undefined &&
+      score.metrics.fold_scores.length < input.minValidationFoldScoreCount
+    ) {
+      throw new Error(
+        `validation score for ${score.candidate_strategy_id} has ${score.metrics.fold_scores.length} fold scores; requires ${input.minValidationFoldScoreCount}`,
+      );
     }
     return computeInLoopSScore(score);
   });
