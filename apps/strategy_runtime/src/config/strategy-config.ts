@@ -746,6 +746,7 @@ function parseSharedStrategyConfig(input: unknown): { readonly ranking: Candidat
     'vwap_overnight_reversal_short',
     'regime_shock_reversion_short_v2',
     'regime_shock_reversion_short_v2_utc_16_18_exclusion',
+    'opening_range_box_breakout_long',
     'regime_shock_reversion_short_v3',
     'regime_shock_reversion_short_v4_delay',
     'regime_shock_reversion_short_v4_persist',
