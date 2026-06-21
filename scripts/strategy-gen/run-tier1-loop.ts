@@ -4,6 +4,12 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+import {
+  assertHeldOutAccessAllowed,
+  buildDataSplitSpine,
+  writeDataSplitSpine,
+} from './data-split-spine.js';
+
 const DEFAULT_SPEC = 'config/strategy-gen/regime_shock_reversion_short_v2.search.yaml';
 const DEFAULT_MANIFESTS = [
   'config/research/manifests/manifest-feb-2026.json',
@@ -23,6 +29,7 @@ interface CliArgs {
   readonly initialEquityCents?: string;
   readonly skipHeldOut: boolean;
   readonly skipSelection: boolean;
+  readonly allowHeldOutGate: boolean;
 }
 
 interface CandidateManifest {
@@ -51,6 +58,7 @@ function main(): number {
   const trialAccountingManifestPath = join(generationRoot, 'trial-accounting-manifest.json');
   const parameterLockManifestPath = join(generationRoot, 'parameter-locks.json');
   const metadataByStrategyPath = join(generationRoot, 'held-out-metadata-by-strategy.json');
+  const dataSplitSpinePath = join(generationRoot, 'data-split-spine.json');
   const heldOutDir = join('artifacts/held-out-validation', generationRunId);
   const selectionJsonOut = join(generationRoot, 'strategy-selection.json');
   const selectionMdOut = join(generationRoot, 'strategy-selection.md');
@@ -82,8 +90,18 @@ function main(): number {
     outputPath: metadataByStrategyPath,
     regimeLabelsPath: args.regimeLabels,
   });
+  writeDataSplitSpine(dataSplitSpinePath, buildDataSplitSpine({
+    generationRunId,
+    searchSpecPath: args.spec,
+    manifestPaths: args.manifests,
+    heldOutDir,
+  }));
 
   if (!args.skipHeldOut) {
+    assertHeldOutAccessAllowed({
+      purpose: 'qfa410b_held_out_replay',
+      allowHeldOutGate: args.allowHeldOutGate,
+    });
     const qfa410bArgs = [
       'tsx',
       'scripts/qfa-410b-execute.mts',
@@ -112,6 +130,10 @@ function main(): number {
   }
 
   if (!args.skipSelection) {
+    assertHeldOutAccessAllowed({
+      purpose: 'qfa611_gate',
+      allowHeldOutGate: args.allowHeldOutGate,
+    });
     runOrThrow(pythonCommand(), [
       'scripts/strategy-selection/qfa-611-strategy-selection.py',
       '--held-out-dir',
@@ -139,6 +161,7 @@ function main(): number {
     candidate_manifest: candidateManifestPath,
     trial_accounting_manifest: trialAccountingManifestPath,
     parameter_lock_manifest: parameterLockManifestPath,
+    data_split_spine: dataSplitSpinePath,
     held_out_metadata_by_strategy: metadataByStrategyPath,
     held_out_dir: heldOutDir,
     strategy_selection_json: args.skipSelection ? null : selectionJsonOut,
@@ -174,6 +197,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     initialEquityCents: one(values, 'initial-equity-cents'),
     skipHeldOut: emitOnly || values.has('skip-held-out'),
     skipSelection: emitOnly || values.has('skip-selection'),
+    allowHeldOutGate: values.has('allow-held-out-gate'),
   };
 }
 
