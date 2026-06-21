@@ -110,6 +110,19 @@ class Qfa611DriverTests(unittest.TestCase):
             self.assertEqual(first["verdict"], "RESEARCH_FURTHER")
             self.assertEqual(first["verdict_reason"], "missing_per_trade_metadata")
 
+    def test_missing_cost_model_is_research_further_not_reject(self) -> None:
+        def mutate(artifact: dict, index: int) -> None:
+            if index == 0:
+                del artifact["cost_model"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            held_out_dir, lock_manifest = write_case(root, mutate=mutate)
+            selection = json.loads(run_driver(root, held_out_dir, lock_manifest).read_text(encoding="utf-8"))
+            first = selection["per_strategy"][0]
+            self.assertEqual(first["verdict"], "RESEARCH_FURTHER")
+            self.assertEqual(first["verdict_reason"], "missing_required_field:cost_model")
+
     def test_additive_evidence_surface_fields_are_ignored_by_selection(self) -> None:
         def mutate(artifact: dict, index: int) -> None:
             if index != 0:
@@ -407,6 +420,7 @@ def write_case(
     strategies = []
     for index, strategy_id in enumerate(STRATEGIES):
         artifact = copy.deepcopy(fixture)
+        add_cost_model_fields(artifact)
         lock_hash = f"{index + 1:064x}"
         artifact["strategy_id"] = strategy_id
         artifact["parameter_lock_hash"] = lock_hash
@@ -431,6 +445,67 @@ def write_case(
     lock_manifest = root / "lock-manifest.json"
     lock_manifest.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
     return held_out_dir, lock_manifest
+
+
+def add_cost_model_fields(artifact: dict) -> None:
+    artifact["cost_model"] = {
+        "cost_model_schema_version": 1,
+        "fees_enabled": True,
+        "instrument_root": "MNQ",
+        "commission_per_side_per_contract_usd": 0.4,
+        "exchange_fees_per_side_per_contract_usd": 0.35,
+        "spread_slippage_per_side_points": "0",
+        "spread_slippage_model": "included_in_fill_prices_no_extra_adder",
+        "fill_prices_include_spread": True,
+        "cost_assumption_source": "test-fixture",
+        "config_hash_sha256": "c" * 64,
+    }
+    artifact["cost_model_config_hash"] = "c" * 64
+    total_commission = 0
+    total_exchange = 0
+    gross_total = 0
+    net_total = 0
+    gross_wins = 0
+    gross_losses = 0
+    net_wins = 0
+    net_losses = 0
+    for trade in artifact["trades"]:
+        gross = int(trade["gross_pnl_cents"])
+        net = int(trade["net_pnl_cents"])
+        cost = gross - net
+        commission = cost // 2
+        exchange = cost - commission
+        trade["commission_cost_cents"] = str(commission)
+        trade["exchange_fee_cost_cents"] = str(exchange)
+        trade["spread_slippage_cost_cents"] = "0"
+        trade["total_execution_cost_cents"] = str(cost)
+        trade["pnl_basis"] = "net_of_commission_exchange_fees_and_fill_prices"
+        total_commission += commission
+        total_exchange += exchange
+        gross_total += gross
+        net_total += net
+        if gross > 0:
+            gross_wins += gross
+        elif gross < 0:
+            gross_losses += gross
+        if net > 0:
+            net_wins += net
+        elif net < 0:
+            net_losses += net
+    artifact["cost_adjusted_metrics"] = {
+        "gross_pnl_cents": str(gross_total),
+        "commission_cost_cents": str(total_commission),
+        "exchange_fee_cost_cents": str(total_exchange),
+        "spread_slippage_cost_cents": "0",
+        "total_execution_cost_cents": str(total_commission + total_exchange),
+        "net_pnl_cents": str(net_total),
+        "profit_factor_gross_ppm": None if gross_losses == 0 else int((gross_wins * 1_000_000) / abs(gross_losses)),
+        "profit_factor_net_ppm": None if net_losses == 0 else int((net_wins * 1_000_000) / abs(net_losses)),
+        "sharpe_gross": 0.0,
+        "sharpe_net": 0.0,
+        "dsr_net": None,
+        "dsr_net_status": "blocked_until_cumulative_trial_ledger",
+    }
 
 
 def run_driver(
