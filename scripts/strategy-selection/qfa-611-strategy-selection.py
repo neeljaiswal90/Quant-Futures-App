@@ -29,6 +29,7 @@ from psr_dsr import compute_psr_dsr
 from returns import assert_decimal_returns
 from sensitivity_audit import compute_sensitivity_audit, load_fidelity_cells
 from thresholds import ADR0016_STAGE1_THRESHOLDS, ANNUALIZATION_SESSIONS
+from trial_ledger import load_cumulative_trial_ledger
 from walk_forward_loader import load_held_out_artifact, load_parameter_lock_manifest
 
 
@@ -399,7 +400,15 @@ def build_selection(args: argparse.Namespace) -> dict[str, Any]:
     effective_trial_count = max(len(roster), len(locks))
     effective_trial_count_source = "legacy_roster_lock_count"
     trial_accounting_manifest = None
-    if args.trial_accounting_manifest is not None:
+    if args.trial_accounting_manifest is not None and args.cumulative_trial_ledger is not None:
+        raise ValueError("pass only one of --trial-accounting-manifest or --cumulative-trial-ledger")
+    if args.cumulative_trial_ledger is not None:
+        trial_accounting_manifest, effective_trial_count = load_cumulative_trial_ledger(
+            args.cumulative_trial_ledger,
+            candidate_strategy_ids_gated=roster,
+        )
+        effective_trial_count_source = "cumulative_trial_ledger"
+    elif args.trial_accounting_manifest is not None:
         trial_accounting_manifest, effective_trial_count = load_trial_accounting_manifest(
             args.trial_accounting_manifest
         )
@@ -522,6 +531,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strategy-ids", nargs="*", default=None)
     parser.add_argument("--strategy-config-dir", type=Path, default=DEFAULT_STRATEGY_CONFIG_DIR)
     parser.add_argument("--trial-accounting-manifest", type=Path, default=None)
+    parser.add_argument("--cumulative-trial-ledger", type=Path, default=None)
     parser.add_argument(
         "--skip-runtime-parameter-hash",
         action="store_true",
