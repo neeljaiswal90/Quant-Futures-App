@@ -95,6 +95,7 @@ export interface HeldOutValidationRealArchiveOptions {
   readonly initial_equity_cents?: bigint;
   readonly strategy_generators?: Partial<Record<AnyStrategyId, RealArchiveStrategyGenerator>>;
   readonly strategy_config?: StrategyRuntimeConfig;
+  readonly execution_cost_model?: HeldOutValidationExecutionCostModel;
   readonly artifact_output?: HeldOutValidationArtifactOutputOptions;
 }
 
@@ -115,6 +116,19 @@ export interface HeldOutValidationArtifactMetadata {
   readonly parameter_lock_hash: string;
   readonly input_substrate_hash: string;
   readonly input_manifest_hashes: HeldOutValidationArtifactInputHashes;
+}
+
+export interface HeldOutValidationExecutionCostModel {
+  readonly cost_model_schema_version: 1;
+  readonly fees_enabled: boolean;
+  readonly instrument_root: string;
+  readonly commission_per_side_per_contract_usd: number;
+  readonly exchange_fees_per_side_per_contract_usd: number;
+  readonly spread_slippage_per_side_points: string;
+  readonly spread_slippage_model: 'included_in_fill_prices_no_extra_adder';
+  readonly fill_prices_include_spread: boolean;
+  readonly cost_assumption_source: string;
+  readonly config_hash_sha256: string;
 }
 
 export interface HeldOutValidationArtifactOutputOptions {
@@ -228,7 +242,12 @@ export interface HeldOutValidationArtifactTradeV1 {
   readonly entry_price: number;
   readonly exit_price: number;
   readonly gross_pnl_cents: string;
+  readonly commission_cost_cents: string;
+  readonly exchange_fee_cost_cents: string;
+  readonly spread_slippage_cost_cents: string;
+  readonly total_execution_cost_cents: string;
   readonly net_pnl_cents: string;
+  readonly pnl_basis: 'net_of_commission_exchange_fees_and_fill_prices';
   readonly entry_quantity: number;
   readonly exit_quantity: number;
   readonly management_profile_id: string;
@@ -284,6 +303,21 @@ export interface HeldOutValidationArtifactTradeMetricsSummaryV1 {
   readonly peak_equity_cents: string;
 }
 
+export interface HeldOutValidationArtifactCostAdjustedMetricsV1 {
+  readonly gross_pnl_cents: string;
+  readonly commission_cost_cents: string;
+  readonly exchange_fee_cost_cents: string;
+  readonly spread_slippage_cost_cents: string;
+  readonly total_execution_cost_cents: string;
+  readonly net_pnl_cents: string;
+  readonly profit_factor_gross_ppm: RatioPpm | null;
+  readonly profit_factor_net_ppm: RatioPpm | null;
+  readonly sharpe_gross: number | null;
+  readonly sharpe_net: number | null;
+  readonly dsr_net: number | null;
+  readonly dsr_net_status: 'blocked_until_cumulative_trial_ledger';
+}
+
 export type HeldOutValidationArtifactCapabilityStatus =
   | 'ready_for_replay'
   | 'ready_for_live';
@@ -302,6 +336,9 @@ export interface HeldOutValidationArtifactV1 {
   readonly trades: readonly HeldOutValidationArtifactTradeV1[];
   readonly session_returns: readonly number[];
   readonly aggregate: HeldOutValidationArtifactTradeMetricsSummaryV1;
+  readonly cost_model: HeldOutValidationExecutionCostModel;
+  readonly cost_model_config_hash: string;
+  readonly cost_adjusted_metrics: HeldOutValidationArtifactCostAdjustedMetricsV1;
   readonly gating_pnl_basis: 'net';
   readonly input_substrate_hash: string;
   readonly input_manifest_hashes: HeldOutValidationArtifactInputHashes;

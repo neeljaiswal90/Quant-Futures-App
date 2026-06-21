@@ -13,6 +13,7 @@ import { loadStrategyRuntimeConfig } from '../apps/strategy_runtime/src/config/i
 import { getStrategyGenerator } from '../apps/strategy_runtime/src/strategies/registry.js';
 import {
   executeHeldOutValidationAgainstArchive,
+  type HeldOutValidationExecutionCostModel,
   type HeldOutValidationArtifactMetadata,
   type HeldOutValidationRealArchiveOptions,
 } from '../apps/backtester/src/held-out-validation/index.js';
@@ -34,6 +35,8 @@ const DEFAULT_OUTPUT_DIR = 'artifacts/held-out-validation';
 const DEFAULT_REGIME_LABELS = 'artifacts/regime/regime-labels.json';
 const DEFAULT_STRATEGY_CONFIG_DIR = 'config/strategies';
 const DEFAULT_INITIAL_EQUITY_CENTS = 5_000_000n;
+const DEFAULT_VENUE_COSTS_PATH = 'config/venue-costs.json';
+const DEFAULT_COST_INSTRUMENT_ROOT = 'MNQ';
 const PARAMETER_LOCK_SOURCE = 'existing-roster-locked-as-of-qfa611-cycle1';
 
 interface CliArgs {
@@ -53,6 +56,8 @@ interface CliArgs {
    */
   readonly researchFixedContracts?: number;
   readonly strategyConfigDir: string;
+  readonly venueCostsPath: string;
+  readonly feesEnabled: boolean;
 }
 
 interface ManifestSession {
@@ -95,6 +100,15 @@ interface LockManifest {
     readonly strategy_id?: string;
     readonly parameter_lock_hash?: string;
   }[];
+}
+
+interface VenueCostsConfig {
+  readonly commission_schedule_effective_date?: string;
+  readonly cost_assumption_source?: string;
+  readonly contracts?: Record<string, {
+    readonly commission_per_side_per_contract_usd?: number;
+    readonly exchange_fees_per_side_per_contract_usd?: number;
+  }>;
 }
 
 interface ExecuteDependencies {
@@ -161,6 +175,8 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     regimeLabelsPath: one(values, 'regime-labels') ?? DEFAULT_REGIME_LABELS,
     researchFixedContracts: optionalPositiveInteger(values, 'research-fixed-contracts'),
     strategyConfigDir: one(values, 'strategy-config-dir') ?? DEFAULT_STRATEGY_CONFIG_DIR,
+    venueCostsPath: one(values, 'venue-costs') ?? DEFAULT_VENUE_COSTS_PATH,
+    feesEnabled: parseBoolean(one(values, 'fees-enabled') ?? 'true', '--fees-enabled'),
   };
 }
 
@@ -182,6 +198,7 @@ export async function runQfa410bExecute(
   const policy = loadWalkForwardPolicy(args.walkForwardPolicyPath);
   const walkForwardPlan = buildWalkForwardPlan(sessionOrder, policy);
   const metadataByStrategy = loadMetadataByStrategy(args, manifestHashes);
+  const executionCostModel = loadExecutionCostModel(args);
   const strategyConfig = loadStrategyRuntimeConfig({
     directory: args.strategyConfigDir,
     required: true,
@@ -211,6 +228,7 @@ export async function runQfa410bExecute(
           : { order_quantity: args.researchFixedContracts },
         strategy_generators: { [strategyId]: getStrategyGenerator(strategyId) },
         strategy_config: strategyConfig,
+        execution_cost_model: executionCostModel,
         artifact_output: {
           output_dir: args.outputDir,
           metadata_by_strategy: { [strategyId]: metadataByStrategy[strategyId] },
@@ -226,7 +244,7 @@ export async function runQfa410bExecute(
       });
     } catch (error) {
       const path = join(args.outputDir, `${strategyId}-feb-mar-apr-2026.json`);
-      writePartialEvidenceStub(path, strategyId, metadataByStrategy[strategyId], error);
+      writePartialEvidenceStub(path, strategyId, metadataByStrategy[strategyId], executionCostModel, error);
       artifactPaths.push(path);
       perStrategy.push({
         strategy_id: strategyId,
@@ -358,6 +376,7 @@ function writePartialEvidenceStub(
   path: string,
   strategyId: AnyStrategyId,
   metadata: HeldOutValidationArtifactMetadata,
+  executionCostModel: HeldOutValidationExecutionCostModel,
   error: unknown,
 ): void {
   const payload = {
@@ -371,11 +390,85 @@ function writePartialEvidenceStub(
     capability_status: 'blocked',
     evidence_package_status: 'incomplete',
     failure_reason: error instanceof Error ? error.message : String(error),
+    cost_model: executionCostModel,
+    cost_model_config_hash: executionCostModel.config_hash_sha256,
     gating_pnl_basis: 'net',
     input_substrate_hash: metadata.input_substrate_hash,
     input_manifest_hashes: metadata.input_manifest_hashes,
   };
   writeFileSync(path, `${canonicalizeReproJson(payload)}\n`, 'utf8');
+}
+
+function loadExecutionCostModel(args: CliArgs): HeldOutValidationExecutionCostModel {
+  if (!args.feesEnabled) {
+    const payload = {
+      cost_model_schema_version: 1,
+      fees_enabled: false,
+      instrument_root: DEFAULT_COST_INSTRUMENT_ROOT,
+      commission_per_side_per_contract_usd: 0,
+      exchange_fees_per_side_per_contract_usd: 0,
+      spread_slippage_per_side_points: '0',
+      spread_slippage_model: 'included_in_fill_prices_no_extra_adder',
+      fill_prices_include_spread: true,
+      cost_assumption_source: 'disabled_by_qfa410b_cli',
+    } as const;
+    return Object.freeze({
+      ...payload,
+      config_hash_sha256: sha256Stable(payload),
+    });
+  }
+  const venueCosts = readJson<VenueCostsConfig>(args.venueCostsPath);
+  const contract = venueCosts.contracts?.[DEFAULT_COST_INSTRUMENT_ROOT];
+  if (contract === undefined) {
+    throw new Error(`venue costs missing ${DEFAULT_COST_INSTRUMENT_ROOT} contract`);
+  }
+  const commission = requireNonNegativeFinite(
+    contract.commission_per_side_per_contract_usd,
+    `${args.venueCostsPath}.contracts.${DEFAULT_COST_INSTRUMENT_ROOT}.commission_per_side_per_contract_usd`,
+  );
+  const exchangeFees = requireNonNegativeFinite(
+    contract.exchange_fees_per_side_per_contract_usd,
+    `${args.venueCostsPath}.contracts.${DEFAULT_COST_INSTRUMENT_ROOT}.exchange_fees_per_side_per_contract_usd`,
+  );
+  const payload = {
+    cost_model_schema_version: 1,
+    fees_enabled: true,
+    instrument_root: DEFAULT_COST_INSTRUMENT_ROOT,
+    commission_per_side_per_contract_usd: commission,
+    exchange_fees_per_side_per_contract_usd: exchangeFees,
+    spread_slippage_per_side_points: '0',
+    spread_slippage_model: 'included_in_fill_prices_no_extra_adder',
+    fill_prices_include_spread: true,
+    cost_assumption_source:
+      `${venueCosts.cost_assumption_source ?? 'venue-costs-config'};${args.venueCostsPath};` +
+      `effective=${venueCosts.commission_schedule_effective_date ?? 'unknown'};` +
+      'spread_slippage=included_in_fill_prices_no_extra_adder',
+  } as const;
+  return Object.freeze({
+    ...payload,
+    config_hash_sha256: sha256Stable({
+      ...payload,
+      venue_costs_file_sha256: sha256File(args.venueCostsPath),
+    }),
+  });
+}
+
+function requireNonNegativeFinite(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${path} must be a non-negative finite number`);
+  }
+  return value;
+}
+
+function parseBoolean(value: string, flag: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  throw new Error(`${flag} must be true or false`);
+}
+
+function sha256Stable(value: unknown): string {
+  return createHash('sha256').update(canonicalizeReproJson(value), 'utf8').digest('hex');
 }
 
 function knownRegime(value: string | undefined): RealArchiveSessionSource['regime_label'] {
