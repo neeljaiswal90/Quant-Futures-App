@@ -347,6 +347,31 @@ class Qfa611DriverTests(unittest.TestCase):
                 STRATEGIES,
             )
 
+    def test_cumulative_trial_ledger_controls_effective_trial_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            held_out_dir, lock_manifest = write_case(root)
+            ledger = write_cumulative_trial_ledger(root, STRATEGIES, extra_previous_trials=3)
+            selection = json.loads(
+                run_driver(
+                    root,
+                    held_out_dir,
+                    lock_manifest,
+                    cumulative_trial_ledger=ledger,
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(selection["effective_trial_count"], len(STRATEGIES) + 3)
+            self.assertEqual(selection["effective_trial_count_source"], "cumulative_trial_ledger")
+            self.assertEqual(
+                selection["trial_accounting_manifest"]["candidate_strategy_ids_gated"],
+                STRATEGIES,
+            )
+            self.assertEqual(
+                selection["trial_accounting_manifest"]["raw_research_trials"],
+                len(STRATEGIES) + 3,
+            )
+
     def test_parameter_lock_hash_reads_generated_candidate_config_dir(self) -> None:
         from parameter_lock import load_strategy_parameter_struct
 
@@ -415,6 +440,7 @@ def run_driver(
     seed: int = 42,
     skip_runtime_parameter_hash: bool = True,
     trial_accounting_manifest: Path | None = None,
+    cumulative_trial_ledger: Path | None = None,
 ) -> Path:
     json_out = root / f"selection-{seed}.json"
     md_out = root / f"selection-{seed}.md"
@@ -442,6 +468,8 @@ def run_driver(
         command.append("--skip-runtime-parameter-hash")
     if trial_accounting_manifest is not None:
         command.extend(["--trial-accounting-manifest", str(trial_accounting_manifest)])
+    if cumulative_trial_ledger is not None:
+        command.extend(["--cumulative-trial-ledger", str(cumulative_trial_ledger)])
     subprocess.run(command, cwd=REPO_ROOT, check=True, capture_output=True, text=True)
     return json_out
 
@@ -472,6 +500,53 @@ def write_trial_accounting_manifest(
             },
             sort_keys=True,
         ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_cumulative_trial_ledger(
+    root: Path,
+    strategy_ids: list[str],
+    *,
+    extra_previous_trials: int,
+) -> Path:
+    path = root / "cumulative-trial-ledger.jsonl"
+    rows = []
+    for index, strategy_id in enumerate(strategy_ids):
+        rows.append({
+            "schema_version": 1,
+            "generation_run_id": "current-generation-run",
+            "campaign_id": "test-campaign",
+            "candidate_strategy_id": strategy_id,
+            "window_fingerprint_tuple": f"current-window-{index}",
+            "corpus_fingerprint": "b" * 64,
+            "search_space_hash": "a" * 64,
+            "determinism_rerun": False,
+        })
+    for index in range(extra_previous_trials):
+        rows.append({
+            "schema_version": 1,
+            "generation_run_id": "previous-generation-run",
+            "campaign_id": "test-campaign",
+            "candidate_strategy_id": strategy_ids[index % len(strategy_ids)],
+            "window_fingerprint_tuple": f"previous-window-{index}",
+            "corpus_fingerprint": "b" * 64,
+            "search_space_hash": "a" * 64,
+            "determinism_rerun": False,
+        })
+    rows.append({
+        "schema_version": 1,
+        "generation_run_id": "determinism-rerun",
+        "campaign_id": "test-campaign",
+        "candidate_strategy_id": strategy_ids[0],
+        "window_fingerprint_tuple": "determinism-window",
+        "corpus_fingerprint": "b" * 64,
+        "search_space_hash": "a" * 64,
+        "determinism_rerun": True,
+    })
+    path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
         encoding="utf-8",
     )
     return path
