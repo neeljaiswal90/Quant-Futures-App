@@ -29,7 +29,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 SPREAD_BUCKET_ORD = {"unknown": 0.0, "1-tick": 1.0, "2-tick": 2.0, "3+ ticks": 3.0}
 QUEUE_BUCKET_ORD = {"unknown": 0.0, "1-5": 1.0, "6-20": 2.0, "21+": 3.0}
@@ -76,9 +76,9 @@ def label_of(row: dict[str, Any]) -> int:
     return 1 if int(row["net_pnl_cents"]) > 0 else 0
 
 
-def load_rows(path: Path) -> list[dict[str, Any]]:
+def parse_training_rows(lines: Iterable[str]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         row = json.loads(line)
@@ -94,6 +94,11 @@ def load_rows(path: Path) -> list[dict[str, Any]]:
         if row.get("partition") not in ("train", "validation"):
             raise ValueError(f"training row {line_number}: partition must be train|validation")
         rows.append(row)
+    return rows
+
+
+def load_rows(path: Path) -> list[dict[str, Any]]:
+    rows = parse_training_rows(path.read_text(encoding="utf-8").splitlines())
     if not rows:
         raise ValueError(f"no training rows in {path}")
     return rows
