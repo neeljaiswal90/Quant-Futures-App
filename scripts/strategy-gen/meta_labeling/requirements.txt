@@ -1,0 +1,9 @@
+# Dev tooling for regenerating the meta-labeling parity fixture
+# (scripts/strategy-gen/meta_labeling/generate_parity_fixture.py).
+#
+# NOT required by CI: the TypeScript evaluator and its parity test run against
+# the committed fixtures under apps/backtester/tests/unit/meta-labeling/fixtures/,
+# so no xgboost install is needed to build or test. Pin matters only for
+# byte-stable fixture regeneration.
+xgboost==3.3.0
+numpy
