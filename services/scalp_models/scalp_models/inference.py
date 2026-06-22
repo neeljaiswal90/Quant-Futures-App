@@ -51,6 +51,41 @@ class ScoreResult:
     feature_count: int
 
 
+def _clamp01(value: float) -> float:
+    """Clamp a probability into [0, 1] (defensive; calibrators should already
+    return in-range values)."""
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
+def _apply_calibrator(calibrator: Any, raw: float) -> float:
+    """Apply a fitted calibrator to a raw probability, handling BOTH families
+    this stack trains:
+
+    * isotonic (``IsotonicRegression``) exposes ``.transform`` on a 1-D input.
+    * platt (``LogisticRegression``) exposes ``.predict_proba`` on a 2-D input;
+      the positive-class column (index 1) is the calibrated probability.
+
+    ``None`` passes ``raw`` through. An unrecognized calibrator also falls back
+    to ``raw`` rather than crashing. RA-094: the previous implementation
+    hardcoded ``.transform`` and raised AttributeError on platt-calibrated
+    models (a live-serving blocker for the zone_rejection 5s/15s and
+    microprice_flip_zone 1s cells).
+    """
+    if calibrator is None:
+        return _clamp01(raw)
+    transform = getattr(calibrator, "transform", None)
+    if callable(transform):
+        return _clamp01(float(transform([raw])[0]))
+    predict_proba = getattr(calibrator, "predict_proba", None)
+    if callable(predict_proba):
+        return _clamp01(float(predict_proba([[raw]])[0, 1]))
+    return _clamp01(raw)
+
+
 class ScalpModelInferenceBundle:
     """Loads + serves all trained models from one ``model_runs/<run_id>/`` dir.
 
@@ -150,12 +185,9 @@ class ScalpModelInferenceBundle:
         # we want column index 1 (positive class probability).
         raw = float(pipeline.predict_proba(x)[0, 1])
 
-        calibrator = m.get("calibrator")
-        if calibrator is None:
-            calibrated = raw
-        else:
-            # IsotonicRegression.transform takes a 1-D array.
-            calibrated = float(calibrator.transform([raw])[0])
+        # RA-094: handle isotonic (.transform) AND platt (.predict_proba)
+        # calibrators. The old hardcoded .transform crashed on platt cells.
+        calibrated = _apply_calibrator(m.get("calibrator"), raw)
 
         return ScoreResult(
             setup_type=setup_type,
