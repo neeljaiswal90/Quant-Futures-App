@@ -19,6 +19,7 @@ import type {
   StrategyGenerationResult,
 } from '../../../strategy_runtime/src/strategies/index.js';
 import type { StrategyRuntimeConfig } from '../../../strategy_runtime/src/config/index.js';
+import type { MetaLabelFeatureInput } from '../meta-labeling/meta-label-features.js';
 
 export type RealArchiveRegimeLabel = 'high' | 'mid' | 'low' | 'unknown';
 
@@ -80,6 +81,11 @@ export interface RealArchiveBacktestOptions {
   readonly strategy_config?: StrategyRuntimeConfig;
   readonly vix_daily_paths?: readonly string[];
   readonly regime_labels_path?: string;
+  /**
+   * Optional meta-labeling take/skip gate. When present, an armed signal is only
+   * executed if the filter returns true. Default-absent: behavior unchanged.
+   */
+  readonly meta_labeling_filter?: (input: MetaLabelFeatureInput) => boolean;
 }
 
 export interface RealArchiveStrategyGeneratorInput {
