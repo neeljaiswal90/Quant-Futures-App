@@ -465,6 +465,22 @@ async function runSession(input: {
     }
 
     const candidate = result.candidate;
+    if (input.options.meta_labeling_filter !== undefined) {
+      const takeSignal = input.options.meta_labeling_filter({
+        side: candidate.direction,
+        regime_label: snapshot.context.regime_label,
+        vix_value: snapshot.context.vix_value,
+        vix_fresh: snapshot.context.vix_fresh,
+        signed_shock_value: snapshot.context.signed_shock_vwap.value,
+        signed_shock_anchor: snapshot.context.signed_shock_vwap.anchor_value,
+        signed_shock_sigma: snapshot.context.signed_shock_vwap.sigma_basis_value,
+        spread_bucket: spreadBucket(quoteState.latest),
+        queue_ahead_bucket: queueAheadBucketFromQuote(candidate.direction, quoteState.latest),
+      });
+      if (!takeSignal) {
+        continue;
+      }
+    }
     input.events.push(candidateEvent({
       runId: input.runId,
       sessionId,
